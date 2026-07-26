@@ -949,21 +949,39 @@ let sleepTimerEndsAt = null;
 async function pollMedia() {
   const s = await callApi('get_media_status');
   const titleWrap = document.getElementById('ppTitleWrap');
+  const ppArt = document.getElementById('ppArt');
   if (!s || !s.ok || !s.active) {
     document.getElementById('ppTitle').textContent = 'Nothing playing';
     document.getElementById('ppArtist').textContent = 'Play something to control it here';
-    document.getElementById('ppArt').classList.remove('spinning');
+    document.getElementById('ppApp').textContent = '';
+    ppArt.classList.remove('spinning', 'has-art');
+    ppArt.style.backgroundImage = '';
     document.getElementById('ppPlayIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
     if (!seekDragging) { document.getElementById('ppSeek').value = 0; document.getElementById('ppCurTime').textContent = '0:00'; document.getElementById('ppDurTime').textContent = '0:00'; }
     mediaPlaying = false;
     return;
   }
   document.getElementById('ppTitle').textContent = s.title || 'Unknown track';
-  document.getElementById('ppArtist').textContent = s.artist || '';
+  document.getElementById('ppArtist').textContent = s.artist + (s.album ? ` — ${s.album}` : '') || '';
+  document.getElementById('ppApp').textContent = s.app || '';
   titleWrap.classList.toggle('scroll', (s.title || '').length > 26);
   mediaPlaying = s.status === 'playing';
-  document.getElementById('ppArt').classList.toggle('spinning', mediaPlaying);
+  if (s.art) {
+    ppArt.style.backgroundImage = `url("${s.art}")`;
+    ppArt.classList.add('has-art');
+  } else {
+    ppArt.style.backgroundImage = '';
+    ppArt.classList.remove('has-art');
+  }
+  ppArt.classList.toggle('spinning', mediaPlaying);
   document.getElementById('ppPlayIcon').innerHTML = mediaPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>';
+  const ppShuffle = document.getElementById('ppShuffle');
+  const ppRepeat = document.getElementById('ppRepeat');
+  const caps = s.caps || {};
+  ppShuffle.classList.toggle('active', !!s.shuffle);
+  ppShuffle.disabled = s.shuffle_supported === false && !caps.can_shuffle;
+  ppRepeat.classList.toggle('active', s.repeat && s.repeat !== 'none');
+  ppRepeat.classList.toggle('repeat-track', s.repeat === 'track');
   if (!seekDragging) {
     const dur = s.duration_sec || 0, pos = s.position_sec || 0;
     document.getElementById('ppSeek').max = Math.max(dur, 1);
@@ -985,6 +1003,15 @@ document.getElementById('ppStop').addEventListener('click', () => {
 });
 document.getElementById('ppNext').addEventListener('click', () => callApi('skip_next_track'));
 document.getElementById('ppPrev').addEventListener('click', () => callApi('skip_previous_track'));
+document.getElementById('ppShuffle').addEventListener('click', (e) => {
+  const nowOn = !e.currentTarget.classList.contains('active');
+  e.currentTarget.classList.toggle('active', nowOn);
+  callApi('toggle_shuffle', nowOn);
+});
+document.getElementById('ppRepeat').addEventListener('click', async () => {
+  await callApi('cycle_repeat_mode');
+  pollMedia();
+});
 
 const ppSeek = document.getElementById('ppSeek');
 ppSeek.addEventListener('input', () => { seekDragging = true; document.getElementById('ppCurTime').textContent = fmtTime(ppSeek.value); });
