@@ -3,20 +3,12 @@ sara.tools.system.timers
 Voice-triggered countdown timers.
 """
 
-import ctypes
 import logging
-import os
 import re
-import socket
-import subprocess
 import platform
 import threading
-import time
 
-from datetime import datetime
-from typing import Callable, Dict, Optional
-
-import psutil
+from typing import Callable, Optional
 
 from config import Config
 

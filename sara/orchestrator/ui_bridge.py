@@ -5,31 +5,11 @@ coalesces rapid-fire duplicate UI events.
 """
 
 import re
-import sys
-import time
 import queue
 import logging
 import threading
-import subprocess
-import urllib.request
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
-
-from logging_config import setup_logging
-from health_check import run_startup_diagnostics
 
 from config import Config
-from sara.core.llm import SaraLLM
-
-from sara.core.intent import detect_intent
-from sara.audio.tts import TextToSpeech
-from sara.audio.stt import SpeechToText
-from sara.core.memory import PreferencesDB
-from sara.tools.reminders import ReminderManager, play_alarm_beep
-from sara.tools.clipboard import read_clipboard, write_clipboard
-from sara.tools.vision import VisionAssistant
-from sara.tools import system as system_tools
-from sara.tools import web as web_tools
 
 # PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the
 # LLM tool-calling fallback are both optional, additive features — if
