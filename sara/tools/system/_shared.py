@@ -4,20 +4,11 @@ Low-level shared helpers (platform guard, key-combo sender) used by
 almost every other function in this package.
 """
 
-import ctypes
 import logging
-import os
 import re
-import socket
-import subprocess
 import platform
-import threading
-import time
 
-from datetime import datetime
-from typing import Callable, Dict, Optional
-
-import psutil
+from typing import Optional
 
 from config import Config
 

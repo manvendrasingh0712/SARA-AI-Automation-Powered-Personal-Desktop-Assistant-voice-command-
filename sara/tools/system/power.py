@@ -2,22 +2,13 @@
 sara.tools.system.power
 Power-state control: lock, sleep, hibernate, log off, shutdown, restart.
 """
-from ._shared import _ensure_windows, _send_keys
+from ._shared import _ensure_windows
 
 import ctypes
 import logging
-import os
 import re
-import socket
 import subprocess
 import platform
-import threading
-import time
-
-from datetime import datetime
-from typing import Callable, Dict, Optional
-
-import psutil
 
 from config import Config
 

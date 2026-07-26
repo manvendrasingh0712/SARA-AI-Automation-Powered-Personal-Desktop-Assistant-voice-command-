@@ -2,22 +2,11 @@
 sara.tools.system.window_mgmt
 Active-window / desktop management (minimize, maximize, snap, switch).
 """
-from ._shared import _ensure_windows, _send_keys
+from ._shared import _send_keys
 
-import ctypes
 import logging
-import os
 import re
-import socket
-import subprocess
 import platform
-import threading
-import time
-
-from datetime import datetime
-from typing import Callable, Dict, Optional
-
-import psutil
 
 from config import Config
 
