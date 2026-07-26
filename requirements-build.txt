@@ -1,0 +1,29 @@
+# =============================================================================
+# Sara AI — build-only dependencies
+# =============================================================================
+# These are needed ONLY to package Sara AI into a standalone .exe with
+# PyInstaller — not to run it from source. Runtime dependencies live in
+# requirements.txt and must be installed separately (this file assumes
+# they already are):
+#
+#   pip install -r requirements.txt
+#   pip install -r requirements-build.txt
+#   pyinstaller sara_ai.spec
+#
+# See BUILD.md for the full packaging guide.
+#
+# CHANGE LOG (this pass):
+# - pyinstaller: 6.10.0 -> 6.14.2
+#     6.10.0 predates PyInstaller's 6.11.0 rewrite of the numpy hook, which
+#     specifically targets compatibility with numpy 2.x (the old hook could
+#     duplicate/miss numpy's bundled shared libraries on Windows and hit a
+#     "No module named 'numpy.f2py'" error from the scipy/numpy 2.0
+#     mismatch). Since requirements.txt now pins numpy==2.1.0, staying on
+#     6.10.0 risks a build that runs fine with `python main.py` but breaks
+#     once packaged into the .exe. 6.14.2 includes that fix and everything
+#     after it, while staying well short of the 6.21.x latest (less churn
+#     to validate against sara_ai.spec).
+# =============================================================================
+
+pyinstaller==6.14.2
+pywin32==306
