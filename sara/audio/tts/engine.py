@@ -17,11 +17,9 @@ import queue
 import re
 import threading
 import time
-from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from functools import lru_cache
-from typing import Iterator, Optional
+from typing import Iterator
 
 import numpy as np
 
