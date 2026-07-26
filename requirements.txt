@@ -1,0 +1,136 @@
+# ==========================================
+# SARA AI - requirements.txt
+# ==========================================
+# Every pinned version below was verified against the real PyPI index
+# (and, where relevant, cross-checked against every `import` in the
+# codebase) before being committed here.
+#
+# CHANGE LOG (this pass — deep dependency audit):
+# - kokoro-onnx: 0.1.2 -> 0.5.0
+#     0.1.2 predates the v1.0 model format (voices-v1.0.bin is a binary/npz
+#     file; 0.1.2 only understands the old JSON voices format and crashes
+#     with UnicodeDecodeError trying to json.load() it).
+# - numpy: 1.26.4 -> 2.1.0
+#     kokoro-onnx==0.5.0 requires numpy>=2.0.2, conflicting with the old pin.
+# - onnxruntime-gpu: 1.17.1 -> 1.20.1
+#     1.17.1 is compiled against numpy 1.x and CUDA 11.8 only -> it would
+#     both fail at runtime under numpy 2 AND fail to load CUDA on your
+#     installed CUDA 12.9 toolkit. 1.20.1 supports numpy 2.x and CUDA 12.x.
+# - ollama: 0.2.1 -> 0.6.2
+#     0.2.1 pins httpx<0.28.0, which conflicts with ddgs==9.14.4's
+#     requirement of httpx>=0.28.1. 0.6.2 accepts httpx<0.29,>=0.27, so both
+#     packages can now agree on a shared httpx version.
+# - google-genai: 0.4.0 -> 1.23.0
+#     0.4.0 is a very old pre-GA release also pinned to an old httpx range,
+#     which would reintroduce the same httpx conflict as ollama did. 1.23.0
+#     uses the same genai.Client(api_key=...) pattern your code already
+#     calls (sara/tools/vision.py, sara/core/llm/clients.py), so no code
+#     changes should be needed. Do a quick smoke-test of the Gemini calls
+#     after upgrading, since some response-object field names changed
+#     between 0.x and 1.x.
+#
+# NEW THIS PASS — packages that ARE imported in the code but were
+# missing from the file entirely (all four fail silently, not loudly,
+# which is why they'd slipped through: each one is behind a try/except
+# ImportError, so the app keeps running with the feature quietly dead
+# instead of crashing at startup):
+# - pytz            -> sara/core/llm/prompt.py does `import pytz` inside a
+#                      function to compute the local hour for a named
+#                      timezone. It happened to work before only because
+#                      dateparser pulls pytz in transitively and unpinned;
+#                      it's now a direct, version-locked dependency since
+#                      your code imports it directly.
+# - winsdk          -> sara/gui/app/media.py imports
+#                      winsdk.windows.media.control (Windows System Media
+#                      Transport Controls) to read/control the OS-level
+#                      "now playing" session for the mini music player.
+#                      Without it every call falls through to the
+#                      "winsdk not installed" error branch already coded
+#                      there — the music player widget would silently
+#                      show nothing.
+# - nvidia-cudnn-cu12 / nvidia-cublas-cu12
+#                   -> main.py explicitly imports nvidia.cudnn / nvidia.cublas
+#                      at the very top of the file (before onnxruntime,
+#                      kokoro-onnx, or faster-whisper are imported anywhere
+#                      in the chain) specifically to call
+#                      os.add_dll_directory() on their bin/ folders, because
+#                      onnxruntime-gpu's CUDA execution provider can't find
+#                      cudnn64_9.dll / cublas64_12.dll otherwise on Windows.
+#                      This is also wrapped in try/except ImportError, so
+#                      without these two packages installed, GPU inference
+#                      for TTS/STT doesn't error — it just silently falls
+#                      back to CPU, which is much slower and easy to miss.
+#                      Pinned to a cuDNN 9.x / CUDA 12.x combo, matching
+#                      onnxruntime-gpu 1.20.1's own requirement of
+#                      "cuDNN 9.* and CUDA 12.*" and your installed CUDA
+#                      12.9 toolkit.
+#
+# KNOWN CONFLICT FLAGGED (fixed by explicit pin, not by removing anything):
+# - onnxruntime (CPU) == 1.20.1
+#     kokoro-onnx, faster-whisper, AND openwakeword each declare their own
+#     unpinned dependency on the CPU `onnxruntime` package (used for
+#     kokoro-onnx's own internal model, faster-whisper's VAD model, and
+#     openwakeword's detection models respectively). None of those three
+#     libraries know that onnxruntime-gpu is also installed, because
+#     `onnxruntime` and `onnxruntime-gpu` are different PyPI distribution
+#     names even though they both install into the SAME `onnxruntime/`
+#     folder on disk. A clean dependency resolve confirmed this: without a
+#     pin, pip pulls the CPU package up to whatever is newest (verified:
+#     onnxruntime 1.28.0) alongside onnxruntime-gpu==1.20.1 — two different
+#     versions of the same native library sharing one install path, which
+#     is a real crash/ABI-mismatch risk depending on install order. Pinning
+#     `onnxruntime==1.20.1` here forces both packages to resolve to the
+#     exact same version, so whichever one's files end up "on top" after
+#     install, the DLLs match. If you ever see DLL-load errors after a
+#     fresh `pip install`, re-run `pip install --force-reinstall
+#     onnxruntime-gpu==1.20.1` last, so its GPU-capable build wins.
+
+# Audio / TTS / STT
+PyAudio==0.2.14
+sounddevice==0.4.6
+webrtcvad==2.0.10
+aec-audio-processing==1.0.1
+kokoro-onnx==0.5.0
+faster-whisper==1.0.3
+openwakeword==0.6.0
+
+# LLM / AI Models
+ollama==0.6.2
+google-genai==1.23.0
+
+# Web tools
+requests==2.32.3
+beautifulsoup4==4.12.3
+duckduckgo_search==5.3.1  # Legacy-fallback, used only if the ddgs import below fails
+ddgs==9.14.4
+
+# System tools
+psutil==5.9.8
+pycaw==20230407
+comtypes==1.4.1
+keyboard==0.13.5
+screen_brightness_control==0.23.0
+winsdk==1.0.0b10  # sara/gui/app/media.py — Windows SMTC "now playing" control for the mini music player
+
+# GUI
+pywebview==5.0.5
+pygame==2.5.2
+
+# Utilities
+dateparser==1.2.0
+pytz==2026.3.post1  # sara/core/llm/prompt.py — direct import for timezone-aware hour lookup
+pyperclip==1.8.2
+mss==9.0.1
+Pillow==10.0.0
+python-dotenv==1.0.1
+numpy==2.1.0
+
+# ONNX Runtime — CPU build pinned explicitly alongside the GPU build below
+# to keep both at the exact same version (see "KNOWN CONFLICT FLAGGED" above).
+onnxruntime==1.20.1
+onnxruntime-gpu==1.20.1
+
+# CUDA/cuDNN DLLs for onnxruntime-gpu + faster-whisper's ctranslate2 backend
+# (both need cuDNN 9.x / CUDA 12.x; loaded explicitly in main.py, see note above)
+nvidia-cudnn-cu12==9.5.1.17
+nvidia-cublas-cu12==12.9.2.10

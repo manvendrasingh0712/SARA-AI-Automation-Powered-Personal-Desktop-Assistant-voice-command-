@@ -1,0 +1,78 @@
+# ==========================================
+# SARA AI - .gitignore
+# ==========================================
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.Python
+*.so
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+ENV/
+
+# --- Runtime data (SQLite + WAL/SHM sidecar files) ---
+sara_data.db
+sara_data.db-shm
+sara_data.db-wal
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# --- Logs ---
+logs/
+*.log
+
+# --- Notes / user-generated data ---
+notes.json
+notes.txt
+
+# --- ML models (large binaries — fetch separately, don't commit) ---
+models/
+*.onnx
+*.bin
+*.pt
+*.pth
+*.tflite
+*.gguf
+
+# --- PyInstaller build output ---
+build/
+dist/
+*.manifest
+# NOTE: sara_ai.spec is intentionally NOT ignored — it's a tracked build config.
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS junk ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Test / coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# --- Temp files ---
+*.tmp
+*.temp
+tmp/
