@@ -11,11 +11,10 @@ import re
 import socket
 import subprocess
 import platform
-import threading
 import time
 
 from datetime import datetime
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict
 
 import psutil
 
