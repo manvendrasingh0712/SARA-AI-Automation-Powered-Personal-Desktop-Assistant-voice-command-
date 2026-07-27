@@ -257,6 +257,13 @@ def _ensure_ollama_running(ui_update=None, model: str = _OLLAMA_MODEL) -> None:
 
 
 def _stop_ollama_background() -> None:
+    # BUGFIX: this function now resets the module-level handle to None
+    # once the process is confirmed stopped (or once we've given up
+    # trying), so a stale/dead Popen object can never linger in
+    # _ollama_process. Because that reset IS a module-level assignment
+    # (not just a read, unlike before), the `global` declaration below
+    # is genuinely required here — Python needs it to bind the name at
+    # module scope instead of creating a shadowing local variable.
     global _ollama_process
     if _ollama_process is None:
         return
@@ -270,3 +277,5 @@ def _stop_ollama_background() -> None:
             _debug_log("[Ollama] Background process stopped.")
     except Exception as e:
         print(f"[Ollama] Failed to stop background process: {e}")
+    finally:
+        _ollama_process = None
