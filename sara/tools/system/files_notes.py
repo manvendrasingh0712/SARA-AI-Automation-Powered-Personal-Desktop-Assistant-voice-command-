@@ -2,21 +2,17 @@
 sara.tools.system.files_notes
 File search, recycle bin, and the plain-text quick-notes feature.
 """
-from ._shared import _ensure_windows, _send_keys
+from ._shared import _ensure_windows
 
 import ctypes
 import logging
 import os
 import re
-import socket
-import subprocess
 import platform
 import time
 
 from datetime import datetime
-from typing import Callable, Dict
 
-import psutil
 
 from config import Config
 

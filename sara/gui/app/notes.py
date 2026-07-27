@@ -7,13 +7,7 @@ from .events import _push
 
 import os
 import json
-import time
-import queue
-import random
 import threading
-import urllib.request
-import urllib.parse
-import webview
 
 class ApiNotesMixin:
 

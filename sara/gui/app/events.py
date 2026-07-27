@@ -6,15 +6,8 @@ this state do `from . import events` and use `events._window` etc.
 rather than importing the names directly, since `_window` is reassigned
 after bootstrap.main() creates the actual webview window.
 """
-import os
 import json
-import time
-import queue
-import random
 import threading
-import urllib.request
-import urllib.parse
-import webview
 
 _window = None
 _stop_event = threading.Event()

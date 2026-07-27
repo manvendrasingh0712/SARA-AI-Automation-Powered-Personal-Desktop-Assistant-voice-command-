@@ -3,18 +3,8 @@ sara.gui.app.settings
 ApiSettingsMixin -- mute/focus mode, generic preference updates, assistant
 active-state, mic sensitivity, speech speed, wifi toggle, and language.
 """
-from . import events
 from .events import _push
 
-import os
-import json
-import time
-import queue
-import random
-import threading
-import urllib.request
-import urllib.parse
-import webview
 
 class ApiSettingsMixin:
 

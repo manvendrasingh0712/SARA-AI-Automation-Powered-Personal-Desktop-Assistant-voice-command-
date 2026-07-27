@@ -64,7 +64,6 @@ import logging
 import queue
 import sqlite3
 import threading
-import time
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime

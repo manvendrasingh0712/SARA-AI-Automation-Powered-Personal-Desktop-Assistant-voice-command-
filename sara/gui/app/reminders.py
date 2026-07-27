@@ -2,15 +2,6 @@
 sara.gui.app.reminders
 ApiRemindersMixin -- Calendar/Reminders page CRUD, backed by ReminderManager.
 """
-import os
-import json
-import time
-import queue
-import random
-import threading
-import urllib.request
-import urllib.parse
-import webview
 
 class ApiRemindersMixin:
 

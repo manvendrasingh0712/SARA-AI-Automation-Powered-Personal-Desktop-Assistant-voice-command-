@@ -10,6 +10,7 @@ import threading
 
 from typing import Callable, Optional
 
+
 from config import Config
 
 logger = logging.getLogger(__name__)

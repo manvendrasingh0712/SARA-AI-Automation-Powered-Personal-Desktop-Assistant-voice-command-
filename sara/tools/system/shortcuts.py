@@ -56,6 +56,9 @@ import logging
 import re
 import platform
 
+from typing import Dict
+
+
 from config import Config
 
 logger = logging.getLogger(__name__)

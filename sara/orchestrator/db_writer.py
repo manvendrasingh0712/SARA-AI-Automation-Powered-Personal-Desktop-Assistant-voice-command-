@@ -10,7 +10,9 @@ import queue
 import logging
 import threading
 
+
 from config import Config
+
 from sara.core.memory import PreferencesDB
 
 # PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the

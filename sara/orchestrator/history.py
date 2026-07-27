@@ -8,7 +8,9 @@ from .lazy import _debug_log
 import re
 import logging
 
+
 from config import Config
+
 
 # PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the
 # LLM tool-calling fallback are both optional, additive features — if
