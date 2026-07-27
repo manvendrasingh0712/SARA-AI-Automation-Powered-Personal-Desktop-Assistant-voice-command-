@@ -28,10 +28,27 @@ hardware modules, that is a real code problem: the test prints the exact
 original exception instead of silently skipping.
 """
 
+import os
 import sys
 import types
 import unittest
 from unittest.mock import MagicMock
+
+# Make sure the project root (the parent of this tests/ folder, where the
+# `sara` package and config.py live) is importable regardless of HOW this
+# file is run:
+#   - `python tests/test_api_surface.py` directly -> Python only puts this
+#     file's own directory (tests/) on sys.path, not the project root.
+#   - `pytest tests/test_api_surface.py` / `pytest tests/` -> pytest's
+#     default "prepend" import mode (no tests/__init__.py here) has the
+#     same limitation.
+#   - `python -m pytest ...` happened to work by accident in earlier
+#     testing because `-m` itself adds the current working directory to
+#     sys.path -- but that only holds if you happen to run it from the
+#     project root. This makes it work unconditionally, from any cwd.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
 
 
 # ---------------------------------------------------------------------------
