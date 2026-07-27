@@ -10,7 +10,9 @@ import queue
 import logging
 import threading
 
+
 from config import Config
+
 from sara.audio.tts import TextToSpeech
 from sara.audio.stt import SpeechToText
 

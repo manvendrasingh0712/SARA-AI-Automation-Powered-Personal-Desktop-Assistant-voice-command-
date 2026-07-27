@@ -2,18 +2,15 @@
 sara.tools.system.apps
 Launch / close applications by name.
 """
-from ._shared import _ensure_windows, _send_keys
+from ._shared import _ensure_windows
 
-import ctypes
 import logging
 import os
 import re
-import socket
 import subprocess
 import platform
 
-from datetime import datetime
-from typing import Callable, Dict
+from typing import Dict
 
 import psutil
 

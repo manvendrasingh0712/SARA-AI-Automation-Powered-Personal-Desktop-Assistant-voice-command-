@@ -33,7 +33,6 @@ LATENCY FIX (this revision):
 import sqlite3
 import threading
 import time
-import math
 from datetime import datetime, timedelta
 from typing import Optional, Callable, List, Dict, Any
 

@@ -34,7 +34,6 @@ from typing import Any, Callable, Optional
 
 import requests
 
-from config import Config
 
 logger = logging.getLogger(__name__)
 

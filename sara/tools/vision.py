@@ -9,7 +9,6 @@ generate a concise, voice-friendly description of what's on screen.
 
 import io
 import logging
-from datetime import datetime
 
 import mss
 try:

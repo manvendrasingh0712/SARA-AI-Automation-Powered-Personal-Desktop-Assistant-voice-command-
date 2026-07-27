@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 
+
 from config import Config
 
 try:

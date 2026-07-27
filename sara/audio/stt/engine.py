@@ -5,19 +5,16 @@ mic-capture -> VAD -> faster-whisper transcription pipeline.
 """
 from __future__ import annotations
 
-from .helpers import _rms, _rms_numpy, _detect_language, _lang_from_stt_language, _is_hallucinated_repetition, _is_known_hallucination
+from .helpers import _rms, _detect_language, _lang_from_stt_language, _is_hallucinated_repetition, _is_known_hallucination
 from .buffers import _PreBuffer, _RingBuffer, _VADFilter, _SilenceGate, _NoiseFloor, _CollectState
 
 import os
 import atexit
 import collections
-import math
 import re
-import struct
 import threading
 import time
-from enum import Enum, auto
-from typing import Deque, List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 

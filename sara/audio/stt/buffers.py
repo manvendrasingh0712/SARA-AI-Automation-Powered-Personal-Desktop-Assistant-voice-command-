@@ -6,17 +6,11 @@ from __future__ import annotations
 
 
 import os
-import atexit
 import collections
-import math
-import re
-import struct
 import threading
-import time
 from enum import Enum, auto
-from typing import Deque, List, Optional, Tuple
+from typing import Deque, List, Optional
 
-import numpy as np
 
 if os.name == "nt":
     cuda_path = os.environ.get("CUDA_PATH")
@@ -30,7 +24,6 @@ if os.name == "nt":
                 pass
 
 try:
-    from faster_whisper import WhisperModel
 
     _HAS_WHISPER = True
 except (ImportError, OSError) as e:
@@ -46,7 +39,6 @@ except (ImportError, OSError):
     _HAS_VAD = False
 
 try:
-    import sounddevice as sd
 
     _HAS_SD = True
 except (ImportError, OSError):
@@ -76,9 +68,7 @@ except ImportError:
     _audioop = None
     _HAS_AUDIOOP = False
 
-import queue
 
-from config import Config
 
 # ══════════════════════════════════════════════════════════════════════
 # Audio Math & Utilities

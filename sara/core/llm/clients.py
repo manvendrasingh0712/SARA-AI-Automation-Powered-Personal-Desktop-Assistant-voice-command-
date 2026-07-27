@@ -8,11 +8,7 @@ from __future__ import annotations
 
 import re
 import threading
-import time
-from collections import deque
-from typing import Iterator, List, NamedTuple, Optional, Tuple
 
-from config import Config
 
 # ══════════════════════════════════════════════════════════════════════
 # Module-level compiled regexes

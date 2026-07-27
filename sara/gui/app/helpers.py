@@ -5,13 +5,10 @@ the direct-weather-API fallback fetch, and the debounced preference writer.
 """
 import os
 import json
-import time
 import queue
-import random
 import threading
 import urllib.request
 import urllib.parse
-import webview
 
 # ── Weather integration (OpenWeatherMap free tier) ──────────────────────────
 # The API key is loaded from the WEATHER_API_KEY environment variable so the
