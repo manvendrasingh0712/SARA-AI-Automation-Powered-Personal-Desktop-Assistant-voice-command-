@@ -10,6 +10,7 @@ from .streaming import WarmupResult, _last_word_before, _split_sentences, _claus
 from .clients import _get_ollama_client, _get_gemini_client
 
 
+import logging
 import re
 import threading
 import time
@@ -21,6 +22,8 @@ from config import Config
 # ══════════════════════════════════════════════════════════════════════
 # Module-level compiled regexes
 # ══════════════════════════════════════════════════════════════════════
+
+logger = logging.getLogger("sara.llm.engine")
 
 _SENT_END_RE = re.compile(r"([.!?।॥])\s+")
 _MD_STRIP_RE = re.compile(r"(\*{1,3}|#{1,6}|`{1,3}|_{1,2}|~~|\|\|)")
@@ -732,8 +735,16 @@ class SaraLLM:
                 last_exc = e
                 if getattr(self._cfg, "DEBUG_MODE", False):
                     print(f"[LLM] summarize_ollama attempt {attempt+1} failed: {e}")
-        # v7: friendly localized message instead of raw "Error: ..." text,
-        # since this string is spoken aloud by TTS via _quick()/speak().
+        # BUGFIX: last_exc used to be assigned every attempt and then
+        # discarded — in production (DEBUG_MODE off) the real reason for
+        # the failure was never recorded anywhere, only the debug print
+        # above showed it. Log it unconditionally now so ops/logs always
+        # capture the actual cause, while the TTS-safe friendly message
+        # below is still what gets returned/spoken (never the raw
+        # exception text).
+        logger.error(
+            f"[LLM] summarize_ollama failed after 3 attempts: {last_exc}"
+        )
         return _SUMMARY_FAIL_MESSAGES.get(self._lang, _SUMMARY_FAIL_MESSAGES["english"])
 
     def _summarize_gemini(self, text: str) -> str:
@@ -766,6 +777,12 @@ class SaraLLM:
                 last_exc = e
                 if getattr(self._cfg, "DEBUG_MODE", False):
                     print(f"[LLM] summarize_gemini attempt {attempt+1} failed: {e}")
+        # BUGFIX: same as _summarize_ollama above — surface the real
+        # exception unconditionally via logger, keep the spoken/returned
+        # text friendly and TTS-safe.
+        logger.error(
+            f"[LLM] summarize_gemini failed after 3 attempts: {last_exc}"
+        )
         return _SUMMARY_FAIL_MESSAGES.get(self._lang, _SUMMARY_FAIL_MESSAGES["english"])
 
     # ── Memory ────────────────────────────────────────────────────────
