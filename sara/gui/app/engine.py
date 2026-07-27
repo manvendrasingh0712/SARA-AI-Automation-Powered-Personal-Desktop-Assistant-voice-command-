@@ -8,8 +8,8 @@ from .reminders import ApiRemindersMixin
 from .settings import ApiSettingsMixin
 from .notes import ApiNotesMixin
 from .media import ApiMediaMixin
+from .setup_wizard import ApiSetupWizardMixin
 
-import types
 
 _MIXINS = (
     ApiCoreMixin,
@@ -17,13 +17,13 @@ _MIXINS = (
     ApiSettingsMixin,
     ApiNotesMixin,
     ApiMediaMixin,
+    ApiSetupWizardMixin,
 )
 
 
 class Api(*_MIXINS):
     """Combined JS-bridge API object -- identical public surface to the
     original monolithic Api class in sara/gui/app.py."""
-    pass
 
 
 # BUGFIX (root cause of "preview mode, no backend connected" persisting on
