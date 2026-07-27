@@ -1,11 +1,133 @@
 # CHANGELOG.md — Sara AI
 
-## [Unreleased] — Enterprise-level structural restructure
+## [Unreleased] — Feature merge: Proactive Engine, Skills system, Setup Wizard, Explainable AI + regression fixes + cleanup
+
+This entry describes the CURRENT actual state of the codebase after
+merging a "final" feature-update zip into the audited base project
+(the restructure described in the entry below), plus fixing the
+regressions that merge introduced. Source of truth: `CHANGES_SUMMARY.md`.
+
+> **Correction to the entry below:** the previous restructure entry
+> lists `LICENSE`, `.env.example`, `BUILD.md`, `sara_ai.spec`,
+> `requirements-build.txt`, `CONTRIBUTING.md`, GitHub issue templates,
+> a PR template, and `.github/workflows/ci.yml` as "Added." That entry
+> is left unedited below as a historical record of what was worked on
+> in that session, but as of the current repo state confirmed here:
+> **`.github/workflows/ci.yml` and `sara_ai.spec` have been proposed
+> multiple times but were never actually committed to the repo — do not
+> treat them as existing.** **`.env.example` is intentionally not part
+> of the current repo state** (the user maintains their own `.env`
+> directly). Treat `PROJECT_MEMORY.md` and `NEXT_STEPS.md` as
+> authoritative on this point going forward.
+
+### Added
+
+- **Proactive Engine** (`sara/orchestrator/proactive.py`) — background
+  daemon thread (default 60s check interval) that lets Sara speak up
+  without a wake word for: low battery, an upcoming-reminder heads-up,
+  an idle/break nudge, and streak-milestone announcements. Per-trigger
+  cooldown, silenceable via Focus Mode / Pause Listening / config,
+  optional LLM rephrasing with template fallback. All nudges logged to
+  a new `proactive_log` SQLite table.
+- **Explainable AI** — new `why_proactive` intent (Hinglish-aware:
+  "kyu bola", "kyu kaha") with handler `_h_why_proactive`, so the user
+  can ask Sara why she spoke and get the logged reason back.
+- **Skills plugin system** (`sara/skills/`) — auto-discovery package;
+  any file defining `INTENT_NAME` + `PATTERNS` + `handle()` is wired up
+  automatically at startup, no manual registration needed. Shipped
+  skills: `daily_briefing.py`, `joke.py`, `notes_qa.py` (RAG Q&A over
+  notes), `streak.py` (daily talk-streak tracking, milestones at
+  3/7/14/30/50/100/200/365 days).
+- **Setup Wizard** (`sara/gui/app/setup_wizard.py`,
+  `ApiSetupWizardMixin`) — first-run onboarding that probes Ollama, the
+  LLM model, the embedding model, and Kokoro TTS files, with one-click
+  fixes. 4 new pywebview API methods added.
+- New config keys: `PROACTIVE_ENABLED`, `PROACTIVE_CHECK_INTERVAL_S`,
+  `PROACTIVE_BATTERY_LOW_PERCENT`, `PROACTIVE_REMINDER_LEAD_MINUTES`,
+  `PROACTIVE_IDLE_BREAK_MINUTES`, `PROACTIVE_COOLDOWN_MINUTES`,
+  `PROACTIVE_LLM_PHRASING`, `DAILY_BRIEFING_LOCATION`, `NOTES_FOLDER`,
+  `NOTES_CHUNK_CHARS`, `NOTES_QA_TOP_K`, `NOTES_MAX_CHUNKS_PER_FILE`,
+  `DIWALI_DATE`, `HOLI_DATE`.
+- `sara/core/memory.py`: new `proactive_log` table plus
+  `log_proactive_event()`, `get_recent_proactive_events()`,
+  `get_last_proactive_event()`, `get_proactive_stats()`; new streak
+  methods `record_interaction_day()`, `get_streak_count()`; new
+  `get_conversation_stats()` (backs a "Shareable Moments" card).
+- `sara/tools/reminders.py`: `get_upcoming(within_minutes)` for the
+  Proactive Engine's reminder heads-up (purely additive; does not
+  change the existing on-time alarm).
+- `sara/tools/system/system_info.py`: `get_battery_raw()` (numeric
+  percent/plugged tuple) for the Proactive Engine's battery-low check.
+
+### Fixed — regressions introduced by the incoming feature-update zip
+
+- `main.py` was missing the `build_core_objects` / `run_sara_logic` /
+  `_handle_command` re-export imports (the explanatory comments had
+  survived, the imports had not) — restored. Without them,
+  `sara/gui/app/bootstrap.py` and `sara/gui/app/core.py` break and the
+  app falls back to "preview mode, no backend connected."
+- `requirements.txt`, `requirements-build.txt`, `.gitignore` had been
+  reverted to an older state (missing `winsdk`, `pytz`, the
+  `onnxruntime` CPU-vs-GPU ABI pin, `nvidia-cudnn-cu12`,
+  `nvidia-cublas-cu12`, and a downgraded `pyinstaller`) — restored.
+- `sara/gui/app/media.py`, `sara/gui/js/app.js`, `sara/gui/style/style.css`,
+  `sara/gui/index.html` had lost album art extraction, the
+  background-session-detect fix, and shuffle/repeat (backend methods
+  and UI) entirely — restored.
+
+### Fixed — pre-existing minor issues
+
+- `sara/orchestrator/ollama_manager.py`: `_stop_ollama_background()` now
+  resets the module-level `_ollama_process` to `None` after stopping.
+- `sara/core/llm/engine.py`: `_summarize_ollama` / `_summarize_gemini`
+  now log the final exception after all 3 retries are exhausted
+  (previously silently swallowed outside `DEBUG_MODE`).
+
+### Cleanup
+
+- Removed ~300+ genuinely-unused imports across 44 files in
+  `sara/orchestrator/`, `sara/audio/tts/`, `sara/audio/stt/`,
+  `sara/tools/system/`, `sara/gui/app/`, `sara/core/llm/`. No logic
+  touched — verified via `py_compile`, `pyflakes`, and a full recursive
+  stubbed import of the `sara` package.
+
+### Verification performed for this merge
+
+1. `py_compile` on every touched file
+2. `pyflakes` on the whole repository — zero issues outside the 3
+   intentional re-export names in `main.py`
+3. Full recursive Python import of every module in `sara/` with
+   hardware/API libraries stubbed via `sys.modules`
+
+### Reconfirmed unchanged (existed before this merge, briefly at risk, restored)
+
+- Media player UI: album art, friendly app name, Shuffle/Repeat buttons,
+  the background-music-detection fix. Not new — see Fixed section above.
+
+### Not done / explicitly still open (see `NEXT_STEPS.md`)
+
+- `register_intent()` and the `sara/skills/` auto-discovery mechanism
+  have only been checked via static analysis and stubbed imports, not a
+  real hardware/runtime run.
+- `.github/workflows/` (CI) and `sara_ai.spec` (PyInstaller) — proposed
+  repeatedly, still not actually in the repo.
+- `.env.example` — intentionally excluded from this repo state.
+
+---
+
+## Previous entry: Enterprise-level structural restructure
 
 Full split of every monolithic file into small, focused packages, plus
 GitHub-readiness additions. No feature was removed; no behavior was
 intentionally changed. One real bug was introduced by the split and
 caught/fixed during verification (see below).
+
+> **Note (added when this file was regenerated):** some of the
+> "GitHub-readiness" items listed as Added below (`.env.example`,
+> `.github/workflows/ci.yml`, `sara_ai.spec`) are **not** confirmed
+> present in the current repo state — see the correction note in the
+> entry above this one, and `PROJECT_MEMORY.md`/`NEXT_STEPS.md` for the
+> current authoritative status of each.
 
 ### Restructured (no behavior change, verified via real Python import)
 
@@ -90,7 +212,7 @@ changes.
 
 ---
 
-## Verification performed for this restructure
+## Verification performed for the restructure
 
 1. `py_compile` on every file (syntax correctness)
 2. `pyflakes` on the whole repository (undefined names, unused imports) —
