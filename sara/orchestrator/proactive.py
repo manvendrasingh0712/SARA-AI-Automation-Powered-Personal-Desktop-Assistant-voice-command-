@@ -23,7 +23,19 @@ Gating (all of these silence every trigger, checked fresh every tick):
     - AssistantState.is_active() is False (Home page "Pause Listening")
     - the "focus_mode" preference is on (topbar Focus Mode toggle)
     - the "setting:proactive_mode" preference is explicitly "0" (Settings
-      page toggle — defaults ON; only an explicit off switches it off)
+      page master toggle — defaults ON; only an explicit off switches it
+      off)
+
+Per-trigger gating (checked inside each individual trigger's own check
+function, on top of the master gate above):
+    - the "setting:proactive_battery" preference is explicitly "0"
+    - the "setting:proactive_reminders" preference is explicitly "0"
+    - the "setting:proactive_idle" preference is explicitly "0"
+    - the "setting:proactive_streak" preference is explicitly "0"
+  Same defaulting rule as the master toggle: missing (None) means the
+  default, which is enabled — only an explicit "0" (the Settings page
+  sub-toggle switched off) disables that one trigger. This keeps existing
+  installations that predate these keys behaving exactly as before.
 
 Design note on the LLM phrasing step: it deliberately does NOT go through
 SaraLLM.generate_response()/generate_response_stream(). Those append every
@@ -216,10 +228,11 @@ class ProactiveEngine:
         self._check_streak_milestone()
 
     # ------------------------------------------------------------
-    # Gating — respects focus mode, pause state, and the Settings toggle
+    # Gating — respects focus mode, pause state, and the Settings toggles
     # ------------------------------------------------------------
 
     def _enabled_now(self) -> bool:
+        """Master gate — checked once per tick, before any trigger runs."""
         try:
             if self._assistant_state is not None and not self._assistant_state.is_active():
                 return False
@@ -238,6 +251,26 @@ class ProactiveEngine:
             pass
         return True
 
+    def _trigger_enabled(self, key: str) -> bool:
+        """
+        Per-trigger sub-gate — checked inside each individual trigger's
+        own check function, on top of _enabled_now() above. `key` is one
+        of "battery", "reminders", "idle", "streak" and maps to the
+        Settings page preference "setting:proactive_<key>".
+
+        Same defaulting rule as the master toggle: missing (None) means
+        the default, which is enabled — only an explicit "0" disables
+        this one trigger. This keeps existing installations that predate
+        these per-trigger keys behaving exactly as before.
+        """
+        try:
+            if self._db is not None:
+                if self._db.get_preference(f"setting:proactive_{key}") == "0":
+                    return False
+        except Exception:
+            pass
+        return True
+
     def _cooldown_ready(self, key: str) -> bool:
         cooldown_s = max(0, int(getattr(Config, "PROACTIVE_COOLDOWN_MINUTES", 30))) * 60
         last = self._last_fired.get(key)
@@ -248,6 +281,8 @@ class ProactiveEngine:
     # ------------------------------------------------------------
 
     def _check_battery(self) -> None:
+        if not self._trigger_enabled("battery"):
+            return
         if not self._cooldown_ready("battery"):
             return
         try:
@@ -274,6 +309,8 @@ class ProactiveEngine:
         self._last_fired["battery"] = time.monotonic()
 
     def _check_upcoming_reminders(self) -> None:
+        if not self._trigger_enabled("reminders"):
+            return
         if self._reminders is None or not hasattr(self._reminders, "get_upcoming"):
             return
         lead_minutes = int(getattr(Config, "PROACTIVE_REMINDER_LEAD_MINUTES", 15))
@@ -299,6 +336,8 @@ class ProactiveEngine:
             self._reminder_notified_ids.add(rid)
 
     def _check_idle_break(self) -> None:
+        if not self._trigger_enabled("idle"):
+            return
         if not self._cooldown_ready("idle_break"):
             return
         idle_minutes_needed = int(getattr(Config, "PROACTIVE_IDLE_BREAK_MINUTES", 90))
@@ -320,6 +359,8 @@ class ProactiveEngine:
         self._last_fired["idle_break"] = time.monotonic()
 
     def _check_streak_milestone(self) -> None:
+        if not self._trigger_enabled("streak"):
+            return
         if self._db is None or not hasattr(self._db, "get_preference"):
             return
         milestone = self._db.get_preference("streak_pending_milestone")
@@ -353,7 +394,10 @@ class ProactiveEngine:
             print(f"[Proactive] tts.speak failed: {e}")
         try:
             self._ui_update("transcript", "sara", text)
-            self._ui_update("notification", icon, color, text)
+            # Explicit tag (generic "notification" ki jagah) — taaki
+            # frontend ko reliably pata chale ki ye ek unprompted nudge
+            # hai, icon guess kiye bina.
+            self._ui_update("proactive_notification", icon, color, text, trigger)
         except Exception as e:
             print(f"[Proactive] ui_update failed: {e}")
         try:
