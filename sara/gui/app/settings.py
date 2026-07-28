@@ -1,8 +1,8 @@
 """
 sara.gui.app.settings
 ApiSettingsMixin -- mute/focus mode, generic preference updates, assistant
-active-state, mic sensitivity, speech speed, wifi toggle, language, and
-notes-index status.
+active-state, mic sensitivity, speech speed, wifi toggle, language,
+notes-index status, and skills management.
 """
 from .events import _push
 
@@ -354,3 +354,28 @@ class ApiSettingsMixin:
         except Exception as e:
             print(f"[get_notes_status error] {e}")
             return {"ok": True, "enabled": True, "count": 0, "last_synced": None}
+
+    # ── Settings page: Skills manager ───────────────────────────────────
+    # Backs the "Skills" section: lists every module sara/skills/
+    # auto-discovered at startup (loaded, user-disabled, or broken — see
+    # sara.skills._LOADED_SKILLS for the exact record shape) and lets the
+    # user flip the `skill_enabled:<name>` preference that _load_all()
+    # checks on the NEXT boot. This never re-registers anything live —
+    # registration only happens once, at import time — so the frontend
+    # is responsible for telling the user a restart is needed.
+    def get_skills_list(self):
+        try:
+            from sara.skills import _LOADED_SKILLS
+
+            return {"ok": True, "data": list(_LOADED_SKILLS)}
+        except Exception as e:
+            print(f"[get_skills_list error] {e}")
+            return {"ok": False, "data": []}
+
+    def set_skill_enabled(self, name, enabled):
+        try:
+            self._pref_writer.enqueue(f"skill_enabled:{name}", "1" if enabled else "0")
+            return {"ok": True}
+        except Exception as e:
+            print(f"[set_skill_enabled error] {e}")
+            return {"ok": False}

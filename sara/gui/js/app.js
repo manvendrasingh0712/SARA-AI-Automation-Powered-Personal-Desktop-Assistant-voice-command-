@@ -130,6 +130,16 @@ function mockApi(name, args) {
       return { ok: true, data: {} };
     case 'get_notes_status':
       return { ok: true, enabled: true, count: 3, last_synced: new Date(Date.now() - 3600000).toISOString() };
+    case 'get_skills_list':
+      return {
+        ok: true, data: [
+          { name: 'daily_briefing', intent: 'daily_briefing', description: 'Weather + reminders + a headline, spoken as one summary', enabled: true, status: 'loaded' },
+          { name: 'notes_qa', intent: 'notes_qa', description: 'Answers questions from your class notes via the RAG vector store', enabled: true, status: 'loaded' },
+          { name: 'broken_skill', intent: null, description: null, enabled: true, status: 'error', error: "missing one of ('INTENT_NAME', 'PATTERNS', 'handle')" },
+        ]
+      };
+    case 'set_skill_enabled':
+      return { ok: true };
     case 'export_memory':
       setTimeout(() => window.saraEvent({ kind: 'notification', args: ['ti-database', '#8b5cf6', 'Memory export completed (preview mode)'] }), 700);
       return { ok: true, path: 'memory_export.json' };
@@ -1011,6 +1021,50 @@ async function loadNotesStatus() {
   el.textContent = `${s.count} note${s.count === 1 ? '' : 's'} indexed · last synced: ${synced}`;
 }
 
+// ── skills manager (Settings page) ──────────────────────────────
+// Renders sara.skills._LOADED_SKILLS (via get_skills_list()) as a list
+// of settings-row toggles. Renders dynamically since the skill count
+// isn't fixed — dropping a new .py file into sara/skills/ grows this
+// list on its own. A broken/corrupt skill module still shows up (with
+// an "Error" pill and its message) instead of taking the whole list
+// down, matching the try/except-per-skill discovery in __init__.py.
+async function loadSkills() {
+  const wrap = document.getElementById('skillsList');
+  if (!wrap) return;
+  const res = await callApi('get_skills_list');
+  const skills = (res && res.data) || [];
+  if (!skills.length) {
+    wrap.innerHTML = `<p style="font-size:12px; color:var(--text-lo);">No skills found in sara/skills/.</p>`;
+    return;
+  }
+  wrap.innerHTML = skills.map(s => {
+    let pill = '';
+    if (s.status === 'error') pill = `<span class="skill-status-pill error">Error</span>`;
+    else if (s.status === 'disabled') pill = `<span class="skill-status-pill disabled">Off</span>`;
+    const desc = s.description || s.intent || s.name;
+    const errDetail = (s.status === 'error' && s.error) ? ` — ${escapeHtml(s.error)}` : '';
+    return `
+      <div class="settings-row">
+        <div>
+          <b>${escapeHtml(s.name)}${pill}</b>
+          <span>${escapeHtml(desc)}${errDetail}</span>
+        </div>
+        <div class="toggle ${s.enabled ? 'on' : ''}" data-skill-name="${escapeHtml(s.name)}"></div>
+      </div>`;
+  }).join('');
+
+  wrap.querySelectorAll('[data-skill-name]').forEach(el => {
+    el.addEventListener('click', async () => {
+      const on = !el.classList.contains('on');
+      el.classList.toggle('on', on);
+      toggleSound(on);
+      await callApi('set_skill_enabled', el.dataset.skillName, on);
+      const note = document.getElementById('skillRestartNote');
+      if (note) note.classList.add('show');
+    });
+  });
+}
+
 /* ══════════════════════════════════════════════════════════════════
    Premium music player
    ══════════════════════════════════════════════════════════════════ */
@@ -1267,6 +1321,7 @@ function boot() {
   loadMemoryStats();
   loadProactiveStats();
   loadNotesStatus();
+  loadSkills();
   initSetupWizard();
   pollStats();
   pollMedia();
