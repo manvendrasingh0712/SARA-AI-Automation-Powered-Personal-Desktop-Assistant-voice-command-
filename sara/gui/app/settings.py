@@ -1,7 +1,8 @@
 """
 sara.gui.app.settings
 ApiSettingsMixin -- mute/focus mode, generic preference updates, assistant
-active-state, mic sensitivity, speech speed, wifi toggle, and language.
+active-state, mic sensitivity, speech speed, wifi toggle, language, and
+notes-index status.
 """
 from .events import _push
 
@@ -78,6 +79,14 @@ class ApiSettingsMixin:
     # slider positions, and language picker always silently reset to
     # their hardcoded HTML defaults. This one call lets js/app.js's
     # boot() fully re-sync its own display with what's actually stored.
+    #
+    # BUGFIX (this revision): "setting:proactive_mode" was missing from
+    # this list even though js/app.js's toggleMap already knew how to
+    # restore it — so the master Proactive Suggestions toggle silently
+    # reset to its HTML default on every relaunch regardless of what the
+    # user had actually chosen. Added it here, plus the 4 new per-trigger
+    # sub-toggles (battery/reminders/idle/streak) added alongside it, so
+    # all 5 now round-trip through a restart correctly.
     def get_ui_settings(self):
         try:
             keys = [
@@ -90,6 +99,11 @@ class ApiSettingsMixin:
                 "setting:startup_sound",
                 "setting:show_notifications",
                 "setting:voice_replies",
+                "setting:proactive_mode",
+                "setting:proactive_battery",
+                "setting:proactive_reminders",
+                "setting:proactive_idle",
+                "setting:proactive_streak",
             ]
             data = {k: self.db.get_preference(k) for k in keys}
             return {"ok": True, "data": data}
@@ -287,3 +301,56 @@ class ApiSettingsMixin:
         except Exception as e:
             print(f"[set_language error] {e}")
             return {"ok": False, "message": "Failed to switch language."}
+
+    # ── Settings page: Notes Q&A index status ──────────────────────────
+    # "X notes indexed | last synced: <time ago>" card on the Settings
+    # page. Delegates the actual counting to
+    # sara.skills.notes_qa.get_notes_index_status(), which walks
+    # Config.NOTES_FOLDER directly rather than relying on any
+    # PreferencesDB prefix-listing method (that method's existence in
+    # sara/core/memory.py wasn't confirmed, so nothing here depends on it).
+    #
+    # KNOWN GAP: this Api instance is not currently constructed with a
+    # `notes_memory` reference (bootstrap.py only passes
+    # brain/tts/ears/db/vision/reminders/lang_state/assistant_state --
+    # notes_memory currently lives only in
+    # sara/orchestrator/core_wiring.py). So "enabled" below is a
+    # best-effort guess: if a future revision sets `self.notes_memory`
+    # on this Api instance (the same way core_wiring.py builds one), this
+    # method will automatically start using its real `.enabled` flag
+    # instead of the Config-based guess. Until then, this never crashes
+    # the Settings page either way -- worst case it just misreports
+    # "enabled" when NOTES_FOLDER is configured but RAG is actually off.
+    def get_notes_status(self):
+        try:
+            from sara.skills.notes_qa import get_notes_index_status
+        except Exception as e:
+            print(f"[get_notes_status import error] {e}")
+            return {"ok": True, "enabled": False, "count": 0, "last_synced": None}
+
+        notes_memory = getattr(self, "notes_memory", None)
+        if notes_memory is not None:
+            enabled = bool(getattr(notes_memory, "enabled", False))
+        else:
+            try:
+                from config import Config
+
+                enabled = bool(getattr(Config, "NOTES_FOLDER", None))
+            except Exception as e:
+                print(f"[get_notes_status config error] {e}")
+                enabled = False
+
+        if not enabled:
+            return {"ok": True, "enabled": False, "count": 0, "last_synced": None}
+
+        try:
+            status = get_notes_index_status(self.db)
+            return {
+                "ok": True,
+                "enabled": True,
+                "count": status.get("count", 0),
+                "last_synced": status.get("last_synced"),
+            }
+        except Exception as e:
+            print(f"[get_notes_status error] {e}")
+            return {"ok": True, "enabled": True, "count": 0, "last_synced": None}

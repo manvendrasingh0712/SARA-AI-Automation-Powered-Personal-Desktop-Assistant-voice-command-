@@ -18,6 +18,10 @@ skips any file whose mtime hasn't changed since it was last ingested
 (tracked via a "notes_mtime:<filename>" preference in PreferencesDB),
 splits changed files into roughly NOTES_CHUNK_CHARS-character chunks, and
 embeds each chunk with rag_memory.add_memory(chunk, source="notes:<file>").
+Every time a sync actually runs (rag enabled + embedding backend up), it
+also stamps a "notes_last_sync_at" preference with the current UTC time,
+regardless of whether anything new was ingested — this is what
+get_notes_index_status() below reports as "last synced".
 
 Answering (handle): semantically searches the same store, restricted to
 notes:* sources, and asks the LLM to answer using only what was
@@ -31,10 +35,18 @@ default "nomic-embed-text" — `ollama pull nomic-embed-text`) for the
 underlying LongTermMemory to actually produce embeddings; if that model
 isn't available, search() returns no hits and this skill says so rather
 than failing silently or raising.
+
+Status (get_notes_index_status): a small read-only helper for UI status
+displays ("X notes indexed | last synced: ..."). Deliberately does NOT
+depend on any PreferencesDB prefix-listing method — counts by walking
+the current NOTES_FOLDER contents and checking each file's stored mtime
+key, so it self-corrects if files are deleted/renamed after ingestion
+instead of reporting stale/orphaned counts.
 """
 import os
 import re
 import threading
+from datetime import datetime, timezone
 
 from config import Config
 
@@ -52,6 +64,8 @@ PATTERNS = [
 GATE = ("notes",)
 
 _sync_lock = threading.Lock()
+
+_LAST_SYNC_PREF_KEY = "notes_last_sync_at"
 
 
 def _iter_note_files():
@@ -131,9 +145,63 @@ def sync_notes_folder(rag_memory, db) -> int:
                     f"[NotesQA] Ingested {ingested} note file(s) from "
                     f"{getattr(Config, 'NOTES_FOLDER', '?')}"
                 )
+            # Stamp "last synced" on every successful run (whether or not
+            # anything new was ingested) — this reaches here only if the
+            # rag-enabled / embedding-backend-up checks above passed, so
+            # it genuinely means "a sync attempt completed", not just
+            # "the app booted".
+            if db is not None:
+                try:
+                    db.set_preference(
+                        _LAST_SYNC_PREF_KEY, datetime.now(timezone.utc).isoformat()
+                    )
+                except Exception as e:
+                    print(f"[NotesQA] Failed to stamp last-sync time: {e}")
         except Exception as e:
             print(f"[NotesQA] sync_notes_folder failed: {e}")
     return ingested
+
+
+def get_notes_index_status(db) -> dict:
+    """
+    Read-only status for UI display: {"count": int, "last_synced": ISO-string or None}.
+
+    "count" is the number of files currently in Config.NOTES_FOLDER that
+    have a matching (i.e. up-to-date) "notes_mtime:<file>" preference —
+    computed by walking the live folder rather than trusting a raw count
+    of stored preference keys, so a file that was ingested once and later
+    deleted/renamed doesn't inflate the number forever.
+
+    "last_synced" is whatever was last stamped into the
+    "notes_last_sync_at" preference by sync_notes_folder(), or None if a
+    sync has never successfully run.
+
+    Never raises — a missing/None db or a folder read problem just
+    yields count=0 rather than propagating an error into the caller
+    (e.g. the Settings page).
+    """
+    if db is None:
+        return {"count": 0, "last_synced": None}
+
+    count = 0
+    try:
+        for path in _iter_note_files():
+            fname = os.path.basename(path)
+            try:
+                if db.get_preference(f"notes_mtime:{fname}") is not None:
+                    count += 1
+            except Exception as e:
+                print(f"[NotesQA] get_notes_index_status: check failed for {fname}: {e}")
+    except Exception as e:
+        print(f"[NotesQA] get_notes_index_status: folder walk failed: {e}")
+
+    try:
+        last_synced = db.get_preference(_LAST_SYNC_PREF_KEY)
+    except Exception as e:
+        print(f"[NotesQA] get_notes_index_status: last-sync read failed: {e}")
+        last_synced = None
+
+    return {"count": count, "last_synced": last_synced}
 
 
 def handle(match, ctx):

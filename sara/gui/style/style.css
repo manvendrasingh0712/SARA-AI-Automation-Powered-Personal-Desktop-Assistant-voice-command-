@@ -1927,6 +1927,17 @@ input[type=range]::-webkit-slider-thumb {
   font-size: 12.5px;
   line-height: 1.4;
 }
+.toast .proactive-hint-close {
+  margin-left: auto;
+  color: var(--text-lo);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+.toast .proactive-hint-close:hover {
+  color: var(--text-hi);
+}
 
 .section-gap {
   margin-bottom: 22px;
@@ -2083,6 +2094,17 @@ input[type=range]::-webkit-slider-thumb {
   gap: 8px;
   margin-top: 20px;
   justify-content: flex-end;
+}
+.setup-check-allgood {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: var(--r-md);
+  padding: 10px;
+  margin-bottom: 4px;
 }
 
 /* ══════════════════════════════════════════════════════════════════

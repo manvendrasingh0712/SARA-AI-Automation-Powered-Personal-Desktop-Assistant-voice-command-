@@ -10,6 +10,106 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet">
    <link rel="stylesheet" href="style/style.css">
+   <style>
+      /* ── Additive polish layer — safe, purely visual, does not touch existing selectors' logic ── */
+      html { scroll-behavior: smooth; }
+
+      *:focus-visible {
+         outline: 2px solid rgba(139, 92, 246, 0.8);
+         outline-offset: 2px;
+         border-radius: 4px;
+      }
+
+      /* custom scrollbars for scrollable panes */
+      .content::-webkit-scrollbar,
+      .chat-window::-webkit-scrollbar,
+      .apps-grid::-webkit-scrollbar,
+      .rlist::-webkit-scrollbar,
+      #notesList::-webkit-scrollbar,
+      #reminderList::-webkit-scrollbar {
+         width: 8px;
+         height: 8px;
+      }
+      .content::-webkit-scrollbar-track,
+      .chat-window::-webkit-scrollbar-track {
+         background: transparent;
+      }
+      .content::-webkit-scrollbar-thumb,
+      .chat-window::-webkit-scrollbar-thumb,
+      .apps-grid::-webkit-scrollbar-thumb,
+      .rlist::-webkit-scrollbar-thumb,
+      #notesList::-webkit-scrollbar-thumb,
+      #reminderList::-webkit-scrollbar-thumb {
+         background: rgba(139, 92, 246, 0.35);
+         border-radius: 10px;
+      }
+      .content::-webkit-scrollbar-thumb:hover,
+      .chat-window::-webkit-scrollbar-thumb:hover {
+         background: rgba(139, 92, 246, 0.6);
+      }
+
+      /* gentle lift + glow on interactive cards/buttons — additive, won't override layout */
+      .qa-card, .app-tile, .qt-btn, .card.side-card, button.icon-btn {
+         transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+      }
+      .qa-card:hover, .app-tile:hover {
+         transform: translateY(-3px);
+         box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(139, 92, 246, 0.18) inset;
+      }
+      .qt-btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
+      button.icon-btn:active, .qa-card:active, .qt-btn:active, .app-tile:active {
+         transform: scale(0.97);
+      }
+
+      /* subtle fade-in for the whole shell on load */
+      #app { animation: sara-app-in 0.5s ease both; }
+      @keyframes sara-app-in {
+         from { opacity: 0; transform: translateY(6px); }
+         to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* staggered entrance for home quick-action cards */
+      .quick-grid .qa-card {
+         animation: sara-card-in 0.45s ease both;
+      }
+      .quick-grid .qa-card:nth-child(1) { animation-delay: 0.02s; }
+      .quick-grid .qa-card:nth-child(2) { animation-delay: 0.06s; }
+      .quick-grid .qa-card:nth-child(3) { animation-delay: 0.10s; }
+      .quick-grid .qa-card:nth-child(4) { animation-delay: 0.14s; }
+      .quick-grid .qa-card:nth-child(5) { animation-delay: 0.18s; }
+      .quick-grid .qa-card:nth-child(6) { animation-delay: 0.22s; }
+      .quick-grid .qa-card:nth-child(7) { animation-delay: 0.26s; }
+      .quick-grid .qa-card:nth-child(8) { animation-delay: 0.30s; }
+      .quick-grid .qa-card:nth-child(9) { animation-delay: 0.34s; }
+      @keyframes sara-card-in {
+         from { opacity: 0; transform: translateY(10px); }
+         to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* ripple effect container (spans injected by the small script at the bottom) */
+      .sara-ripple {
+         position: absolute;
+         border-radius: 50%;
+         background: rgba(255, 255, 255, 0.35);
+         transform: scale(0);
+         animation: sara-ripple-anim 0.55s ease-out;
+         pointer-events: none;
+      }
+      @keyframes sara-ripple-anim {
+         to { transform: scale(2.6); opacity: 0; }
+      }
+
+      /* respect users who prefer reduced motion */
+      @media (prefers-reduced-motion: reduce) {
+         html { scroll-behavior: auto; }
+         #app, .quick-grid .qa-card, .sara-ripple {
+            animation: none !important;
+         }
+         .qa-card, .app-tile, .qt-btn, button.icon-btn {
+            transition: none !important;
+         }
+      }
+   </style>
 </head>
 
 <body>
@@ -17,57 +117,57 @@
 
       <div id="backendBanner">
          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            style="width:14px;height:14px;flex-shrink:0;">
+            style="width:14px;height:14px;flex-shrink:0;" aria-hidden="true">
             <path d="M12 9v4M12 17h.01" />
             <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
          </svg>
-         <span id="backendBannerText">Backend not connected — running in preview mode. Actions are simulated.</span>
+         <span id="backendBannerText" aria-live="polite">Backend not connected — running in preview mode. Actions are simulated.</span>
       </div>
 
       <!-- ══════════════════════ TITLEBAR ══════════════════════ -->
       <div class="titlebar">
          <div class="status" id="onlineStatus">
             <div class="status-dot"></div>
-            <span id="onlineStatusText">SARA is online</span>
+            <span id="onlineStatusText" aria-live="polite">SARA is online</span>
          </div>
-         <div class="waveform idle" id="waveform"></div>
+         <div class="waveform idle" id="waveform" aria-hidden="true"></div>
          <div class="titlebar-actions">
-            <button class="icon-btn" id="soundBtn" title="UI sound effects">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="icon-btn" id="soundBtn" title="UI sound effects" aria-label="Toggle UI sound effects">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M11 5 6 9H2v6h4l5 4V5Z" />
                   <path d="M15.5 8.5a5 5 0 0 1 0 7" />
                </svg>
             </button>
-            <button class="icon-btn" id="muteBtn" title="Mute Sara's voice">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="icon-btn" id="muteBtn" title="Mute Sara's voice" aria-label="Mute Sara's voice">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M11 5 6 9H2v6h4l5 4V5Z" />
                   <path d="M23 9 17 15M17 9l6 6" />
                </svg>
             </button>
-            <button class="icon-btn" id="focusBtn" title="Focus mode">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="icon-btn" id="focusBtn" title="Focus mode" aria-label="Toggle focus mode">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <circle cx="12" cy="12" r="9" />
                   <circle cx="12" cy="12" r="4" />
                </svg>
             </button>
-            <button class="icon-btn stop-ic" id="stopSaraBtn" title="Stop Sara (interrupt speech)">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="icon-btn stop-ic" id="stopSaraBtn" title="Stop Sara (interrupt speech)" aria-label="Stop Sara speaking">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <rect x="6" y="6" width="12" height="12" rx="2" />
                </svg>
             </button>
-            <span style="width:1px;height:20px;background:var(--border);margin:0 4px;"></span>
-            <button class="icon-btn win-btn" id="btnMin" title="Minimize">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <span style="width:1px;height:20px;background:var(--border);margin:0 4px;" aria-hidden="true"></span>
+            <button class="icon-btn win-btn" id="btnMin" title="Minimize" aria-label="Minimize window">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M5 12h14" />
                </svg>
             </button>
-            <button class="icon-btn win-btn" id="btnMax" title="Maximize">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="icon-btn win-btn" id="btnMax" title="Maximize" aria-label="Maximize window">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <rect x="5" y="5" width="14" height="14" rx="2" />
                </svg>
             </button>
-            <button class="icon-btn win-btn close" id="btnClose" title="Close">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button class="icon-btn win-btn close" id="btnClose" title="Close" aria-label="Close window">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                   <path d="M6 6l12 12M18 6 6 18" />
                </svg>
             </button>
@@ -86,34 +186,34 @@
             </div>
             <ul class="nav" id="navList">
                <li class="active" data-page="home"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M3 11.5 12 4l9 7.5" />
                         <path d="M5 10v9.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V10" />
                      </svg>
                      <span>Home</span>
                   </button></li>
                <li data-page="chat"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" />
                      </svg>
                      <span>Chat</span>
                   </button></li>
                <li data-page="voice"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <rect x="9" y="2" width="6" height="12" rx="3" />
                         <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
                      </svg>
                      <span>Voice Command</span>
                   </button></li>
                <li data-page="reminders"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.7 21a2 2 0 0 1-3.4 0" />
                      </svg>
                      <span>Reminders</span>
                   </button></li>
                <li data-page="notes"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path
                            d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
                         <path d="M14 3v4.5c0 .8.7 1.5 1.5 1.5H20" />
@@ -121,21 +221,21 @@
                      <span>Notes</span><span class="nav-badge">New</span>
                   </button></li>
                <li data-page="websearch"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <circle cx="11" cy="11" r="7" />
                         <path d="m21 21-4.3-4.3" />
                      </svg>
                      <span>Web Search</span>
                   </button></li>
                <li data-page="system"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3" />
                         <path d="M2 14h4M8 6h8M18 16h4" />
                      </svg>
                      <span>System Control</span>
                   </button></li>
                <li data-page="apps"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <rect x="3" y="3" width="7" height="7" rx="1.5" />
                         <rect x="14" y="3" width="7" height="7" rx="1.5" />
                         <rect x="3" y="14" width="7" height="7" rx="1.5" />
@@ -144,7 +244,7 @@
                      <span>Apps &amp; Tools</span>
                   </button></li>
                <li data-page="brain"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path
                            d="M12 3a4 4 0 0 0-4 4v1a3 3 0 0 0-2 5 3 3 0 0 0 1 5.5A4 4 0 0 0 11 21h1a4 4 0 0 0 4-3.5 3 3 0 0 0 1-5.5 3 3 0 0 0-2-5V7a4 4 0 0 0-4-4Z" />
                         <path d="M9 8h6M8 13h8M9 17h6" />
@@ -152,7 +252,7 @@
                      <span>AI Brain</span>
                   </button></li>
                <li data-page="memory"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <ellipse cx="12" cy="5" rx="8" ry="3" />
                         <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
                         <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
@@ -160,10 +260,16 @@
                      <span>Memory</span>
                   </button></li>
                <li data-page="automation"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
                      </svg>
                      <span>Automation</span>
+                  </button></li>
+               <li data-page="diagnostics"><button>
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                     </svg>
+                     <span>Diagnostics</span>
                   </button></li>
                <li data-page="settings"><button>
                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -198,25 +304,25 @@
                               <div class="orb-glow"></div>
                               <div class="orb-rim"></div>
                               <div class="orb-ripples" id="orbRipples"></div>
-                              <button class="orb-hit" id="orbBtn" title="Tap to wake Sara">
-                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <button class="orb-hit" id="orbBtn" title="Tap to wake Sara" aria-label="Tap to wake Sara">
+                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <rect x="9" y="2" width="6" height="12" rx="3" />
                                     <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
                                  </svg>
                               </button>
                            </div>
-                           <div class="orb-status" id="orbStatus">Listening for the wake word</div>
+                           <div class="orb-status" id="orbStatus" aria-live="polite">Listening for the wake word</div>
                            <div class="orb-hint" id="orbHint">Say "Sara", tap the orb, or press Wake below.</div>
                            <div class="orb-actions">
                               <button class="btn btn-primary" id="wakeBtn">
-                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <rect x="9" y="2" width="6" height="12" rx="3" />
                                     <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
                                  </svg>
                                  Wake Sara
                               </button>
                               <button class="btn btn-ghost" id="pauseBtn">
-                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <rect x="6" y="4" width="4" height="16" rx="1" />
                                     <rect x="14" y="4" width="4" height="16" rx="1" />
                                  </svg>
@@ -229,7 +335,7 @@
                      <div class="quick-grid" id="quickActions">
                         <button class="qa-card" data-action="search_web">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <circle cx="11" cy="11" r="7" />
                                  <path d="m21 21-4.3-4.3" />
                               </svg></div>
@@ -237,14 +343,14 @@
                         </button>
                         <button class="qa-card" data-goto="reminders">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
                               </svg></div>
                            <b>Set Reminder</b><span>I'll remind you on time</span>
                         </button>
                         <button class="qa-card" data-action="open_chrome">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
                                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
                                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
@@ -254,14 +360,14 @@
                         </button>
                         <button class="qa-card" data-action="system_info">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3" />
                               </svg></div>
                            <b>System Info</b><span>Get system information</span>
                         </button>
                         <button class="qa-card" data-goto="notes">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <path
                                     d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
                               </svg></div>
@@ -269,7 +375,7 @@
                         </button>
                         <button class="qa-card" data-cmd="take a screenshot">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <circle cx="12" cy="12" r="3.5" />
                                  <path
                                     d="M7 4H5a2 2 0 0 0-2 2v2M17 4h2a2 2 0 0 1 2 2v2M7 20H5a2 2 0 0 1-2-2v-2M17 20h2a2 2 0 0 0 2-2v-2" />
@@ -278,7 +384,7 @@
                         </button>
                         <button class="qa-card" id="qaWifi">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <path d="M5 12.5a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0" />
                                  <path d="M12 19.5v.01" />
                               </svg></div>
@@ -286,7 +392,7 @@
                         </button>
                         <button class="qa-card" data-cmd="play latest music">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <path d="M9 18V5l12-2v13" />
                                  <circle cx="6" cy="18" r="3" />
                                  <circle cx="18" cy="16" r="3" />
@@ -295,7 +401,7 @@
                         </button>
                         <button class="qa-card" data-cmd="lock the pc">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <rect x="4" y="10" width="16" height="11" rx="2" />
                                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                               </svg></div>
@@ -303,7 +409,7 @@
                         </button>
                         <button class="qa-card" id="qaFocus">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2">
+                                 stroke-width="2" aria-hidden="true">
                                  <circle cx="12" cy="12" r="9" />
                                  <circle cx="12" cy="12" r="4" />
                               </svg></div>
@@ -334,7 +440,7 @@
                         <div class="pp-head">
                            <h3 style="margin-bottom:0;">Now Playing</h3>
                            <button class="pp-sleep" id="sleepTimerBtn">
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <circle cx="12" cy="13" r="8" />
                                  <path d="M12 9v4l3 2M9 2h6" />
                               </svg>
@@ -359,27 +465,27 @@
                            </div>
                         </div>
                         <div class="pp-progress">
-                           <input type="range" id="ppSeek" min="0" max="100" value="0">
+                           <input type="range" id="ppSeek" min="0" max="100" value="0" aria-label="Seek position">
                            <div class="pp-times"><span id="ppCurTime">0:00</span><span id="ppDurTime">0:00</span></div>
                         </div>
                         <div class="pp-controls">
-                           <button class="pp-toggle" id="ppShuffle" title="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                           <button class="pp-toggle" id="ppShuffle" title="Shuffle" aria-label="Toggle shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />
                               </svg></button>
-                           <button id="ppPrev" title="Previous"><svg viewBox="0 0 24 24" fill="currentColor">
+                           <button id="ppPrev" title="Previous" aria-label="Previous track"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                  <path d="M6 6h2v12H6zM20 6v12l-9-6z" />
                               </svg></button>
-                           <button class="pp-play" id="ppPlayPause" title="Play/Pause"><svg viewBox="0 0 24 24"
-                                 fill="currentColor" id="ppPlayIcon">
+                           <button class="pp-play" id="ppPlayPause" title="Play/Pause" aria-label="Play or pause"><svg viewBox="0 0 24 24"
+                                 fill="currentColor" id="ppPlayIcon" aria-hidden="true">
                                  <path d="M8 5v14l11-7z" />
                               </svg></button>
-                           <button id="ppNext" title="Next"><svg viewBox="0 0 24 24" fill="currentColor">
+                           <button id="ppNext" title="Next" aria-label="Next track"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                  <path d="M18 6h-2v12h2zM4 6v12l9-6z" />
                               </svg></button>
-                           <button class="pp-toggle" id="ppRepeat" title="Repeat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="ppRepeatIcon">
+                           <button class="pp-toggle" id="ppRepeat" title="Repeat" aria-label="Toggle repeat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="ppRepeatIcon" aria-hidden="true">
                                  <path d="M17 2l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3" />
                               </svg><b class="pp-repeat-dot" id="ppRepeatDot">1</b></button>
-                           <button id="ppStop" title="Stop"><svg viewBox="0 0 24 24" fill="currentColor">
+                           <button id="ppStop" title="Stop" aria-label="Stop playback"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                  <rect x="6" y="6" width="12" height="12" />
                               </svg></button>
                         </div>
@@ -398,38 +504,38 @@
                         <h3>Quick Tools <a id="viewAllTools">View All ›</a></h3>
                         <div class="qt-grid">
                            <button class="qt-btn" data-cmd="open calculator"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <rect x="4" y="2" width="16" height="20" rx="2" />
                                  <path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01" />
                               </svg>Calculator</button>
                            <button class="qt-btn" data-cmd="open notepad"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <path
                                     d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
                               </svg>Notepad</button>
                            <button class="qt-btn" data-cmd="open calendar"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <rect x="3" y="4" width="18" height="17" rx="2" />
                                  <path d="M3 9h18M8 2v4M16 2v4" />
                               </svg>Calendar</button>
                            <button class="qt-btn" data-cmd="open file explorer"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <path
                                     d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
                               </svg>File Explorer</button>
                            <button class="qt-btn" data-cmd="shutdown the pc"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <path d="M12 2v8" />
                                  <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
                               </svg>Shutdown</button>
                            <button class="qt-btn" id="qtMoreBtn"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <circle cx="5" cy="12" r="1.5" />
                                  <circle cx="12" cy="12" r="1.5" />
                                  <circle cx="19" cy="12" r="1.5" />
                               </svg>More</button>
                            <button class="qt-btn" id="qtWifiBtn"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2">
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <path d="M5 12.5a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0" />
                               </svg>Wi-Fi</button>
                         </div>
@@ -444,19 +550,19 @@
                   <h2>Chat</h2>
                   <p>Type, or tap the mic to talk instead.</p>
                </div>
-               <div class="chat-window" id="chatLog">
+               <div class="chat-window" id="chatLog" aria-live="polite">
                   <div class="msg sara">Hello! I am Sara. Systems are online. Type or tap the mic to talk to me.</div>
                </div>
                <div class="chat-input-bar">
                   <input type="text" id="chatInput" placeholder="Type a message or give a command…">
-                  <button class="mic-btn" id="chatMicBtn" title="Tap to speak">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <button class="mic-btn" id="chatMicBtn" title="Tap to speak" aria-label="Tap to speak">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <rect x="9" y="2" width="6" height="12" rx="3" />
                         <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
                      </svg>
                   </button>
-                  <button class="send-btn" id="chatSendBtn" title="Send">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <button class="send-btn" id="chatSendBtn" title="Send" aria-label="Send message">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="m3 11 18-8-8 18-2-8-8-2Z" />
                      </svg>
                   </button>
@@ -477,14 +583,14 @@
                      <div class="orb-glow"></div>
                      <div class="orb-rim"></div>
                      <div class="orb-ripples" id="orbRipples2"></div>
-                     <button class="orb-hit" id="orbBtn2" title="Tap to speak">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <button class="orb-hit" id="orbBtn2" title="Tap to speak" aria-label="Tap to speak">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <rect x="9" y="2" width="6" height="12" rx="3" />
                            <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
                         </svg>
                      </button>
                   </div>
-                  <div class="orb-status" id="voiceStatus" style="margin-top:6px;">Tap to speak</div>
+                  <div class="orb-status" id="voiceStatus" style="margin-top:6px;" aria-live="polite">Tap to speak</div>
                   <div class="orb-hint" id="voiceHint">Sara will respond out loud once she hears you</div>
                   <div class="voice-transcript" id="voiceTranscript"></div>
                </div>
@@ -498,7 +604,7 @@
                </div>
                <div class="list-toolbar">
                   <button class="btn btn-primary" id="addReminderBtn">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14M5 12h14" />
                      </svg>
                      Add Reminder
@@ -533,7 +639,7 @@
                <div class="search-bar">
                   <input type="text" id="searchInput" placeholder="Search anything on the web…">
                   <button class="btn btn-primary" id="searchBtn">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <circle cx="11" cy="11" r="7" />
                         <path d="m21 21-4.3-4.3" />
                      </svg>
@@ -557,7 +663,7 @@
                <div class="stat-grid">
                   <div class="card stat-card">
                      <div class="top"><span>CPU</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2">
+                           stroke-width="2" aria-hidden="true">
                            <rect x="6" y="6" width="12" height="12" rx="2" />
                            <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
                         </svg></div>
@@ -568,7 +674,7 @@
                   </div>
                   <div class="card stat-card">
                      <div class="top"><span>Memory</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2">
+                           stroke-width="2" aria-hidden="true">
                            <rect x="3" y="7" width="18" height="10" rx="2" />
                            <path d="M7 7v10M11 7v10M15 7v10" />
                         </svg></div>
@@ -579,7 +685,7 @@
                   </div>
                   <div class="card stat-card">
                      <div class="top"><span>Storage</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2">
+                           stroke-width="2" aria-hidden="true">
                            <ellipse cx="12" cy="5" rx="8" ry="3" />
                            <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
                         </svg></div>
@@ -591,7 +697,7 @@
                   </div>
                   <div class="card stat-card">
                      <div class="top"><span>Network</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2">
+                           stroke-width="2" aria-hidden="true">
                            <path d="M5 12.5a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0" />
                            <path d="M12 19.5v.01" />
                         </svg></div>
@@ -603,23 +709,23 @@
                   <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Quick Actions</h3>
                   <div class="sys-actions-grid">
                      <button class="qt-btn" id="wifiToggleBtn" style="justify-content:center; padding:13px;"><svg
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <path d="M5 12.5a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0" />
                            <path d="M12 19.5v.01" />
                         </svg>Toggle Wi-Fi</button>
                      <button class="qt-btn" data-cmd="lock the pc" style="justify-content:center; padding:13px;"><svg
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <rect x="4" y="10" width="16" height="11" rx="2" />
                            <path d="M8 10V7a4 4 0 0 1 8 0v3" />
                         </svg>Lock PC</button>
                      <button class="qt-btn" data-cmd="shutdown the pc"
                         style="justify-content:center; padding:13px;"><svg viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" stroke-width="2">
+                           stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <path d="M12 2v8" />
                            <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
                         </svg>Shutdown</button>
                      <button class="qt-btn" data-action="system_info" style="justify-content:center; padding:13px;"><svg
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <circle cx="12" cy="12" r="9" />
                            <path d="M12 16v-4M12 8h.01" />
                         </svg>System Info</button>
@@ -635,47 +741,47 @@
                </div>
                <div class="apps-grid">
                   <button class="card app-tile" data-cmd="open chrome">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <circle cx="12" cy="12" r="9" />
                            <circle cx="12" cy="12" r="3" />
                         </svg></div><b>Chrome</b><span>Open browser</span>
                   </button>
                   <button class="card app-tile" data-cmd="open calculator">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <rect x="4" y="2" width="16" height="20" rx="2" />
                         </svg></div><b>Calculator</b><span>Quick math</span>
                   </button>
                   <button class="card app-tile" data-cmd="open notepad">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <path
                               d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
                         </svg></div><b>Notepad</b><span>Plain text</span>
                   </button>
                   <button class="card app-tile" data-cmd="open calendar">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <rect x="3" y="4" width="18" height="17" rx="2" />
                         </svg></div><b>Calendar</b><span>Your schedule</span>
                   </button>
                   <button class="card app-tile" data-cmd="open file explorer">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
                         </svg></div><b>File Explorer</b><span>Browse files</span>
                   </button>
                   <button class="card app-tile" data-cmd="play latest music">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <path d="M9 18V5l12-2v13" />
                            <circle cx="6" cy="18" r="3" />
                            <circle cx="18" cy="16" r="3" />
                         </svg></div><b>Music</b><span>Play something</span>
                   </button>
                   <button class="card app-tile" data-cmd="open whatsapp">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <path
                               d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" />
                         </svg></div><b>WhatsApp</b><span>Send a message</span>
                   </button>
                   <button class="card app-tile" data-cmd="take a screenshot">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                            <circle cx="12" cy="12" r="3.5" />
                         </svg></div><b>Screenshot</b><span>Capture screen</span>
                   </button>
@@ -698,11 +804,11 @@
                      </div>
                      <div style="margin-top:22px;">
                         <div class="slider-row"><span>Mic Sensitivity</span><span id="micSensVal">50</span></div>
-                        <input type="range" min="0" max="100" value="50" id="micSensSlider">
+                        <input type="range" min="0" max="100" value="50" id="micSensSlider" aria-label="Mic sensitivity">
                      </div>
                      <div style="margin-top:22px;">
                         <div class="slider-row"><span>Speech Speed</span><span id="speechSpeedVal">50</span></div>
-                        <input type="range" min="0" max="100" value="50" id="speechSpeedSlider">
+                        <input type="range" min="0" max="100" value="50" id="speechSpeedSlider" aria-label="Speech speed">
                      </div>
                   </div>
                   <div class="card">
@@ -774,13 +880,28 @@
                   <div id="automationList"></div>
                   <div class="empty" id="automationEmptyBuilder"
                      style="border-top:1px solid var(--border-soft); margin-top:6px; padding-top:26px;">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
                         <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
                      </svg>
                      <h4>Custom triggers aren't wired up yet</h4>
                      <p>For now, Automation mirrors your scheduled reminders above. A full trigger-and-action builder is
                         on the roadmap.</p>
                   </div>
+               </div>
+            </section>
+
+            <!-- ── DIAGNOSTICS ──────────────────────────────────────── -->
+            <section class="page" id="page-diagnostics">
+               <div class="page-head">
+                  <h2>Diagnostics</h2>
+                  <p>Ollama, models, aur voice files check karo — kabhi bhi manually.</p>
+               </div>
+               <div class="card">
+                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Setup Check</h3>
+                  <p style="font-size:12.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">
+                     Ollama update/reinstall karne ke baad, ya kabhi bhi confirm karna ho ki sab kuch (LLM backend, chat model, notes search model, voice files) sahi se kaam kar raha hai — ye check chala do.
+                  </p>
+                  <button class="btn btn-primary" id="rerunSetupBtn">Re-run Setup Check</button>
                </div>
             </section>
 
@@ -819,6 +940,22 @@
                      <div><b>Proactive suggestions</b><span>Sara speaks up on her own — low battery, upcoming reminders, long work sessions</span></div>
                      <div class="toggle on" data-setting="proactive_mode" id="settingProactiveMode"></div>
                   </div>
+                  <div class="settings-row">
+                     <div><b>&nbsp;&nbsp;↳ Battery warnings</b><span>Nudge when battery is low and not plugged in</span></div>
+                     <div class="toggle on" data-setting="proactive_battery" id="settingProactiveBattery"></div>
+                  </div>
+                  <div class="settings-row">
+                     <div><b>&nbsp;&nbsp;↳ Reminder heads-up</b><span>Speak up shortly before a reminder is due</span></div>
+                     <div class="toggle on" data-setting="proactive_reminders" id="settingProactiveReminders"></div>
+                  </div>
+                  <div class="settings-row">
+                     <div><b>&nbsp;&nbsp;↳ Break suggestions</b><span>Nudge after a long stretch without talking to Sara</span></div>
+                     <div class="toggle on" data-setting="proactive_idle" id="settingProactiveIdle"></div>
+                  </div>
+                  <div class="settings-row">
+                     <div><b>&nbsp;&nbsp;↳ Streak milestones</b><span>Mention it when your daily talk streak hits a milestone</span></div>
+                     <div class="toggle on" data-setting="proactive_streak" id="settingProactiveStreak"></div>
+                  </div>
                </div>
                <div class="card section-gap" style="margin-top:16px;">
                   <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Proactive Insights</h3>
@@ -833,6 +970,20 @@
                   <p style="font-size:11px; color:var(--text-lo); margin-top:12px; line-height:1.5;">
                      Ask Sara "why did you say that?" any time right after she speaks up on her own — she'll explain the exact reason.
                   </p>
+               </div>
+               <!-- NEW: Notes Q&A index status -->
+               <div class="card section-gap" style="margin-top:16px;">
+                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Notes Q&amp;A</h3>
+                  <p style="font-size:11.5px; color:var(--text-lo); margin:0; line-height:1.5;" id="notesIndexStatus">
+                     Checking notes index…
+                  </p>
+               </div>
+               <div class="card section-gap" style="margin-top:16px;">
+                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Setup Diagnostics</h3>
+                  <p style="font-size:11.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">
+                     Ollama, models, aur voice files dobara check karo — Ollama update/reinstall ke baad useful.
+                  </p>
+                  <button class="btn btn-primary" id="rerunSetupBtn">Re-run Setup Check</button>
                </div>
                <div class="card section-gap" style="margin-top:16px;">
                   <div class="field" style="margin-bottom:0;">
@@ -930,6 +1081,42 @@
 
    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
    <script src="js/app.js?v=2"></script>
+   <script>
+      // ── Additive polish script — safe layer, does not remove/replace any existing app.js logic ──
+      (function () {
+         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+         function addRipple(e) {
+            if (prefersReducedMotion) return;
+            var el = e.currentTarget;
+            var rect = el.getBoundingClientRect();
+            var size = Math.max(rect.width, rect.height);
+            var ripple = document.createElement('span');
+            ripple.className = 'sara-ripple';
+            ripple.style.width = ripple.style.height = size + 'px';
+            var x = (e.clientX !== undefined ? e.clientX - rect.left : rect.width / 2) - size / 2;
+            var y = (e.clientY !== undefined ? e.clientY - rect.top : rect.height / 2) - size / 2;
+            ripple.style.left = x + 'px';
+            ripple.style.top = y + 'px';
+            var computedPosition = window.getComputedStyle(el).position;
+            if (computedPosition === 'static') {
+               el.style.position = 'relative';
+            }
+            el.style.overflow = el.style.overflow || 'hidden';
+            el.appendChild(ripple);
+            setTimeout(function () {
+               if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
+            }, 600);
+         }
+
+         var rippleTargets = document.querySelectorAll(
+            '.qa-card, .app-tile, .qt-btn, .btn, button.icon-btn'
+         );
+         rippleTargets.forEach(function (el) {
+            el.addEventListener('click', addRipple);
+         });
+      })();
+   </script>
 </body>
 
 </html>

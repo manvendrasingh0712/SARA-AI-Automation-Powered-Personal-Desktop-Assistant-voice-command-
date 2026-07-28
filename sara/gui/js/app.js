@@ -35,6 +35,8 @@ function mockApi(name, args) {
       return { ok: true, pct: 34, exchange_count: 7, max_exchanges: 20, approx_mb: 0.42 };
     case 'get_share_card_data':
       return { ok: true, streak: 5, total_messages: 42, days_used: 12, proactive_nudges: 3, sara_name: 'Sara' };
+    case 'get_proactive_stats':
+      return { ok: true, total: 3, by_trigger: { battery: 1, reminder: 1, idle_break: 1, streak: 0 }, recent: [] };
     case 'get_setup_wizard_seen':
       return { seen: true };
     case 'mark_setup_wizard_seen':
@@ -91,6 +93,10 @@ function mockApi(name, args) {
     case 'seek_media':
       _mockState.mediaPos = args[0];
       return { ok: true };
+    case 'toggle_shuffle':
+      return { ok: true, shuffle: !!args[0] };
+    case 'cycle_repeat_mode':
+      return { ok: true };
     case 'send_text_command':
       // Mirrors the REAL backend's Api.send_text_command(), which pushes
       // the user's own transcript immediately, then the reply later —
@@ -122,6 +128,8 @@ function mockApi(name, args) {
       return { ok: true, active: true };
     case 'get_ui_settings':
       return { ok: true, data: {} };
+    case 'get_notes_status':
+      return { ok: true, enabled: true, count: 3, last_synced: new Date(Date.now() - 3600000).toISOString() };
     case 'export_memory':
       setTimeout(() => window.saraEvent({ kind: 'notification', args: ['ti-database', '#8b5cf6', 'Memory export completed (preview mode)'] }), 700);
       return { ok: true, path: 'memory_export.json' };
@@ -180,7 +188,8 @@ window.saraEvent = function (payload) {
     if (kind === 'transcript') { appendChatMessage(args[0], args[1]); playTone(args[0] === 'user' ? 520 : 400, .05, 'sine', .03); }
     else if (kind === 'status') applySaraStatus(args[0]);
     else if (kind === 'footer') applyFooterText(args[0]);
-    else if (kind === 'notification') showToast(args[0], args[1], args[2]);
+    else if (kind === 'notification') { showToast(args[0], args[1], args[2]); maybeShowProactiveHint(args[0]); }
+    else if (kind === 'proactive_notification') { showToast(args[0], args[1], args[2]); maybeShowProactiveHint(); }
     else if (kind === 'weather_update') renderWeather(args[0]);
     else if (kind === 'export_done') showToast('ti-database', '#34d399', 'Memory export completed');
     else if (kind === 'export_error') showToast('ti-alert-triangle', '#f87171', 'Memory export failed');
@@ -202,6 +211,39 @@ function showToast(iconClass, color, message) {
   stack.appendChild(t);
   playTone(660, .06, 'triangle', .025);
   setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, 5000);
+}
+
+// ── Proactive Engine hint (pehli 3 baar dikhega) ─────────────────
+// Do call patterns hain: kind==='notification' icon ke saath call karta
+// hai (tab sirf proactive-icon wali notifications par hint dikhao), aur
+// kind==='proactive_notification' bina arg ke call karta hai (yeh khud
+// hamesha proactive hoti hai, icon-check ki zaroorat nahi).
+const PROACTIVE_HINT_ICONS = ['ti-battery-1', 'ti-alarm', 'ti-coffee', 'ti-flame'];
+const PROACTIVE_HINT_MAX_SHOWS = 3;
+
+function maybeShowProactiveHint(iconClass) {
+  if (iconClass !== undefined && !PROACTIVE_HINT_ICONS.includes(iconClass)) return;
+  try {
+    let count = parseInt(localStorage.getItem('sara_proactive_hint_count') || '0', 10);
+    if (isNaN(count)) count = 0;
+    if (count >= PROACTIVE_HINT_MAX_SHOWS) return;
+    localStorage.setItem('sara_proactive_hint_count', String(count + 1));
+  } catch (e) {
+    return; // storage fail ho to bas skip — cosmetic feature hai, crash nahi hona chahiye
+  }
+  showProactiveHint();
+}
+
+function showProactiveHint() {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<div class="dot" style="background:#a78bfa"></div><p>Tip: aap "kyu bola?" pooch sakte ho, main wajah bata dungi.</p><button class="proactive-hint-close">×</button>`;
+  stack.appendChild(t);
+  const remove = () => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); };
+  t.querySelector('.proactive-hint-close').addEventListener('click', remove);
+  setTimeout(remove, 4000);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -824,7 +866,10 @@ function _setupIconFor(state) {
 function renderSetupChecklist(status) {
   _lastSetupStatus = status;
   const list = document.getElementById('setupWizardChecklist');
-  list.innerHTML = SETUP_CHECKS
+  const allGoodBanner = status.all_ready
+    ? `<div class="setup-check-allgood">✅ Everything looks good!</div>`
+    : '';
+  list.innerHTML = allGoodBanner + SETUP_CHECKS
     .filter(item => !item.show || item.show(status))
     .map(item => {
       const ok = item.ok(status);
@@ -875,14 +920,16 @@ function handleSetupProgress(action, state, message) {
   }
 }
 
+function showSetupWizard() {
+  document.getElementById('setupWizardLog').classList.remove('show');
+  document.getElementById('setupWizardOverlay').classList.remove('hidden');
+  refreshSetupStatus();
+}
+
 async function initSetupWizard() {
-  const seen = await callApi('get_setup_wizard_seen');
-  if (seen && seen.seen) return;
-
+  // Listeners hamesha attach hote hain (seen-check se pehle) — taaki
+  // "Re-run Setup Check" se dobara khula wizard bhi fully functional rahe.
   const overlay = document.getElementById('setupWizardOverlay');
-  overlay.classList.remove('hidden');
-  await refreshSetupStatus();
-
   document.getElementById('setupWizardRecheck').addEventListener('click', refreshSetupStatus);
   document.getElementById('setupWizardSkip').addEventListener('click', async () => {
     await callApi('mark_setup_wizard_seen');
@@ -893,7 +940,15 @@ async function initSetupWizard() {
     await callApi('mark_setup_wizard_seen');
     overlay.classList.add('hidden');
   });
+
+  const seen = await callApi('get_setup_wizard_seen');
+  if (seen && seen.seen) return;
+  overlay.classList.remove('hidden');
+  await refreshSetupStatus();
 }
+document.getElementById('rerunSetupBtn').addEventListener('click', showSetupWizard);
+
+document.getElementById('rerunSetupBtn').addEventListener('click', showSetupWizard);
 
 // ── proactive insights (Settings page) ──────────────────────────────
 function _relTime(iso) {
@@ -931,6 +986,29 @@ async function loadProactiveStats() {
     const msg = (ev.message || '').replace(/</g, '&lt;');
     return `<div style="margin-bottom:6px;"><b>${label}</b> · ${_relTime(ev.timestamp)}<br>${msg}</div>`;
   }).join('');
+}
+
+// ── notes index status (Settings page) ────────────────────────────
+// Small "X notes indexed | last synced: ..." status line, backed by
+// sara/skills/notes_qa.py's get_notes_index_status() via the
+// get_notes_status() Api method. Reuses _relTime() above rather than
+// duplicating relative-time logic. Never assumes success — a disabled/
+// unavailable notes feature just renders a plain, non-alarming message
+// instead of leaving the "Checking…" placeholder stuck or throwing.
+async function loadNotesStatus() {
+  const el = document.getElementById('notesIndexStatus');
+  if (!el) return;
+  const s = await callApi('get_notes_status');
+  if (!s || !s.ok || !s.enabled) {
+    el.textContent = "Notes search isn't enabled right now.";
+    return;
+  }
+  if (!s.count) {
+    el.textContent = 'No notes indexed yet.';
+    return;
+  }
+  const synced = s.last_synced ? _relTime(s.last_synced) : 'never';
+  el.textContent = `${s.count} note${s.count === 1 ? '' : 's'} indexed · last synced: ${synced}`;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -1082,6 +1160,12 @@ document.getElementById('speechSpeedSlider').addEventListener('input', (e) => {
 });
 
 // ── settings page toggles ────────────────────────────────────────
+// Generic — works for every element with data-setting, including the
+// master "proactive_mode" toggle AND the 4 per-trigger sub-toggles
+// (proactive_battery / proactive_reminders / proactive_idle /
+// proactive_streak) added alongside it in index.html. No per-toggle
+// wiring needed here since update_setting() on the backend is already
+// generic too.
 document.querySelectorAll('[data-setting]').forEach(el => {
   el.addEventListener('click', () => {
     const on = !el.classList.contains('on');
@@ -1141,11 +1225,24 @@ function applyUISettings(data) {
     document.getElementById('soundBtn').classList.toggle('active', soundsOn);
     document.getElementById('settingSounds').classList.toggle('on', soundsOn);
   }
+  // NOTE (this revision): added 'setting:proactive_mode' plus the 4 new
+  // per-trigger keys. The master key was already listed in app.js's
+  // toggleMap before this change but get_ui_settings() never returned it
+  // (see the BUGFIX comment in settings.py), so it silently never
+  // restored — now that the backend returns it too, this map entry
+  // finally does something. Missing/undefined for any of these five
+  // still safely no-ops (the `if (data[key] != null)` guard below), which
+  // is exactly the desired default-ON, backward-compatible behavior for
+  // installations that predate these keys.
   const toggleMap = {
     'setting:startup_sound': 'settingStartupSound',
     'setting:show_notifications': 'settingNotifications',
     'setting:voice_replies': 'settingVoiceReplies',
-    'setting:proactive_mode': 'settingProactiveMode'
+    'setting:proactive_mode': 'settingProactiveMode',
+    'setting:proactive_battery': 'settingProactiveBattery',
+    'setting:proactive_reminders': 'settingProactiveReminders',
+    'setting:proactive_idle': 'settingProactiveIdle',
+    'setting:proactive_streak': 'settingProactiveStreak'
   };
   Object.entries(toggleMap).forEach(([key, id]) => {
     if (data[key] != null) {
@@ -1160,7 +1257,6 @@ async function loadUISettings() {
 }
 
 // ── boot ─────────────────────────────────────────────────────────
-// ── boot ─────────────────────────────────────────────────────────
 function boot() {
   console.log('[boot] pywebview:', !!window.pywebview, 'api:', !!(window.pywebview && window.pywebview.api), 'methods:', window.pywebview && window.pywebview.api ? Object.keys(window.pywebview.api) : []);
   loadAssistantState();
@@ -1170,6 +1266,7 @@ function boot() {
   loadWeather();
   loadMemoryStats();
   loadProactiveStats();
+  loadNotesStatus();
   initSetupWizard();
   pollStats();
   pollMedia();
@@ -1179,6 +1276,7 @@ function boot() {
   setInterval(pollMedia, 2000);
   setInterval(loadWeather, 15 * 60 * 1000);
   setInterval(loadProactiveStats, 60 * 1000);
+  setInterval(loadNotesStatus, 60 * 1000);
 }
 // FIX (root cause of "preview mode, no backend connected"): pywebview
 // injects window.pywebview ASYNCHRONOUSLY relative to this script running
