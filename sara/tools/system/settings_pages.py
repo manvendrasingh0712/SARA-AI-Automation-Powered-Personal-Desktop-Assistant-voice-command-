@@ -54,6 +54,9 @@ _SETTINGS_PAGES: Dict[str, str] = {
     "storage": "storagesense",
     "power": "powersleep",
     "about": "about",
+    "nightlight": "nightlight",       # ADD
+    "airplane": "network-airplanemode",  # ADD
+
 }
 
 
@@ -113,3 +116,17 @@ def open_power_settings() -> str:
 
 def open_about_settings() -> str:
     return _open_settings_page("about", "about")
+
+
+def open_nightlight_settings() -> str:
+    return (
+        _open_settings_page("nightlight", "night light")
+        + " You can turn it on or off from here."
+    )
+
+
+def open_airplane_mode_settings() -> str:
+    return (
+        _open_settings_page("airplane", "airplane mode")
+        + " You can toggle it on or off from here."
+    )

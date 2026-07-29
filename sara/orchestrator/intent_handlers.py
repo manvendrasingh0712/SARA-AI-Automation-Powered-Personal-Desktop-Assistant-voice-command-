@@ -423,6 +423,17 @@ def _h_find_file(match, ctx):
     ctx["ui_update"]("status", "thinking")
     return _quick(ctx, system_tools.find_file(match.group(1).strip()))
 
+def _h_start_service(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.start_service(match.group(1).strip()))
+
+
+def _h_stop_service(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.stop_service(match.group(1).strip()))
+
 
 def _h_time_query(match, ctx):
     return _quick(ctx, f"It's {datetime.now().strftime('%I:%M %p')}.")
@@ -481,6 +492,8 @@ _INTENT_HANDLERS = {
     "typing_text": _h_typing_text,
     "press_key": _h_press_key,
     "find_file": _h_find_file,
+    "start_service": _h_start_service,
+    "stop_service": _h_stop_service,
     "time_query": _h_time_query,
     "date_query": _h_date_query,
     "why_proactive": _h_why_proactive,

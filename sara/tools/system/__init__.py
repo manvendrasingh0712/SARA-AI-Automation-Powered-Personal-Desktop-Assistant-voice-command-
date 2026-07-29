@@ -55,12 +55,15 @@ from .settings_pages import (
     open_display_settings, open_sound_settings, open_bluetooth_settings,
     open_network_settings, open_update_settings, open_apps_settings,
     open_personalization_settings, open_privacy_settings, open_storage_settings,
-    open_power_settings, open_about_settings,
+    open_power_settings, open_about_settings, open_nightlight_settings,
+    open_airplane_mode_settings,                
 )
 from .system_info import (
     get_current_time, get_current_date, get_battery_status, get_cpu_usage,
     get_ram_usage, get_disk_usage, get_uptime, get_local_ip, get_system_summary,
+    get_gpu_status, get_temperature_status, get_process_list,
 )
+from .services import list_services, start_service, stop_service
 from .dispatch import SIMPLE_ACTIONS
 
 __all__ = [

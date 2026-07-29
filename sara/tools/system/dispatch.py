@@ -34,9 +34,14 @@ from .settings_pages import (
     open_display_settings, open_sound_settings, open_bluetooth_settings,
     open_network_settings, open_update_settings, open_apps_settings,
     open_personalization_settings, open_privacy_settings, open_storage_settings,
-    open_power_settings, open_about_settings,
+    open_power_settings, open_about_settings, open_nightlight_settings,
+    open_airplane_mode_settings,
 )
-from .system_info import get_disk_usage, get_uptime, get_local_ip
+from .system_info import (
+    get_disk_usage, get_uptime, get_local_ip, get_gpu_status,
+    get_temperature_status, get_process_list,
+)
+from .services import list_services
 from .timers import cancel_timer
 
 # ============================================================
@@ -131,10 +136,16 @@ SIMPLE_ACTIONS: Dict[str, Callable[[], str]] = {
     "open_storage_settings": open_storage_settings,
     "open_power_settings": open_power_settings,
     "open_about_settings": open_about_settings,
+    "open_nightlight_settings": open_nightlight_settings,
+    "open_airplane_mode_settings": open_airplane_mode_settings,
     # System info
     "disk_usage": lambda: get_disk_usage("C:\\"),
     "uptime": get_uptime,
     "local_ip": get_local_ip,
+    "gpu_status": get_gpu_status,
+    "temperature_status": get_temperature_status,
+    "process_list": lambda: get_process_list(5),
+    "list_services": lambda: list_services(running_only=True),
     # Timer cancel (set_timer needs args, handled in gui_main)
     "cancel_timer": cancel_timer,
 }
