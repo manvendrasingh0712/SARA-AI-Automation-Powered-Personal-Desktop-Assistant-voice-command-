@@ -369,6 +369,122 @@ class SaraSmokeTests(unittest.TestCase):
         intent, _ = detect_intent("what time is it")
         self.assertEqual(intent, "time_query")
 
+    # ------------------------------------------------------------------
+    # NEW — TASK 1: regression test for the skill-disable bug fix.
+    # Old _is_skill_user_disabled() tried to import a nonexistent "db"
+    # singleton and silently always returned False, so toggling a skill
+    # off from Settings never actually worked. Fixed version reads
+    # "skill_enabled:<name>" directly via sqlite3 against Config.DB_PATH.
+    # ------------------------------------------------------------------
+    def test_skill_user_disabled_reads_preference(self):
+        from sara.core.memory import PreferencesDB
+        from sara.skills import _is_skill_user_disabled
+        import config as config_module
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp.close()
+        try:
+            # Use the real PreferencesDB to write the value, so the
+            # on-disk schema matches exactly what the app itself creates.
+            db = PreferencesDB(db_path=tmp.name)
+            db.set_preference("skill_enabled:daily_briefing", "0")
+            db.close()
+
+            original_db_path = config_module.Config.DB_PATH
+            config_module.Config.DB_PATH = tmp.name
+            try:
+                self.assertTrue(_is_skill_user_disabled("daily_briefing"))
+                # No preference set at all for this one -> default enabled.
+                self.assertFalse(_is_skill_user_disabled("notes_qa"))
+            finally:
+                config_module.Config.DB_PATH = original_db_path
+        finally:
+            if os.path.exists(tmp.name):
+                os.unlink(tmp.name)
+
+    def test_skill_user_disabled_never_raises_on_missing_db(self):
+        from sara.skills import _is_skill_user_disabled
+        import config as config_module
+
+        tmp_dir = tempfile.mkdtemp()
+        nonexistent_db = os.path.join(tmp_dir, "does_not_exist.db")
+
+        original_db_path = config_module.Config.DB_PATH
+        config_module.Config.DB_PATH = nonexistent_db
+        try:
+            # Must not raise (sqlite3.connect will create an empty file
+            # with no "preferences" table yet) and must gracefully
+            # default to "not disabled".
+            result = _is_skill_user_disabled("daily_briefing")
+            self.assertFalse(result)
+        finally:
+            config_module.Config.DB_PATH = original_db_path
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------------
+    # NEW — TASK 2: per-trigger proactive toggle tests.
+    # ------------------------------------------------------------------
+    def test_proactive_per_trigger_toggle_battery_only(self):
+        from sara.core.memory import PreferencesDB
+        from sara.orchestrator.proactive import ActivityTracker, ProactiveEngine
+        from sara.orchestrator.state import AssistantState
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp.close()
+        try:
+            db = PreferencesDB(db_path=tmp.name)
+            tracker = ActivityTracker()
+            state = AssistantState(initial_active=True)
+            engine = ProactiveEngine(
+                db=db,
+                reminders=None,
+                tts=None,
+                ui_update=lambda *a: None,
+                activity_tracker=tracker,
+                assistant_state=state,
+                lang_state=None,
+            )
+            db.set_preference("setting:proactive_battery", "0")
+            self.assertFalse(engine._trigger_enabled("battery"))
+            # The other 3 triggers must be completely unaffected.
+            self.assertTrue(engine._trigger_enabled("reminders"))
+            self.assertTrue(engine._trigger_enabled("idle"))
+            self.assertTrue(engine._trigger_enabled("streak"))
+            db.close()
+        finally:
+            if os.path.exists(tmp.name):
+                os.unlink(tmp.name)
+
+    def test_proactive_per_trigger_toggle_defaults_all_enabled(self):
+        from sara.core.memory import PreferencesDB
+        from sara.orchestrator.proactive import ActivityTracker, ProactiveEngine
+        from sara.orchestrator.state import AssistantState
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+        tmp.close()
+        try:
+            db = PreferencesDB(db_path=tmp.name)
+            tracker = ActivityTracker()
+            state = AssistantState(initial_active=True)
+            engine = ProactiveEngine(
+                db=db,
+                reminders=None,
+                tts=None,
+                ui_update=lambda *a: None,
+                activity_tracker=tracker,
+                assistant_state=state,
+                lang_state=None,
+            )
+            # No per-trigger key ever set -> all 4 default ON. This is
+            # the backward-compatibility guarantee for installations that
+            # predate the per-trigger toggles.
+            for key in ("battery", "reminders", "idle", "streak"):
+                self.assertTrue(engine._trigger_enabled(key))
+            db.close()
+        finally:
+            if os.path.exists(tmp.name):
+                os.unlink(tmp.name)
+
 
 if __name__ == "__main__":
     unittest.main()

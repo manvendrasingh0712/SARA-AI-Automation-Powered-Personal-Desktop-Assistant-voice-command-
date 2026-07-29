@@ -86,6 +86,7 @@ def main():
     webview.start(
         debug=bool(getattr(sara_main.Config, "DEBUG_MODE", False)),
         gui="edgechromium",
+        private_mode=False,
     )
     events._stop_event.set()
     logic_thread.join(timeout=5.0)

@@ -45,7 +45,7 @@ function mockApi(name, args) {
       return {
         llm_backend: 'ollama', gemini_key_set: null,
         ollama_installed: true, ollama_running: true,
-        llm_model_pulled: true, llm_model_name: 'qwen2.5',
+        llm_model_pulled: true, llm_model_name: 'qwen3:',
         rag_enabled: true, embedding_model_pulled: true, embedding_model_name: 'nomic-embed-text',
         kokoro_model_present: true, kokoro_voices_present: true,
         all_ready: true
