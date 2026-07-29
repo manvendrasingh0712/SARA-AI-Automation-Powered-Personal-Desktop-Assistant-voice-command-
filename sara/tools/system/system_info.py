@@ -1,6 +1,7 @@
 """
 sara.tools.system.system_info
-Read-only system stats (battery, CPU/RAM/disk usage, uptime, IP, time/date).
+Read-only system stats (battery, CPU/RAM/disk usage, uptime, IP, time/date,
+GPU, temperature, top processes).
 """
 
 import logging
@@ -18,24 +19,8 @@ logger = logging.getLogger(__name__)
 
 _IS_WINDOWS = platform.system() == "Windows"
 
-# PRODUCTION-AUDIT FIX: previously computed as os.path.join(os.getcwd(),
-# "sara_notes.txt"), which meant launching the app from a different
-# working directory could silently point at a different physical file
-# than the one database.py/reminders.py use. Now resolved from a single,
-# CWD-independent, project-root-based path defined once in config.py.
 _NOTES_FILE = Config.NOTES_FILE_PATH
-
-# FINAL PRODUCTION POLISH: single canonical definition, used by
-# get_notes() below to parse each "[timestamp] text" line back out of
-# sara_notes.txt. Previously this regex existed in two places — one
-# unreachable/dead copy mis-indented inside clear_notes(), and one real
-# copy declared AFTER get_notes() (which only worked because Python
-# resolves names inside a function body at call time, not definition
-# time — fragile and confusing to read). Consolidated here, declared
-# before anything references it.
 _NOTE_LINE_RE = re.compile(r"^\[(?P<ts>[^\]]+)\]\s?(?P<text>.*)$")
-
-
 
 
 # ============================================================
@@ -81,15 +66,6 @@ def get_battery_status() -> str:
 
 
 def get_battery_raw():
-    """
-    Numeric counterpart to get_battery_status(), for callers that need to
-    compare against a threshold (e.g. sara/orchestrator/proactive.py's
-    low-battery trigger) instead of a spoken sentence.
-
-    Returns (percent: int, plugged: bool), or None if there's no battery
-    (desktop) or the read fails. Uses the same 5s cache as the rest of
-    this module so this can be polled frequently without extra overhead.
-    """
     def _fetch():
         try:
             battery = psutil.sensors_battery()
@@ -105,8 +81,6 @@ def get_battery_raw():
 
 def get_cpu_usage() -> str:
     try:
-        # LATENCY FIX: interval=None returns usage since the last call
-        # instantly instead of blocking the caller for 300ms.
         usage = psutil.cpu_percent(interval=None)
         return f"CPU usage is currently at {usage}%."
     except Exception as e:
@@ -129,7 +103,6 @@ def get_ram_usage() -> str:
 
 
 def get_disk_usage(drive: str = "C:\\") -> str:
-    # BUG FIX: was not actually using the drive param in cache key
     def _fetch():
         try:
             usage = psutil.disk_usage(drive)
@@ -171,6 +144,135 @@ def get_local_ip() -> str:
     except Exception as e:
         logger.error(f"get_local_ip failed: {e}")
         return "Sorry, I couldn't retrieve the local IP address right now."
+
+
+def get_gpu_status() -> str:
+    """
+    NVIDIA-only (via pynvml/nvidia-ml-py). Windows has no vendor-neutral
+    public API for GPU usage/VRAM, so this degrades to a clear message
+    instead of crashing when the package or an NVIDIA GPU isn't present.
+    """
+    def _fetch():
+        try:
+            import pynvml
+        except ImportError:
+            return (
+                "GPU monitoring needs the 'nvidia-ml-py' package. "
+                "Run: pip install nvidia-ml-py"
+            )
+        try:
+            pynvml.nvmlInit()
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                name = pynvml.nvmlDeviceGetName(handle)
+                if isinstance(name, bytes):
+                    name = name.decode()
+                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                mem_used_gb = mem.used / (1024**3)
+                mem_total_gb = mem.total / (1024**3)
+                try:
+                    temp = pynvml.nvmlDeviceGetTemperature(
+                        handle, pynvml.NVML_TEMPERATURE_GPU
+                    )
+                    temp_part = f", temperature {temp}°C"
+                except Exception:
+                    temp_part = ""
+                return (
+                    f"{name} is at {util.gpu}% usage, using "
+                    f"{mem_used_gb:.1f} GB of {mem_total_gb:.1f} GB VRAM{temp_part}."
+                )
+            finally:
+                pynvml.nvmlShutdown()
+        except Exception as e:
+            logger.error(f"get_gpu_status failed: {e}")
+            return (
+                "Sorry, I couldn't read the GPU status right now. "
+                "Make sure an NVIDIA GPU and driver are installed."
+            )
+
+    return _get_cached("gpu", _fetch)
+
+
+def get_temperature_status() -> str:
+    """
+    Reports GPU temperature (via pynvml, NVIDIA-only) and CPU/other sensor
+    temperatures where the OS exposes them. NOTE: Windows does not expose
+    CPU package temperature through any public, driver-independent API —
+    psutil.sensors_temperatures() only works on Linux and raises
+    AttributeError on Windows. Reading real CPU temp on Windows needs a
+    third-party sensor driver (e.g. LibreHardwareMonitor via WMI), which
+    is intentionally out of scope here to avoid an admin-rights-dependent,
+    fragile dependency. This degrades gracefully rather than faking a number.
+    """
+    def _fetch():
+        parts = []
+
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            try:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                temp = pynvml.nvmlDeviceGetTemperature(
+                    handle, pynvml.NVML_TEMPERATURE_GPU
+                )
+                parts.append(f"GPU is at {temp}°C")
+            finally:
+                pynvml.nvmlShutdown()
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.error(f"get_temperature_status GPU read failed: {e}")
+
+        try:
+            temps = psutil.sensors_temperatures()
+            if temps:
+                for sensor_name, entries in temps.items():
+                    for entry in entries:
+                        label = entry.label or sensor_name
+                        if entry.current is not None:
+                            parts.append(f"{label} is at {entry.current:.0f}°C")
+        except AttributeError:
+            pass
+        except Exception as e:
+            logger.error(f"get_temperature_status CPU read failed: {e}")
+
+        if not parts:
+            return (
+                "I can't read CPU temperature on Windows without a third-party "
+                "sensor driver, and no GPU temperature sensor was found either."
+            )
+        return ", ".join(parts) + "."
+
+    return _get_cached("temperature", _fetch)
+
+
+def get_process_list(limit: int = 5) -> str:
+    """Top processes by memory usage (CPU% is skipped: psutil needs a warmup
+    call for a meaningful per-process cpu_percent, so a single instant read
+    would misleadingly show 0.0% for everything)."""
+    try:
+        procs = []
+        for proc in psutil.process_iter(["name", "memory_percent"]):
+            try:
+                info = proc.info
+                if info.get("name"):
+                    procs.append(info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        procs.sort(key=lambda p: p.get("memory_percent") or 0, reverse=True)
+        top = procs[:limit]
+        if not top:
+            return "I couldn't read the process list right now."
+
+        listing = ", ".join(
+            f"{p['name']} at {p['memory_percent']:.1f}% memory" for p in top
+        )
+        return f"Top {len(top)} processes by memory usage: {listing}."
+    except Exception as e:
+        logger.error(f"get_process_list failed: {e}")
+        return "Sorry, I couldn't retrieve the process list right now."
 
 
 def get_system_summary() -> str:

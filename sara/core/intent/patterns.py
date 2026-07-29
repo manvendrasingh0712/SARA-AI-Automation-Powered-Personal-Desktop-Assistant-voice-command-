@@ -369,14 +369,13 @@ _INTENT_PATTERNS = [
         r"page down",
     ]),
     ("scroll_top", [
-        r"(?:go to |scroll to )?(?:the )?top(?: of (?:the )?page)?",
+        r"(?:go to |scroll to )?(?:the )?\btop\b(?: of (?:the )?page)?",
         r"beginning of (?:the )?page",
     ]),
     ("scroll_bottom", [
-        r"(?:go to |scroll to )?(?:the )?bottom(?: of (?:the )?page)?",
+        r"(?:go to |scroll to )?(?:the )?\bbottom\b(?: of (?:the )?page)?",
         r"end of (?:the )?page",
     ]),
-
     # ── Network Controls ──────────────────────────────────────────────
     ("wifi_on", [
         r"(?:turn on|enable|connect) (?:the )?wi-?fi",
@@ -499,6 +498,17 @@ _INTENT_PATTERNS = [
         r"open about settings",
         r"what windows version (?:am i running|do i have)",
     ]),
+    
+    ("open_nightlight_settings", [
+        r"(?:turn on|enable|open|show) (?:the )?night ?light(?: settings)?",
+        r"night ?light (?:on karo|chalu karo|kholo|on kro)",
+        r"night ?light (?:setting|settings) (?:kholo|dikhao)",
+    ]),
+    ("open_airplane_mode_settings", [
+        r"(?:turn on|enable|open|show) (?:the )?(?:airplane|flight) mode(?: settings)?",
+        r"(?:airplane|flight) mode (?:on karo|chalu karo|kholo|on kro)",
+        r"(?:airplane|flight) mode (?:setting|settings) (?:kholo|dikhao)",
+    ]),
 
     # ── System Info (extended) ────────────────────────────────────────
     ("disk_usage", [
@@ -512,6 +522,45 @@ _INTENT_PATTERNS = [
     ("local_ip", [
         r"(?:what'?s|show me|tell me) (?:my )?(?:local )?ip address",
         r"my ip address",
+    ]),
+    
+    ("gpu_status", [
+        r"gpu (?:usage|status|info|report)",
+        r"how'?s (?:my )?gpu",
+        r"graphics card (?:usage|status|info)",
+        r"gpu (?:ka status|kaisa hai|batao)",
+        r"graphics card (?:ka status|kaisa hai|batao)",
+    ]),
+    ("temperature_status", [
+        r"(?:cpu |gpu |system |pc )?temperature(?: check| status)?$",
+        r"how hot is (?:my )?(?:pc|computer|laptop|system|cpu|gpu)",
+        r"temperature (?:kya hai|kitna hai|batao)",
+        r"(?:pc|laptop|computer|system) kitna garam hai",
+    ]),
+    ("process_list", [
+        r"(?:show|list) (?:running |top )?processes",
+        r"top processes",
+        r"what(?:'?s| is) running(?: on my (?:pc|computer|laptop|system))?",
+        r"processes (?:dikhao|batao|ki list dikhao)",
+        r"kya kya chal raha hai",
+    ]),
+    ("list_services", [
+        r"(?:list|show) (?:running |windows )?services",
+        r"what services are running",
+        r"services (?:dikhao|batao|ki list dikhao)",
+        r"kaunsi services chal rahi (?:hai|hain)",
+    ]),
+    ("start_service", [
+        r"start (?:the )?(.+?) service",
+        r"start service (.+)",
+        r"(.+?) service (?:start karo|chalu karo|chalao)",
+        r"service (.+?) (?:start karo|chalu karo)",
+    ]),
+    ("stop_service", [
+        r"stop (?:the )?(.+?) service",
+        r"stop service (.+)",
+        r"(.+?) service (?:band karo|bnd karo|roko)",
+        r"service (.+?) (?:band karo|roko)",
     ]),
 
     # ── Time / Date ────────────────────────────────────────────────────
@@ -666,9 +715,17 @@ _INTENT_GATES = {
     "open_storage_settings": ("storage",),
     "open_power_settings": ("power",),
     "open_about_settings": ("about", "windows version"),
+    "open_nightlight_settings": ("night light", "nightlight"),
+    "open_airplane_mode_settings": ("airplane", "flight mode"),
     "disk_usage": ("disk", "storage"),
     "uptime": ("uptime", "how long"),
     "local_ip": ("ip",),
+    "gpu_status": ("gpu", "graphics card"),
+    "temperature_status": ("temperature", "hot", "garam"),
+    "process_list": ("process", "running", "chal raha"),
+    "list_services": ("service", "services"),
+    "start_service": ("service",),
+    "stop_service": ("service",),
     "time_query": ("time",),
     "date_query": ("date", "day"),
     "why_proactive": ("why", "kyu", "kyun", "made you say", "explain"),
