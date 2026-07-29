@@ -93,25 +93,47 @@ _REQUIRED_ATTRS = ("INTENT_NAME", "PATTERNS", "handle")
 _LOADED_SKILLS = []
 
 
-def _get_preferences_db():
+def _is_skill_user_disabled(mod_name: str) -> bool:
     """
-    Resolves the same PreferencesDB instance the rest of the app reads/
-    writes settings through, so a `skill_enabled:<name>` toggle set from
-    the Settings page is honored here on next boot.
+    Reads the `skill_enabled:<mod_name>` preference directly from the
+    SQLite preferences DB, via a short-lived, read-only connection opened
+    and closed just for this one lookup.
 
-    Deferred import for the same reason register_handler is imported
-    lazily below (see the comment on _load_all): avoids re-entering a
-    still-initializing module during this package's own import. Wrapped
-    in try/except on principle — if the shared db can't be resolved for
-    any reason, every skill just defaults to enabled instead of skill
-    discovery crashing.
+    This intentionally does NOT go through the shared PreferencesDB
+    instance the rest of the app uses, because that instance is only
+    ever created inside sara.orchestrator.core_wiring.build_core_objects()
+    (it spawns a background writer thread on construction) — and this
+    package's _load_all() runs at IMPORT time, from the bottom of
+    sara.orchestrator.intent_handlers, which is itself imported by
+    main.py's re-exports before build_core_objects() has run. There is no
+    live PreferencesDB object to borrow yet. Opening a second full
+    PreferencesDB() here just to read one value would leak a second
+    background writer thread for the app's entire lifetime, so this uses
+    sqlite3 directly instead — one connection, one read, closed
+    immediately.
+
+    Returns False (== "treat as enabled") for every failure case: db file
+    doesn't exist yet (very first run), preferences table doesn't exist
+    yet, sqlite3 is locked by the writer thread, or any other error —
+    skill discovery must never fail or block because of this.
     """
     try:
-        from sara.core.memory import db
-        return db
+        import sqlite3
+        from config import Config
+
+        conn = sqlite3.connect(Config.DB_PATH, timeout=1.0)
+        try:
+            cur = conn.execute(
+                "SELECT value FROM preferences WHERE key = ?",
+                (f"skill_enabled:{mod_name}",),
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        return row is not None and row[0] == "0"
     except Exception as e:
-        print(f"[Skills] Could not resolve preferences DB ({e}) — all skills default to enabled.")
-        return None
+        print(f"[Skills] Could not read enabled-state for {mod_name}: {e}")
+        return False
 
 
 def _load_all() -> None:
@@ -125,19 +147,12 @@ def _load_all() -> None:
     from sara.orchestrator.intent_handlers import register_handler
 
     _LOADED_SKILLS.clear()
-    db = _get_preferences_db()
 
     for _finder, mod_name, _is_pkg in pkgutil.iter_modules(__path__):
         if mod_name.startswith("_"):
             continue
 
-        pref_val = None
-        if db is not None:
-            try:
-                pref_val = db.get_preference(f"skill_enabled:{mod_name}")
-            except Exception as e:
-                print(f"[Skills] Could not read enabled-state for {mod_name}: {e}")
-        user_disabled = pref_val == "0"
+        user_disabled = _is_skill_user_disabled(mod_name)
 
         # Import first, regardless of enabled/disabled — the Settings
         # page needs INTENT_NAME/DESCRIPTION to display a disabled skill

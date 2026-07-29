@@ -6,7 +6,7 @@ into generate_response()/generate_response_stream().
 from __future__ import annotations
 
 from .prompt import _build_base_prompt, _time_of_day
-from .streaming import WarmupResult, _last_word_before, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens
+from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens
 from .clients import _get_ollama_client, _get_gemini_client
 
 
@@ -15,7 +15,7 @@ import re
 import threading
 import time
 from collections import deque
-from typing import Iterator, List, NamedTuple, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 from config import Config
 

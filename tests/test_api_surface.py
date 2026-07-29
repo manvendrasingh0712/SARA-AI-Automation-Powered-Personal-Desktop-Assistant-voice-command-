@@ -136,7 +136,9 @@ EXPECTED_METHODS = {
     "get_proactive_stats",
     "get_reminders",
     "get_setup_wizard_seen",
+    "get_notes_status",
     "get_share_card_data",
+    "get_skills_list",
     "get_system_stats",
     "get_ui_settings",
     "get_weather",
@@ -152,6 +154,7 @@ EXPECTED_METHODS = {
     "set_language",
     "set_mic_sensitivity",
     "set_mute",
+    "set_skill_enabled",
     "set_speech_speed",
     "skip_next_track",
     "skip_previous_track",
@@ -166,8 +169,8 @@ EXPECTED_METHODS = {
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 41, (
-    "EXPECTED_METHODS must contain exactly 41 entries, found "
+assert len(EXPECTED_METHODS) == 44, (
+    "EXPECTED_METHODS must contain exactly 44 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

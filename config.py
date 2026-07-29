@@ -545,6 +545,11 @@ class Config:
     TOOL_CALLING_TIMEOUT_S: float = _float(
         os.getenv("TOOL_CALLING_TIMEOUT_S"), default=5.0
     )
+    # "llm" (default): real Ollama tool-calling (tools= schema) decides the
+    # tool + arguments. "heuristic": skip the LLM call, use only the old
+    # keyword-matching fallback in tool_router.py -- useful if you want to
+    # avoid the extra Ollama round-trip on every unmatched command.
+    TOOL_CALLING_MODE: str = os.getenv("TOOL_CALLING_MODE", "llm").lower()
 
     # ── Shared file paths (CWD-independent — resolved from this file's own
     # location, i.e. the project root, NOT os.getcwd()) ─────────────────────
@@ -776,6 +781,12 @@ class Config:
 
         # ── Tool-calling clamps ─────────────────────────────────────────────
         cls.TOOL_CALLING_TIMEOUT_S = max(1.0, min(15.0, cls.TOOL_CALLING_TIMEOUT_S))
+        
+        if cls.TOOL_CALLING_MODE not in ("llm", "heuristic"):
+            print(
+                f"[Warning] Unknown TOOL_CALLING_MODE '{cls.TOOL_CALLING_MODE}', defaulting to 'llm'."
+            )
+            cls.TOOL_CALLING_MODE = "llm"
 
         # ── Proactive Engine clamps ─────────────────────────────────────────
         # A too-small check interval would turn the background thread into
@@ -892,7 +903,7 @@ class Config:
             )
             print(
                 f"[Debug] Tool calling : enabled={cls.TOOL_CALLING_ENABLED} | "
-                f"timeout={cls.TOOL_CALLING_TIMEOUT_S}s"
+                f"mode={cls.TOOL_CALLING_MODE} | timeout={cls.TOOL_CALLING_TIMEOUT_S}s"
             )
             print(
                 f"[Debug] Proactive    : enabled={cls.PROACTIVE_ENABLED} | "
