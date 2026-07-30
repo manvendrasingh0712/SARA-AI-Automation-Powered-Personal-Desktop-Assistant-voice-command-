@@ -11,6 +11,7 @@ from .buffers import _PreBuffer, _RingBuffer, _VADFilter, _SilenceGate, _NoiseFl
 import os
 import atexit
 import collections
+import difflib
 import re
 import threading
 import time
@@ -181,6 +182,18 @@ class SpeechToText:
         self._whisper_model = self._load_faster_whisper()
         self._wakeword_model: Optional["_OWWModel"] = self._load_wakeword()
 
+        # Dedicated small/fast Whisper model for the STT-fallback wake-word
+        # check in is_wake_word_detected() below -- only loaded when there's
+        # no dedicated openwakeword model, since that's the only code path
+        # that uses it. Using the same heavy WHISPER_MODEL_SIZE model just
+        # to check "did they say Sara?" was the main latency+accuracy
+        # bottleneck: every wake attempt paid the full large-model
+        # transcription cost, on top of a fixed 3-5s capture window sized
+        # for full commands, not a one-word wake phrase.
+        self._wake_whisper_model: Optional[object] = None
+        if self._wakeword_model is None:
+            self._wake_whisper_model = self._load_fast_wake_whisper()
+
         self._stream = None
         self._pa = None
         self._stream_lock = threading.Lock()
@@ -215,7 +228,33 @@ class SpeechToText:
     def _text_has_wake_word(self, text: str) -> bool:
         if not text:
             return False
-        return self._wake_re.search(text) is not None
+        if self._wake_re.search(text) is not None:
+            return True
+
+        # Fuzzy fallback: the fast/small model used for wake checks
+        # sometimes mishears "sara" as something close ("sarah", "sada",
+        # "zara") without matching the exact regex above. Comparing
+        # against individual short words (not the whole sentence) keeps
+        # this cheap and precise -- a fuzzy match against a whole
+        # sentence would false-positive constantly, but a single word
+        # rarely coincidentally resembles "sara" this closely. Only
+        # single-word variants are fuzzy-matched (phrases like "hey
+        # sara" still need the exact regex above, or their own words to
+        # line up) -- fuzzy-matching a whole phrase word-for-word here
+        # would be a much looser, noisier match than intended.
+        if not getattr(Config, "WAKE_FUZZY_MATCH_ENABLED", True):
+            return False
+        threshold = float(getattr(Config, "WAKE_FUZZY_MATCH_THRESHOLD", 0.75))
+        words = re.findall(r"[a-zA-Z]+", text.lower())
+        single_word_variants = [v for v in self._wake_variants if " " not in v]
+        for word in words:
+            if len(word) < 3:
+                continue
+            for variant in single_word_variants:
+                ratio = difflib.SequenceMatcher(None, word, variant).ratio()
+                if ratio >= threshold:
+                    return True
+        return False
 
     def _load_faster_whisper(self) -> Optional[object]:
         if not _HAS_WHISPER:
@@ -256,6 +295,45 @@ class SpeechToText:
 
             except Exception as cpu_error:
                 print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
+                return None
+
+    def _load_fast_wake_whisper(self) -> Optional[object]:
+        """
+        Small/fast dedicated Whisper model used ONLY for the STT-fallback
+        wake-word check (see is_wake_word_detected()). Failure here is
+        non-fatal -- is_wake_word_detected() falls back to the main
+        (larger, slower) self._whisper_model if this is None, so wake
+        detection still works either way, just without the latency win.
+        """
+        if not _HAS_WHISPER:
+            return None
+        model_size = getattr(Config, "WAKE_WORD_FAST_MODEL_SIZE", "tiny")
+        cpu_threads = max(2, (os.cpu_count() or 4) // 4)
+        print(f"[STT] Loading dedicated wake-word Whisper '{model_size}'...")
+        try:
+            model = WhisperModel(
+                model_size_or_path=model_size,
+                device="cuda",
+                compute_type="float16",
+                cpu_threads=cpu_threads,
+            )
+            print("[STT] ✅ Wake-word Whisper loaded on CUDA.")
+            return model
+        except Exception:
+            try:
+                model = WhisperModel(
+                    model_size_or_path=model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=cpu_threads,
+                )
+                print("[STT] ✅ Wake-word Whisper loaded on CPU.")
+                return model
+            except Exception as e:
+                print(
+                    f"[STT Warning] Dedicated wake-word model load failed "
+                    f"({e}) -- wake checks will use the main model instead."
+                )
                 return None
 
     def _load_wakeword(self) -> Optional["_OWWModel"]:
@@ -712,9 +790,13 @@ class SpeechToText:
     )
 
     def _transcribe(
-        self, audio_bytes: bytes, beam_size_override: Optional[int] = None
+        self,
+        audio_bytes: bytes,
+        beam_size_override: Optional[int] = None,
+        model_override: Optional[object] = None,
     ) -> str:
-        if not audio_bytes or self._whisper_model is None:
+        model = model_override if model_override is not None else self._whisper_model
+        if not audio_bytes or model is None:
             return ""
 
         duration_s = len(audio_bytes) / (self.SAMPLE_RATE * self.SAMPLE_WIDTH)
@@ -743,7 +825,7 @@ class SpeechToText:
                 Config, "STT_TEMPERATURE_FALLBACK", (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
             )
 
-            segments, _ = self._whisper_model.transcribe(
+            segments, _ = model.transcribe(
                 audio_np,
                 beam_size=beam_size,
                 best_of=beam_size,
@@ -796,7 +878,7 @@ class SpeechToText:
             print(f"[STT Error] Faster-Whisper Inference Failed: {e}")
             return ""
 
-    def listen(self, mode: str = "command") -> str:
+    def listen(self, mode: str = "command", model_override: Optional[object] = None) -> str:
         if self._closed:
             return ""
 
@@ -809,7 +891,18 @@ class SpeechToText:
 
         try:
             cfg = {
-                "wake": {"timeout": 3.0, "max_duration": 5.0},
+                # v9: was a fixed 3.0s/5.0s window sized for full commands.
+                # "Sara"/"Hey Sara" is a one-second utterance -- waiting a
+                # command-sized window before even starting to transcribe
+                # was pure added latency on every single wake attempt.
+                # Now config-driven (WAKE_LISTEN_TIMEOUT_S/
+                # WAKE_LISTEN_MAX_DURATION_S), default 1.5s/1.8s.
+                "wake": {
+                    "timeout": float(getattr(Config, "WAKE_LISTEN_TIMEOUT_S", 1.5)),
+                    "max_duration": float(
+                        getattr(Config, "WAKE_LISTEN_MAX_DURATION_S", 1.8)
+                    ),
+                },
                 # v8: command max_duration reduced 20s -> 12s. A shorter
                 # capture window limits how much residual-echo-confused
                 # silence padding a single session can accumulate before
@@ -832,7 +925,9 @@ class SpeechToText:
                 if mode == "wake"
                 else None
             )
-            return self._transcribe(audio, beam_size_override=beam_override)
+            return self._transcribe(
+                audio, beam_size_override=beam_override, model_override=model_override
+            )
         finally:
             self._listen_lock.release()
 
@@ -877,7 +972,7 @@ class SpeechToText:
         if not (has_energy or has_vad_speech):
             return False
 
-        text = self.listen(mode="wake")
+        text = self.listen(mode="wake", model_override=self._wake_whisper_model)
         if not text:
             return False
         detected = self._text_has_wake_word(text)
