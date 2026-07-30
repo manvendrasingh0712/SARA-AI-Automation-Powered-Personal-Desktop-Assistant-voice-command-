@@ -180,6 +180,11 @@ _MIN_GEMINI_HISTORY_TOKENS = 1_000
 _MAX_GEMINI_HISTORY_TOKENS = 200_000
 
 
+
+
+WAKE_ACK_PHRASE = "Yes?"
+
+
 class Config:
     # ── Idempotency guard for validate() — see ConfigError docstring above ─
     _validated: bool = False

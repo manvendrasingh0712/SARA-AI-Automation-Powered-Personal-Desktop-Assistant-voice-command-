@@ -363,11 +363,6 @@ class SpeechToText:
         with self._threshold_lock:
             self._energy_threshold = value
 
-    @energy_threshold.setter
-    def energy_threshold(self, value: float) -> None:
-        with self._threshold_lock:
-            self._energy_threshold = value
-
     def set_manual_energy_threshold(
         self, value: float, suppress_recalib_s: float = 600.0
     ) -> None:

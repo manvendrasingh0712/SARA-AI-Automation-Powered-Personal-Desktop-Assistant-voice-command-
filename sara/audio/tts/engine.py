@@ -150,6 +150,10 @@ class TextToSpeech:
     - v12: optional manual language force (self._forced_lang) so a caller
       (e.g. a GUI EN/HI toggle) can pin speech to one language instead of
       relying purely on per-sentence script auto-detection.
+    - v14 (LATENCY): short-phrase PCM cache — repeated fixed phrases
+      (wake ack, sleep/goodbye lines, etc.) skip Kokoro synthesis
+      entirely on a cache hit, and also skip waiting on the warm-up
+      thread since a cache hit implies warm-up already ran.
     """
 
     def __init__(self, aec=None) -> None:
@@ -167,6 +171,17 @@ class TextToSpeech:
         # speak() call actually stays silent after Stop is pressed,
         # instead of resuming on the next sentence.
         self._interrupted = threading.Event()
+
+        # v14 (LATENCY): short-phrase PCM cache — greetings/acks/sleep
+        # lines repeat verbatim every cycle, so cache synthesized audio
+        # and skip Kokoro synthesis on hits (only playback time remains).
+        # FIFO eviction once _PHRASE_CACHE_MAX entries held. Keyed on
+        # (text, lang, fast) since fast=True uses different synth params.
+        # Only used by the non-streaming speak() path — speak_stream()
+        # sentences vary too much to benefit and aren't cached.
+        self._phrase_cache: dict[tuple[str, str, bool], np.ndarray] = {}
+        self._phrase_cache_order: list[tuple[str, str, bool]] = []
+        self._phrase_cache_lock = threading.Lock()
 
         # v12: None -> automatic per-sentence detection via _detect_lang().
         # "en" / "hi" -> caller has manually forced that language via
@@ -342,6 +357,29 @@ class TextToSpeech:
                 _synth_kokoro(txt, self._kokoro, _build_params("en"), self._synth_lock)
             for txt in _WARMUP_TEXTS_HI:
                 _synth_kokoro(txt, self._kokoro, _build_params("hi"), self._synth_lock)
+
+            # v14 (LATENCY): pre-warm the wake-ack into the phrase cache
+            # using the exact same (text, lang, fast) key core_wiring.py's
+            # ack call will use (fast=True), so even the FIRST wake cycle
+            # after boot is a cache hit instead of paying full synthesis
+            # cost once more.
+            try:
+                ack_text = clean_for_tts(getattr(Config, "WAKE_ACK_PHRASE", "Yes?"))
+                if ack_text and len(ack_text) <= _PHRASE_CACHE_MAXLEN:
+                    ack_params = _fast_variant(_build_params("en"))
+                    ack_pcm = _synth_kokoro(
+                        ack_text, self._kokoro, ack_params, self._synth_lock
+                    )
+                    if ack_pcm is not None and len(ack_pcm) > 0:
+                        with self._phrase_cache_lock:
+                            key = (ack_text, "en", True)
+                            if key not in self._phrase_cache:
+                                self._phrase_cache_order.append(key)
+                            self._phrase_cache[key] = ack_pcm.copy()
+            except Exception as e:
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(f"[TTS] wake-ack pre-cache failed (non-fatal): {e}")
+
             if getattr(Config, "DEBUG_MODE", False):
                 print(f"[TTS] warm-up complete in {time.time() - t0:.3f}s")
         except Exception as e:
@@ -400,8 +438,6 @@ class TextToSpeech:
             self._stop.clear()
             self._speaking.set()
             try:
-               self._warmup_done.wait(timeout=_WARMUP_WAIT_S)
-
                # v12: use the manually forced language if one is set,
                # otherwise fall back to auto-detection exactly as before.
                lang = (
@@ -413,7 +449,32 @@ class TextToSpeech:
                if fast:
                    params = _fast_variant(params)
 
-               pcm = _synth_kokoro(text, self._kokoro, params, self._synth_lock)
+               # v14 (LATENCY): phrase cache check FIRST, before waiting on
+               # warm-up at all. A cache hit means Kokoro already
+               # synthesized this exact (text, lang, fast) combo once
+               # before — which can only happen after warm-up already ran
+               # — so there's no reason to block on _warmup_done here.
+               cacheable = len(text) <= _PHRASE_CACHE_MAXLEN
+               cache_key = (text, lang, fast) if cacheable else None
+               pcm = None
+               if cache_key is not None:
+                   with self._phrase_cache_lock:
+                       cached = self._phrase_cache.get(cache_key)
+                   if cached is not None:
+                       pcm = cached.copy()
+
+               if pcm is None:
+                   # Cache miss — behave exactly as before.
+                   self._warmup_done.wait(timeout=_WARMUP_WAIT_S)
+                   pcm = _synth_kokoro(text, self._kokoro, params, self._synth_lock)
+                   if cache_key is not None and pcm is not None and len(pcm) > 0:
+                       with self._phrase_cache_lock:
+                           if cache_key not in self._phrase_cache:
+                               if len(self._phrase_cache_order) >= _PHRASE_CACHE_MAX:
+                                   oldest = self._phrase_cache_order.pop(0)
+                                   self._phrase_cache.pop(oldest, None)
+                               self._phrase_cache_order.append(cache_key)
+                           self._phrase_cache[cache_key] = pcm.copy()
 
                if pcm is not None and len(pcm) > 0:
                    self._player.play_and_wait(pcm, self._stop, self._volume)
