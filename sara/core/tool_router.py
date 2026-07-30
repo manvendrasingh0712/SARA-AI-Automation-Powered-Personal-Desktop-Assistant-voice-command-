@@ -308,6 +308,51 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Cheap pre-gate: is a tool call even plausible for this message?
+# ══════════════════════════════════════════════════════════════════════
+# Flattened from every keyword/phrase trigger used in
+# _resolve_tool_call_heuristic() below -- kept as one frozenset (built
+# once at import time) purely so has_probable_tool_intent() is a single
+# fast "any of these substrings present?" scan, with zero I/O and no
+# model call. This is NOT a replacement for the heuristic's per-tool
+# logic (arguments still need the real function below, or the LLM path)
+# -- it only answers "does this message even mention anything
+# tool-shaped?", used by resolve_tool_call() to skip the LLM round-trip
+# entirely for ordinary conversation that obviously isn't asking for
+# weather/news/an app/a calculation/etc.
+_TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
+    {
+        "weather", "temperature", "rain", "forecast",
+        "news", "headlines",
+        "search for", "look up", "google", "find out",
+        "open url", "visit", "http://", "https://",
+        "youtube",
+        "spotify",
+        "screenshot", "describe",
+        "clipboard",
+        "open ", "launch ", "start ",
+        "close ", "quit ", "exit ", "terminate ",
+        "calculate", "what is", "what's", "how much",
+    }
+)
+
+
+def has_probable_tool_intent(user_input: str) -> bool:
+    """
+    Fast, pure-string "is it even worth asking the LLM to consider a
+    tool?" pre-check. Deliberately over-inclusive (a false positive here
+    just costs one bounded LLM round-trip that would've happened anyway
+    under the old always-ask behavior; a false negative costs a genuinely
+    tool-worthy message getting answered conversationally instead) --
+    the goal is only to skip the LLM tool-call for the common case of
+    plain conversation that obviously isn't asking for any of these
+    tools, not to replace the heuristic's real matching logic below.
+    """
+    lowered = (user_input or "").lower()
+    return any(kw in lowered for kw in _TOOL_KEYWORD_GATE)
+
+
+# ══════════════════════════════════════════════════════════════════════
 # Path B (fallback): the original conservative keyword heuristic (v1).
 # Used when TOOL_CALLING_MODE="heuristic", or whenever the LLM path above
 # is unavailable/times out/errors for any reason.
@@ -382,6 +427,22 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
         from config import Config as cfg  # noqa: N813
 
     mode = getattr(cfg, "TOOL_CALLING_MODE", "llm")
+
+    # PERF FIX: this used to unconditionally pay a real Ollama round-trip
+    # (bounded by TOOL_CALLING_TIMEOUT_S, up to several seconds) for
+    # EVERY unmatched "chat" message before generate_response_stream()
+    # was even allowed to start -- including plain conversation that
+    # obviously wasn't asking for weather/news/an app/etc. That extra,
+    # fully sequential LLM call was the dominant source of "the response
+    # takes forever to start" latency. has_probable_tool_intent() is a
+    # near-zero-cost pure-string check; skipping straight to the
+    # heuristic (itself just string matching, effectively free) for
+    # anything that doesn't even mention a tool-shaped keyword removes
+    # that entire round-trip from the common case, with no behavior
+    # change for messages that actually do look tool-related.
+    if mode == "llm" and not has_probable_tool_intent(user_input):
+        return _resolve_tool_call_heuristic(user_input)
+
     if mode == "llm":
         timeout_s = float(getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 5.0))
         try:

@@ -316,6 +316,36 @@ class Config:
     # STT-based fallback (WAKE_WORDS above) instead.
     WAKE_WORD_MODEL_PATH: str | None = _optional_str(os.getenv("WAKE_WORD_MODEL_PATH"))
 
+    # ── Wake-word STT-fallback speed/accuracy (only used when
+    # WAKE_WORD_MODEL_PATH above is unset, i.e. no dedicated openwakeword
+    # model is configured) ───────────────────────────────────────────────
+    # A dedicated small/fast Whisper model just for "did they say the wake
+    # word?" checks, separate from WHISPER_MODEL_SIZE (which stays large/
+    # accurate for real commands). This was the main latency+accuracy
+    # bottleneck: every wake attempt used to pay the full large-model
+    # transcription cost just to check for a 1-2 word phrase.
+    WAKE_WORD_FAST_MODEL_SIZE: str = os.getenv("WAKE_WORD_FAST_MODEL_SIZE", "tiny")
+    # Shorter capture window than a real command -- "Sara"/"Hey Sara" is
+    # said and done in under a second; waiting the old 3.0s/5.0s command-
+    # sized window before even starting to transcribe was pure added
+    # latency on every single wake attempt.
+    WAKE_LISTEN_TIMEOUT_S: float = _float(os.getenv("WAKE_LISTEN_TIMEOUT_S"), default=1.5)
+    WAKE_LISTEN_MAX_DURATION_S: float = _float(
+        os.getenv("WAKE_LISTEN_MAX_DURATION_S"), default=1.8
+    )
+    # Fuzzy fallback for when the fast/small model mishears "sara" as
+    # something close ("sarah", "sada", "zara", ...) instead of an exact
+    # regex match -- trades a small amount of false-positive risk for a
+    # meaningfully lower miss rate, which is the right tradeoff for a
+    # wake word (a missed wake is far more annoying than an extra
+    # false-triggered listen).
+    WAKE_FUZZY_MATCH_ENABLED: bool = _bool(
+        os.getenv("WAKE_FUZZY_MATCH_ENABLED", "True"), default=True
+    )
+    WAKE_FUZZY_MATCH_THRESHOLD: float = _float(
+        os.getenv("WAKE_FUZZY_MATCH_THRESHOLD"), default=0.75
+    )
+
     WAKE_WORD_COOLDOWN_S: float = _float(os.getenv("WAKE_WORD_COOLDOWN_S"), default=2.0)
     WAKE_WORD_THRESHOLD: float = _float(os.getenv("WAKE_WORD_THRESHOLD"), default=0.5)
     # NEW: was read via getattr(cfg, "WAKE_WORD_BEAM_SIZE", 1) in both
@@ -543,7 +573,7 @@ class Config:
         os.getenv("TOOL_CALLING_ENABLED", "True"), default=True
     )
     TOOL_CALLING_TIMEOUT_S: float = _float(
-        os.getenv("TOOL_CALLING_TIMEOUT_S"), default=5.0
+        os.getenv("TOOL_CALLING_TIMEOUT_S"), default=3.0
     )
     # "llm" (default): real Ollama tool-calling (tools= schema) decides the
     # tool + arguments. "heuristic": skip the LLM call, use only the old
@@ -749,6 +779,9 @@ class Config:
 
         cls.WAKE_WORD_COOLDOWN_S = max(0.5, min(10.0, cls.WAKE_WORD_COOLDOWN_S))
         cls.WAKE_WORD_THRESHOLD = max(0.1, min(0.99, cls.WAKE_WORD_THRESHOLD))
+        cls.WAKE_LISTEN_TIMEOUT_S = max(0.5, min(5.0, cls.WAKE_LISTEN_TIMEOUT_S))
+        cls.WAKE_LISTEN_MAX_DURATION_S = max(0.8, min(5.0, cls.WAKE_LISTEN_MAX_DURATION_S))
+        cls.WAKE_FUZZY_MATCH_THRESHOLD = max(0.5, min(1.0, cls.WAKE_FUZZY_MATCH_THRESHOLD))
 
         # ── STT settle-gap clamp ─────────────────────────────────────────
         cls.STT_SETTLE_MIN_GAP_S = max(
