@@ -108,11 +108,11 @@ _INTENT_PATTERNS = [
     # ── Spotify ────────────────────────────────────────────────────────
     ("play_spotify", [
         r"play (.+?) on spotify",
-        r"spotify (.+)",
+        r"^spotify (.+)$",
         r"play (.+?) (?:on |using )?spotify",
         r"open spotify and play (.+)",
     ]),
-
+    
     # ── Web ────────────────────────────────────────────────────────────
     ("web_search", [
         r"(?:search|google|look up|find|search for) (.+?)(?:\s+for me)?$",
@@ -268,6 +268,39 @@ _INTENT_PATTERNS = [
     ("switch_window", [
         r"switch (?:to (?:the )?(?:next|other) )?window",
         r"alt tab",
+    ]),
+    # ── Window Control (extended) — named-window control via pywin32 ───
+    ("restart_application", [
+        r"restart (?:the )?(.+?)(?:\s+app(?:lication)?)?$",
+        r"(.+?) (?:ko )?restart (?:karo|kro)",
+    ]),
+    ("switch_to_application", [
+        r"switch to (?:the )?(.+?)(?:\s+app(?:lication)?)?$",
+        r"(.+?) (?:pe|par) switch karo",
+        r"(.+?) (?:pe|par) jao",
+    ]),
+    ("move_window", [
+        r"move (.+?) (?:window )?to (?:the )?(left half|right half|top half|bottom half|top left|top right|bottom left|bottom right|center|full screen)$",
+        r"(.+?) (?:ki window )?ko (left half|right half|top half|bottom half|top left|top right|bottom left|bottom right|center|full screen) (?:mein )?(?:le jao|move karo|kro)",
+    ]),
+    ("resize_window", [
+        r"resize (.+?) (?:window )?to (?:the )?(left half|right half|top half|bottom half|top left|top right|bottom left|bottom right|center|full screen)$",
+        r"(.+?) (?:ki window )?(?:ka size|resize)\s*(left half|right half|top half|bottom half|top left|top right|bottom left|bottom right|center|full screen) (?:kro|karo)",
+    ]),
+    ("always_on_top", [
+        r"(?:make |set )?(.+?) always[- ]on[- ]top$",
+        r"pin (.+?) (?:window )?on top$",
+        r"toggle always on top for (.+)",
+        r"(.+?) ko hamesha (?:upar|top pe) rakho",
+        r"(.+?) (?:ko )?pin (?:kro|karo)",
+    ]),
+    ("toggle_fullscreen", [
+        r"(?:make |set )?(.+?) fullscreen$",
+        r"fullscreen (.+)",
+        r"(.+?) ko fullscreen (?:kro|karo)",
+        r"go fullscreen",
+        r"toggle fullscreen",
+        r"full ?screen (?:kro|karo|mode)?$",
     ]),
 
     # ── Media Controls ────────────────────────────────────────────────
@@ -640,7 +673,7 @@ _INTENT_GATES = {
     "unmute": ("unmute", "restore", "enable"),
     "lock_pc": ("lock",),
     "sleep_system": ("sleep",),
-    "hibernate_system": ("hibernate",),
+    "hibernate_system": ("hibernat",),
     "log_off": ("log off", "logoff", "sign out"),
     "shutdown_system": ("shut", "turn off", "power off"),
     "restart_system": ("restart", "reboot"),
@@ -662,6 +695,12 @@ _INTENT_GATES = {
     "snap_window_left": ("snap", "window", "left"),
     "snap_window_right": ("snap", "window", "right"),
     "switch_window": ("switch", "window", "alt tab"),
+    "restart_application": ("restart",),
+    "switch_to_application": ("switch", "pe jao", "par jao"),
+    "move_window": ("half", "center", "full screen", "top left", "top right", "bottom left", "bottom right"),
+    "resize_window": ("half", "center", "full screen", "top left", "top right", "bottom left", "bottom right"),
+    "always_on_top": ("always on top", "pin", "upar"),
+    "toggle_fullscreen": ("fullscreen", "full screen"),
     "play_pause_media": ("play", "pause", "music", "media", "resume", "continue"),
     "next_track": ("next", "skip"),
     "previous_track": ("previous", "last", "back"),

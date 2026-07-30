@@ -24,7 +24,7 @@ here unchanged, just re-organized internally by category:
     system_info.py                - battery/CPU/RAM/disk/uptime/IP
     dispatch.py                    - SIMPLE_ACTIONS table (imports from all of the above)
 """
-from .apps import open_application, close_application
+from .apps import open_application, close_application, restart_application
 from .audio_display import (
     set_volume, adjust_volume, get_brightness_status, set_brightness, adjust_brightness,
 )
@@ -64,10 +64,13 @@ from .system_info import (
     get_gpu_status, get_temperature_status, get_process_list,
 )
 from .services import list_services, start_service, stop_service
+from .window_control import (
+    switch_to_application, move_window, toggle_always_on_top, toggle_fullscreen,
+)
 from .dispatch import SIMPLE_ACTIONS
 
 __all__ = [
-    "open_application", "close_application", "set_volume", "adjust_volume",
+    "open_application", "close_application", "restart_application", "set_volume", "adjust_volume",
     "get_brightness_status", "set_brightness", "adjust_brightness", "lock_pc",
     "sleep_system", "hibernate_system", "log_off", "shutdown_system",
     "restart_system", "cancel_shutdown", "show_desktop", "minimize_all_windows",
@@ -88,6 +91,6 @@ __all__ = [
     "open_personalization_settings", "open_privacy_settings", "open_storage_settings",
     "open_power_settings", "open_about_settings", "get_current_time",
     "get_current_date", "get_battery_status", "get_cpu_usage", "get_ram_usage",
-    "get_disk_usage", "get_uptime", "get_local_ip", "get_system_summary",
+    "get_disk_usage", "get_uptime", "get_local_ip", "get_system_summary","switch_to_application", "move_window", "toggle_always_on_top", "toggle_fullscreen",
     "SIMPLE_ACTIONS",
 ]

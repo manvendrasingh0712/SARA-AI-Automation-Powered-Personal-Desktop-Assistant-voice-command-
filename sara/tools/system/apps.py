@@ -7,6 +7,7 @@ from ._shared import _ensure_windows
 import logging
 import os
 import re
+import time
 import subprocess
 import platform
 
@@ -130,6 +131,61 @@ def open_application(app_name: str) -> str:
         logger.error(f"open_application failed for '{raw_name}': {e}")
         return f"Sorry, I couldn't open '{raw_name}' right now."
 
+def restart_application(app_name: str) -> str:
+    """
+    Terminates all running instances of app_name, then relaunches it from
+    the SAME executable path (captured before termination via psutil's
+    proc.exe()) rather than guessing via os.startfile(), which only
+    resolves names Windows already knows about (PATH / App Paths registry)
+    and can silently launch a different install than the one that was
+    actually running.
+    """
+    _ensure_windows()
+
+    if not app_name or not app_name.strip():
+        return "No application name was provided."
+
+    raw_name = app_name.strip()
+    target = _APP_ALIASES.get(raw_name.lower(), raw_name)
+
+    if ":" in target:
+        return (
+            f"'{raw_name}' isn't a running application I can restart "
+            f"(it opens a system page, not a process)."
+        )
+
+    process_exe = target if target.lower().endswith(".exe") else target + ".exe"
+
+    exe_path = None
+    terminated = 0
+    try:
+        for proc in psutil.process_iter(["name", "exe"]):
+            try:
+                if proc.info["name"] and proc.info["name"].lower() == process_exe.lower():
+                    if not exe_path:
+                        exe_path = proc.info.get("exe")
+                    proc.terminate()
+                    terminated += 1
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+    except Exception as e:
+        logger.error(f"restart_application enumeration failed for '{raw_name}': {e}")
+        return f"Sorry, I couldn't restart '{raw_name}' right now."
+
+    if terminated == 0:
+        return open_application(raw_name)
+
+    time.sleep(1.0)
+
+    try:
+        if exe_path:
+            subprocess.Popen(exe_path)
+        else:
+            os.startfile(target)
+        return f"Restarted {raw_name}."
+    except Exception as e:
+        logger.error(f"restart_application relaunch failed for '{raw_name}': {e}")
+        return f"Closed {raw_name} but couldn't relaunch it automatically."
 
 def close_application(process_name: str) -> str:
     _ensure_windows()

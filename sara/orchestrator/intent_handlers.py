@@ -434,7 +434,36 @@ def _h_stop_service(match, ctx):
         return None
     return _quick(ctx, system_tools.stop_service(match.group(1).strip()))
 
+def _h_restart_application(match, ctx):
+    if not match:
+        return None
+    ctx["ui_update"]("status", "thinking")
+    return _quick(ctx, system_tools.restart_application(match.group(1).strip()))
 
+
+def _h_switch_to_application(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.switch_to_application(match.group(1).strip()))
+
+
+def _h_move_resize_window(match, ctx):
+    if not match:
+        return None
+    app_name, position = match.group(1).strip(), match.group(2).strip()
+    return _quick(ctx, system_tools.move_window(app_name, position))
+
+
+def _h_always_on_top(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.toggle_always_on_top(match.group(1).strip()))
+
+
+def _h_fullscreen(match, ctx):
+    app_name = match.group(1).strip() if (match and match.lastindex) else ""
+    return _quick(ctx, system_tools.toggle_fullscreen(app_name))
+    
 def _h_time_query(match, ctx):
     return _quick(ctx, f"It's {datetime.now().strftime('%I:%M %p')}.")
 
@@ -494,6 +523,12 @@ _INTENT_HANDLERS = {
     "find_file": _h_find_file,
     "start_service": _h_start_service,
     "stop_service": _h_stop_service,
+    "restart_application": _h_restart_application,
+    "switch_to_application": _h_switch_to_application,
+    "move_window": _h_move_resize_window,
+    "resize_window": _h_move_resize_window,
+    "always_on_top": _h_always_on_top,
+    "toggle_fullscreen": _h_fullscreen,
     "time_query": _h_time_query,
     "date_query": _h_date_query,
     "why_proactive": _h_why_proactive,

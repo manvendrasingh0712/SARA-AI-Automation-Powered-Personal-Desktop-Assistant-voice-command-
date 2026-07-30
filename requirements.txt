@@ -136,3 +136,5 @@ nvidia-cudnn-cu12==9.5.1.17
 nvidia-cublas-cu12==12.9.2.10
 
 nvidia-ml-py==12.560.30  # sara/tools/system/system_info.py — GPU usage/VRAM/temperature (NVIDIA only, imported as `pynvml`)
+
+pywin32==312  # sara/tools/system/window_control.py — find/move/resize/topmost windows by app name (win32gui/win32con/win32process/win32api)
