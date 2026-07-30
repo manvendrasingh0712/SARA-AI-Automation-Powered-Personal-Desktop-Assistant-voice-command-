@@ -157,7 +157,7 @@ def restart_application(app_name: str) -> str:
     process_exe = target if target.lower().endswith(".exe") else target + ".exe"
 
     exe_path = None
-    terminated = 0
+    terminated_pids = []
     try:
         for proc in psutil.process_iter(["name", "exe"]):
             try:
@@ -165,17 +165,19 @@ def restart_application(app_name: str) -> str:
                     if not exe_path:
                         exe_path = proc.info.get("exe")
                     proc.terminate()
-                    terminated += 1
+                    terminated_pids.append(proc.pid)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception as e:
         logger.error(f"restart_application enumeration failed for '{raw_name}': {e}")
         return f"Sorry, I couldn't restart '{raw_name}' right now."
 
-    if terminated == 0:
+    if not terminated_pids:
         return open_application(raw_name)
 
-    time.sleep(1.0)
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline and any(psutil.pid_exists(p) for p in terminated_pids):
+        time.sleep(0.1)
 
     try:
         if exe_path:

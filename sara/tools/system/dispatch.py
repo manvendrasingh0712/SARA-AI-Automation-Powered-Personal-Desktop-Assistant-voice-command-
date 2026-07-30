@@ -43,6 +43,15 @@ from .system_info import (
 )
 from .services import list_services
 from .timers import cancel_timer
+from .window_control import toggle_fullscreen
+# NOTE: restart_application, start_service, stop_service,
+# switch_to_application, move_window, and toggle_always_on_top are NOT
+# imported/registered here on purpose. SIMPLE_ACTIONS is a zero-arg
+# callable table (see module docstring); all six of those functions
+# require a mandatory argument (app_name / service_name / position),
+# so they must be wired through intent_handlers.py as dedicated
+# handlers that pull the argument out of the regex match, the same
+# way set_timer's numeric arg is handled outside this table.
 
 # ============================================================
 # SIMPLE ACTIONS DISPATCH TABLE
@@ -75,6 +84,7 @@ SIMPLE_ACTIONS: Dict[str, Callable[[], str]] = {
     "snap_window_left": snap_window_left,
     "snap_window_right": snap_window_right,
     "switch_window": switch_window,
+    "toggle_fullscreen": lambda: toggle_fullscreen(),
     # Media
     "play_pause_media": play_pause_media,
     "next_track": next_track,

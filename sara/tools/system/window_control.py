@@ -16,7 +16,6 @@ from ._shared import _ensure_windows, _send_keys
 
 import logging
 import platform
-import subprocess
 import time
 
 import psutil
@@ -68,25 +67,25 @@ def _find_window(app_name: str):
         else target_process.lower() + ".exe"
     )
 
-    title_matches = []
-    process_matches = []
-    for hwnd in _enum_visible_windows():
-        title = win32gui.GetWindowText(hwnd)
-        if name_lower in title.lower():
-            title_matches.append(hwnd)
-            continue
+    visible = _enum_visible_windows()
+
+    # Pass 1: title match is the common case and costs nothing beyond a
+    # string check we already have the text for — check it across all
+    # windows before paying for any per-process lookup.
+    for hwnd in visible:
+        if name_lower in win32gui.GetWindowText(hwnd).lower():
+            return hwnd
+
+    # Pass 2: only enumerate processes if nothing matched by title.
+    for hwnd in visible:
         try:
             _, pid = win32process.GetWindowThreadProcessId(hwnd)
             proc = psutil.Process(pid)
             if proc.name().lower() == target_exe:
-                process_matches.append(hwnd)
+                return hwnd
         except Exception:
             continue
 
-    if title_matches:
-        return title_matches[0]
-    if process_matches:
-        return process_matches[0]
     return None
 
 

@@ -33,21 +33,22 @@ def _find_service(name: str):
     info dict (as from psutil.win_service_iter()...as_dict()) or None.
     """
     name_lower = name.strip().lower()
+    substring_match = None
     try:
-        all_services = [svc.as_dict() for svc in psutil.win_service_iter()]
+        for svc in psutil.win_service_iter():
+            try:
+                info = svc.as_dict()
+            except Exception:
+                continue
+            if info["name"].lower() == name_lower or info["display_name"].lower() == name_lower:
+                return info  # exact match — no need to look at the rest
+            if substring_match is None and name_lower in info["display_name"].lower():
+                substring_match = info
     except Exception as e:
         logger.error(f"_find_service failed to enumerate services: {e}")
         return None
 
-    for info in all_services:
-        if info["name"].lower() == name_lower or info["display_name"].lower() == name_lower:
-            return info
-
-    for info in all_services:
-        if name_lower in info["display_name"].lower():
-            return info
-
-    return None
+    return substring_match
 
 
 def list_services(running_only: bool = True) -> str:

@@ -145,7 +145,18 @@ class _VADFilter:
 
 
 class _SilenceGate:
-    _FLOOR = 0.5
+    # v-latency-audit: floor tightened 0.5s -> 0.45s ONLY. This branch is
+    # evidence-gated — it only engages once _history shows avg speech
+    # duration < 1.5s, meaning the gate has ALREADY observed several fast,
+    # short utterances from this session. So the extra 50ms shave applies
+    # only where a fast-speech pattern is proven, not blindly on turn 1.
+    # CEIL and DEFAULT are deliberately left untouched:
+    #   - DEFAULT covers the very first commands after boot with zero
+    #     history — no evidence yet that tightening is safe.
+    #   - CEIL protects naturally longer pauses (thinking, Hinglish
+    #     code-switching mid-sentence) — tightening this risks cutting
+    #     real speech mid-utterance, which violates the accuracy goal.
+    _FLOOR = 0.45
     _CEIL = 1.2
     _DEFAULT = 0.8
 

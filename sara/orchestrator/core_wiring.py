@@ -553,8 +553,25 @@ def run_sara_logic(
             ui_update("status", "waking")
             if hasattr(tts, "clear_interrupt"):
                 tts.clear_interrupt()
-            ack = "Yes? I'm listening."
-            tts.speak(ack, fast=True)
+
+            # LATENCY: short ack ("Yes?" instead of a full sentence) cuts
+            # synthesis+playback time drastically on its own — combined
+            # with the TTS phrase cache (see engine.py), after the first
+            # cycle this phrase costs ~0 synthesis time, just playback.
+            #
+            # When AEC is actively cancelling echo (aec_active, computed
+            # above), fire the ack asynchronously (block=False) so
+            # ears.wait_settle()/listen() below start immediately instead
+            # of waiting for playback to finish — this is what actually
+            # removes the fixed 1-1.5s tax per wake cycle. Without AEC we
+            # keep it blocking, since the mic would otherwise pick up our
+            # own ack and STT could misfire on it.
+            ack = getattr(Config, "WAKE_ACK_PHRASE", "Yes?")
+            try:
+                tts.speak(ack, fast=True, block=not aec_active)
+            except Exception as e:
+                # Ack failing must NEVER stop the command-listening cycle.
+                print(f"[Logic] wake-ack speak failed (continuing): {e}")
 
             empty_retries = 0
             session_start = time.monotonic()
