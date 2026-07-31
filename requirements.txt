@@ -12,10 +12,10 @@
 #     with UnicodeDecodeError trying to json.load() it).
 # - numpy: 1.26.4 -> 2.1.0
 #     kokoro-onnx==0.5.0 requires numpy>=2.0.2, conflicting with the old pin.
-# - onnxruntime-gpu: 1.17.1 -> 1.20.1
+# - onnxruntime-gpu: 1.17.1 -> 1.21.0
 #     1.17.1 is compiled against numpy 1.x and CUDA 11.8 only -> it would
 #     both fail at runtime under numpy 2 AND fail to load CUDA on your
-#     installed CUDA 12.9 toolkit. 1.20.1 supports numpy 2.x and CUDA 12.x.
+#     installed CUDA 12.9 toolkit. 1.21.0 supports numpy 2.x and CUDA 12.x.
 # - ollama: 0.2.1 -> 0.6.2
 #     0.2.1 pins httpx<0.28.0, which conflicts with ddgs==9.14.4's
 #     requirement of httpx>=0.28.1. 0.6.2 accepts httpx<0.29,>=0.27, so both
@@ -61,12 +61,12 @@
 #                      for TTS/STT doesn't error — it just silently falls
 #                      back to CPU, which is much slower and easy to miss.
 #                      Pinned to a cuDNN 9.x / CUDA 12.x combo, matching
-#                      onnxruntime-gpu 1.20.1's own requirement of
+#                      onnxruntime-gpu 1.21.0's own requirement of
 #                      "cuDNN 9.* and CUDA 12.*" and your installed CUDA
 #                      12.9 toolkit.
 #
 # KNOWN CONFLICT FLAGGED (fixed by explicit pin, not by removing anything):
-# - onnxruntime (CPU) == 1.20.1
+# - onnxruntime (CPU) == 1.21.0
 #     kokoro-onnx, faster-whisper, AND openwakeword each declare their own
 #     unpinned dependency on the CPU `onnxruntime` package (used for
 #     kokoro-onnx's own internal model, faster-whisper's VAD model, and
@@ -76,14 +76,14 @@
 #     names even though they both install into the SAME `onnxruntime/`
 #     folder on disk. A clean dependency resolve confirmed this: without a
 #     pin, pip pulls the CPU package up to whatever is newest (verified:
-#     onnxruntime 1.28.0) alongside onnxruntime-gpu==1.20.1 — two different
+#     onnxruntime 1.28.0) alongside onnxruntime-gpu==1.21.0 — two different
 #     versions of the same native library sharing one install path, which
 #     is a real crash/ABI-mismatch risk depending on install order. Pinning
-#     `onnxruntime==1.20.1` here forces both packages to resolve to the
+#     `onnxruntime==1.21.0` here forces both packages to resolve to the
 #     exact same version, so whichever one's files end up "on top" after
 #     install, the DLLs match. If you ever see DLL-load errors after a
 #     fresh `pip install`, re-run `pip install --force-reinstall
-#     onnxruntime-gpu==1.20.1` last, so its GPU-capable build wins.
+#     onnxruntime-gpu==1.21.0` last, so its GPU-capable build wins.
 
 # Audio / TTS / STT
 PyAudio==0.2.14
@@ -127,8 +127,8 @@ numpy==2.1.0
 
 # ONNX Runtime — CPU build pinned explicitly alongside the GPU build below
 # to keep both at the exact same version (see "KNOWN CONFLICT FLAGGED" above).
-onnxruntime==1.20.1
-onnxruntime-gpu==1.20.1
+onnxruntime==1.21.0
+onnxruntime-gpu==1.21.0
 
 # CUDA/cuDNN DLLs for onnxruntime-gpu + faster-whisper's ctranslate2 backend
 # (both need cuDNN 9.x / CUDA 12.x; loaded explicitly in main.py, see note above)
