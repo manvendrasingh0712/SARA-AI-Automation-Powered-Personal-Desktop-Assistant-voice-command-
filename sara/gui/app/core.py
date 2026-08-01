@@ -116,6 +116,17 @@ class ApiCoreMixin:
         random.shuffle(self.music_queries)
         self.music_index = 0
 
+        # SESSION STATE for _handle_command(): created once here (not a
+        # fresh {} per call) so it genuinely persists turn-to-turn for
+        # GUI-typed commands too -- matches how the main voice loop in
+        # core_wiring.py already does it. volume_state existing usage
+        # below used to pass a literal {} every call, silently resetting
+        # mute/pre-mute-volume state on every single typed command; fixed
+        # by reusing this same dict instead.
+        self.volume_state: dict = {}
+        self.playback_state: dict = {}
+        self.confirm_state: dict = {}
+
         # See _bind_instance_methods() below for why this is needed on
         # top of engine.py's class-level setattr loop.
         self._bind_instance_methods()
@@ -358,7 +369,9 @@ class ApiCoreMixin:
                     self.reminders,
                     self.vision,
                     _push,
-                    {},
+                    self.volume_state,
+                    playback_state=self.playback_state,
+                    confirm_state=self.confirm_state,
                 )
             except Exception as e:
                 print(f"[send_text_command _handle_command error] {e}")

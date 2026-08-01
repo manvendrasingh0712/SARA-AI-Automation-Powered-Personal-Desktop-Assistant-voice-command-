@@ -53,6 +53,19 @@ try:
 except ImportError:
     _BS4_AVAILABLE = False
 
+try:
+    import yt_dlp
+    _YTDLP_AVAILABLE = True
+except ImportError:
+    yt_dlp = None
+    _YTDLP_AVAILABLE = False
+
+# Small in-process cache so a repeated "next video" request within the
+# same session doesn't re-run a yt-dlp search; keyed by lowercased query.
+_YTDLP_CACHE_TTL_S = 600
+_ytdlp_cache: dict[str, tuple[float, list[str]]] = {}
+_ytdlp_cache_lock = threading.Lock()
+
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -149,23 +162,67 @@ __all__ = [
 # YOUTUBE
 # ============================================================
 
-def get_youtube_url(query: str) -> Optional[str]:
-    """
-    Searches YouTube and returns the URL of the first non-Shorts video.
-
-    Returns:
-        Full YouTube watch URL, or a filtered search URL as fallback.
-    """
+def _youtube_search_fallback_url(query: str) -> str:
     encoded = urllib.parse.quote_plus(query)
-    fallback = f"https://www.youtube.com/results?search_query={encoded}&sp=EgIQAQ%3D%3D"
+    return f"https://www.youtube.com/results?search_query={encoded}&sp=EgIQAQ%3D%3D"
 
+
+def _get_youtube_urls_ytdlp(query: str, max_results: int = 5) -> list[str]:
+    """
+    Primary lookup path: asks yt-dlp to search YouTube directly
+    (ytsearchN:) and extract real video URLs from its own metadata
+    parser, instead of regex-scraping YouTube's search-results HTML
+    (which breaks silently whenever YouTube changes its page markup).
+    Filters out Shorts by URL shape and by duration (<= 60s).
+    """
+    if not _YTDLP_AVAILABLE:
+        return []
+
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": "in_playlist",
+        "default_search": "ytsearch",
+        "socket_timeout": 8,
+    }
+    urls: list[str] = []
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+            entries = (info or {}).get("entries") or []
+            for entry in entries:
+                if not entry:
+                    continue
+                video_id = entry.get("id")
+                if not video_id:
+                    continue
+                url = entry.get("url") or f"https://www.youtube.com/watch?v={video_id}"
+                if "/shorts/" in url:
+                    continue
+                duration = entry.get("duration")
+                if duration is not None and duration <= 60:
+                    continue
+                if url not in urls:
+                    urls.append(url)
+    except Exception as e:
+        logger.debug("yt-dlp search failed for %r: %s", query, e)
+        return []
+
+    return urls
+
+
+def _get_youtube_urls_scrape(query: str) -> list[str]:
+    """
+    Fallback lookup path (used only if yt-dlp is unavailable or its
+    search fails): regex-scrapes YouTube's search-results HTML for the
+    first non-Shorts /watch?v= link. Kept as-is from the original
+    implementation so behavior degrades gracefully, not silently.
+    """
     if not _BS4_AVAILABLE:
-        return fallback
+        return []
 
-    search_url = (
-        f"https://www.youtube.com/results?search_query={encoded}&sp=EgIQAQ%3D%3D"
-    )
-
+    search_url = _youtube_search_fallback_url(query)
     try:
         resp = requests.get(
             search_url,
@@ -175,13 +232,14 @@ def get_youtube_url(query: str) -> Optional[str]:
         resp.raise_for_status()
     except requests.exceptions.RequestException as e:
         logger.debug("YouTube fetch error: %s", e)
-        return fallback
+        return []
 
     # Limit search window to avoid regex on full (potentially huge) HTML
     html_sample = resp.text[:200_000]
     matches = re.findall(r'"(/watch\?v=[a-zA-Z0-9_-]{11})"', html_sample)
 
     seen: set[str] = set()
+    urls: list[str] = []
     for href in matches:
         if href in seen:
             continue
@@ -195,31 +253,61 @@ def get_youtube_url(query: str) -> Optional[str]:
         if "reelwatch" in context.lower() or '"shorts"' in context.lower():
             continue
 
-        return f"https://www.youtube.com{href}"
+        urls.append(f"https://www.youtube.com{href}")
 
-    return fallback
+    return urls
 
 
-def play_youtube(query: str) -> str:
+def get_youtube_urls(query: str, max_results: int = 5) -> list[str]:
     """
-    Searches YouTube for the given query and opens the first non-Shorts
-    video result in the default browser.
+    Returns an ordered list of candidate YouTube watch URLs for `query`
+    (first entry = what should actually be played), tried yt-dlp-first
+    then falling back to HTML-scrape, then to nothing (caller falls
+    back to a plain search-results URL). Cached briefly per-query so a
+    "next video" follow-up doesn't re-run the search from scratch.
+    """
+    key = query.strip().lower()
+    now = time.time()
+    with _ytdlp_cache_lock:
+        cached = _ytdlp_cache.get(key)
+        if cached and (now - cached[0]) < _YTDLP_CACHE_TTL_S:
+            return cached[1]
+
+    urls = _get_youtube_urls_ytdlp(query, max_results=max_results)
+    if not urls:
+        urls = _get_youtube_urls_scrape(query)
+
+    if urls:
+        with _ytdlp_cache_lock:
+            _ytdlp_cache[key] = (now, urls)
+    return urls
+
+
+def get_youtube_url(query: str) -> Optional[str]:
+    """Back-compat single-URL wrapper around get_youtube_urls()."""
+    urls = get_youtube_urls(query)
+    return urls[0] if urls else None
+
+
+def play_youtube(query: str, skip: int = 0) -> str:
+    """
+    Searches YouTube for the given query and opens a non-Shorts video
+    result in the default browser -- the first result by default, or
+    the (skip+1)-th candidate from the same cached search when `skip`
+    is used (see play_next_youtube() below, for "play next video").
     """
     if not query or not query.strip():
         return "Please tell me what to play on YouTube."
 
     query = query.strip()
-    cache_key = f"youtube:{query.lower()}"
-    url = _cache_get(cache_key)
+    urls = get_youtube_urls(query)
 
-    if not url:
-        url = get_youtube_url(query)
-        if url:
-            _cache_set(cache_key, url)
-
-    if not url:
-        encoded = urllib.parse.quote_plus(query)
-        url = f"https://www.youtube.com/results?search_query={encoded}&sp=EgIQAQ%3D%3D"
+    if skip and skip < len(urls):
+        url = urls[skip]
+    elif urls:
+        url = urls[0]
+    else:
+        url = _youtube_search_fallback_url(query)
 
     try:
         opened = webbrowser.open(url)
@@ -230,6 +318,37 @@ def play_youtube(query: str) -> str:
     except Exception as e:
         logger.error("Failed to open YouTube for '%s': %s", query, e)
         return "Sorry, I couldn't open YouTube right now."
+
+
+def play_next_youtube(query: str, current_index: int) -> tuple[str, int]:
+    """
+    Plays the next cached candidate for the same query (used by the
+    'next video' follow-up intent). Returns (message, new_index). If
+    there's no next cached candidate, re-searches with a lightly
+    varied query so the user still gets *something* rather than a
+    dead-end "no more results".
+    """
+    urls = get_youtube_urls(query)
+    next_index = current_index + 1
+
+    if next_index < len(urls):
+        msg = play_youtube(query, skip=next_index)
+        return msg, next_index
+
+    # Cached list exhausted -- ask yt-dlp for a fresh batch instead of
+    # just repeating the same fallback search URL.
+    key = query.strip().lower()
+    with _ytdlp_cache_lock:
+        _ytdlp_cache.pop(key, None)
+    urls = get_youtube_urls(query)
+    if urls:
+        msg = play_youtube(query, skip=0)
+        return msg, 0
+
+    return "Sorry, I couldn't find another video for that.", current_index
+
+
+
 
 
 # ============================================================

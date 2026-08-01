@@ -8,7 +8,9 @@ from .calc_utils import _safe_calc, _parse_duration_to_seconds
 from .network_utils import _call_with_timeout
 from .tts_worker import TTSWorker
 
+import random
 import re
+import time
 import logging
 from datetime import datetime
 
@@ -161,6 +163,39 @@ _MAX_EMPTY_RETRIES = 3
 _EMPTY_RETRY_GRACE_S = 8.0
 _IDLE_SLEEP_TIMEOUT_S = 180
 
+# CONFIRMATION FLOW: closing/stopping something "risky" (a core system
+# process/service, not an everyday app) asks for a yes/no first instead
+# of just doing it. Matched as a case-insensitive substring against the
+# app/service name, so e.g. "explorer" also catches "explorer.exe".
+# Tune these lists as needed -- err on the side of adding, not removing.
+_RISKY_APP_KEYWORDS = (
+    "explorer", "taskmgr", "task manager", "cmd", "command prompt",
+    "powershell", "terminal", "regedit", "registry", "services.msc",
+    "control panel", "defender", "antivirus", "firewall", "vpn",
+    "svchost", "winlogon", "csrss", "system32",
+)
+_RISKY_SERVICE_KEYWORDS = (
+    "defend", "wuau", "dns", "dhcp", "eventlog", "rpcss", "winmgmt",
+    "netlogon", "lanman", "cryptsvc", "bits", "schedule", "power",
+    "audiosrv", "spooler", "themes",
+)
+
+_CONFIRM_YES_WORDS = {
+    "yes", "yeah", "yep", "confirm", "sure", "go ahead", "do it",
+    "haan", "ha", "kar do", "kardo", "theek hai", "ok", "okay",
+}
+_CONFIRM_NO_WORDS = {
+    "no", "nope", "cancel", "abort", "never mind", "nevermind",
+    "nahi", "mat karo", "rehne do", "chhodo",
+}
+_CONFIRM_PENDING_TTL_S = 30.0
+
+
+def _is_risky(name: str, keywords) -> bool:
+    lowered = (name or "").lower()
+    return any(kw in lowered for kw in keywords)
+
+
 _WAKE_POLL_INTERVAL_S = 0.05
 _WAKE_WAIT_TIMEOUT_S = 0.3
 
@@ -207,6 +242,33 @@ def _quick(ctx: dict, text: str) -> str:
     ctx["ui_update"]("status", "speaking")
     ctx["tts"].speak(text, fast=True)
     return text
+
+
+_ACK_PHRASES = (
+    "On it!",
+    "Sure thing!",
+    "Ek second...",
+    "Done-ish, hold on!",
+    "Coming right up!",
+)
+
+
+def _ack(ctx: dict) -> None:
+    """
+    Fires an instant, non-blocking acknowledgment so the user hears
+    something immediately instead of dead silence while a genuinely
+    slow action (app launch, service control, network call, screen
+    description, ...) runs right after it. Picks a random phrase each
+    time so it doesn't feel robotic/repetitive.
+
+    Must NEVER raise: a TTS/UI hiccup here should never block or kill
+    the actual command that follows it.
+    """
+    try:
+        ctx["ui_update"]("status", "working")
+        ctx["tts"].speak(random.choice(_ACK_PHRASES), fast=True, block=False)
+    except Exception as e:
+        print(f"[Core] _ack() failed (non-fatal, command continues): {e}")
 
 
 def _h_reminder_add(match, ctx):
@@ -272,6 +334,7 @@ def _h_clipboard_write(match, ctx):
 
 
 def _h_screenshot_describe(match, ctx):
+    _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     return _quick(ctx, ctx["vision"].describe_screen())
 
@@ -279,11 +342,13 @@ def _h_screenshot_describe(match, ctx):
 def _h_weather(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     return _quick(ctx, _call_with_timeout(web_tools.get_weather, match.group(1)))
 
 
 def _h_news(match, ctx):
+    _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     if match and match.lastindex and match.lastindex >= 1:
         return _quick(ctx, _call_with_timeout(web_tools.get_news, match.group(1)))
@@ -294,9 +359,37 @@ def _h_play_youtube(match, ctx):
     if not match:
         return None
     ctx["ui_update"]("status", "thinking")
-    return _quick(
-        ctx, _call_with_timeout(web_tools.play_youtube, match.group(1).strip())
+    query = match.group(1).strip()
+    result = _call_with_timeout(web_tools.play_youtube, query, tool_name="play_youtube")
+    if isinstance(result, str) and result.startswith("Playing"):
+        ctx["playback_state"]["youtube"] = {"query": query, "index": 0}
+    return _quick(ctx, result)
+
+
+def _h_play_next_youtube(match, ctx):
+    """
+    'next video' / 'agla video chalao' follow-up — only makes sense
+    right after a play_youtube call, so it needs ctx["playback_state"]
+    to know which search to continue.
+    """
+    state = ctx["playback_state"].get("youtube")
+    if not state:
+        return _quick(ctx, "I'm not playing anything from YouTube right now.")
+    ctx["ui_update"]("status", "thinking")
+    result = _call_with_timeout(
+        web_tools.play_next_youtube,
+        state["query"],
+        state["index"],
+        tool_name="play_next_youtube",
     )
+    if isinstance(result, tuple) and len(result) == 2:
+        message, new_index = result
+        state["index"] = new_index
+    else:
+        # _call_with_timeout hit its own timeout/exception path and
+        # returned a plain error string instead of our (msg, index) tuple.
+        message = result
+    return _quick(ctx, message)
 
 
 def _h_play_spotify(match, ctx):
@@ -311,6 +404,7 @@ def _h_play_spotify(match, ctx):
 def _h_web_search(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     return _quick(ctx, _call_with_timeout(web_tools.search_web, match.group(1)))
 
@@ -330,6 +424,7 @@ def _h_summarize_url(match, ctx):
 def _h_open_url(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     return _quick(ctx, web_tools.open_url(match.group(1)))
 
 
@@ -396,13 +491,35 @@ def _h_unmute(match, ctx):
 def _h_open_app(match, ctx):
     if not match:
         return None
-    return _quick(ctx, system_tools.open_application(match.group(1).strip()))
+    _ack(ctx)
+    return _quick(
+        ctx,
+        _call_with_timeout(
+            system_tools.open_application, match.group(1).strip(), tool_name="open_application"
+        ),
+    )
 
 
 def _h_close_app(match, ctx):
     if not match:
         return None
-    return _quick(ctx, system_tools.close_application(match.group(1).strip()))
+    app_name = match.group(1).strip()
+    if _is_risky(app_name, _RISKY_APP_KEYWORDS):
+        ctx["confirm_state"]["pending"] = {
+            "action": "close_app",
+            "target": app_name,
+            "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+        }
+        return _quick(
+            ctx, f"{app_name} is a system app -- are you sure you want to close it? Say yes or cancel."
+        )
+    _ack(ctx)
+    return _quick(
+        ctx,
+        _call_with_timeout(
+            system_tools.close_application, app_name, tool_name="close_application"
+        ),
+    )
 
 
 def _h_typing_text(match, ctx):
@@ -420,36 +537,76 @@ def _h_press_key(match, ctx):
 def _h_find_file(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    return _quick(ctx, system_tools.find_file(match.group(1).strip()))
+    return _quick(
+        ctx,
+        _call_with_timeout(system_tools.find_file, match.group(1).strip(), tool_name="find_file"),
+    )
 
 def _h_start_service(match, ctx):
     if not match:
         return None
-    return _quick(ctx, system_tools.start_service(match.group(1).strip()))
+    _ack(ctx)
+    return _quick(
+        ctx,
+        _call_with_timeout(
+            system_tools.start_service, match.group(1).strip(), tool_name="start_service"
+        ),
+    )
 
 
 def _h_stop_service(match, ctx):
     if not match:
         return None
-    return _quick(ctx, system_tools.stop_service(match.group(1).strip()))
+    service_name = match.group(1).strip()
+    if _is_risky(service_name, _RISKY_SERVICE_KEYWORDS):
+        ctx["confirm_state"]["pending"] = {
+            "action": "stop_service",
+            "target": service_name,
+            "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+        }
+        return _quick(
+            ctx,
+            f"{service_name} looks like a core system service -- are you sure you want to stop it? Say yes or cancel.",
+        )
+    _ack(ctx)
+    return _quick(
+        ctx,
+        _call_with_timeout(
+            system_tools.stop_service, service_name, tool_name="stop_service"
+        ),
+    )
 
 def _h_restart_application(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    return _quick(ctx, system_tools.restart_application(match.group(1).strip()))
+    return _quick(
+        ctx,
+        _call_with_timeout(
+            system_tools.restart_application, match.group(1).strip(), tool_name="restart_application"
+        ),
+    )
 
 
 def _h_switch_to_application(match, ctx):
     if not match:
         return None
-    return _quick(ctx, system_tools.switch_to_application(match.group(1).strip()))
+    _ack(ctx)
+    return _quick(
+        ctx,
+        _call_with_timeout(
+            system_tools.switch_to_application, match.group(1).strip(), tool_name="switch_to_application"
+        ),
+    )
 
 
 def _h_move_resize_window(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     app_name, position = match.group(1).strip(), match.group(2).strip()
     return _quick(ctx, system_tools.move_window(app_name, position))
 
@@ -457,10 +614,12 @@ def _h_move_resize_window(match, ctx):
 def _h_always_on_top(match, ctx):
     if not match:
         return None
+    _ack(ctx)
     return _quick(ctx, system_tools.toggle_always_on_top(match.group(1).strip()))
 
 
 def _h_fullscreen(match, ctx):
+    _ack(ctx)
     app_name = match.group(1).strip() if (match and match.lastindex) else ""
     return _quick(ctx, system_tools.toggle_fullscreen(app_name))
     
@@ -506,6 +665,7 @@ _INTENT_HANDLERS = {
     "weather": _h_weather,
     "news": _h_news,
     "play_youtube": _h_play_youtube,
+    "play_next_youtube": _h_play_next_youtube,
     "play_spotify": _h_play_spotify,
     "web_search": _h_web_search,
     "summarize_url": _h_summarize_url,
@@ -575,8 +735,13 @@ def _handle_command(
     ui_update,
     volume_state: dict,
     notes_memory=None,
+    playback_state: dict = None,
+    confirm_state: dict = None,
 ) -> str:
-    intent, match = detect_intent(user_input)
+    if playback_state is None:
+        playback_state = {}
+    if confirm_state is None:
+        confirm_state = {}
 
     ctx = {
         "brain": brain,
@@ -589,7 +754,46 @@ def _handle_command(
         "volume_state": volume_state,
         "user_input": user_input,
         "notes_memory": notes_memory,
+        "playback_state": playback_state,
+        "confirm_state": confirm_state,
     }
+
+    # ── Pending destructive-action confirmation (close_app / stop_service
+    # on something risky) takes priority over normal intent detection --
+    # if Sara just asked "are you sure?", this turn's job is to answer
+    # that, not to be re-parsed as a brand-new command. Expires after
+    # _CONFIRM_PENDING_TTL_S so a stale "yes" minutes later doesn't
+    # accidentally trigger an old, forgotten action.
+    pending = confirm_state.get("pending")
+    if pending:
+        if time.time() > pending.get("expires_at", 0):
+            confirm_state.pop("pending", None)
+        else:
+            reply = (user_input or "").strip().lower()
+            if reply in _CONFIRM_YES_WORDS:
+                confirm_state.pop("pending", None)
+                action, target = pending["action"], pending["target"]
+                _ack(ctx)
+                if action == "close_app":
+                    result = _call_with_timeout(
+                        system_tools.close_application, target, tool_name="close_application"
+                    )
+                elif action == "stop_service":
+                    result = _call_with_timeout(
+                        system_tools.stop_service, target, tool_name="stop_service"
+                    )
+                else:
+                    result = "Sorry, I lost track of what I was confirming."
+                return _quick(ctx, result)
+            if reply in _CONFIRM_NO_WORDS:
+                confirm_state.pop("pending", None)
+                return _quick(ctx, "Okay, cancelled.")
+            # Anything else: fall through to normal intent detection below
+            # (user changed their mind / asked something unrelated) but
+            # drop the stale pending confirmation so it can't fire later.
+            confirm_state.pop("pending", None)
+
+    intent, match = detect_intent(user_input)
 
     handler = _INTENT_HANDLERS.get(intent)
     if handler is not None:
