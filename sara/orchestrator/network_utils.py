@@ -5,7 +5,9 @@ URL fetch), so a slow network can never hang the conversation loop.
 """
 
 import re
+import time
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 
@@ -196,18 +198,68 @@ _THREAD_ERROR_BACKOFF_S = 0.5
 
 _NETWORK_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="sara-net")
 
+# CIRCUIT BREAKER: if a given tool times out / errors this many times in a
+# row, we stop even attempting it for a cooldown window and return an
+# immediate friendly message instead. Protects the voice loop from
+# repeatedly stalling for the full timeout on a tool that's clearly down
+# (dead network, blocked API, etc.) -- one bad call is a fluke, three in a
+# row is a real outage.
+_BREAKER_FAILURE_THRESHOLD = 3
+_BREAKER_COOLDOWN_S = 30.0
 
-def _call_with_timeout(fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, **kwargs):
+_breaker_failure_counts: dict[str, int] = {}
+_breaker_open_until: dict[str, float] = {}
+_breaker_lock = threading.Lock()
+
+
+def _call_with_timeout(
+    fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, tool_name: str = None, **kwargs
+):
+    name = tool_name or getattr(fn, "__name__", "unknown_tool")
+
+    with _breaker_lock:
+        open_until = _breaker_open_until.get(name, 0.0)
+        if time.time() < open_until:
+            remaining = int(open_until - time.time())
+            return (
+                f"Sorry, that's not responding right now -- give it about "
+                f"{max(remaining, 1)} seconds and try again."
+            )
+
     future = _NETWORK_EXECUTOR.submit(fn, *args, **kwargs)
     try:
-        return future.result(timeout=timeout)
+        result = future.result(timeout=timeout)
     except FutureTimeoutError:
         future.cancel()
+        _record_breaker_failure(name)
         return (
             "Sorry, that's taking longer than expected. Please try again in a moment."
         )
     except Exception as e:
+        _record_breaker_failure(name)
         return f"Sorry, I ran into a problem: {e}"
+    else:
+        _record_breaker_success(name)
+        return result
+
+
+def _record_breaker_failure(name: str) -> None:
+    with _breaker_lock:
+        count = _breaker_failure_counts.get(name, 0) + 1
+        _breaker_failure_counts[name] = count
+        if count >= _BREAKER_FAILURE_THRESHOLD:
+            _breaker_open_until[name] = time.time() + _BREAKER_COOLDOWN_S
+            _breaker_failure_counts[name] = 0
+            logger.warning(
+                f"[CircuitBreaker] '{name}' tripped after {_BREAKER_FAILURE_THRESHOLD} "
+                f"consecutive failures, cooling down for {_BREAKER_COOLDOWN_S}s"
+            )
+
+
+def _record_breaker_success(name: str) -> None:
+    with _breaker_lock:
+        _breaker_failure_counts[name] = 0
+        _breaker_open_until.pop(name, None)
 
 
 def _shutdown_network_executor() -> None:

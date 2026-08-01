@@ -505,6 +505,13 @@ class Config:
     PROACTIVE_LLM_PHRASING: bool = _bool(
         os.getenv("PROACTIVE_LLM_PHRASING", "True"), default=True
     )
+    # Upcoming-meeting trigger (sara/tools/calendar.py + Google Calendar):
+    # gives a spoken heads-up this many minutes before a real calendar
+    # event is due — same shape as PROACTIVE_REMINDER_LEAD_MINUTES above,
+    # just backed by Google Calendar instead of Sara's own reminders table.
+    PROACTIVE_MEETING_LEAD_MINUTES: int = _int(
+        os.getenv("PROACTIVE_MEETING_LEAD_MINUTES"), default=15
+    )
 
     # ── Skills (sara/skills/) ─────────────────────────────────────────────
     # Daily Briefing (sara/skills/daily_briefing.py): combines weather +
@@ -606,6 +613,23 @@ class Config:
     DB_PATH: str = os.getenv("DB_PATH") or str(_PROJECT_ROOT / "sara_data.db")
     NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH") or str(
         _PROJECT_ROOT / "sara_notes.txt"
+    )
+
+    # ── Google Calendar (sara/tools/calendar.py) ─────────────────────────
+    # OAuth2 "installed app" flow. credentials.json (client_id + secret) is
+    # a PRE-REQUISITE the user generates themselves in Google Cloud Console
+    # and drops into the project root — this app never creates it. The
+    # first time calendar.py needs the API it opens a browser for one-time
+    # consent, then saves the resulting refresh token to token.json (also
+    # project root, same CWD-independent-path pattern as DB_PATH above) so
+    # every later call is silent. Both are safe to leave missing — calendar
+    # features simply report "not connected" instead of crashing (see
+    # sara/tools/calendar.py's get_calendar_service()).
+    GOOGLE_CALENDAR_CREDENTIALS_PATH: str = os.getenv(
+        "GOOGLE_CALENDAR_CREDENTIALS_PATH"
+    ) or str(_PROJECT_ROOT / "credentials.json")
+    GOOGLE_CALENDAR_TOKEN_PATH: str = os.getenv("GOOGLE_CALENDAR_TOKEN_PATH") or str(
+        _PROJECT_ROOT / "token.json"
     )
 
     @classmethod
@@ -840,6 +864,9 @@ class Config:
             5, min(600, cls.PROACTIVE_IDLE_BREAK_MINUTES)
         )
         cls.PROACTIVE_COOLDOWN_MINUTES = max(1, min(240, cls.PROACTIVE_COOLDOWN_MINUTES))
+        cls.PROACTIVE_MEETING_LEAD_MINUTES = max(
+            1, min(180, cls.PROACTIVE_MEETING_LEAD_MINUTES)
+        )
 
         # ── Notes Q&A clamps ─────────────────────────────────────────────────
         # A too-small chunk size would explode a modest notes folder into

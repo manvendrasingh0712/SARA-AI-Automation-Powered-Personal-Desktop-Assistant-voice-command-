@@ -103,6 +103,7 @@ requests==2.32.3
 beautifulsoup4==4.12.3
 duckduckgo_search==5.3.1  # Legacy-fallback, used only if the ddgs import below fails
 ddgs==9.14.4
+yt-dlp==2026.7.4  # Reliable YouTube video lookup for play_youtube (replaces HTML-scrape as primary path; scrape kept as fallback)
 
 # System tools
 psutil==5.9.8

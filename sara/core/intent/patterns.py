@@ -609,6 +609,42 @@ _INTENT_PATTERNS = [
         r"what(?:'?s| is) (?:the )?day today",
     ]),
 
+    # ── Google Calendar (sara/tools/calendar.py) ──────────────────────
+    # calendar_today MUST come before calendar_create in this list —
+    # "what's on my calendar today" would otherwise be swallowed by the
+    # looser calendar_create patterns below.
+    ("calendar_today", [
+        r"(?:what'?s|show|tell me) (?:on )?(?:my )?(?:calendar|schedule) (?:for )?today",
+        r"(?:what'?s|show|tell me) (?:my )?(?:calendar|schedule)$",
+        r"aaj (?:ka|ke) (?:schedule|calendar) (?:batao|dikhao)",
+        r"aaj kya (?:kya )?hai",
+        r"do i have (?:any )?meetings? today",
+        r"what meetings? do i have today",
+    ]),
+    ("calendar_create", [
+        # Title-first, explicit "called"/"named" right after the noun —
+        # e.g. "schedule a meeting called team sync for tomorrow at 5pm".
+        r"(?:set|schedule|create) (?:a |an )?meeting (?:called|named) (?P<title>.+?) (?:for|at|on) (?P<when>.+)",
+        r"(?:create|add|schedule) (?:a |an )?(?:calendar )?event (?:called|named) (?P<title>.+?) (?:for|at|on) (?P<when>.+)",
+        # When-first — "called" is the reliable anchor here regardless of
+        # whether "for"/"at"/"on" appears before the time phrase, so this
+        # correctly handles BOTH "...meeting for tomorrow at 5pm called X"
+        # AND "...meeting tomorrow at 5pm called X" (no "for") the same
+        # way: everything up to " called " is the when-text, everything
+        # after is the title. MUST come before the no-title fallbacks
+        # below, or a bare "for|at|on" split would wrongly grab part of
+        # the time phrase itself as the title (e.g. "tomorrow" instead of
+        # the real title, with "at 5pm" bleeding into the when-text).
+        r"(?:set|schedule|create) (?:a |an )?meeting (?:for|at|on )?(?P<when>.+?) called (?P<title>.+)",
+        r"(?:create|add|schedule) (?:a |an )?(?:calendar )?event (?:for|at|on )?(?P<when>.+?) called (?P<title>.+)",
+        # No title at all — handler defaults to "Meeting".
+        r"(?:set|schedule|create) (?:a |an )?meeting (?:for|at|on) (?P<when>.+)",
+        r"(?:create|add|schedule) (?:a |an )?(?:calendar )?event (?:for|at|on) (?P<when>.+)",
+        # Hinglish.
+        r"(?P<when>.+?) (?:baje|ko) meeting (?:set|schedule) karo(?: (?:naam|called) (?P<title>.+))?",
+        r"meeting (?:set|schedule) karo (?P<when>.+? baje)",
+    ]),
+
     # ── Proactive Transparency (explainable-AI: "why did you say that?") ──
     ("why_proactive", [
         r"why did you say (?:that|this)",
@@ -768,5 +804,7 @@ _INTENT_GATES = {
     "time_query": ("time",),
     "date_query": ("date", "day"),
     "why_proactive": ("why", "kyu", "kyun", "made you say", "explain"),
+    "calendar_today": ("calendar", "schedule", "aaj", "meeting"),
+    "calendar_create": ("meeting", "event", "baje", "calendar"),
     # calculator, open_app, close_app: no safe substring gate — always run.
 }
