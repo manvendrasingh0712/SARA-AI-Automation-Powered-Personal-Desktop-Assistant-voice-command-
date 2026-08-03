@@ -105,6 +105,15 @@ duckduckgo_search==5.3.1  # Legacy-fallback, used only if the ddgs import below 
 ddgs==9.14.4
 yt-dlp==2026.7.4  # Reliable YouTube video lookup for play_youtube (replaces HTML-scrape as primary path; scrape kept as fallback)
 
+# Google Calendar (sara/tools/calendar.py) — OAuth2 "installed app" flow +
+# Calendar API v3 client. credentials.json (from Google Cloud Console) is a
+# pre-requisite the user provides themselves; see config.py's
+# GOOGLE_CALENDAR_CREDENTIALS_PATH / GOOGLE_CALENDAR_TOKEN_PATH.
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.149.0
+
 # System tools
 psutil==5.9.8
 pycaw==20230407

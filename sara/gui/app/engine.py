@@ -9,6 +9,7 @@ from .settings import ApiSettingsMixin
 from .notes import ApiNotesMixin
 from .media import ApiMediaMixin
 from .setup_wizard import ApiSetupWizardMixin
+from .calendar_api import ApiCalendarMixin
 
 
 _MIXINS = (
@@ -18,6 +19,7 @@ _MIXINS = (
     ApiNotesMixin,
     ApiMediaMixin,
     ApiSetupWizardMixin,
+    ApiCalendarMixin,
 )
 
 

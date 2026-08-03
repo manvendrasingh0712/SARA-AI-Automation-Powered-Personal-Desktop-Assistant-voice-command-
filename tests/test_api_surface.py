@@ -80,6 +80,16 @@ _STUB_MODULES = [
     "google",
     "google.genai",
     "google.genai.types",
+    "google.auth",
+    "google.auth.transport",
+    "google.auth.transport.requests",
+    "google.oauth2",
+    "google.oauth2.credentials",
+    "google_auth_oauthlib",
+    "google_auth_oauthlib.flow",
+    "googleapiclient",
+    "googleapiclient.discovery",
+    "googleapiclient.errors",
     "nvidia",
     "nvidia.cudnn",
     "nvidia.cudnn.lib",
@@ -128,6 +138,8 @@ EXPECTED_METHODS = {
     "close_window",
     "cycle_repeat_mode",
     "delete_reminder",
+    "get_calendar_status",
+    "get_today_calendar_events",
     "export_memory",
     "get_assistant_active",
     "get_media_status",
@@ -169,8 +181,8 @@ EXPECTED_METHODS = {
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 44, (
-    "EXPECTED_METHODS must contain exactly 44 entries, found "
+assert len(EXPECTED_METHODS) == 46, (
+    "EXPECTED_METHODS must contain exactly 46 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

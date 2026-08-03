@@ -179,6 +179,10 @@ class ProactiveEngine:
         # on-time alarm in reminders.py still fires independently at the
         # real due time regardless of whether this heads-up ever ran.
         self._reminder_notified_ids: set = set()
+        # Same de-dupe idea, for the upcoming_meeting trigger below —
+        # keyed by (summary, start) since Google Calendar events don't
+        # have a stable id available cheaply from get_upcoming_events().
+        self._meeting_notified_keys: set = set()
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -224,6 +228,7 @@ class ProactiveEngine:
             return
         self._check_battery()
         self._check_upcoming_reminders()
+        self._check_upcoming_meetings()
         self._check_idle_break()
         self._check_streak_milestone()
 
@@ -334,6 +339,64 @@ class ProactiveEngine:
             self._speak_and_notify(template, icon="ti-alarm", color="#60a5fa",
                                     trigger="reminder", reason=reason)
             self._reminder_notified_ids.add(rid)
+
+    def _check_upcoming_meetings(self) -> None:
+        """
+        upcoming_meeting trigger -- reads real Google Calendar events via
+        sara/tools/calendar.py and gives a spoken heads-up if one is due
+        within Config.PROACTIVE_MEETING_LEAD_MINUTES. Exact same shape as
+        _check_upcoming_reminders() above (per-trigger gate, its own
+        de-dupe set, proactive_log entry) -- just backed by Google
+        Calendar instead of Sara's own reminders table.
+        """
+        if not self._trigger_enabled("meetings"):
+            return
+        try:
+            from sara.tools import calendar as calendar_tools
+
+            lead_minutes = int(getattr(Config, "PROACTIVE_MEETING_LEAD_MINUTES", 15))
+            upcoming = calendar_tools.get_upcoming_events(days=1)
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] meeting check failed: {e}")
+            return
+
+        now = time.time()
+        for event in upcoming:
+            summary = event.get("summary") or "a meeting"
+            start_iso = event.get("start", "")
+            if not start_iso:
+                continue
+            try:
+                from datetime import datetime
+
+                start_dt = datetime.fromisoformat(start_iso)
+                # Naive datetimes (all-day events use a date-only string
+                # that datetime.fromisoformat still parses, but with no
+                # tzinfo) are compared against a naive "now" below.
+                seconds_until = (
+                    start_dt.timestamp() - now
+                    if start_dt.tzinfo
+                    else (start_dt - datetime.now()).total_seconds()
+                )
+            except (ValueError, TypeError):
+                continue
+
+            if not (0 < seconds_until <= lead_minutes * 60):
+                continue
+
+            key = (summary, start_iso)
+            if key in self._meeting_notified_keys:
+                continue
+
+            template = f"Heads up, you've got '{summary}' in {lead_minutes} minutes."
+            reason = (
+                f"Your calendar event '{summary}' is due at {start_iso}, "
+                f"which is within the next {lead_minutes} minutes."
+            )
+            self._speak_and_notify(template, icon="ti-calendar-event", color="#34d399",
+                                    trigger="meeting", reason=reason)
+            self._meeting_notified_keys.add(key)
 
     def _check_idle_break(self) -> None:
         if not self._trigger_enabled("idle"):
