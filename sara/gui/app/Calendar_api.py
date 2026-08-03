@@ -9,7 +9,6 @@ from sara.tools import calendar as calendar_tools
 
 class ApiCalendarMixin:
 
-    # ── Settings page: is Google Calendar connected? ────────────────────
     def get_calendar_status(self):
         try:
             status = calendar_tools.get_calendar_status()
@@ -18,7 +17,6 @@ class ApiCalendarMixin:
             print(f"[get_calendar_status error] {e}")
             return {"ok": False, "data": {"connected": False, "email": None}}
 
-    # ── Settings page: today's events preview ───────────────────────────
     def get_today_calendar_events(self):
         try:
             events = calendar_tools.get_today_events()

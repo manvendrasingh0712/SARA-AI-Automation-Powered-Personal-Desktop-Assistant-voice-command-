@@ -104,6 +104,7 @@ class ApiSettingsMixin:
                 "setting:proactive_reminders",
                 "setting:proactive_idle",
                 "setting:proactive_streak",
+                "setting:proactive_meetings",
             ]
             data = {k: self.db.get_preference(k) for k in keys}
             return {"ok": True, "data": data}
