@@ -138,6 +138,7 @@ EXPECTED_METHODS = {
     "close_window",
     "cycle_repeat_mode",
     "delete_reminder",
+    "delete_routine",
     "get_calendar_status",
     "get_today_calendar_events",
     "export_memory",
@@ -147,6 +148,7 @@ EXPECTED_METHODS = {
     "get_notes",
     "get_proactive_stats",
     "get_reminders",
+    "get_routine",
     "get_setup_wizard_seen",
     "get_notes_status",
     "get_share_card_data",
@@ -154,11 +156,14 @@ EXPECTED_METHODS = {
     "get_system_stats",
     "get_ui_settings",
     "get_weather",
+    "list_routines",
     "mark_setup_wizard_seen",
     "minimize_window",
     "run_action",
+    "run_routine_now",
     "run_setup_fix",
     "save_note",
+    "save_routine",
     "seek_media",
     "send_text_command",
     "set_assistant_active",
@@ -181,8 +186,8 @@ EXPECTED_METHODS = {
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 46, (
-    "EXPECTED_METHODS must contain exactly 46 entries, found "
+assert len(EXPECTED_METHODS) == 51, (
+    "EXPECTED_METHODS must contain exactly 51 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 
@@ -227,7 +232,8 @@ class ApiSurfaceTests(unittest.TestCase):
             "mark_setup_wizard_seen vanished when engine.py was replaced "
             "by an older version) -- check the mixin list in engine.py "
             "and the mixin source files (core.py / reminders.py / "
-            "settings.py / notes.py / media.py / setup_wizard.py).",
+            "settings.py / notes.py / media.py / setup_wizard.py / "
+            "calendar_api.py / routines_api.py).",
         )
 
     def test_no_unexpected_extra_methods(self):

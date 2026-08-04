@@ -10,6 +10,7 @@ the newer, in-use version); sara/tools/database.py has been removed.
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import sqlite3
@@ -128,6 +129,11 @@ class PreferencesDB:
                 message   TEXT    NOT NULL,
                 reason    TEXT    NOT NULL,
                 timestamp TEXT    NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS routines (
+                name       TEXT    PRIMARY KEY,
+                definition TEXT    NOT NULL,
+                enabled    INTEGER NOT NULL DEFAULT 1
             );
             """)
 
@@ -551,6 +557,148 @@ class PreferencesDB:
             logger.error("get_conversation_stats: %s", e)
             print(f"[Error] get_conversation_stats: {e}")
             return {"total_messages": 0, "first_message_date": None}
+
+    # ── Routines (Automation) ─────────────────────────────────────────────
+    # Backs sara/core/routines.py's run_routine(), the "run <name> routine"
+    # voice intent (sara/orchestrator/intent_handlers.py's _h_run_routine),
+    # the scheduled auto-trigger (sara/orchestrator/proactive.py), and the
+    # Settings > Routines page (sara/gui/app/routines_api.py). `definition`
+    # stores the FULL routine dict (name/label/steps/trigger_time) as JSON
+    # so its shape can grow later without a schema migration.
+
+    def save_routine(self, name: str, definition: dict, wait: bool = True) -> bool:
+        """Inserts or updates a routine by name. `definition` is the full routine dict."""
+        self._validate_key(name)
+        if not isinstance(definition, dict):
+            raise TypeError(
+                f"Routine definition must be a dict; got {type(definition).__name__!r}."
+            )
+
+        try:
+            payload = json.dumps(definition)
+        except (TypeError, ValueError) as e:
+            logger.error("save_routine('%s'): definition not JSON-serializable: %s", name, e)
+            print(f"[Error] save_routine('{name}'): definition not JSON-serializable: {e}")
+            return False
+
+        def _do(conn: sqlite3.Connection) -> bool:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO routines (name, definition, enabled) VALUES (?, ?, 1)
+                    ON CONFLICT(name) DO UPDATE SET definition = excluded.definition
+                    """,
+                    (name, payload),
+                )
+                conn.commit()
+                return True
+            except sqlite3.Error as e:
+                conn.rollback()
+                logger.error("save_routine('%s'): %s", name, e)
+                print(f"[Error] save_routine('{name}'): {e}")
+                return False
+
+        return self._submit_write(_do, wait=wait)
+
+    def get_routine(self, name: str) -> Optional[dict]:
+        """Returns the routine's definition dict (with 'name'/'enabled' merged in), or None."""
+        self._validate_key(name)
+        if self._closed:
+            return None
+        try:
+            conn = self._get_read_conn()
+            cursor = conn.execute(
+                "SELECT definition, enabled FROM routines WHERE name = ?", (name,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            try:
+                definition = json.loads(row[0])
+            except (TypeError, ValueError) as e:
+                logger.error("get_routine('%s'): stored definition is not valid JSON: %s", name, e)
+                return None
+            definition["name"] = name
+            definition["enabled"] = bool(row[1])
+            return definition
+        except sqlite3.Error as e:
+            logger.error("get_routine('%s'): %s", name, e)
+            print(f"[Error] get_routine('{name}'): {e}")
+            return None
+
+    def delete_routine(self, name: str, wait: bool = True) -> bool:
+        """Deletes a routine by name. Returns True if a row was deleted."""
+        self._validate_key(name)
+
+        def _do(conn: sqlite3.Connection) -> bool:
+            try:
+                cursor = conn.execute("DELETE FROM routines WHERE name = ?", (name,))
+                conn.commit()
+                return cursor.rowcount > 0
+            except sqlite3.Error as e:
+                conn.rollback()
+                logger.error("delete_routine('%s'): %s", name, e)
+                print(f"[Error] delete_routine('{name}'): {e}")
+                return False
+
+        return self._submit_write(_do, wait=wait)
+
+    def list_routines(self) -> list[dict]:
+        """Returns every saved routine's definition dict (see get_routine)."""
+        if self._closed:
+            return []
+        try:
+            conn = self._get_read_conn()
+            cursor = conn.execute("SELECT name, definition, enabled FROM routines")
+            out: list[dict] = []
+            for r_name, r_def, r_enabled in cursor.fetchall():
+                try:
+                    definition = json.loads(r_def)
+                except (TypeError, ValueError) as e:
+                    logger.error("list_routines: bad JSON for '%s': %s", r_name, e)
+                    continue
+                definition["name"] = r_name
+                definition["enabled"] = bool(r_enabled)
+                out.append(definition)
+            return out
+        except sqlite3.Error as e:
+            logger.error("list_routines: %s", e)
+            print(f"[Error] list_routines: {e}")
+            return []
+
+    def set_routine_enabled(self, name: str, enabled: bool, wait: bool = True) -> bool:
+        """Toggles a routine's enabled flag (Settings page switch / auto-trigger gate)."""
+        self._validate_key(name)
+
+        def _do(conn: sqlite3.Connection) -> bool:
+            try:
+                cursor = conn.execute(
+                    "UPDATE routines SET enabled = ? WHERE name = ?",
+                    (1 if enabled else 0, name),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+            except sqlite3.Error as e:
+                conn.rollback()
+                logger.error("set_routine_enabled('%s'): %s", name, e)
+                print(f"[Error] set_routine_enabled('{name}'): {e}")
+                return False
+
+        return self._submit_write(_do, wait=wait)
+
+    def get_routine_last_run_date(self, name: str) -> Optional[str]:
+        """
+        Per-routine 'already ran today' marker for the scheduled-trigger
+        auto-run (sara/orchestrator/proactive.py) -- same idempotent-per-day
+        shape as record_interaction_day()'s streak tracking above, just
+        keyed per routine instead of globally. Stored as a plain preference
+        (no new table needed) under "routine_last_run:<name>".
+        """
+        return self.get_preference(f"routine_last_run:{name}")
+
+    def set_routine_last_run_date(self, name: str, iso_date: str, wait: bool = False) -> bool:
+        """Fire-and-forget by default -- called right after a scheduled routine runs."""
+        return self.set_preference(f"routine_last_run:{name}", iso_date, wait=wait)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 

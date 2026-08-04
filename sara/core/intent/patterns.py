@@ -659,6 +659,22 @@ _INTENT_PATTERNS = [
         r"vo kyu(?:n)? bola tha",
     ]),
 
+    # ── Routines (Automation) — MUST come before open_app below.
+    #    open_app's catch-all "run (...)"/"start (...)" patterns are
+    #    deliberately broad (no gate) and WILL swallow "run good morning
+    #    routine" as an app-launch request ("good morning routine") if
+    #    checked first — same ordering hazard the open_url comment below
+    #    already warns about. ────────────────────────────────────────
+    ("run_routine", [
+        r"run (?:my |the )?(.+?) routine\b",
+        r"start (?:my |the )?(.+?) routine\b",
+        r"kick off (?:my |the )?(.+?) routine\b",
+        r"trigger (?:my |the )?(.+?) routine\b",
+        r"(.+?) routine chalao",
+        r"routine (.+?) chalao",
+        r"chalao (?:mera )?(.+?) routine",
+    ]),
+
     # ── Apps — open_app MUST come after open_url AND after all the
     #    specific open_* folder/settings/shell intents above ──────────
     # Matches "open <word>" where the word is NOT a URL (no dot+TLD).
@@ -685,6 +701,7 @@ _INTENT_PATTERNS = [
 # missed match. Intents not listed here (calculator, open_app, close_app)
 # have no safe substring gate and are always attempted.
 _INTENT_GATES = {
+    "run_routine": ("routine",),
     "reminder_add": ("remind", "reminder", "alert"),
     "reminder_list": ("reminder",),
     "reminder_cancel": ("reminder",),
