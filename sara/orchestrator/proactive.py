@@ -51,6 +51,7 @@ else in this codebase.
 
 import threading
 import time
+from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 
 from config import Config
@@ -231,6 +232,7 @@ class ProactiveEngine:
         self._check_upcoming_meetings()
         self._check_idle_break()
         self._check_streak_milestone()
+        self._check_scheduled_routine()
 
     # ------------------------------------------------------------
     # Gating — respects focus mode, pause state, and the Settings toggles
@@ -260,8 +262,8 @@ class ProactiveEngine:
         """
         Per-trigger sub-gate — checked inside each individual trigger's
         own check function, on top of _enabled_now() above. `key` is one
-        of "battery", "reminders", "idle", "streak" and maps to the
-        Settings page preference "setting:proactive_<key>".
+        of "battery", "reminders", "meetings", "idle", "streak", "routines"
+        and maps to the Settings page preference "setting:proactive_<key>".
 
         Same defaulting rule as the master toggle: missing (None) means
         the default, which is enabled — only an explicit "0" disables
@@ -397,6 +399,127 @@ class ProactiveEngine:
             self._speak_and_notify(template, icon="ti-calendar-event", color="#34d399",
                                     trigger="meeting", reason=reason)
             self._meeting_notified_keys.add(key)
+
+    def _check_scheduled_routine(self) -> None:
+        """
+        "scheduled_routine" trigger — every tick, scans every saved,
+        enabled routine (sara/core/routines.py) that has a `trigger_time`
+        set, and runs any whose target time falls within +-1 minute of
+        now AND hasn't already run today (tracked per-routine via
+        PreferencesDB.get/set_routine_last_run_date — same idempotent-
+        per-day shape as the streak trigger's own per-day tracking).
+        Reuses run_routine() as-is; does not run on its own thread — a
+        slow/blocking step inside a scheduled routine simply delays this
+        tick like any other trigger's work would.
+        """
+        if not self._trigger_enabled("routines"):
+            return
+        if self._db is None or not hasattr(self._db, "list_routines"):
+            return
+
+        try:
+            all_routines = self._db.list_routines()
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] list_routines failed: {e}")
+            return
+
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+
+        for routine in all_routines:
+            if not routine.get("enabled", True):
+                continue
+            name = routine.get("name")
+            trigger_time = routine.get("trigger_time")
+            if not name or not trigger_time:
+                continue
+
+            try:
+                hh, mm = trigger_time.split(":")
+                target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+            except (ValueError, AttributeError, TypeError):
+                if _DEBUG:
+                    print(f"[Proactive] routine '{name}' has a bad trigger_time {trigger_time!r}")
+                continue
+
+            if abs((now - target).total_seconds()) > 60:
+                continue
+
+            try:
+                last_run = self._db.get_routine_last_run_date(name)
+            except Exception:
+                last_run = None
+            if last_run == today:
+                continue
+
+            self._run_scheduled_routine(name, routine.get("label") or name, today)
+
+    def _run_scheduled_routine(self, name: str, label: str, today: str) -> None:
+        # Imported lazily to avoid a module-load-time dependency cycle --
+        # sara.core.routines itself only imports sara.orchestrator.
+        # intent_handlers lazily, inside its own functions, for the same
+        # reason (see routines.py's module docstring).
+        from sara.core import routines
+
+        ctx = {
+            "brain": None,
+            "tts": self._tts,
+            "ears": None,
+            "db": self._db,
+            "reminders": self._reminders,
+            "vision": None,
+            "ui_update": self._ui_update,
+            "volume_state": {},
+            "playback_state": {},
+            "confirm_state": {},
+            "user_input": f"[scheduled routine: {name}]",
+            "notes_memory": None,
+        }
+
+        try:
+            outcomes = routines.run_routine(name, ctx)
+        except Exception as e:  # noqa: BLE001 — one bad routine must never kill the proactive thread
+            print(f"[Proactive] scheduled routine '{name}' failed: {e}")
+            return
+
+        # run_routine() already speaks every step in order, as it runs
+        # (see its module docstring) -- just surface each one in the
+        # transcript here, same as every other trigger's ui_update push.
+        for outcome in outcomes:
+            text = outcome.get("text")
+            if not text:
+                continue
+            try:
+                self._ui_update("transcript", "sara", text)
+            except Exception as e:
+                print(f"[Proactive] ui_update failed for routine step: {e}")
+
+        try:
+            self._ui_update(
+                "proactive_notification", "ti-player-play", "#34d399",
+                f"Ran your '{label}' routine.", "routine",
+            )
+        except Exception as e:
+            print(f"[Proactive] ui_update (notification) failed: {e}")
+
+        try:
+            if hasattr(self._db, "log_proactive_event"):
+                # Fire-and-forget (wait=False) — logging must never add
+                # latency to the routine itself.
+                self._db.log_proactive_event(
+                    "routine", f"Ran '{label}' routine.",
+                    f"Scheduled trigger time reached for routine '{name}'.",
+                    wait=False,
+                )
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] log_proactive_event failed: {e}")
+
+        try:
+            self._db.set_routine_last_run_date(name, today, wait=False)
+        except Exception as e:
+            print(f"[Proactive] set_routine_last_run_date('{name}') failed: {e}")
 
     def _check_idle_break(self) -> None:
         if not self._trigger_enabled("idle"):
