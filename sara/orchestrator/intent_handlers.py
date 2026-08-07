@@ -3,6 +3,28 @@ sara.orchestrator.intent_handlers
 One small handler per fast-path regex intent (reminders, notes, clipboard,
 weather/news/web, system control, calculator, ...) plus _handle_command(),
 the dispatcher that routes a detected intent to its handler.
+
+PLANNING ENGINE INTEGRATION (sara.core.planning)
+---------------------------------------------------
+_handle_command() now attempts a bounded multi-step plan (via
+try_plan_and_execute()) for "chat"-intent messages, BEFORE falling back
+to the existing single-tool resolve_tool_call() path. This only engages
+when sara.core.planning.trigger.should_attempt_plan() detects a genuine
+multi-action signal in the message -- a single-tool request is
+completely unaffected and takes the exact same path it always has, with
+zero added latency.
+
+SECURITY HARDENING (open_url / open_app / close_app)
+--------------------------------------------------------
+_h_open_url(), _h_open_app(), and _h_close_app() now validate their
+arguments through sara.core.planning.schema.validate_tool_arguments()
+before calling the real tool function -- this closes the gap where the
+fast-path regex capture alone had no scheme allowlist (open_url) or
+application allowlist (open_app/close_app) enforcement. See
+sara/core/planning/schema.py's module docstring for the full rationale.
+This applies uniformly whether the tool was reached via the fast-path
+regex matcher, the LLM single-tool resolver, or a multi-step plan --
+all three converge on these same three handler functions.
 """
 from .calc_utils import _safe_calc, _parse_duration_to_seconds
 from .network_utils import _call_with_timeout
@@ -64,6 +86,33 @@ except Exception as _tool_router_import_err:  # noqa: BLE001
     print(
         f"[Core] sara.core.tool_router unavailable, LLM tool-calling fallback "
         f"disabled: {_tool_router_import_err}"
+    )
+
+# NEW: multi-step planning engine (sara/core/planning/) -- optional,
+# additive, same "never break startup" contract as RAG/tool_router
+# above. If this fails to import for any reason, _handle_command() below
+# simply never attempts a plan and behaves exactly as it did before this
+# feature existed.
+try:
+    from sara.core.planning import try_plan_and_execute
+    from sara.core.planning.schema import (
+        PlanValidationError,
+        validate_tool_arguments,
+    )
+
+    _HAS_PLANNING = True
+except Exception as _planning_import_err:  # noqa: BLE001
+    try_plan_and_execute = None
+    validate_tool_arguments = None
+
+    class PlanValidationError(Exception):  # type: ignore[no-redef]
+        """Sentinel fallback so isinstance/except checks below never crash
+        when sara.core.planning failed to import."""
+
+    _HAS_PLANNING = False
+    print(
+        f"[Core] sara.core.planning unavailable, multi-step planning "
+        f"disabled (single-tool routing is unaffected): {_planning_import_err}"
     )
 
 # ----------------------------------------------------------------------------
@@ -432,10 +481,35 @@ def _h_summarize_url(match, ctx):
 
 
 def _h_open_url(match, ctx):
+    """
+    Opens a URL captured by the open_url fast-path regex (or resolved by
+    the LLM single-tool router, or proposed by a multi-step plan -- all
+    three converge here).
+
+    SECURITY HARDENING: the captured URL is validated via
+    sara.core.planning.schema.validate_tool_arguments() before being
+    passed to web_tools.open_url() -- only http:// and https:// schemes
+    are ever allowed through; javascript:/data:/file:/vbscript:/etc. are
+    rejected with a clear spoken message instead of being opened. If
+    sara.core.planning failed to import (_HAS_PLANNING is False), this
+    degrades to the original unvalidated behavior rather than crashing
+    -- matching this codebase's "optional feature missing must never
+    break the app" convention.
+    """
     if not match:
         return None
+    raw_url = match.group(1)
+    if _HAS_PLANNING and validate_tool_arguments is not None:
+        try:
+            validated = validate_tool_arguments("open_url", {"url": raw_url})
+            raw_url = validated["url"]
+        except PlanValidationError as e:
+            return _quick(ctx, str(e))
+        except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
+            print(f"[Security] open_url validation raised unexpectedly: {e}")
+            return _quick(ctx, "Sorry, I couldn't safely open that link.")
     _ack(ctx)
-    return _quick(ctx, web_tools.open_url(match.group(1)))
+    return _quick(ctx, web_tools.open_url(raw_url))
 
 
 def _h_calculator(match, ctx):
@@ -499,21 +573,79 @@ def _h_unmute(match, ctx):
 
 
 def _h_open_app(match, ctx):
+    """
+    Launches an application captured by the open_app fast-path regex (or
+    resolved by the LLM single-tool router, or proposed by a multi-step
+    plan -- all three converge here).
+
+    SECURITY HARDENING: the captured application name is validated
+    against Config.APP_LAUNCH_ALLOWLIST via
+    sara.core.planning.schema.validate_tool_arguments() before being
+    passed to system_tools.open_application() -- an unrecognized
+    application name is rejected with a clear spoken message instead of
+    being launched. Set Config.APP_LAUNCH_ALLOWLIST_ENABLED=False to
+    disable this enforcement entirely (not recommended). If
+    sara.core.planning failed to import, this degrades to the original
+    unvalidated behavior rather than crashing.
+    """
     if not match:
         return None
+    target = match.group(1).strip()
+    if _HAS_PLANNING and validate_tool_arguments is not None:
+        try:
+            allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
+            allowlist_enabled = getattr(Config, "APP_LAUNCH_ALLOWLIST_ENABLED", True)
+            validated = validate_tool_arguments(
+                "open_app",
+                {"target": target},
+                allowed_apps=allowed_apps,
+                app_allowlist_enabled=allowlist_enabled,
+            )
+            target = validated["target"]
+        except PlanValidationError as e:
+            return _quick(ctx, str(e))
+        except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
+            print(f"[Security] open_app validation raised unexpectedly: {e}")
+            return _quick(ctx, "Sorry, I couldn't safely open that application.")
     _ack(ctx)
     return _quick(
         ctx,
         _call_with_timeout(
-            system_tools.open_application, match.group(1).strip(), tool_name="open_application"
+            system_tools.open_application, target, tool_name="open_application"
         ),
     )
 
 
 def _h_close_app(match, ctx):
+    """
+    Closes an application captured by the close_app fast-path regex (or
+    resolved by the LLM single-tool router, or proposed by a multi-step
+    plan -- all three converge here).
+
+    SECURITY HARDENING: same allowlist validation as _h_open_app() above,
+    applied BEFORE the existing risky-app confirmation flow -- an
+    unrecognized application is rejected outright rather than reaching
+    the "are you sure?" prompt at all.
+    """
     if not match:
         return None
     app_name = match.group(1).strip()
+    if _HAS_PLANNING and validate_tool_arguments is not None:
+        try:
+            allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
+            allowlist_enabled = getattr(Config, "APP_LAUNCH_ALLOWLIST_ENABLED", True)
+            validated = validate_tool_arguments(
+                "close_app",
+                {"target": app_name},
+                allowed_apps=allowed_apps,
+                app_allowlist_enabled=allowlist_enabled,
+            )
+            app_name = validated["target"]
+        except PlanValidationError as e:
+            return _quick(ctx, str(e))
+        except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
+            print(f"[Security] close_app validation raised unexpectedly: {e}")
+            return _quick(ctx, "Sorry, I couldn't safely close that application.")
     if _is_risky(app_name, _RISKY_APP_KEYWORDS):
         ctx["confirm_state"]["pending"] = {
             "action": "close_app",
@@ -845,6 +977,47 @@ except Exception as _skills_import_err:  # noqa: BLE001
     print(f"[Core] sara.skills unavailable, plugin skills disabled: {_skills_import_err}")
 
 
+def _build_plan_dispatch_fn(ctx: dict):
+    """
+    Builds the DispatchFn callback sara.core.planning.try_plan_and_execute()
+    needs to actually execute a proposed plan's steps.
+
+    Kept as its own small factory (rather than inlined in _handle_command
+    below) so its contract is easy to unit-test in isolation: given a
+    tool name from TOOL_NAME_TO_INTENT and a validated arguments dict, it
+    builds a fake regex match via tool_router.build_fake_match() (the
+    exact same mechanism the existing single-tool LLM resolver already
+    uses) and calls the matching entry in _INTENT_HANDLERS -- i.e. a
+    planned step reaches the real tool function through IDENTICAL code
+    to a fast-path or single-tool-resolved command. There is no separate
+    "plan execution" code path for the tool functions themselves; only
+    the decision of WHICH tools to call and in WHAT order is new.
+
+    Raises RuntimeError (never returns None) on any failure -- the
+    executor in sara.core.planning.executor treats any raised exception
+    from this callback identically to a tool function raising directly,
+    triggering its existing retry/skip/partial-success logic.
+    """
+
+    def _dispatch(tool_name: str, tool_args: dict) -> str:
+        mapped_intent = TOOL_NAME_TO_INTENT.get(tool_name)
+        if not mapped_intent:
+            raise RuntimeError(f"Unknown tool '{tool_name}' -- no mapped intent.")
+        tool_handler = _INTENT_HANDLERS.get(mapped_intent)
+        if tool_handler is None:
+            raise RuntimeError(f"No handler registered for intent '{mapped_intent}'.")
+        fake_match = build_fake_match(tool_name, tool_args)
+        result = tool_handler(fake_match, ctx)
+        if result is None:
+            raise RuntimeError(
+                f"Handler for intent '{mapped_intent}' (tool '{tool_name}') "
+                f"returned no result."
+            )
+        return result
+
+    return _dispatch
+
+
 def _handle_command(
     user_input,
     brain,
@@ -941,6 +1114,46 @@ def _handle_command(
             return _quick(
                 ctx, "Sorry, I ran into a problem with that. Let's try something else."
             )
+
+    # ── Multi-step planning engine ──────────────────────────────────────
+    # Only attempted for "chat"-intent messages (the fast-path regex
+    # matcher above found nothing), and only actually engages an LLM
+    # call if sara.core.planning.trigger.should_attempt_plan() detects a
+    # genuine multi-action signal -- see that module's docstring for the
+    # exact trigger conditions. A single-tool "chat" message costs
+    # nothing extra here: should_attempt_plan() is a pure string check
+    # that returns False before any LLM call is even considered, and
+    # execution falls straight through to the existing
+    # resolve_tool_call() block below, completely unchanged.
+    #
+    # try_plan_and_execute() NEVER raises (see its own docstring) -- the
+    # try/except here is a second, redundant safety net purely so a
+    # hypothetical future bug in that contract can never escalate into
+    # killing the whole voice loop thread, matching the same defensive
+    # posture as the resolve_tool_call() block immediately below it.
+    if (
+        intent == "chat"
+        and _HAS_PLANNING
+        and try_plan_and_execute is not None
+        and getattr(Config, "PLANNING_ENABLED", True)
+    ):
+        try:
+            allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
+            plan_outcome = try_plan_and_execute(
+                user_input,
+                brain.model_name,
+                _build_plan_dispatch_fn(ctx),
+                Config,
+                allowed_apps=allowed_apps,
+            )
+            if plan_outcome is not None:
+                return _quick(ctx, plan_outcome.final_message)
+        except Exception as e:  # noqa: BLE001 -- absolute safety net
+            print(f"[Planning] Multi-step plan attempt failed unexpectedly: {e}")
+            # Deliberately falls through to the single-tool path below
+            # rather than returning an error to the user -- a planning
+            # bug should degrade to "handled like a single-tool request"
+            # wherever that's still possible, not surface as a failure.
 
     if (
         intent == "chat"

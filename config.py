@@ -39,6 +39,14 @@ PRODUCTION-AUDIT CHANGES (this revision)
    files. All modules that touch the shared SQLite DB or the notes file
    should now import DB_PATH / NOTES_FILE_PATH from here instead of
    computing their own path.
+8. NEW (multi-step planning engine): added PLANNING_* settings backing
+   sara/core/planning/ (the bounded multi-step tool-chaining planner) and
+   APP_LAUNCH_ALLOWLIST* settings backing the open_app/close_app/open_url
+   security hardening in sara/core/planning/schema.py. Both blocks follow
+   this file's existing typed-attribute + clamp + debug-print convention
+   exactly, and both are fully backward compatible: every new setting has
+   a safe default, so an existing .env file with none of these keys set
+   continues to work identically to before this revision.
 """
 
 import os
@@ -179,7 +187,37 @@ _MAX_LLM_WARMUP_WAIT_S = 120.0
 _MIN_GEMINI_HISTORY_TOKENS = 1_000
 _MAX_GEMINI_HISTORY_TOKENS = 200_000
 
+# ── New bounds for the multi-step planning engine ───────────────────────
+_MIN_PLANNING_MAX_STEPS = 2
+_MAX_PLANNING_MAX_STEPS = 8
 
+_MIN_PLANNING_STEP_TIMEOUT_S = 1.0
+_MAX_PLANNING_STEP_TIMEOUT_S = 15.0
+
+_MIN_PLANNING_TOTAL_TIMEOUT_S = 2.0
+_MAX_PLANNING_TOTAL_TIMEOUT_S = 30.0
+
+# ── Default application allowlist (used when APP_LAUNCH_ALLOWLIST is
+# unset/empty in .env) — common everyday Windows desktop apps. Extend via
+# .env, never edit this default list to add a one-off app for a single
+# install.
+_DEFAULT_APP_LAUNCH_ALLOWLIST = (
+    "chrome,firefox,edge,brave,opera,"
+    "notepad,notepad++,wordpad,"
+    "calculator,calc,"
+    "spotify,"
+    "vscode,code,visual studio code,"
+    "explorer,file explorer,"
+    "word,excel,powerpoint,outlook,onenote,"
+    "paint,paint3d,"
+    "discord,slack,teams,zoom,skype,"
+    "steam,epic games,"
+    "vlc,windows media player,"
+    "task manager,taskmgr,"
+    "settings,control panel,"
+    "terminal,command prompt,cmd,powershell,windows terminal,"
+    "whatsapp,telegram"
+)
 
 
 WAKE_ACK_PHRASE = "Yes?"
@@ -593,6 +631,75 @@ class Config:
     # avoid the extra Ollama round-trip on every unmatched command.
     TOOL_CALLING_MODE: str = os.getenv("TOOL_CALLING_MODE", "llm").lower()
 
+    # ── Multi-step planning engine (sara/core/planning/) ────────────────────
+    # Sits between the fast-path regex matcher and tool execution — only
+    # activates for "chat"-intent messages that show signs of needing more
+    # than one action (see sara/core/planning/trigger.py's cheap gate).
+    # Makes ONE bounded LLM call to propose a full ordered step sequence,
+    # then executes it with per-step + total-plan timeouts and one bounded
+    # self-correction retry per failed step. Falls back cleanly to today's
+    # single-tool sara.core.tool_router.resolve_tool_call() path if this is
+    # disabled, if the trigger gate declines, or if planning itself
+    # fails/times out for any reason -- never a regression below existing
+    # behavior. See sara/core/planning/__init__.py's try_plan_and_execute()
+    # for the full contract.
+    PLANNING_ENABLED: bool = _bool(os.getenv("PLANNING_ENABLED", "True"), default=True)
+    # Hard cap on how many steps a single plan may contain, protecting
+    # against a hallucinating local model proposing a runaway plan.
+    PLANNING_MAX_STEPS: int = _int(os.getenv("PLANNING_MAX_STEPS"), default=4)
+    # Bounds EACH individual step dispatch attempt (and each correction
+    # call). Defaults to match TOOL_CALLING_TIMEOUT_S's spirit -- kept as
+    # its own setting so planning-specific tuning never has to touch the
+    # single-tool path's timeout.
+    PLANNING_STEP_TIMEOUT_S: float = _float(
+        os.getenv("PLANNING_STEP_TIMEOUT_S"), default=3.0
+    )
+    # Independent wall-clock budget for the WHOLE plan (proposal +
+    # every step + every retry combined) -- prevents N steps at their
+    # individual timeout from silently summing to an unacceptable total
+    # wait. Must be >= PLANNING_STEP_TIMEOUT_S (enforced in validate()).
+    PLANNING_TOTAL_TIMEOUT_S: float = _float(
+        os.getenv("PLANNING_TOTAL_TIMEOUT_S"), default=6.0
+    )
+    # When a step fails (unknown tool at dispatch time, raised exception,
+    # or timeout), the model is shown the real error and given ONE chance
+    # to correct that single step's arguments before it's marked failed.
+    # Set to False to skip this and mark a failed step failed immediately
+    # (saves one bounded LLM call per failure, at the cost of a lower
+    # recovery rate for transient/malformed-argument failures).
+    PLANNING_STEP_RETRY_ENABLED: bool = _bool(
+        os.getenv("PLANNING_STEP_RETRY_ENABLED", "True"), default=True
+    )
+
+    # ── Application launch allowlist (sara/core/planning/schema.py) ─────────
+    # Hardens open_app/close_app (both the existing single-tool fast path
+    # AND anything the planner proposes) against launching or closing an
+    # application that isn't explicitly recognized. Comma-separated list
+    # of app name/alias substrings, case-insensitive, matched in either
+    # direction ("chrome" matches a request for "google chrome" and vice
+    # versa). A sensible default list of common desktop apps ships built
+    # in (see _DEFAULT_APP_LAUNCH_ALLOWLIST above) so a fresh install is
+    # protected out of the box without requiring .env configuration first.
+    #
+    # Setting APP_LAUNCH_ALLOWLIST_ENABLED=false disables enforcement
+    # entirely (open_app/close_app accept any target) -- an explicit,
+    # deliberate opt-out for installs that want the old unrestricted
+    # behavior back. NOT recommended: see schema.py's validate_app_target()
+    # docstring for why an *enabled* allowlist that ends up empty always
+    # rejects rather than silently permitting everything (the safer
+    # failure direction), which is a different situation from this
+    # explicit disable switch.
+    APP_LAUNCH_ALLOWLIST_ENABLED: bool = _bool(
+        os.getenv("APP_LAUNCH_ALLOWLIST_ENABLED", "True"), default=True
+    )
+    APP_LAUNCH_ALLOWLIST: list = [
+        w.strip().lower()
+        for w in os.getenv(
+            "APP_LAUNCH_ALLOWLIST", _DEFAULT_APP_LAUNCH_ALLOWLIST
+        ).split(",")
+        if w.strip()
+    ]
+
     # ── Shared file paths (CWD-independent — resolved from this file's own
     # location, i.e. the project root, NOT os.getcwd()) ─────────────────────
     # PRODUCTION-AUDIT FIX: database.py, reminders.py, and system.py each
@@ -843,12 +950,59 @@ class Config:
 
         # ── Tool-calling clamps ─────────────────────────────────────────────
         cls.TOOL_CALLING_TIMEOUT_S = max(1.0, min(15.0, cls.TOOL_CALLING_TIMEOUT_S))
-        
+
         if cls.TOOL_CALLING_MODE not in ("llm", "heuristic"):
             print(
                 f"[Warning] Unknown TOOL_CALLING_MODE '{cls.TOOL_CALLING_MODE}', defaulting to 'llm'."
             )
             cls.TOOL_CALLING_MODE = "llm"
+
+        # ── Planning engine clamps ───────────────────────────────────────────
+        cls.PLANNING_MAX_STEPS = max(
+            _MIN_PLANNING_MAX_STEPS, min(_MAX_PLANNING_MAX_STEPS, cls.PLANNING_MAX_STEPS)
+        )
+        cls.PLANNING_STEP_TIMEOUT_S = max(
+            _MIN_PLANNING_STEP_TIMEOUT_S,
+            min(_MAX_PLANNING_STEP_TIMEOUT_S, cls.PLANNING_STEP_TIMEOUT_S),
+        )
+        # PLANNING_TOTAL_TIMEOUT_S must never be smaller than a single
+        # step's own timeout -- a total budget shorter than one step's
+        # bound would make even a 1-step plan unable to finish within its
+        # own total window. Clamped to the wider of (its own configured
+        # value, the step timeout) before applying the absolute ceiling.
+        cls.PLANNING_TOTAL_TIMEOUT_S = max(
+            cls.PLANNING_STEP_TIMEOUT_S,
+            min(_MAX_PLANNING_TOTAL_TIMEOUT_S, cls.PLANNING_TOTAL_TIMEOUT_S),
+        )
+        cls.PLANNING_TOTAL_TIMEOUT_S = max(
+            _MIN_PLANNING_TOTAL_TIMEOUT_S, cls.PLANNING_TOTAL_TIMEOUT_S
+        )
+
+        # ── Application launch allowlist normalization ───────────────────────
+        # Deduplicate while preserving first-seen order (a user might list
+        # "chrome" twice across a base .env and a local override) and drop
+        # any empty entries that could slip through a trailing comma.
+        if cls.APP_LAUNCH_ALLOWLIST:
+            seen: set[str] = set()
+            deduped: list[str] = []
+            for entry in cls.APP_LAUNCH_ALLOWLIST:
+                normalized_entry = entry.strip().lower()
+                if normalized_entry and normalized_entry not in seen:
+                    seen.add(normalized_entry)
+                    deduped.append(normalized_entry)
+            cls.APP_LAUNCH_ALLOWLIST = deduped
+
+        if cls.APP_LAUNCH_ALLOWLIST_ENABLED and not cls.APP_LAUNCH_ALLOWLIST:
+            print(
+                "[Warning] APP_LAUNCH_ALLOWLIST_ENABLED is True but "
+                "APP_LAUNCH_ALLOWLIST is empty -- falling back to the built-in "
+                "default app list so open_app/close_app remain usable."
+            )
+            cls.APP_LAUNCH_ALLOWLIST = [
+                w.strip().lower()
+                for w in _DEFAULT_APP_LAUNCH_ALLOWLIST.split(",")
+                if w.strip()
+            ]
 
         # ── Proactive Engine clamps ─────────────────────────────────────────
         # A too-small check interval would turn the background thread into
@@ -969,6 +1123,17 @@ class Config:
             print(
                 f"[Debug] Tool calling : enabled={cls.TOOL_CALLING_ENABLED} | "
                 f"mode={cls.TOOL_CALLING_MODE} | timeout={cls.TOOL_CALLING_TIMEOUT_S}s"
+            )
+            print(
+                f"[Debug] Planning     : enabled={cls.PLANNING_ENABLED} | "
+                f"max_steps={cls.PLANNING_MAX_STEPS} | "
+                f"step_timeout={cls.PLANNING_STEP_TIMEOUT_S}s | "
+                f"total_timeout={cls.PLANNING_TOTAL_TIMEOUT_S}s | "
+                f"retry_enabled={cls.PLANNING_STEP_RETRY_ENABLED}"
+            )
+            print(
+                f"[Debug] App allowlist: enabled={cls.APP_LAUNCH_ALLOWLIST_ENABLED} | "
+                f"{len(cls.APP_LAUNCH_ALLOWLIST)} entries"
             )
             print(
                 f"[Debug] Proactive    : enabled={cls.PROACTIVE_ENABLED} | "
