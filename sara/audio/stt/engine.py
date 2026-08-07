@@ -30,44 +30,61 @@ if os.name == "nt":
             except (AttributeError, FileNotFoundError):
                 pass
 
+def _optional_import_failed(dep_name: str, exc: Exception) -> None:
+    """Log a soft-disabled optional dependency without crashing this module.
+
+    Deliberately catches Exception (not just ImportError/OSError): a
+    version-incompatible transitive dependency (e.g. an sklearn/scipy build
+    that predates the installed numpy/Python ABI) can raise TypeError,
+    RuntimeError, AttributeError, etc. *during* import, not just the
+    ImportError/OSError this used to be narrowed to. Any of those must
+    still degrade this feature to "disabled", not take down STT entirely.
+    """
+    print(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
+
+
 try:
     from faster_whisper import WhisperModel
 
     _HAS_WHISPER = True
-except (ImportError, OSError) as e:
+except Exception as e:
     _HAS_WHISPER = False
-    print(f"[STT] faster-whisper import failed; offline STT features disabled. ({e})")
+    _optional_import_failed("faster-whisper", e)
 
 try:
     import webrtcvad
 
     _HAS_VAD = True
-except (ImportError, OSError):
+except Exception as e:
     webrtcvad = None
     _HAS_VAD = False
+    _optional_import_failed("webrtcvad", e)
 
 try:
     import sounddevice as sd
 
     _HAS_SD = True
-except (ImportError, OSError):
+except Exception as e:
     _HAS_SD = False
+    _optional_import_failed("sounddevice", e)
 
 try:
     from openwakeword.model import Model as _OWWModel
 
     _HAS_WAKEWORD = True
-except (ImportError, OSError):
+except Exception as e:
     _OWWModel = None
     _HAS_WAKEWORD = False
+    _optional_import_failed("openwakeword", e)
 
 try:
     import pyaudio as _pyaudio
 
     _HAS_PYAUDIO = True
-except (ImportError, OSError):
+except Exception as e:
     _pyaudio = None
     _HAS_PYAUDIO = False
+    _optional_import_failed("pyaudio", e)
 
 try:
     import audioop as _audioop
