@@ -19,6 +19,10 @@ const _mockState = {
     { id: 3, date: '2026-05-14', time: '20:00', text: 'Call with Parul', done: false },
   ],
   notes: [],
+  // NEW: mock backing store for the Routines UI, only used in preview mode
+  // (no window.pywebview) -- mirrors what routines_api.py's
+  // list_routines()/get_routine() return from the real PreferencesDB.
+  routines: [],
   mediaActive: false, mediaPlaying: false, mediaPos: 0, mediaDur: 222,
 };
 let _mockRemId = 100;
@@ -66,6 +70,29 @@ function mockApi(name, args) {
       return { ok: true };
     case 'toggle_reminder':
       _mockState.reminders.forEach(r => { if (r.id === args[0]) r.done = !r.done; });
+      return { ok: true };
+    // NEW: mock backend for the Routines UI (Automation page), matching
+    // sara/gui/app/routines_api.py's real ApiRoutinesMixin shape so preview
+    // mode (no window.pywebview) is still fully explorable.
+    case 'list_routines':
+      return { ok: true, data: _mockState.routines };
+    case 'get_routine': {
+      const found = _mockState.routines.find(r => r.name === args[0]);
+      return found ? { ok: true, data: found } : { ok: false, data: null, error: 'Routine not found.' };
+    }
+    case 'save_routine': {
+      const [rName, rLabel, rSteps, rTrigger] = args;
+      if (!rName || !rSteps || !rSteps.length) return { ok: false, error: 'Routine needs a name and at least one step.' };
+      const def = { name: rName, label: rLabel || rName, steps: rSteps, trigger_time: rTrigger || null };
+      const idx = _mockState.routines.findIndex(r => r.name === rName);
+      if (idx >= 0) _mockState.routines[idx] = def; else _mockState.routines.push(def);
+      return { ok: true };
+    }
+    case 'delete_routine':
+      _mockState.routines = _mockState.routines.filter(r => r.name !== args[0]);
+      return { ok: true };
+    case 'run_routine_now':
+      setTimeout(() => window.saraEvent({ kind: 'transcript', args: ['sara', `(preview mode) Ran routine "${args[0]}" — no real backend connected.`] }), 500);
       return { ok: true };
     case 'get_notes':
       return { ok: true, data: _mockState.notes };
@@ -692,6 +719,270 @@ document.getElementById('remSave').addEventListener('click', async () => {
   loadReminders();
 });
 
+// ══════════════════════════════════════════════════════════════════
+// Routines (Automation page) — NEW
+// Talks to sara/gui/app/routines_api.py's ApiRoutinesMixin, already
+// wired into Api in engine.py. Steps are either:
+//   { type: 'simple_action', key: <SIMPLE_ACTIONS key> }   -- picked from
+//     a dropdown built from dispatch.py's SIMPLE_ACTIONS keys (below).
+//   { type: 'intent'|'skill', name: <name>, args: <obj|null> } -- typed
+//     manually under "Advanced…", since the full list of registered
+//     intents/skills (and their argument shapes) isn't visible from the
+//     files this UI was built against. The backend's own
+//     _validate_routine_steps() is still the source of truth and will
+//     reject an unknown/mistyped name with a clear error at Save time.
+// ══════════════════════════════════════════════════════════════════
+
+// Mirrors dispatch.py's SIMPLE_ACTIONS keys exactly -- this grouping/
+// labelling is UI-only sugar. If dispatch.py's table ever changes, update
+// this list to match; a stale/extra entry here just fails backend
+// validation with a clear error instead of silently doing nothing.
+const SIMPLE_ACTION_GROUPS = [
+  { label: 'Power & Session', keys: ['lock_pc', 'sleep_system', 'hibernate_system', 'log_off', 'shutdown_system', 'restart_system', 'cancel_shutdown'] },
+  { label: 'Volume', keys: ['max_volume', 'min_volume'] },
+  { label: 'Brightness', keys: ['increase_brightness', 'decrease_brightness', 'max_brightness', 'min_brightness', 'get_brightness_status'] },
+  { label: 'Window Management', keys: ['show_desktop', 'minimize_all_windows', 'restore_windows', 'maximize_active_window', 'minimize_active_window', 'close_active_window', 'snap_window_left', 'snap_window_right', 'switch_window', 'toggle_fullscreen'] },
+  { label: 'Media', keys: ['play_pause_media', 'next_track', 'previous_track', 'stop_media'] },
+  { label: 'Keyboard', keys: ['copy_selection', 'paste_clipboard', 'select_all', 'undo', 'redo'] },
+  { label: 'Browser Tabs', keys: ['new_tab', 'close_tab', 'next_tab', 'prev_tab', 'reload_page'] },
+  { label: 'Zoom & Scroll', keys: ['zoom_in', 'zoom_out', 'zoom_reset', 'scroll_up', 'scroll_down', 'scroll_top', 'scroll_bottom'] },
+  { label: 'Network', keys: ['wifi_on', 'wifi_off', 'bluetooth_on', 'bluetooth_off'] },
+  { label: 'Display', keys: ['dark_mode', 'light_mode'] },
+  { label: 'Files & Notes', keys: ['empty_recycle_bin', 'read_notes', 'clear_notes'] },
+  { label: 'Folders', keys: ['open_downloads', 'open_documents', 'open_desktop_folder', 'open_pictures', 'open_music', 'open_videos', 'open_this_pc', 'open_recycle_bin', 'open_file_explorer', 'open_control_panel', 'open_task_manager'] },
+  { label: 'Windows Settings', keys: ['open_display_settings', 'open_sound_settings', 'open_bluetooth_settings', 'open_network_settings', 'open_update_settings', 'open_apps_settings', 'open_personalization_settings', 'open_privacy_settings', 'open_storage_settings', 'open_power_settings', 'open_about_settings', 'open_nightlight_settings', 'open_airplane_mode_settings'] },
+  { label: 'System Info', keys: ['disk_usage', 'uptime', 'local_ip', 'gpu_status', 'temperature_status', 'process_list', 'list_services'] },
+  { label: 'Timer', keys: ['cancel_timer'] },
+];
+const SIMPLE_ACTION_LABELS = {
+  lock_pc: 'Lock PC', sleep_system: 'Sleep', hibernate_system: 'Hibernate', log_off: 'Log Off',
+  shutdown_system: 'Shutdown', restart_system: 'Restart', cancel_shutdown: 'Cancel Shutdown',
+  max_volume: 'Max Volume', min_volume: 'Mute Volume',
+  increase_brightness: 'Increase Brightness', decrease_brightness: 'Decrease Brightness',
+  max_brightness: 'Max Brightness', min_brightness: 'Min Brightness', get_brightness_status: 'Brightness Status',
+  show_desktop: 'Show Desktop', minimize_all_windows: 'Minimize All Windows', restore_windows: 'Restore Windows',
+  maximize_active_window: 'Maximize Active Window', minimize_active_window: 'Minimize Active Window',
+  close_active_window: 'Close Active Window', snap_window_left: 'Snap Window Left', snap_window_right: 'Snap Window Right',
+  switch_window: 'Switch Window', toggle_fullscreen: 'Toggle Fullscreen',
+  play_pause_media: 'Play/Pause Media', next_track: 'Next Track', previous_track: 'Previous Track', stop_media: 'Stop Media',
+  copy_selection: 'Copy', paste_clipboard: 'Paste', select_all: 'Select All', undo: 'Undo', redo: 'Redo',
+  new_tab: 'New Tab', close_tab: 'Close Tab', next_tab: 'Next Tab', prev_tab: 'Previous Tab', reload_page: 'Reload Page',
+  zoom_in: 'Zoom In', zoom_out: 'Zoom Out', zoom_reset: 'Reset Zoom', scroll_up: 'Scroll Up', scroll_down: 'Scroll Down',
+  scroll_top: 'Scroll to Top', scroll_bottom: 'Scroll to Bottom',
+  wifi_on: 'Wi-Fi On', wifi_off: 'Wi-Fi Off', bluetooth_on: 'Bluetooth On', bluetooth_off: 'Bluetooth Off',
+  dark_mode: 'Dark Mode', light_mode: 'Light Mode',
+  empty_recycle_bin: 'Empty Recycle Bin', read_notes: 'Read Notes', clear_notes: 'Clear Notes',
+  open_downloads: 'Open Downloads', open_documents: 'Open Documents', open_desktop_folder: 'Open Desktop',
+  open_pictures: 'Open Pictures', open_music: 'Open Music', open_videos: 'Open Videos', open_this_pc: 'Open This PC',
+  open_recycle_bin: 'Open Recycle Bin', open_file_explorer: 'Open File Explorer', open_control_panel: 'Open Control Panel',
+  open_task_manager: 'Open Task Manager',
+  open_display_settings: 'Open Display Settings', open_sound_settings: 'Open Sound Settings',
+  open_bluetooth_settings: 'Open Bluetooth Settings', open_network_settings: 'Open Network Settings',
+  open_update_settings: 'Open Update Settings', open_apps_settings: 'Open Apps Settings',
+  open_personalization_settings: 'Open Personalization Settings', open_privacy_settings: 'Open Privacy Settings',
+  open_storage_settings: 'Open Storage Settings', open_power_settings: 'Open Power Settings',
+  open_about_settings: 'Open About Settings', open_nightlight_settings: 'Open Night Light Settings',
+  open_airplane_mode_settings: 'Open Airplane Mode Settings',
+  disk_usage: 'Disk Usage', uptime: 'System Uptime', local_ip: 'Local IP Address', gpu_status: 'GPU Status',
+  temperature_status: 'Temperature Status', process_list: 'Process List', list_services: 'Running Services',
+  cancel_timer: 'Cancel Timer',
+};
+
+let _rtEditingName = null; // null = creating a new routine; a string = editing that routine (name locked)
+let _rtSteps = [];         // in-memory step list while the modal is open
+
+function rtStepSummary(step) {
+  if (!step || typeof step !== 'object') return 'Unknown step';
+  if (step.type === 'simple_action') return SIMPLE_ACTION_LABELS[step.key] || step.key;
+  if (step.type === 'intent' || step.type === 'skill') return `${step.type}: ${step.name}`;
+  return 'Unknown step';
+}
+
+function rtStepRowHtml(index, step) {
+  const isAdvanced = step.type === 'intent' || step.type === 'skill';
+  const optgroups = SIMPLE_ACTION_GROUPS.map(g => `<optgroup label="${g.label}">${
+    g.keys.map(k => `<option value="${k}" ${!isAdvanced && step.key === k ? 'selected' : ''}>${SIMPLE_ACTION_LABELS[k] || k}</option>`).join('')
+  }</optgroup>`).join('');
+  return `
+    <div class="rt-step-row" data-idx="${index}" style="background:rgba(255,255,255,0.03); border:1px solid var(--border-soft); border-radius:var(--r-sm); padding:10px; margin-bottom:8px;">
+      <div style="display:flex; gap:8px; align-items:center;">
+        <select class="rt-step-mode" style="flex:0 0 108px; padding:8px; border-radius:var(--r-sm); background:rgba(255,255,255,0.04); border:1px solid var(--border); font-size:12px;">
+          <option value="simple_action" ${!isAdvanced ? 'selected' : ''}>Action</option>
+          <option value="advanced" ${isAdvanced ? 'selected' : ''}>Advanced…</option>
+        </select>
+        <select class="rt-step-action" style="flex:1; padding:8px; border-radius:var(--r-sm); background:rgba(255,255,255,0.04); border:1px solid var(--border); font-size:12px; ${isAdvanced ? 'display:none;' : ''}">
+          ${optgroups}
+        </select>
+        <div class="rt-step-advanced" style="flex:1; gap:8px; ${isAdvanced ? 'display:flex;' : 'display:none;'}">
+          <select class="rt-step-adv-type" style="flex:0 0 70px; padding:8px; border-radius:var(--r-sm); background:rgba(255,255,255,0.04); border:1px solid var(--border); font-size:12px;">
+            <option value="intent" ${step.type === 'intent' ? 'selected' : ''}>intent</option>
+            <option value="skill" ${step.type === 'skill' ? 'selected' : ''}>skill</option>
+          </select>
+          <input type="text" class="rt-step-adv-name" placeholder="e.g. weather" value="${escapeHtml(step.name || '')}" style="flex:1; padding:8px; border-radius:var(--r-sm); background:rgba(255,255,255,0.04); border:1px solid var(--border); font-size:12px;">
+        </div>
+        <button class="rt-step-remove icon-btn" title="Remove step" style="flex-shrink:0; width:30px; height:30px;">✕</button>
+      </div>
+      <div style="${isAdvanced ? '' : 'display:none;'} margin-top:8px;" class="rt-step-adv-args-wrap">
+        <input type="text" class="rt-step-adv-args" placeholder='Optional args as JSON, e.g. {"location":"Ajmer,IN"}' value='${escapeHtml(step._argsRaw != null ? step._argsRaw : (step.args ? JSON.stringify(step.args) : ''))}' style="width:100%; padding:8px; border-radius:var(--r-sm); background:rgba(255,255,255,0.04); border:1px solid var(--border); font-size:12px;">
+      </div>
+    </div>`;
+}
+
+function renderRtSteps() {
+  const wrap = document.getElementById('rtStepsList');
+  if (!_rtSteps.length) {
+    wrap.innerHTML = `<p style="font-size:11.5px; color:var(--text-lo);">No steps yet — add at least one below.</p>`;
+  } else {
+    wrap.innerHTML = _rtSteps.map((s, i) => rtStepRowHtml(i, s)).join('');
+  }
+  wrap.querySelectorAll('.rt-step-row').forEach(row => {
+    const idx = parseInt(row.dataset.idx, 10);
+    row.querySelector('.rt-step-mode').addEventListener('change', (e) => {
+      _rtSteps[idx] = e.target.value === 'advanced'
+        ? { type: 'intent', name: '' }
+        : { type: 'simple_action', key: SIMPLE_ACTION_GROUPS[0].keys[0] };
+      renderRtSteps();
+    });
+    const actionSel = row.querySelector('.rt-step-action');
+    if (actionSel) actionSel.addEventListener('change', (e) => { _rtSteps[idx] = { type: 'simple_action', key: e.target.value }; });
+    const advType = row.querySelector('.rt-step-adv-type');
+    const advName = row.querySelector('.rt-step-adv-name');
+    const advArgs = row.querySelector('.rt-step-adv-args');
+    if (advType) advType.addEventListener('change', (e) => { _rtSteps[idx].type = e.target.value; });
+    if (advName) advName.addEventListener('input', (e) => { _rtSteps[idx].name = e.target.value; });
+    if (advArgs) advArgs.addEventListener('input', (e) => { _rtSteps[idx]._argsRaw = e.target.value; });
+    row.querySelector('.rt-step-remove').addEventListener('click', () => { _rtSteps.splice(idx, 1); renderRtSteps(); });
+  });
+}
+
+function openRoutineModal(existing) {
+  const errEl = document.getElementById('rtError');
+  errEl.style.display = 'none';
+  const nameInput = document.getElementById('rtName');
+  if (existing) {
+    _rtEditingName = existing.name;
+    document.getElementById('routineModalTitle').textContent = 'Edit Routine';
+    nameInput.value = existing.name;
+    nameInput.disabled = true;
+    document.getElementById('rtLabel').value = existing.label || '';
+    document.getElementById('rtTriggerTime').value = existing.trigger_time || '';
+    _rtSteps = (existing.steps || []).map(s => ({ ...s }));
+  } else {
+    _rtEditingName = null;
+    document.getElementById('routineModalTitle').textContent = 'New Routine';
+    nameInput.value = '';
+    nameInput.disabled = false;
+    document.getElementById('rtLabel').value = '';
+    document.getElementById('rtTriggerTime').value = '';
+    _rtSteps = [];
+  }
+  renderRtSteps();
+  document.getElementById('routineModal').classList.add('open');
+}
+
+document.getElementById('addRoutineBtn').addEventListener('click', () => openRoutineModal(null));
+document.getElementById('rtAddStepBtn').addEventListener('click', () => {
+  _rtSteps.push({ type: 'simple_action', key: SIMPLE_ACTION_GROUPS[0].keys[0] });
+  renderRtSteps();
+});
+document.getElementById('rtCancel').addEventListener('click', () => document.getElementById('routineModal').classList.remove('open'));
+
+document.getElementById('rtSave').addEventListener('click', async () => {
+  const errEl = document.getElementById('rtError');
+  errEl.style.display = 'none';
+  const name = document.getElementById('rtName').value.trim();
+  const label = document.getElementById('rtLabel').value.trim();
+  const triggerTime = document.getElementById('rtTriggerTime').value || null;
+
+  if (!name) { errEl.textContent = 'Routine name is required.'; errEl.style.display = 'block'; return; }
+  if (!_rtSteps.length) { errEl.textContent = 'Add at least one step.'; errEl.style.display = 'block'; return; }
+
+  const steps = [];
+  for (let i = 0; i < _rtSteps.length; i++) {
+    const s = _rtSteps[i];
+    if (s.type === 'simple_action') {
+      steps.push({ type: 'simple_action', key: s.key });
+    } else {
+      if (!s.name || !s.name.trim()) { errEl.textContent = `Step ${i + 1}: name is required.`; errEl.style.display = 'block'; return; }
+      let args = null;
+      if (s._argsRaw && s._argsRaw.trim()) {
+        try { args = JSON.parse(s._argsRaw); }
+        catch (e) { errEl.textContent = `Step ${i + 1}: args must be valid JSON.`; errEl.style.display = 'block'; return; }
+      }
+      steps.push({ type: s.type, name: s.name.trim(), args });
+    }
+  }
+
+  const res = await callApi('save_routine', name, label, steps, triggerTime);
+  if (res && res.ok) {
+    document.getElementById('routineModal').classList.remove('open');
+    showToast('ti-check', '#34d399', 'Routine saved');
+    loadRoutines();
+  } else {
+    errEl.textContent = (res && res.error) || 'Could not save routine.';
+    errEl.style.display = 'block';
+  }
+});
+
+async function loadRoutines() {
+  const res = await callApi('list_routines');
+  renderRoutinesList((res && res.data) || []);
+}
+
+function renderRoutinesList(routines) {
+  const wrap = document.getElementById('routinesList');
+  if (!routines.length) {
+    wrap.innerHTML = `<div class="empty" style="padding:26px 6px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg>
+      <h4>No routines yet</h4>
+      <p>Create one to chain several actions together, then run them all at once.</p>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = routines.map(r => `
+    <div class="rem-item" data-routine-name="${escapeHtml(r.name)}">
+      <div class="qa-icon" style="width:30px;height:30px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z"/></svg></div>
+      <div class="rem-body">
+        <b>${escapeHtml(r.label || r.name)}</b>
+        <span>${(r.steps || []).map(rtStepSummary).map(escapeHtml).join(' → ')}${r.trigger_time ? ' · Triggers ' + to12h(r.trigger_time) : ''}</span>
+      </div>
+      <div style="display:flex; gap:6px; flex-shrink:0;">
+        <button class="btn btn-ghost rt-test-btn" style="padding:7px 10px; font-size:11.5px;">Test</button>
+        <button class="btn btn-ghost rt-edit-btn" style="padding:7px 10px; font-size:11.5px;">Edit</button>
+        <button class="btn btn-ghost rt-del-btn" style="padding:7px 10px; font-size:11.5px; color:var(--red);">Delete</button>
+      </div>
+    </div>`).join('');
+
+  wrap.querySelectorAll('.rt-test-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('[data-routine-name]').dataset.routineName;
+      btn.disabled = true; btn.textContent = 'Running…';
+      const res = await callApi('run_routine_now', name);
+      showToast(res && res.ok ? 'ti-check' : 'ti-alert-triangle',
+        res && res.ok ? '#34d399' : '#f87171',
+        res && res.ok ? 'Routine started — check the transcript' : ((res && res.error) || 'Could not run routine'));
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Test'; }, 1200);
+    });
+  });
+  wrap.querySelectorAll('.rt-edit-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('[data-routine-name]').dataset.routineName;
+      const res = await callApi('get_routine', name);
+      if (res && res.ok && res.data) openRoutineModal(res.data);
+      else showToast('ti-alert-triangle', '#f87171', (res && res.error) || 'Could not load routine');
+    });
+  });
+  wrap.querySelectorAll('.rt-del-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.closest('[data-routine-name]').dataset.routineName;
+      if (!confirm(`Delete routine "${name}"?`)) return;
+      const res = await callApi('delete_routine', name);
+      if (res && res.ok) { showToast('ti-check', '#34d399', 'Routine deleted'); loadRoutines(); }
+      else showToast('ti-alert-triangle', '#f87171', (res && res.error) || 'Could not delete routine');
+    });
+  });
+}
+
 // ── notes ────────────────────────────────────────────────────────
 async function loadNotes() {
   const res = await callApi('get_notes');
@@ -1317,6 +1608,7 @@ function boot() {
   loadUISettings();
   loadReminders();
   loadNotes();
+  loadRoutines();
   loadWeather();
   loadMemoryStats();
   loadProactiveStats();

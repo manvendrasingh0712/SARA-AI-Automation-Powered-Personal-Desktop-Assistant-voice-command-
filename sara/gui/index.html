@@ -873,20 +873,23 @@
             <section class="page" id="page-automation">
                <div class="page-head">
                   <h2>Automation</h2>
-                  <p>Things Sara does for you on a schedule.</p>
+                  <p>Chain multiple actions together, then run them with one command — or on a schedule.</p>
                </div>
                <div class="card">
+                  <div class="list-toolbar" style="justify-content:space-between; margin-bottom:14px;">
+                     <h3 style="font-size:13px; color:var(--text-md);">Routines</h3>
+                     <button class="btn btn-primary" id="addRoutineBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        Create Routine
+                     </button>
+                  </div>
+                  <div id="routinesList"></div>
+               </div>
+               <div class="card section-gap" style="margin-top:16px;">
                   <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Scheduled reminders</h3>
                   <div id="automationList"></div>
-                  <div class="empty" id="automationEmptyBuilder"
-                     style="border-top:1px solid var(--border-soft); margin-top:6px; padding-top:26px;">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                        <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
-                     </svg>
-                     <h4>Custom triggers aren't wired up yet</h4>
-                     <p>For now, Automation mirrors your scheduled reminders above. A full trigger-and-action builder is
-                        on the roadmap.</p>
-                  </div>
                </div>
             </section>
 
@@ -1043,6 +1046,35 @@
       </div>
    </div>
 
+   <!-- ══════════════════════ ROUTINE MODAL (NEW) ══════════════════════ -->
+   <div class="modal-backdrop" id="routineModal">
+      <div class="modal" style="width:460px;">
+         <h3 id="routineModalTitle">New Routine</h3>
+         <div class="field">
+            <label for="rtName">Routine name (used to run it by voice/text — no spaces)</label>
+            <input type="text" id="rtName" placeholder="e.g. good_morning">
+         </div>
+         <div class="field">
+            <label for="rtLabel">Label (what you'll see in the list)</label>
+            <input type="text" id="rtLabel" placeholder="e.g. Good Morning Routine">
+         </div>
+         <div class="field">
+            <label for="rtTriggerTime">Trigger time (optional)</label>
+            <input type="time" id="rtTriggerTime">
+         </div>
+         <div class="field">
+            <label>Steps</label>
+            <div id="rtStepsList"></div>
+            <button class="btn btn-ghost" id="rtAddStepBtn" type="button" style="margin-top:4px; width:100%;">+ Add Step</button>
+         </div>
+         <p id="rtError" style="color:var(--red); font-size:11.5px; display:none; margin-bottom:6px;"></p>
+         <div class="modal-actions">
+            <button class="btn btn-ghost" id="rtCancel">Cancel</button>
+            <button class="btn btn-primary" id="rtSave">Save Routine</button>
+         </div>
+      </div>
+   </div>
+
    <div class="setup-wizard-overlay hidden" id="setupWizardOverlay">
       <div class="setup-wizard-card">
          <div class="setup-wizard-header">
@@ -1101,7 +1133,7 @@
    </div>
 
    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-   <script src="js/app.js?v=2"></script>
+   <script src="js/app.js?v=3"></script>
    <script>
       // ── Additive polish script — safe layer, does not remove/replace any existing app.js logic ──
       (function () {
