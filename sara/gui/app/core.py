@@ -126,6 +126,10 @@ class ApiCoreMixin:
         self.volume_state: dict = {}
         self.playback_state: dict = {}
         self.confirm_state: dict = {}
+        # Same reused-dict pattern as above -- backs short follow-ups like
+        # "what about jaipur?" right after a weather/news query typed in
+        # the GUI (see intent_handlers.py's _h_followup_query).
+        self.context_state: dict = {}
 
         # See _bind_instance_methods() below for why this is needed on
         # top of engine.py's class-level setattr loop.
@@ -372,6 +376,7 @@ class ApiCoreMixin:
                     self.volume_state,
                     playback_state=self.playback_state,
                     confirm_state=self.confirm_state,
+                    context_state=self.context_state,
                 )
             except Exception as e:
                 print(f"[send_text_command _handle_command error] {e}")

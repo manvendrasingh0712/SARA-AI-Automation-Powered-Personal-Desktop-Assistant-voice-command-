@@ -459,9 +459,13 @@ def run_sara_logic(
     # NEW: same pattern as volume_state -- created once for the whole run
     # so state genuinely persists turn-to-turn. playback_state backs the
     # "play next video" YouTube follow-up; confirm_state backs the
-    # close_app/stop_service risky-action yes/cancel flow.
+    # close_app/stop_service risky-action yes/cancel flow; context_state
+    # backs short natural-language follow-ups like "what about jaipur?"
+    # right after a weather/news query (see intent_handlers.py's
+    # _h_followup_query / _remember_context).
     playback_state: dict = {}
     confirm_state: dict = {}
+    context_state: dict = {}
     # v8 NEW UI WIRING: assistant_state is passed straight through to
     # _WakeWatcher, which is the only place it's actually consulted.
     wake_watcher = _WakeWatcher(ears, manual_wake_event, stop_event, assistant_state)
@@ -681,6 +685,7 @@ def run_sara_logic(
                     notes_memory=notes_memory,
                     playback_state=playback_state,
                     confirm_state=confirm_state,
+                    context_state=context_state,
                 )
 
                 ui_update("transcript", "sara", reply_text or "(no response)")

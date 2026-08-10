@@ -70,9 +70,19 @@ _INTENT_PATTERNS = [
     ]),
 
     # ── Weather ────────────────────────────────────────────────────────
+    # NOTE: "whether" is accepted here as a common typo/homophone for
+    # "weather" (e.g. "give the whether report of ajmer"). It is ONLY
+    # wired into the two patterns that already anchor on the bare word
+    # "weather" followed by a location-style preposition/report — the
+    # same structure the existing patterns use. This does NOT touch the
+    # rain/temperature/forecast patterns below (they never contained the
+    # word "weather" to begin with), and it still requires a
+    # location-shaped tail after "weather|whether", so ordinary
+    # conjunction usage like "I don't know whether to go" cannot match
+    # (there is no "in/at/for/near/of ..." location clause following it).
     ("weather", [
-        r"(?:what'?s|how'?s|get|check) (?:the )?weather (?:like )?(?:in|at|for|near) (.+)",
-        r"weather (?:in|at|for|near|of) (.+)",
+        r"(?:what'?s|how'?s|get|check|give)(?: me)? (?:the )?(?:weather|whether)(?: report)? (?:like )?(?:in|at|for|near|of) (.+)",
+        r"(?:weather|whether)(?: report)? (?:in|at|for|near|of) (.+)",
         r"(?:will it|is it going to) rain (?:in|at) (.+)",
         r"temperature (?:in|at|of) (.+)",
         r"forecast (?:for|in|at) (.+)",
@@ -86,6 +96,24 @@ _INTENT_PATTERNS = [
         r"(?:top |latest |breaking )?news",
         r"what'?s (?:in the news|happening today|the news today)",
         r"headlines? today",
+    ]),
+
+    # ── Context Follow-ups ─────────────────────────────────────────────
+    # "and what about jaipur?" / "aur dilli ka?" right after a weather/
+    # news query. This intent captures ONLY the new slot value — it does
+    # NOT know or care which prior intent it continues. The handler
+    # (sara/orchestrator/intent_handlers.py:_h_followup_query) looks that
+    # up from ctx["context_state"], which is only populated by intents
+    # that explicitly opt in (currently weather, news) and expires after
+    # a short TTL, so a stale follow-up minutes later — or a follow-up
+    # when nothing was ever asked — falls back to a clarifying reply
+    # instead of guessing. MUST come after weather/news above (a real
+    # "weather in X" phrasing should always be read as a fresh request,
+    # never as this shorter continuation form).
+    ("followup_query", [
+        r"^(?:and |aur )?what about (.+?)\??$",
+        r"^(?:and |aur )?how about (.+?)\??$",
+        r"^aur (.+?) (?:ka|ki|mein|me) (?:kya|kaisa|kaisi)(?:\s+hai)?\??$",
     ]),
 
     # ── YouTube — MUST come before web_search and open_url ────────────
@@ -712,8 +740,13 @@ _INTENT_GATES = {
     "clipboard_read": ("clipboard", "copy"),
     "clipboard_write": ("copy", "clipboard"),
     "screenshot_describe": ("screen",),
-    "weather": ("weather", "rain", "temperature", "forecast"),
+    # "whether" added as a common typo/homophone for "weather" — kept
+    # alongside the original gate words, so this only widens which
+    # inputs are allowed to reach the weather regexes above; those
+    # regexes still enforce the location-based structure.
+    "weather": ("weather", "whether", "rain", "temperature", "forecast"),
     "news": ("news", "headline", "happening"),
+    "followup_query": ("what about", "how about", "aur "),
     "play_youtube": ("play", "youtube"),
     "play_spotify": ("play", "spotify"),
     "web_search": ("search", "google", "look up", "find"),

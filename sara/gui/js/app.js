@@ -1645,7 +1645,21 @@ async function loadUISettings() {
 }
 
 // ── boot ─────────────────────────────────────────────────────────
+// FIX (duplicate-boot bug): boot() was being called twice on startup --
+// once by the 'pywebviewready' listener below, and unconditionally
+// again by the setTimeout(boot, 300) safety net a few lines down, even
+// when 'pywebviewready' had already fired and boot() had already run.
+// This doubled every startup API call AND, worse, registered every
+// setInterval() (status bar, stats, media polling, weather refresh,
+// etc.) twice -- so the app silently polled the backend at 2x the
+// intended rate for its entire runtime, getting worse if boot() were
+// ever triggered a third time by some other path. _booted guards
+// against running the body more than once no matter how many times or
+// from how many places boot() itself gets called.
+let _booted = false;
 function boot() {
+  if (_booted) return;
+  _booted = true;
   console.log('[boot] pywebview:', !!window.pywebview, 'api:', !!(window.pywebview && window.pywebview.api), 'methods:', window.pywebview && window.pywebview.api ? Object.keys(window.pywebview.api) : []);
   loadAssistantState();
   loadUISettings();
@@ -1686,4 +1700,7 @@ window.addEventListener('pywebviewready', boot);
 // 'pywebviewready' never fires at all -- boot() itself doesn't crash if
 // window.pywebview.api isn't ready yet; callApi() just re-checks fresh
 // on every call and falls back to mock until the real bridge shows up.
+// Safe to call unconditionally even if 'pywebviewready' already fired
+// and ran boot(): the _booted guard inside boot() makes this a no-op
+// in that case, instead of the double-init this used to cause.
 setTimeout(boot, 300);

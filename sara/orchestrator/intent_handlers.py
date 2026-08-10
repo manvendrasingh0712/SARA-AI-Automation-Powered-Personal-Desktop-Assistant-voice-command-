@@ -42,6 +42,7 @@ from config import Config
 
 from sara.core import routines
 from sara.core.intent import detect_intent
+from sara.core.unmatched_log import log_unmatched
 from sara.tools.reminders import play_alarm_beep
 from sara.tools.clipboard import read_clipboard, write_clipboard
 from sara.tools import calendar as calendar_tools
@@ -403,15 +404,70 @@ def _h_weather(match, ctx):
         return None
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    return _quick(ctx, _call_with_timeout(web_tools.get_weather, match.group(1)))
+    location = match.group(1)
+    _remember_context(ctx, "weather", location)
+    return _quick(ctx, _call_with_timeout(web_tools.get_weather, location))
 
 
 def _h_news(match, ctx):
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     if match and match.lastindex and match.lastindex >= 1:
-        return _quick(ctx, _call_with_timeout(web_tools.get_news, match.group(1)))
+        topic = match.group(1)
+        _remember_context(ctx, "news", topic)
+        return _quick(ctx, _call_with_timeout(web_tools.get_news, topic))
     return _quick(ctx, _call_with_timeout(web_tools.get_news))
+
+
+# ── Context Follow-ups ("what about jaipur?" / "aur dilli ka?") ────────
+# ctx["context_state"] is a plain dict, created once per run in
+# sara/orchestrator/core_wiring.py -- same pattern as playback_state and
+# confirm_state -- so it genuinely persists turn-to-turn. Only weather
+# and news currently opt in via _remember_context(); any future intent
+# can opt in the same way by calling it with its own intent name and
+# slot value.
+_CONTEXT_TTL_S = 120  # short window: a natural follow-up, not a resumed
+                       # conversation from minutes ago
+
+
+def _remember_context(ctx, intent_name: str, slot_value: str) -> None:
+    if not slot_value:
+        return
+    ctx["context_state"]["last_slot_intent"] = {
+        "intent": intent_name,
+        "slot": slot_value,
+        "ts": time.time(),
+    }
+
+
+# Maps a remembered intent name to the tool function that intent's own
+# handler calls, so a follow-up can redo "the same kind of question"
+# with a new slot value without duplicating each handler's own
+# ack/status/error-handling logic.
+_FOLLOWUP_TOOL_BY_INTENT = {
+    "weather": web_tools.get_weather,
+    "news": web_tools.get_news,
+}
+
+
+def _h_followup_query(match, ctx):
+    if not match:
+        return None
+    state = ctx["context_state"].get("last_slot_intent")
+    if not state or (time.time() - state.get("ts", 0) > _CONTEXT_TTL_S):
+        return _quick(
+            ctx, "I'm not sure what you're asking about — could you rephrase that?"
+        )
+    tool_fn = _FOLLOWUP_TOOL_BY_INTENT.get(state["intent"])
+    if tool_fn is None:
+        return _quick(
+            ctx, "I'm not sure what you're asking about — could you rephrase that?"
+        )
+    new_slot = match.group(1).strip()
+    _ack(ctx)
+    ctx["ui_update"]("status", "thinking")
+    _remember_context(ctx, state["intent"], new_slot)
+    return _quick(ctx, _call_with_timeout(tool_fn, new_slot))
 
 
 def _h_play_youtube(match, ctx):
@@ -914,6 +970,7 @@ _INTENT_HANDLERS = {
     "screenshot_describe": _h_screenshot_describe,
     "weather": _h_weather,
     "news": _h_news,
+    "followup_query": _h_followup_query,
     "play_youtube": _h_play_youtube,
     "play_next_youtube": _h_play_next_youtube,
     "play_spotify": _h_play_spotify,
@@ -1031,11 +1088,14 @@ def _handle_command(
     notes_memory=None,
     playback_state: dict = None,
     confirm_state: dict = None,
+    context_state: dict = None,
 ) -> str:
     if playback_state is None:
         playback_state = {}
     if confirm_state is None:
         confirm_state = {}
+    if context_state is None:
+        context_state = {}
 
     ctx = {
         "brain": brain,
@@ -1050,6 +1110,7 @@ def _handle_command(
         "notes_memory": notes_memory,
         "playback_state": playback_state,
         "confirm_state": confirm_state,
+        "context_state": context_state,
     }
 
     # ── Pending destructive-action confirmation (close_app / stop_service
@@ -1176,6 +1237,18 @@ def _handle_command(
                         return tool_result
         except Exception as e:
             print(f"[ToolRouter] resolution failed: {e}")
+
+    # ── Self-learning fallback log ───────────────────────────────────────
+    # Reached only when the fast-path regex matcher, the multi-step
+    # planner, AND the single-tool LLM resolver all failed to route this
+    # to a real tool -- i.e. it's about to be answered as plain chat.
+    # Logging it here (rather than at the top the moment detect_intent()
+    # returns "chat") means a query the planner or tool-router DID
+    # manage to resolve via the LLM never shows up as a "miss" -- only
+    # genuinely unhandled input does, which is what's actually useful to
+    # review later for new _INTENT_PATTERNS/_INTENT_GATES entries.
+    if intent == "chat":
+        log_unmatched(user_input)
 
     ui_update("status", "thinking")
     try:
