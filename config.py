@@ -721,6 +721,16 @@ class Config:
     NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH") or str(
         _PROJECT_ROOT / "sara_notes.txt"
     )
+    # NEW: self-learning fast-path log (sara/core/unmatched_log.py) — every
+    # user input that falls all the way through detect_intent() AND the
+    # planner AND the LLM tool-router without being resolved to a real
+    # tool gets appended here as one JSON line. Reviewing this file
+    # periodically is how new _INTENT_PATTERNS/_INTENT_GATES entries get
+    # discovered from real usage instead of only from bug reports — same
+    # CWD-independent-path convention as DB_PATH above.
+    UNMATCHED_LOG_PATH: str = os.getenv("UNMATCHED_LOG_PATH") or str(
+        _PROJECT_ROOT / "sara_unmatched_queries.jsonl"
+    )
 
     # ── Google Calendar (sara/tools/calendar.py) ─────────────────────────
     # OAuth2 "installed app" flow. credentials.json (client_id + secret) is
