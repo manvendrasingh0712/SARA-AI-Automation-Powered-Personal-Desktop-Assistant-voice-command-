@@ -19,11 +19,61 @@ PRODUCTION-AUDIT FIXES (this revision)
    existing "Error: ..." prefix convention is unchanged, since
    gui_main.py's _h_summarize_url() specifically checks for that
    prefix to detect failure.
+
+CONFIRMED-BUG FIX (this revision)
+----------------------------------------
+3. get_weather(): wttr.in occasionally serves its full HTML homepage
+   instead of the short `?format=3` plaintext line (seen under
+   rate-limiting / service hiccups). The old code only checked for the
+   substring "Unknown location" and otherwise returned response.text
+   as-is -- so the raw "<!DOCTYPE html>..." source could get spoken
+   aloud by TTS. get_weather() now validates the response looks like
+   real format=3 weather text (Content-Type, HTML markers, and length)
+   before returning it, and falls back to the same friendly error
+   message used for every other weather failure path otherwise.
+   get_news() and read_webpage() were audited for the same pattern and
+   do NOT have it: get_news() returns structured dicts from the DDGS
+   library (never raw HTML), and read_webpage() already parses with
+   BeautifulSoup and extracts <p> text rather than returning raw
+   response.text. No speculative changes were made to either.
+
+OPTIMIZATIONS (this revision)
+----------------------------------------
+4. get_weather() now retries transient failures via the existing
+   _retry() helper, same as search_web()/get_news() -- previously it
+   was the only network tool with no retry at all.
+5. get_weather() forces UTF-8 decoding on the response. wttr.in
+   doesn't always send a charset header, so requests can guess wrong
+   and mangle the weather emoji/degree symbol -- which then gets read
+   aloud garbled by TTS.
+6. "unknown location" check is now case-insensitive (was previously a
+   case-sensitive substring match that could silently miss variants).
+7. All outbound HTTP calls (weather, page reads, YouTube HTML
+   fallback) now share one requests.Session with connection pooling
+   and a transport-level Retry adapter, instead of opening a fresh
+   connection (and, for 429/5xx, giving up immediately) on every call.
+8. _retry() now adds a small random jitter to its backoff delay, so
+   multiple tools retrying at the same moment (e.g. right after a
+   brief Wi-Fi drop) don't all hammer the network again in lockstep.
+9. read_webpage() now streams the response and stops after a hard
+   byte cap (_MAX_PAGE_DOWNLOAD_BYTES) instead of unconditionally
+   pulling an entire (possibly huge) page into memory before
+   truncating it down to max_chars.
+10. User-supplied location/topic/query/url strings are now clamped to
+    sane maximum lengths before being used to build outbound requests,
+    instead of being passed through unbounded.
+11. Magic-number timeouts and repeated fallback-message literals are
+    now named constants at the top of the file, so they're tuned/fixed
+    in exactly one place instead of being scattered through the file.
+
+None of the above change the success-path behavior or return format
+of any function for a normal, valid response.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 import re
 import threading
 import time
@@ -33,6 +83,8 @@ from datetime import date
 from typing import Any, Callable, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 logger = logging.getLogger(__name__)
@@ -80,10 +132,60 @@ _USER_AGENT = (
 # the DDGS() constructor itself (applied per-request internally).
 _DDGS_TIMEOUT_SECONDS = 10
 
+# OPTIMIZATION 11: named timeout / limit constants instead of magic
+# numbers scattered across functions.
+_WEATHER_TIMEOUT_SECONDS = 8
+_PAGE_FETCH_TIMEOUT_SECONDS = 10
+_YTDLP_SOCKET_TIMEOUT_SECONDS = 8
+_YTDLP_SCRAPE_TIMEOUT_SECONDS = 10
+_MAX_PAGE_DOWNLOAD_BYTES = 2 * 1024 * 1024  # 2 MB hard cap for read_webpage()
+
+# OPTIMIZATION 10: sane upper bounds on user-supplied strings that get
+# baked into outbound URLs.
+_MAX_LOCATION_LENGTH = 100
+_MAX_QUERY_LENGTH = 200
+_MAX_URL_LENGTH = 2000
+
+# OPTIMIZATION 11: fallback messages centralized so wording only ever
+# needs to change in one place.
+_WEATHER_FALLBACK_MSG = "Sorry, I couldn't fetch the weather right now."
+_SEARCH_FALLBACK_MSG = "Sorry, I couldn't complete that search right now."
+_NEWS_FALLBACK_MSG = "Sorry, I couldn't fetch the news right now."
+
 _CACHE_TTL_SECONDS = 60
 _CACHE_MAX_SIZE = 256
 _cache: dict[str, tuple[str, float]] = {}
 _cache_lock = threading.Lock()
+
+
+# ============================================================
+# SHARED HTTP SESSION  (OPTIMIZATION 7)
+# ============================================================
+
+def _build_session() -> requests.Session:
+    """
+    One shared requests.Session for every plain HTTP call in this
+    module (weather, page reads, YouTube HTML fallback). This reuses
+    TCP/TLS connections instead of paying a fresh handshake on every
+    call, and adds a transport-level retry (with backoff) for
+    429/5xx responses, on top of the tool-level _retry() used for
+    weather/search/news.
+    """
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=2,
+        backoff_factor=0.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    session.headers.update({"User-Agent": _USER_AGENT})
+    return session
+
+
+_session = _build_session()
 
 
 def _cache_get(key: str) -> Optional[str]:
@@ -125,10 +227,26 @@ def _validate_max_results(max_results: int, name: str = "max_results") -> int:
     return min(max_results, 20)
 
 
+def _clamp_text_length(value: str, max_len: int, name: str) -> str:
+    """
+    OPTIMIZATION 10: truncates an unusually long input (location, search
+    query, news topic, URL) instead of passing it straight through into
+    an outbound request unbounded.
+    """
+    if len(value) > max_len:
+        logger.warning(
+            "%s is unusually long (%d chars); truncating to %d.",
+            name, len(value), max_len,
+        )
+        return value[:max_len]
+    return value
+
+
 def _retry(fn: "Callable[[], Any]", attempts: int = 2, delay: float = 1.0):
     """
-    Calls fn() up to `attempts` times, sleeping `delay` seconds between
-    retries. Returns the successful result, or re-raises the last exception.
+    Calls fn() up to `attempts` times, sleeping ~`delay` seconds (plus a
+    small random jitter -- OPTIMIZATION 8) between retries. Returns the
+    successful result, or re-raises the last exception.
     """
     if attempts < 1:
         raise ValueError("attempts must be >= 1.")
@@ -140,7 +258,8 @@ def _retry(fn: "Callable[[], Any]", attempts: int = 2, delay: float = 1.0):
             last_exc = e
             logger.debug("_retry attempt %d/%d failed: %s", i + 1, attempts, e)
             if i < attempts - 1:
-                time.sleep(delay)
+                jitter = random.uniform(0, delay * 0.3)
+                time.sleep(delay + jitter)
     raise last_exc
 
 
@@ -184,7 +303,7 @@ def _get_youtube_urls_ytdlp(query: str, max_results: int = 5) -> list[str]:
         "skip_download": True,
         "extract_flat": "in_playlist",
         "default_search": "ytsearch",
-        "socket_timeout": 8,
+        "socket_timeout": _YTDLP_SOCKET_TIMEOUT_SECONDS,
     }
     urls: list[str] = []
     try:
@@ -224,11 +343,8 @@ def _get_youtube_urls_scrape(query: str) -> list[str]:
 
     search_url = _youtube_search_fallback_url(query)
     try:
-        resp = requests.get(
-            search_url,
-            headers={"User-Agent": _USER_AGENT},
-            timeout=10,
-        )
+        # OPTIMIZATION 7: shared session (connection pooling + transport retry).
+        resp = _session.get(search_url, timeout=_YTDLP_SCRAPE_TIMEOUT_SECONDS)
         resp.raise_for_status()
     except requests.exceptions.RequestException as e:
         logger.debug("YouTube fetch error: %s", e)
@@ -348,9 +464,6 @@ def play_next_youtube(query: str, current_index: int) -> tuple[str, int]:
     return "Sorry, I couldn't find another video for that.", current_index
 
 
-
-
-
 # ============================================================
 # SPOTIFY
 # ============================================================
@@ -401,7 +514,7 @@ def search_web(query: str, max_results: int = 3) -> str:
         return "No search query was provided."
 
     max_results = _validate_max_results(max_results)
-    query = query.strip()
+    query = _clamp_text_length(query.strip(), _MAX_QUERY_LENGTH, "search query")
     cache_key = f"search:{query.lower()}:{max_results}"
     cached = _cache_get(cache_key)
     if cached:
@@ -430,7 +543,7 @@ def search_web(query: str, max_results: int = 3) -> str:
         return summary
     except Exception as e:
         logger.error("Web search failed for '%s': %s", query, e)
-        return "Sorry, I couldn't complete that search right now."
+        return _SEARCH_FALLBACK_MSG
 
 
 def get_news(topic: str = "", max_results: int = 3) -> str:
@@ -445,7 +558,8 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
     max_results = _validate_max_results(max_results)
     # Include today's date so cached results from a prior day are distinct.
     today = date.today().isoformat()
-    query = topic.strip() if topic and topic.strip() else f"top news {today}"
+    topic = _clamp_text_length(topic.strip(), _MAX_QUERY_LENGTH, "news topic") if topic else ""
+    query = topic if topic else f"top news {today}"
     cache_key = f"news:{query.lower()}:{max_results}"
     cached = _cache_get(cache_key)
     if cached:
@@ -471,7 +585,7 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
         return summary
     except Exception as e:
         logger.error("Failed to fetch news for '%s': %s", query, e)
-        return "Sorry, I couldn't fetch the news right now."
+        return _NEWS_FALLBACK_MSG
 
 
 # ============================================================
@@ -482,38 +596,75 @@ def get_weather(location: str) -> str:
     """
     Fetches a concise current weather report for a given location using
     wttr.in (free, no API key required).
+
+    BUGFIX: previously this returned response.text[:500] unconditionally
+    (aside from an "Unknown location" check), so if wttr.in ever served
+    its full HTML homepage instead of the short `?format=3` line (seen
+    under rate-limiting / hiccups), that raw HTML got returned and then
+    spoken aloud by TTS. This is now detected and rejected before it can
+    reach the caller.
     """
     if not location or not location.strip():
         return "Please specify a location for the weather report."
 
-    location = location.strip()
+    location = _clamp_text_length(location.strip(), _MAX_LOCATION_LENGTH, "weather location")
     cache_key = f"weather:{location.lower()}"
     cached = _cache_get(cache_key)
     if cached:
         return cached
 
-    try:
+    def _do_fetch():
         url = f"https://wttr.in/{urllib.parse.quote(location)}?format=3"
-        response = requests.get(
-            url,
-            headers={"User-Agent": _USER_AGENT},
-            timeout=8,
-            stream=False,
-        )
-        response.raise_for_status()
+        # OPTIMIZATION 7: shared session (connection pooling + transport retry).
+        resp = _session.get(url, timeout=_WEATHER_TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        # OPTIMIZATION 5: wttr.in doesn't always send a charset header,
+        # which can make requests guess the wrong encoding and mangle the
+        # weather emoji/degree symbol before TTS reads it aloud. Force
+        # UTF-8 explicitly.
+        resp.encoding = "utf-8"
+        return resp
 
-        # Guard against unexpectedly large responses from wttr.in
-        text = response.text[:500].strip()
-        if not text or "Unknown location" in text:
-            return f"Could not find weather data for '{location}'."
-
-        _cache_set(cache_key, text)
-        return text
+    try:
+        # OPTIMIZATION 4: get_weather() now retries transient failures,
+        # same as search_web()/get_news() -- previously it had none.
+        response = _retry(_do_fetch, attempts=2, delay=1.0)
     except requests.exceptions.Timeout:
         return "Weather lookup timed out. Please check your internet connection."
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch weather for '%s': %s", location, e)
-        return "Sorry, I couldn't fetch the weather right now."
+        return _WEATHER_FALLBACK_MSG
+
+    content_type = response.headers.get("Content-Type", "").lower()
+    # Guard against unexpectedly large responses from wttr.in
+    text = response.text[:500].strip()
+
+    # CONFIRMED-BUG FIX: detect wttr.in serving its full HTML homepage
+    # instead of the expected short format=3 plaintext line. A real
+    # format=3 response is a single short line like "Ajmer: (icon) +31C",
+    # so anything HTML-flavored or suspiciously long is rejected here
+    # instead of being returned (and spoken) as-is.
+    looks_like_html = (
+        "text/html" in content_type
+        or "<!doctype" in text.lower()
+        or "<html" in text.lower()
+        or len(text) > 150
+    )
+    if looks_like_html:
+        logger.error(
+            "Weather lookup for '%s' returned a non-plaintext/HTML response "
+            "(content-type=%r, response_len=%d) instead of the expected "
+            "format=3 text; discarding instead of returning raw HTML.",
+            location, content_type, len(response.text),
+        )
+        return _WEATHER_FALLBACK_MSG
+
+    # OPTIMIZATION 6: case-insensitive check (was case-sensitive before).
+    if not text or "unknown location" in text.lower():
+        return f"Could not find weather data for '{location}'."
+
+    _cache_set(cache_key, text)
+    return text
 
 
 # ============================================================
@@ -542,7 +693,7 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
     if not isinstance(max_chars, int) or max_chars < 1:
         return "Error: max_chars must be a positive integer."
 
-    url = _normalize_url(url.strip())
+    url = _normalize_url(_clamp_text_length(url.strip(), _MAX_URL_LENGTH, "URL"))
     # Preserve URL path case; only lowercase scheme+host for the cache key.
     parsed = urllib.parse.urlparse(url)
     cache_key = f"page:{parsed.scheme}://{parsed.netloc.lower()}{parsed.path}:{max_chars}"
@@ -552,19 +703,32 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
         return cached
 
     try:
-        response = requests.get(
-            url,
-            headers={"User-Agent": _USER_AGENT},
-            timeout=10,
-        )
+        # OPTIMIZATION 9: stream the response and stop after a hard byte
+        # cap instead of unconditionally pulling a (possibly huge) page
+        # fully into memory before truncating it down to max_chars.
+        response = _session.get(url, timeout=_PAGE_FETCH_TIMEOUT_SECONDS, stream=True)
         response.raise_for_status()
+
+        raw_bytes = bytearray()
+        for chunk in response.iter_content(chunk_size=8192):
+            if not chunk:
+                continue
+            raw_bytes.extend(chunk)
+            if len(raw_bytes) >= _MAX_PAGE_DOWNLOAD_BYTES:
+                logger.debug(
+                    "read_webpage: hit %d-byte cap for '%s'; stopping download.",
+                    _MAX_PAGE_DOWNLOAD_BYTES, url,
+                )
+                break
+
+        html_text = raw_bytes.decode(response.encoding or "utf-8", errors="replace")
     except requests.exceptions.Timeout:
         return f"Error: Timed out fetching '{url}'."
     except requests.exceptions.RequestException as e:
         return f"Error: Failed to fetch '{url}'. Details: {e}"
 
     try:
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(html_text, "html.parser")
 
         for tag in soup(["script", "style", "nav", "header", "footer",
                          "aside", "form", "noscript"]):
@@ -609,7 +773,7 @@ def open_url(url: str) -> str:
     if not url or not url.strip():
         return "No URL was provided."
 
-    url = _normalize_url(url.strip())
+    url = _normalize_url(_clamp_text_length(url.strip(), _MAX_URL_LENGTH, "URL"))
 
     try:
         opened = webbrowser.open(url)

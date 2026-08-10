@@ -1312,6 +1312,49 @@ async function loadNotesStatus() {
   el.textContent = `${s.count} note${s.count === 1 ? '' : 's'} indexed · last synced: ${synced}`;
 }
 
+// ── calendar status (Settings page) ──────────────────────────────
+// Backed by sara/tools/calendar.py's get_calendar_status() and
+// get_today_events(), exposed via calendar_api.py's ApiCalendarMixin
+// (already wired into Api in engine.py). Read-only display, no
+// connect/OAuth UI here — just surfaces what the backend already knows.
+function _fmtCalEventTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return ''; // all-day events use a date-only string; skip a time label for those
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+async function loadCalendarStatus() {
+  const statusEl = document.getElementById('calendarStatus');
+  const listEl = document.getElementById('calendarEventsList');
+  if (!statusEl || !listEl) return;
+
+  const res = await callApi('get_calendar_status');
+  const connected = !!(res && res.ok && res.data && res.data.connected);
+
+  if (!connected) {
+    statusEl.textContent = 'Not connected — add credentials.json to the project root, then ask Sara about your calendar to trigger one-time Google sign-in.';
+    listEl.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  const email = (res.data && res.data.email) || 'your Google account';
+  statusEl.textContent = `Connected as ${email}`;
+
+  const evRes = await callApi('get_today_calendar_events');
+  const events = (evRes && evRes.ok && Array.isArray(evRes.data)) ? evRes.data : [];
+  listEl.style.display = 'block';
+  if (!events.length) {
+    listEl.textContent = 'No events today.';
+    return;
+  }
+  listEl.innerHTML = events.map(ev => {
+    const time = _fmtCalEventTime(ev.start);
+    const title = escapeHtml(ev.summary || '(No title)');
+    return `<div style="margin-bottom:4px;">${time ? '<b>' + time + '</b> · ' : ''}${title}</div>`;
+  }).join('');
+}
+
 // ── skills manager (Settings page) ──────────────────────────────
 // Renders sara.skills._LOADED_SKILLS (via get_skills_list()) as a list
 // of settings-row toggles. Renders dynamically since the skill count
@@ -1613,6 +1656,7 @@ function boot() {
   loadMemoryStats();
   loadProactiveStats();
   loadNotesStatus();
+  loadCalendarStatus();
   loadSkills();
   initSetupWizard();
   pollStats();
@@ -1624,6 +1668,7 @@ function boot() {
   setInterval(loadWeather, 15 * 60 * 1000);
   setInterval(loadProactiveStats, 60 * 1000);
   setInterval(loadNotesStatus, 60 * 1000);
+  setInterval(loadCalendarStatus, 5 * 60 * 1000);
 }
 // FIX (root cause of "preview mode, no backend connected"): pywebview
 // injects window.pywebview ASYNCHRONOUSLY relative to this script running
