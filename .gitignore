@@ -8,6 +8,9 @@
 !.env.example
 credentials.json
 token.json
+*.pem
+*.key
+secrets.json
 
 # --- Python ---
 __pycache__/
@@ -41,6 +44,20 @@ logs/
 # --- Notes / user-generated data ---
 notes.json
 notes.txt
+sara_notes.txt
+sara_notes*.txt
+sara_class_notes/
+
+# --- Self-learning / query logs (real user voice queries — never commit) ---
+sara_unmatched_queries.jsonl
+*.jsonl
+
+# --- Stray personal files (screenshots, PDFs, docs accidentally dropped
+#     into the source tree instead of assets/) — keep tracked screenshots
+#     only under assets/screenshots/, never elsewhere in the tree.
+*.pdf
+!assets/**/*.pdf
+!docs/**/*.pdf
 
 # --- ML models (large binaries — fetch separately, don't commit) ---
 models/
@@ -73,6 +90,8 @@ Desktop.ini
 .coverage
 htmlcov/
 *.cover
+test-results.xml
+coverage.xml
 
 # --- Temp files ---
 *.tmp
