@@ -2,18 +2,32 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch: {}
+  # schedule:
+  #   - cron: "0 3 * * 1"  # optional: weekly Mon 03:00 UTC re-run to
+  #                          catch drift from upstream dependency updates
+
+# Cancel superseded runs on the same branch/PR so pushes don't queue
+# behind stale CI runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  test:
-    # NOTE: windows-latest only, on purpose. requirements.txt pins
-    # `winsdk`, which publishes no Linux wheel at all — `pip install -r
-    # requirements.txt` hard-fails on ubuntu-latest before any test can
-    # run. Since this is a Windows-only pywebview app anyway, windows-latest
-    # is both the accurate target and the only runner where a full,
-    # unmodified `pip install -r requirements.txt` actually succeeds.
+  lint:
+    name: Lint (pyflakes)
     runs-on: windows-latest
-
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,11 +38,10 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Install pyflakes
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyflakes pytest
+          pip install pyflakes
 
       - name: Run pyflakes (fail only on real issues, not unused imports)
         shell: bash
@@ -53,11 +66,91 @@ jobs:
           echo "pyflakes: no real issues found (unused-import warnings ignored)."
           exit 0
 
-      - name: Run tests
+  test:
+    name: Test
+    # NOTE: windows-latest only, on purpose. requirements.txt pins
+    # `winsdk`, which publishes no Linux wheel at all -- `pip install -r
+    # requirements.txt` hard-fails on ubuntu-latest before any test can
+    # run. Since this is a Windows-only pywebview app anyway, windows-latest
+    # is both the accurate target and the only runner where a full,
+    # unmodified `pip install -r requirements.txt` actually succeeds.
+    #
+    # To test multiple Python versions later, add a matrix here:
+    #   strategy:
+    #     matrix:
+    #       python-version: ["3.11", "3.12"]
+    # Not enabled by default -- winsdk's per-version Windows wheel
+    # availability hasn't been verified for this project.
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run tests with coverage
         shell: bash
         run: |
-          # test_media.py is a manual verification script, not an actual
-          # pytest test file -- it has no test_* functions and runs
-          # top-level asyncio code on import that needs a live Windows
-          # media session, so it's excluded from the automated run.
-          pytest tests/ --ignore=tests/test_media.py -v
+          pytest tests/ -v \
+            --junitxml=test-results.xml \
+            --cov=sara --cov-report=xml --cov-report=term-missing
+
+      - name: Coverage summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python -m coverage report >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.xml
+          retention-days: 14
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 14
+
+  type-check:
+    name: Type check (mypy, non-blocking)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    continue-on-error: true  # advisory only -- never blocks the pipeline
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install mypy
+        run: |
+          python -m pip install --upgrade pip
+          pip install mypy
+
+      - name: Run mypy
+        shell: bash
+        run: mypy sara/ --ignore-missing-imports
