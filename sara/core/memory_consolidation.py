@@ -144,7 +144,7 @@ def _consolidation_tick(db, brain, rag_memory) -> None:
 
 
 def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> None:
-    interval_s = getattr(Config, "MEMORY_CONSOLIDATION_INTERVAL_S", 1800)
+    interval_s = getattr(Config, "MEMORY_CONSOLIDATION_INTERVAL_S", 60)
     while not stop_event.is_set():
         try:
             if not getattr(Config, "MEMORY_CONSOLIDATION_ENABLED", True):
@@ -197,7 +197,7 @@ def start_memory_consolidation(
     thread.start()
     print(
         f"[MemoryConsolidation] Started -- every "
-        f"{getattr(Config, 'MEMORY_CONSOLIDATION_INTERVAL_S', 1800)}s, "
+        f"{getattr(Config, 'MEMORY_CONSOLIDATION_INTERVAL_S', )}s, "
         f"batch={getattr(Config, 'MEMORY_CONSOLIDATION_BATCH_SIZE', 20)}, "
         f"max_facts={getattr(Config, 'MEMORY_CONSOLIDATION_MAX_FACTS', 3)}"
     )
