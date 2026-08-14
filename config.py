@@ -644,7 +644,7 @@ class Config:
     # consolidation pass. Default 30 minutes -- frequent enough to catch
     # a session's conversation, not so frequent it spams the local LLM.
     MEMORY_CONSOLIDATION_INTERVAL_S: int = _int(
-        os.getenv("MEMORY_CONSOLIDATION_INTERVAL_S"), default=1800
+        os.getenv("MEMORY_CONSOLIDATION_INTERVAL_S"), default=60
     )
     # How many of the most recent raw conversation_log rows are fed to
     # the LLM per consolidation pass.
