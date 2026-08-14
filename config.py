@@ -47,6 +47,16 @@ PRODUCTION-AUDIT CHANGES (this revision)
    exactly, and both are fully backward compatible: every new setting has
    a safe default, so an existing .env file with none of these keys set
    continues to work identically to before this revision.
+9. NEW (memory management / decision memory / memory consolidation):
+   added MEMORY_CONSOLIDATION_* settings backing the periodic background
+   long-term-fact extractor (sara/core/memory_consolidation.py) and
+   MEMORY_FORGET_MATCH_THRESHOLD backing the "forget that I like X" voice
+   intent's fuzzy-match confidence gate
+   (sara/orchestrator/intent_handlers.py). Decision memory itself (the
+   new decision_log table in sara/core/memory.py) has no config gate —
+   it's an always-on, lightweight append-only log, the same as
+   proactive_log. Same backward-compatible convention as #8: every new
+   key has a safe default, so an existing .env file is unaffected.
 """
 
 import os
@@ -196,6 +206,16 @@ _MAX_PLANNING_STEP_TIMEOUT_S = 15.0
 
 _MIN_PLANNING_TOTAL_TIMEOUT_S = 2.0
 _MAX_PLANNING_TOTAL_TIMEOUT_S = 30.0
+
+# ── New bounds for memory management (decision memory / consolidation) ───
+_MIN_MEMORY_CONSOLIDATION_INTERVAL_S = 60
+_MAX_MEMORY_CONSOLIDATION_INTERVAL_S = 86400
+
+_MIN_MEMORY_CONSOLIDATION_BATCH_SIZE = 4
+_MAX_MEMORY_CONSOLIDATION_BATCH_SIZE = 200
+
+_MIN_MEMORY_CONSOLIDATION_MAX_FACTS = 1
+_MAX_MEMORY_CONSOLIDATION_MAX_FACTS = 10
 
 # ── Default application allowlist (used when APP_LAUNCH_ALLOWLIST is
 # unset/empty in .env) — common everyday Windows desktop apps. Extend via
@@ -610,6 +630,41 @@ class Config:
     # long-running install without needing a real vector DB dependency.
     RAG_MAX_IN_MEMORY: int = _int(os.getenv("RAG_MAX_IN_MEMORY"), default=5000)
 
+    # ── Memory Management: decision memory & consolidation (NEW) ─────────
+    # Decision memory (sara/core/memory.py's decision_log table, hooked
+    # via sara/gui/app/helpers.py's _PrefWriter) has no config gate of
+    # its own -- it's a lightweight append-only log, always on, same as
+    # proactive_log. Memory CONSOLIDATION below is the one that needs
+    # gating since it makes periodic LOCAL LLM calls via
+    # sara/core/memory_consolidation.py.
+    MEMORY_CONSOLIDATION_ENABLED: bool = _bool(
+        os.getenv("MEMORY_CONSOLIDATION_ENABLED", "True"), default=True
+    )
+    # How often (seconds) the background thread wakes up and attempts a
+    # consolidation pass. Default 30 minutes -- frequent enough to catch
+    # a session's conversation, not so frequent it spams the local LLM.
+    MEMORY_CONSOLIDATION_INTERVAL_S: int = _int(
+        os.getenv("MEMORY_CONSOLIDATION_INTERVAL_S"), default=1800
+    )
+    # How many of the most recent raw conversation_log rows are fed to
+    # the LLM per consolidation pass.
+    MEMORY_CONSOLIDATION_BATCH_SIZE: int = _int(
+        os.getenv("MEMORY_CONSOLIDATION_BATCH_SIZE"), default=20
+    )
+    # Hard cap on how many facts a single consolidation pass may extract
+    # and store into the RAG long-term memory store.
+    MEMORY_CONSOLIDATION_MAX_FACTS: int = _int(
+        os.getenv("MEMORY_CONSOLIDATION_MAX_FACTS"), default=3
+    )
+    # Fuzzy-match confidence threshold (0-1) the "forget that I like X"
+    # voice intent requires before it will delete a specific RAG memory
+    # -- see sara/orchestrator/intent_handlers.py's
+    # _h_memory_forget_specific. Below this, Sara says she couldn't find
+    # a confident match instead of guessing and deleting the wrong thing.
+    MEMORY_FORGET_MATCH_THRESHOLD: float = _float(
+        os.getenv("MEMORY_FORGET_MATCH_THRESHOLD"), default=0.45
+    )
+
     # ── LLM tool-calling (sara/core/tool_router.py) ──────────────────────────
     # When the fast regex-based intent.py finds no match at all, this makes
     # ONE extra bounded-time LLM call (structured function-calling, not a
@@ -958,6 +1013,23 @@ class Config:
         cls.RAG_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_MIN_SIMILARITY))
         cls.RAG_MAX_IN_MEMORY = max(100, min(50_000, cls.RAG_MAX_IN_MEMORY))
 
+        # ── Memory consolidation / decision-memory clamps (NEW) ────────────
+        cls.MEMORY_CONSOLIDATION_INTERVAL_S = max(
+            _MIN_MEMORY_CONSOLIDATION_INTERVAL_S,
+            min(_MAX_MEMORY_CONSOLIDATION_INTERVAL_S, cls.MEMORY_CONSOLIDATION_INTERVAL_S),
+        )
+        cls.MEMORY_CONSOLIDATION_BATCH_SIZE = max(
+            _MIN_MEMORY_CONSOLIDATION_BATCH_SIZE,
+            min(_MAX_MEMORY_CONSOLIDATION_BATCH_SIZE, cls.MEMORY_CONSOLIDATION_BATCH_SIZE),
+        )
+        cls.MEMORY_CONSOLIDATION_MAX_FACTS = max(
+            _MIN_MEMORY_CONSOLIDATION_MAX_FACTS,
+            min(_MAX_MEMORY_CONSOLIDATION_MAX_FACTS, cls.MEMORY_CONSOLIDATION_MAX_FACTS),
+        )
+        cls.MEMORY_FORGET_MATCH_THRESHOLD = max(
+            0.0, min(1.0, cls.MEMORY_FORGET_MATCH_THRESHOLD)
+        )
+
         # ── Tool-calling clamps ─────────────────────────────────────────────
         cls.TOOL_CALLING_TIMEOUT_S = max(1.0, min(15.0, cls.TOOL_CALLING_TIMEOUT_S))
 
@@ -1130,6 +1202,13 @@ class Config:
                 f"top_k={cls.RAG_TOP_K} | min_sim={cls.RAG_MIN_SIMILARITY} | "
                 f"timeout={cls.EMBEDDING_TIMEOUT_S}s | max_in_ram={cls.RAG_MAX_IN_MEMORY}"
             )
+            print(
+                f"[Debug] Memory consol.: enabled={cls.MEMORY_CONSOLIDATION_ENABLED} | "
+                f"every={cls.MEMORY_CONSOLIDATION_INTERVAL_S}s | "
+                f"batch={cls.MEMORY_CONSOLIDATION_BATCH_SIZE} | "
+                f"max_facts={cls.MEMORY_CONSOLIDATION_MAX_FACTS}"
+            )
+            print(f"[Debug] Forget match : threshold={cls.MEMORY_FORGET_MATCH_THRESHOLD}")
             print(
                 f"[Debug] Tool calling : enabled={cls.TOOL_CALLING_ENABLED} | "
                 f"mode={cls.TOOL_CALLING_MODE} | timeout={cls.TOOL_CALLING_TIMEOUT_S}s"

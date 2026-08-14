@@ -47,6 +47,15 @@ ARCHITECTURE
     return an empty list rather than raising — a broken embedding
     backend degrades Sara back to exactly her pre-RAG behavior, never a
     crash or a hang.
+  - DELETES (delete_memory / clear_all — NEW) also go through the SAME
+    background writer thread/queue as add_memory(), tagged with a
+    leading string sentinel ("__DELETE__" / "__CLEAR__") so the writer
+    loop can tell an add-job from a delete-job apart without changing
+    the original (text, source, timestamp) job shape at all. Unlike
+    add_memory(), these support wait=True (default) via a
+    concurrent.futures.Future so a caller (the "forget that I like X"
+    / "forget everything" voice intents) can know for certain the
+    delete actually happened before telling the user it did.
 
 WHAT THIS IS NOT
 -----------------
@@ -65,6 +74,7 @@ import queue
 import sqlite3
 import threading
 import urllib.request
+from concurrent.futures import Future
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -238,6 +248,25 @@ class LongTermMemory:
                 continue
             if job is None:
                 break
+            # NEW: delete_memory()/clear_all() tag their jobs with a
+            # leading string sentinel so this loop can dispatch them
+            # without disturbing the original (text, source, timestamp)
+            # add-memory job shape below at all — add_memory()'s path is
+            # completely unchanged.
+            if isinstance(job, tuple) and job and job[0] == "__DELETE__":
+                _, memory_id, future = job
+                try:
+                    self._delete_one(memory_id, future)
+                except Exception as e:
+                    logger.error(f"[RAG] background delete failed: {e}")
+                continue
+            if isinstance(job, tuple) and job and job[0] == "__CLEAR__":
+                _, future = job
+                try:
+                    self._clear_all_one(future)
+                except Exception as e:
+                    logger.error(f"[RAG] background clear failed: {e}")
+                continue
             text, source, timestamp = job
             try:
                 self._write_one(text, source, timestamp)
@@ -285,6 +314,68 @@ class LongTermMemory:
                 self._timestamps = self._timestamps[overflow:]
                 self._matrix = self._matrix[overflow:]
 
+    def _delete_one(self, memory_id: int, future: Optional[Future]) -> None:
+        """
+        Executes a single delete_memory() job on the writer thread:
+        removes the DB row, then (only if a row was actually deleted)
+        removes the matching entry from the in-memory index under
+        _matrix_lock. Never raises out of this method — any error is
+        surfaced via `future.set_exception()` instead, matching
+        sara/core/memory.py's PreferencesDB._submit_write() convention.
+        """
+        try:
+            cursor = self._conn.execute(
+                "DELETE FROM long_term_memory WHERE id = ?", (memory_id,)
+            )
+            self._conn.commit()
+            deleted = cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"[RAG] delete_memory DB delete failed: {e}")
+            if future is not None:
+                future.set_exception(e)
+            return
+
+        if deleted:
+            with self._matrix_lock:
+                if memory_id in self._ids:
+                    idx = self._ids.index(memory_id)
+                    del self._ids[idx]
+                    del self._texts[idx]
+                    del self._sources[idx]
+                    del self._timestamps[idx]
+                    if self._matrix.shape[0] > idx:
+                        self._matrix = np.delete(self._matrix, idx, axis=0)
+
+        if future is not None:
+            future.set_result(deleted)
+
+    def _clear_all_one(self, future: Optional[Future]) -> None:
+        """
+        Executes a single clear_all() job on the writer thread: wipes
+        every row from the long_term_memory table and resets the entire
+        in-memory index. Never raises out of this method — see
+        _delete_one()'s docstring for the same error-via-future
+        convention.
+        """
+        try:
+            self._conn.execute("DELETE FROM long_term_memory")
+            self._conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"[RAG] clear_all DB delete failed: {e}")
+            if future is not None:
+                future.set_exception(e)
+            return
+
+        with self._matrix_lock:
+            self._ids = []
+            self._texts = []
+            self._sources = []
+            self._timestamps = []
+            self._matrix = np.zeros((0, 0), dtype=np.float32)
+
+        if future is not None:
+            future.set_result(True)
+
     # ── Public API ───────────────────────────────────────────────────────
 
     def add_memory(self, text: str, source: str = "conversation") -> None:
@@ -298,6 +389,84 @@ class LongTermMemory:
             self._write_queue.put_nowait((text.strip(), source, timestamp))
         except Exception as e:
             logger.debug(f"[RAG] add_memory enqueue failed: {e}")
+
+    def list_memories(self) -> List[dict]:
+        """
+        Returns a snapshot of every currently-loaded long-term memory as
+        [{"id", "text", "source", "timestamp"}, ...], oldest first. Used
+        by the "forget that I like X" voice intent (see
+        sara/orchestrator/intent_handlers.py's
+        _h_memory_forget_specific) to fuzzy-match a spoken phrase
+        against real stored memories before deleting anything. Returns
+        [] if RAG is disabled.
+        """
+        if not self.enabled:
+            return []
+        with self._matrix_lock:
+            return [
+                {
+                    "id": self._ids[i],
+                    "text": self._texts[i],
+                    "source": self._sources[i],
+                    "timestamp": self._timestamps[i],
+                }
+                for i in range(len(self._ids))
+            ]
+
+    def delete_memory(
+        self, memory_id: int, wait: bool = True, timeout: float = 5.0
+    ) -> bool:
+        """
+        Deletes a single memory by id (both the DB row and its
+        in-memory index entry). Runs on the same background writer
+        thread as add_memory(), for consistency with this module's
+        single-writer discipline. wait=True (default) blocks until the
+        delete has actually completed and returns whether a row was
+        removed; wait=False is fire-and-forget (returns True as soon as
+        the job is queued, matching PreferencesDB._submit_write()'s
+        wait=False contract in sara/core/memory.py).
+        """
+        if not self.enabled or self._closed:
+            return False
+        future: Optional[Future] = Future() if wait else None
+        try:
+            self._write_queue.put_nowait(("__DELETE__", memory_id, future))
+        except Exception as e:
+            logger.debug(f"[RAG] delete_memory enqueue failed: {e}")
+            return False
+        if wait and future is not None:
+            try:
+                return bool(future.result(timeout=timeout))
+            except Exception as e:
+                logger.error(f"[RAG] delete_memory timed out/failed: {e}")
+                return False
+        return True
+
+    def clear_all(self, wait: bool = True, timeout: float = 5.0) -> bool:
+        """
+        Deletes EVERY stored long-term memory (DB rows + in-memory
+        index). Backs the "forget everything you know about me" voice
+        intent — which requires an explicit spoken confirmation BEFORE
+        this is ever called (see sara/orchestrator/intent_handlers.py's
+        confirm_state flow); this method itself performs no
+        confirmation, it just executes the wipe once called. wait=True
+        (default) blocks until complete.
+        """
+        if not self.enabled or self._closed:
+            return False
+        future: Optional[Future] = Future() if wait else None
+        try:
+            self._write_queue.put_nowait(("__CLEAR__", future))
+        except Exception as e:
+            logger.debug(f"[RAG] clear_all enqueue failed: {e}")
+            return False
+        if wait and future is not None:
+            try:
+                return bool(future.result(timeout=timeout))
+            except Exception as e:
+                logger.error(f"[RAG] clear_all timed out/failed: {e}")
+                return False
+        return True
 
     def search(
         self,

@@ -687,6 +687,61 @@ _INTENT_PATTERNS = [
         r"vo kyu(?:n)? bola tha",
     ]),
 
+    # ── Decision Memory ("why did I change X?") — NEW ───────────────────
+    # Distinct from why_proactive above: "why did YOU say" (explainable-
+    # AI, about Sara's own proactive nudges) vs "why did I change" (about
+    # a settings/config change the USER made, backed by
+    # sara/core/memory.py's new decision_log table). Placed right after
+    # why_proactive since they share the same gate keywords but never
+    # the same sentence shape.
+    ("why_decision", [
+        r"why did i change (.+)",
+        r"why did i (?:set|update|adjust) (.+)",
+        r"maine (.+?) kyu(?:n)? change kiya (?:tha)?$",
+        r"maine (.+?) kyu(?:n)? badla (?:tha)?$",
+    ]),
+
+    # ── Memory Management (voice-triggerable, NEW) ──────────────────────
+    # memory_forget_all MUST come before memory_forget_specific -- "forget
+    # everything you know about me" would otherwise be swallowed by
+    # memory_forget_specific's broad "forget that ..."/"please forget
+    # ..." catch-alls if checked first. Deliberately anchored on
+    # "everything"/"all"/"saari" + "memory/memories/yaad" so this NEVER
+    # collides with the EXISTING _FORGET_WORDS-based "forget everything"
+    # / "forget our conversation" conversation-log wipe (handled earlier
+    # in the pipeline, before intent detection, in
+    # sara/orchestrator/intent_handlers.py) -- that existing feature is
+    # completely untouched and still wipes conversation_log only. This
+    # new intent is specifically about the RAG long-term memory store
+    # (sara/core/rag.py) and always requires a follow-up spoken
+    # confirmation before anything is deleted (see intent_handlers.py's
+    # _h_memory_forget_all + its confirm_state handling).
+    ("memory_forget_all", [
+        r"forget everything you know about me",
+        r"forget all (?:my )?(?:memories|long[- ]term memories)",
+        r"wipe all (?:my )?memories",
+        r"(?:delete|clear|erase) all (?:my )?(?:memories|long[- ]term memories)",
+        r"saari yaad(?:ein|en)? (?:delete|mita|khatam) (?:kar do|karo)",
+        r"mujhe (?:puri tarah|bilkul) bhool jao",
+        r"sab kuch bhool jao jo tumhe mere baare mein pata hai",
+    ]),
+    ("memory_forget_specific", [
+        r"forget that i (?:like|said|told you|mentioned) (.+)",
+        r"forget (?:the fact )?that (.+)",
+        r"please forget (.+)",
+        r"ye bhool jao ki (.+)",
+        r"(.+?) (?:wali baat|wala fact) bhool jao",
+        r"ye yaad mat rakho ki (.+)",
+    ]),
+    ("memory_recall", [
+        r"what do you remember about me",
+        r"what (?:do you|can you) recall about me",
+        r"tell me what you (?:know|remember) about me",
+        r"mere baare mein kya yaad hai",
+        r"tumhe mere baare mein kya pata hai",
+        r"mere baare mein kya (?:pata|yaad) hai tumhe",
+    ]),
+
     # ── Routines (Automation) — MUST come before open_app below.
     #    open_app's catch-all "run (...)"/"start (...)" patterns are
     #    deliberately broad (no gate) and WILL swallow "run good morning
@@ -854,6 +909,10 @@ _INTENT_GATES = {
     "time_query": ("time",),
     "date_query": ("date", "day"),
     "why_proactive": ("why", "kyu", "kyun", "made you say", "explain"),
+    "why_decision": ("why", "kyu", "kyun", "change", "badla", "badli"),
+    "memory_forget_all": ("forget", "wipe", "delete", "erase", "clear", "bhool", "yaad", "mita"),
+    "memory_forget_specific": ("forget", "bhool", "yaad"),
+    "memory_recall": ("remember", "recall", "yaad", "pata"),
     "calendar_today": ("calendar", "schedule", "aaj", "meeting"),
     "calendar_create": ("meeting", "event", "baje", "calendar"),
     # calculator, open_app, close_app: no safe substring gate — always run.

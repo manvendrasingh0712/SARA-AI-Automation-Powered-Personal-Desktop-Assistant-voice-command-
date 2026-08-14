@@ -148,15 +148,47 @@ class _PrefWriter:
         silently inside a fire-and-forget thread.
       - stop() drains any pending writes before the process exits, so
         a setting changed right before quitting isn't lost.
+
+    DECISION MEMORY (NEW): this is also the single chokepoint every
+    settings/config change already flows through -- every one of
+    sara/gui/app/settings.py's setter methods (set_mute, set_focus_mode,
+    update_setting, set_assistant_active, set_mic_sensitivity,
+    set_speech_speed, set_language, set_skill_enabled) calls
+    self._pref_writer.enqueue(key, value) rather than db.set_preference
+    directly, so logging "what changed, from what, to what" HERE covers
+    every settings change made via voice OR the GUI, without touching
+    settings.py at all. get_preference_fn/log_decision_fn are both
+    optional (default None) so this class still behaves exactly as
+    before for any caller that doesn't pass them -- purely additive.
     """
 
-    def __init__(self, set_preference_fn):
+    # Internal preference keys that are bookkeeping, not a real
+    # user-facing "setting" -- skipped from decision_log so it doesn't
+    # fill up with noise from routine/streak internals nobody would ever
+    # ask "why did I change X" about.
+    _DECISION_LOG_SKIP_KEYS = {
+        "streak_last_date",
+        "streak_count",
+        "streak_pending_milestone",
+    }
+    _DECISION_LOG_SKIP_PREFIXES = ("routine_last_run:",)
+
+    def __init__(self, set_preference_fn, get_preference_fn=None, log_decision_fn=None):
         self._set_preference = set_preference_fn
+        self._get_preference = get_preference_fn
+        self._log_decision = log_decision_fn
         self._q: "queue.Queue[tuple[str, str] | None]" = queue.Queue()
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="PrefWriter"
         )
         self._thread.start()
+
+    def _should_log_decision(self, key: str) -> bool:
+        if key in self._DECISION_LOG_SKIP_KEYS:
+            return False
+        if any(key.startswith(prefix) for prefix in self._DECISION_LOG_SKIP_PREFIXES):
+            return False
+        return True
 
     def _run(self):
         while True:
@@ -165,8 +197,30 @@ class _PrefWriter:
                 self._q.task_done()
                 break
             key, value = item
+
+            old_value = None
+            want_decision_log = (
+                self._get_preference is not None
+                and self._log_decision is not None
+                and self._should_log_decision(key)
+            )
+            if want_decision_log:
+                try:
+                    old_value = self._get_preference(key)
+                except Exception as e:
+                    print(f"[decision log error] could not read old value for {key}: {e}")
+
             try:
                 self._set_preference(key, value)
+                if want_decision_log and old_value != value:
+                    try:
+                        readable_key = key.replace("_", " ").replace(":", " ")
+                        reason = (
+                            f"user changed {readable_key} from {old_value!r} to {value!r}"
+                        )
+                        self._log_decision(key, old_value, value, reason, wait=False)
+                    except Exception as e:
+                        print(f"[decision log error] {key}={value}: {e}")
             except Exception as e:
                 print(f"[pref write error] {key}={value}: {e}")
             finally:
