@@ -32,6 +32,7 @@ from sara.core.llm import SaraLLM
 from sara.audio.tts import TextToSpeech
 from sara.audio.stt import SpeechToText
 from sara.core.memory import PreferencesDB
+from sara.core.memory_consolidation import start_memory_consolidation   # ← NEW
 from sara.tools.reminders import ReminderManager, play_alarm_beep
 from sara.tools.vision import VisionAssistant
 
@@ -507,6 +508,8 @@ def run_sara_logic(
         threading.Thread(
             target=_sync_notes_once, daemon=True, name="sara-notes-sync"
         ).start()
+        
+    start_memory_consolidation(db, brain, notes_memory)
 
     aec_active = (
         bool(getattr(Config, "AEC_ENABLED", True))
