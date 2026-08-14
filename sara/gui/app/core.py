@@ -110,7 +110,19 @@ class ApiCoreMixin:
 
         # Single serialized writer for all preference writes — see _PrefWriter
         # docstring above for why this replaced per-call threading.Thread(...).
-        self._pref_writer = _PrefWriter(self.db.set_preference)
+        # NEW: also passes get_preference_fn + log_decision_fn so _PrefWriter
+        # can log a decision_log entry ("what changed, from what, to what")
+        # for every settings/config change made via voice OR the GUI --
+        # see sara/gui/app/helpers.py's _PrefWriter docstring and
+        # sara/core/memory.py's log_decision() for the full feature.
+        # getattr() guards the case where an older/custom db object
+        # doesn't have log_decision() yet -- decision logging then simply
+        # never fires, same as before this feature existed.
+        self._pref_writer = _PrefWriter(
+            self.db.set_preference,
+            get_preference_fn=self.db.get_preference,
+            log_decision_fn=getattr(self.db, "log_decision", None),
+        )
 
         self.music_queries = INDIAN_MUSIC_SEARCHES.copy()
         random.shuffle(self.music_queries)

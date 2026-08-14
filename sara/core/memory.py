@@ -10,6 +10,7 @@ the newer, in-use version); sara/tools/database.py has been removed.
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import queue
@@ -134,6 +135,14 @@ class PreferencesDB:
                 name       TEXT    PRIMARY KEY,
                 definition TEXT    NOT NULL,
                 enabled    INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS decision_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                setting_key TEXT    NOT NULL,
+                old_value   TEXT,
+                new_value   TEXT    NOT NULL,
+                reason      TEXT    NOT NULL,
+                timestamp   TEXT    NOT NULL
             );
             """)
 
@@ -494,6 +503,132 @@ class PreferencesDB:
             logger.error("get_proactive_stats: %s", e)
             print(f"[Error] get_proactive_stats: {e}")
             return {"total": 0, "by_trigger": {}, "recent": []}
+
+    # ── Decision memory (NEW) ────────────────────────────────────────────
+    # Backs the "why did I change X" voice intent
+    # (sara/orchestrator/intent_handlers.py's _h_why_decision). Hooked
+    # from sara/gui/app/helpers.py's _PrefWriter._run() -- the single
+    # chokepoint every settings/config change (voice OR GUI) already
+    # flows through, since every one of sara/gui/app/settings.py's
+    # setter methods (set_mute, set_focus_mode, update_setting,
+    # set_assistant_active, set_mic_sensitivity, set_speech_speed,
+    # set_language, set_skill_enabled) calls
+    # self._pref_writer.enqueue(key, value) rather than
+    # db.set_preference() directly. NOT hooked into update_setting()
+    # alone -- that would miss 7 of the 8 setter methods.
+
+    def log_decision(
+        self,
+        setting_key: str,
+        old_value: Optional[str],
+        new_value: str,
+        reason: str,
+        wait: bool = False,
+    ) -> bool:
+        """
+        Records one settings/config change with a plain-English reason.
+        Defaults to fire-and-forget (wait=False) since this is called
+        right after a preference write completes and must never add
+        latency to that path (same contract as log_proactive_event()
+        above).
+        """
+        if not setting_key or new_value is None:
+            return False
+
+        def _do(conn: sqlite3.Connection) -> bool:
+            try:
+                conn.execute(
+                    "INSERT INTO decision_log (setting_key, old_value, new_value, reason, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (setting_key, old_value, new_value, reason or "", datetime.now().isoformat()),
+                )
+                conn.commit()
+                return True
+            except sqlite3.Error as e:
+                conn.rollback()
+                logger.error("log_decision('%s'): %s", setting_key, e)
+                print(f"[Error] log_decision('{setting_key}'): {e}")
+                return False
+
+        return self._submit_write(_do, wait=wait)
+
+    def get_recent_decisions(self, limit: int = 50) -> list[dict[str, str]]:
+        """Returns the most recent `limit` decision-log entries, newest last."""
+        if not isinstance(limit, int) or limit <= 0:
+            return []
+        if self._closed:
+            return []
+        try:
+            conn = self._get_read_conn()
+            cursor = conn.execute(
+                """
+                SELECT setting_key, old_value, new_value, reason, timestamp
+                FROM (
+                    SELECT setting_key, old_value, new_value, reason, timestamp, id
+                    FROM decision_log
+                    ORDER BY id DESC
+                    LIMIT ?
+                ) ORDER BY id ASC
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "setting_key": r[0],
+                    "old_value": r[1],
+                    "new_value": r[2],
+                    "reason": r[3],
+                    "timestamp": r[4],
+                }
+                for r in cursor.fetchall()
+            ]
+        except sqlite3.Error as e:
+            logger.error("get_recent_decisions: %s", e)
+            print(f"[Error] get_recent_decisions: {e}")
+            return []
+
+    def find_decision_by_query(
+        self, query_text: str, limit_scan: int = 200
+    ) -> Optional[dict[str, str]]:
+        """
+        Fuzzy-matches `query_text` (e.g. "mic sensitivity" captured from
+        the "why did I change X" voice intent) against the setting_key
+        of recent decision_log entries, using stdlib difflib (no new
+        dependency -- it's part of the Python standard library). Returns
+        the single most recent entry whose setting_key clears a
+        similarity threshold, or None if nothing matches confidently --
+        the caller (see _h_why_decision in intent_handlers.py) must then
+        say so instead of guessing, per this feature's spec.
+        """
+        if not query_text or not query_text.strip():
+            return None
+        recent = self.get_recent_decisions(limit=limit_scan)
+        if not recent:
+            return None
+
+        normalized_query = query_text.strip().lower()
+        best_entry: Optional[dict[str, str]] = None
+        best_score = 0.0
+        # get_recent_decisions() returns oldest-first; iterate reversed
+        # (newest-first) so that on a tied score, the MOST RECENT
+        # matching change wins -- "why did I change X" should answer
+        # about the latest change, not an old one.
+        for entry in reversed(recent):
+            key_display = entry["setting_key"].replace("_", " ").replace(":", " ").lower()
+            ratio = difflib.SequenceMatcher(None, normalized_query, key_display).ratio()
+            # Bonus for a direct substring match either direction --
+            # handles "mic" matching "mic sensitivity" even though the
+            # whole-string ratio alone would be fairly low.
+            if normalized_query in key_display or key_display in normalized_query:
+                ratio = max(ratio, 0.75)
+            if ratio > best_score:
+                best_score = ratio
+                best_entry = entry
+
+        _MATCH_THRESHOLD = 0.45
+        if best_entry is not None and best_score >= _MATCH_THRESHOLD:
+            return best_entry
+        return None
 
     # ── Daily talk streak (personality feature) ─────────────────────────
     # Backs "how many days in a row have we talked" and
