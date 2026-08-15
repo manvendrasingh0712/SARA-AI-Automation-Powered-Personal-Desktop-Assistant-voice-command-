@@ -952,7 +952,7 @@ def _h_memory_recall(match, ctx):
     db = ctx.get("db")
     user_name = db.get_preference("user_name") if db else None
 
-    rag = getattr(ctx["brain"], "rag_memory", None)
+    rag = ctx.get("notes_memory")
     memory_texts = []
     if rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
         try:
@@ -991,7 +991,7 @@ def _h_memory_forget_specific(match, ctx):
     if not target_phrase:
         return _quick(ctx, "What would you like me to forget?")
 
-    rag = getattr(ctx["brain"], "rag_memory", None)
+    rag = ctx.get("notes_memory")
     if rag is None or not _HAS_RAG or not getattr(rag, "enabled", False):
         return _quick(ctx, "I don't have long-term memory available right now.")
 
@@ -1342,7 +1342,7 @@ def _handle_command(
                 elif action == "forget_all_memories":
                     # NEW: only place rag.clear_all() is ever actually
                     # invoked -- always behind this explicit "yes".
-                    rag = getattr(ctx["brain"], "rag_memory", None)
+                    rag = ctx.get("notes_memory")
                     if rag is None or not _HAS_RAG or not getattr(rag, "enabled", False):
                         result = "I don't have long-term memory available right now."
                     else:
