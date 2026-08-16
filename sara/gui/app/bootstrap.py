@@ -10,6 +10,8 @@ import os
 import threading
 import webview
 
+from sara.orchestrator import notifications, emergency_stop
+
 # NOTE: this file lives at sara/gui/app/bootstrap.py — one directory deeper
 # than the original sara/gui/app.py. index.html itself did NOT move (it's
 # still at sara/gui/index.html), so BASE_DIR must go up one extra level to
@@ -33,7 +35,26 @@ def main():
     brain, tts, ears, db, vision, reminders, db_writer, lang_state, assistant_state = (
         sara_main.build_core_objects(_push)
     )
+
+    # NEW: file-notification watcher (sara/orchestrator/notifications.py).
+    # Constructed and started right here, right after `tts` exists, same
+    # "as soon as its dependencies are ready" spirit as everything else
+    # in build_core_objects() above. Config-gated internally
+    # (NOTIFICATIONS_ENABLED, checked fresh every tick) -- starting the
+    # thread unconditionally here is safe even if the feature is
+    # disabled, since the thread's own tick() immediately no-ops when
+    # the gate is off.
+    notifications.init_watcher(tts, _push)
+
     api = Api(brain, tts, ears, db, vision, reminders, lang_state, assistant_state)
+
+    # NEW: global emergency-stop hotkey (sara/orchestrator/emergency_stop.py).
+    # Registered right here, right after `api` exists -- api.stop_sara()
+    # is what the hotkey callback needs, and this is the first point in
+    # main() where it's available. Config-gated internally
+    # (EMERGENCY_STOP_ENABLED) and idempotent (safe even if main() were
+    # ever re-entered in this same process).
+    emergency_stop.register_emergency_stop(api)
 
     logic_thread = threading.Thread(
         target=sara_main.run_sara_logic,
@@ -90,6 +111,20 @@ def main():
     )
     events._stop_event.set()
     logic_thread.join(timeout=5.0)
+
+    # NEW: clean teardown for the emergency-stop hotkey and the
+    # notification watcher -- mirrors the existing pref-writer/db
+    # teardown immediately below (each wrapped so one failing cleanup
+    # step can never block the rest of shutdown).
+    try:
+        emergency_stop.unregister_emergency_stop()
+    except Exception as e:
+        print(f"[shutdown] unregister_emergency_stop failed: {e}")
+    try:
+        notifications.shutdown_watcher()
+    except Exception as e:
+        print(f"[shutdown] notifications watcher shutdown failed: {e}")
+
     # Flush any pending preference writes (e.g. a slider dragged right
     # before the window was closed) before the process exits.
     api._pref_writer.stop(timeout=3.0)

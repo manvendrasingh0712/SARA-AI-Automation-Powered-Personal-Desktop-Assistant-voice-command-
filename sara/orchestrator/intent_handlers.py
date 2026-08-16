@@ -41,6 +41,8 @@ pending-confirmation block below. See that block for the
 from .calc_utils import _safe_calc, _parse_duration_to_seconds
 from .network_utils import _call_with_timeout
 from .tts_worker import TTSWorker
+from . import notifications
+
 
 import difflib
 import random
@@ -1154,6 +1156,32 @@ def _h_run_routine(match, ctx):
 
     return " ".join(spoken_texts) if spoken_texts else "Routine finished."
 
+def _h_notify_on_file(match, ctx):
+    """
+    "tell me when the download finishes" / "jab download complete ho
+    jaye batana" -- arms (or re-arms) a single watch on the user's
+    Downloads folder via the background NotificationWatcher
+    (sara/orchestrator/notifications.py). Only one watch is active at a
+    time: calling this again while a watch is already running silently
+    REPLACES the previous target -- it never crashes and never silently
+    no-ops -- see NotificationWatcher.watch_for_next_file()'s docstring.
+
+    notifications.get_watcher() is handed ctx["tts"]/ctx["ui_update"] so
+    it can lazily create the process-wide singleton if
+    sara/gui/app/bootstrap.py's init_watcher() call somehow hasn't run
+    yet (defensive only -- in normal operation the singleton already
+    exists by the time any voice command reaches this handler).
+    """
+    watcher = notifications.get_watcher(ctx["tts"], ctx["ui_update"])
+    if watcher is None:
+        return _quick(ctx, "Sorry, file notifications aren't available right now.")
+    if not getattr(Config, "NOTIFICATIONS_ENABLED", True):
+        return _quick(
+            ctx, "File notifications are turned off right now, so I can't watch for that."
+        )
+    result = watcher.watch_for_next_file()
+    return _quick(ctx, result)
+
 
 _INTENT_HANDLERS = {
     "reminder_add": _h_reminder_add,
@@ -1204,6 +1232,7 @@ _INTENT_HANDLERS = {
     "calendar_today": _h_calendar_today,
     "calendar_create": _h_calendar_create,
     "run_routine": _h_run_routine,
+    "notify_on_file": _h_notify_on_file,
 }
 
 

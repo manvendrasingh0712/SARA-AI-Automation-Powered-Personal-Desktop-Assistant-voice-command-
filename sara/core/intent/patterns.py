@@ -477,6 +477,28 @@ _INTENT_PATTERNS = [
         r"clear (?:the )?recycle bin",
         r"delete (?:all )?(?:the )?(?:items in (?:the )?)?recycle bin",
     ]),
+    
+    # ── File / Download Notifications (NEW, sara/orchestrator/notifications.py) ──
+    # "tell me when the download finishes" / "jab download complete ho
+    # jaye batana" -- arms a single background watch on the Downloads
+    # folder. No capturing groups: v1 always watches the default
+    # Downloads folder (see notifications.py's get_downloads_folder()),
+    # so the handler needs nothing out of the match beyond "it matched".
+    # Placed here (File Operations area) and BEFORE the open_app catch-
+    # all further down, though there's no real collision risk -- none of
+    # these phrasings start with "open/launch/start/run".
+    ("notify_on_file", [
+        r"tell me when (?:the |a |my )?download(?:s)? (?:is |are )?(?:finished|done|complete|ready)",
+        r"let me know when (?:the |a |my )?download(?:s)? (?:is |are )?(?:finished|done|complete|ready)",
+        r"notify me when (?:the |a |my )?download(?:s)? (?:is |are )?(?:finished|done|complete|ready)",
+        r"tell me when (?:the |a |my )?file (?:is |has )?(?:finished|done|ready|downloaded)",
+        r"let me know when (?:a |the |my )?(?:new )?file (?:shows up|appears|arrives|is ready)",
+        r"notify me when (?:a |the |my )?(?:new )?file (?:shows up|appears|arrives|is ready)",
+        r"jab download (?:complete|khatam|poora|done) ho jaye(?: to)? (?:mujhe )?batana",
+        r"download (?:complete|khatam|poora) hone (?:par|pe) (?:mujhe )?batana",
+        r"jab file (?:aa jaye|complete ho jaye)(?: to)? (?:mujhe )?batana",
+        r"file (?:aane|complete hone) (?:par|pe) (?:mujhe )?batana",
+    ]),
 
     # ── Folders (open_* MUST come before open_app's broad catch-all) ──
     ("open_downloads", [
@@ -873,6 +895,7 @@ _INTENT_GATES = {
     "light_mode": ("light",),
     "find_file": ("file", "find", "locate", "where"),
     "empty_recycle_bin": ("recycle",),
+    "notify_on_file": ("download", "file", "batana", "notify", "let me know", "tell me when"),
     "open_downloads": ("download",),
     "open_documents": ("document",),
     "open_desktop_folder": ("desktop",),
