@@ -57,6 +57,14 @@ PRODUCTION-AUDIT CHANGES (this revision)
    it's an always-on, lightweight append-only log, the same as
    proactive_log. Same backward-compatible convention as #8: every new
    key has a safe default, so an existing .env file is unaffected.
+10. NEW (file notifications / emergency-stop hotkey): added
+    NOTIFICATIONS_* settings backing the background download-completion
+    watcher (sara/orchestrator/notifications.py) and EMERGENCY_STOP_*
+    settings backing the global panic-button hotkey
+    (sara/orchestrator/emergency_stop.py). Same backward-compatible
+    convention as #8/#9 above: every new key has a safe default, so an
+    existing .env file with none of these keys set continues to work
+    identically to before this revision.
 """
 
 import os
@@ -263,21 +271,12 @@ class Config:
 
     # ── Gemini ────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    # NEW: was previously read via getattr(cfg, "GEMINI_MODEL", "gemini-2.5-flash")
-    # in llm.py with no matching definition here — now first-class and
-    # actually configurable via .env.
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-    # NEW: was read via getattr(cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000) in
-    # llm.py's _trim_history_to_budget() with no matching definition here.
     GEMINI_MAX_HISTORY_TOKENS: int = _int(
         os.getenv("GEMINI_MAX_HISTORY_TOKENS"), default=30_000
     )
 
     # ── LLM retry / warm-up behavior ─────────────────────────────────────
-    # NEW: these four were read via getattr(...) in llm.py's
-    # _stream_generic()/generate_response_stream() with no definitions
-    # here — meaning retry/backoff/warm-up tuning was silently
-    # unconfigurable via .env before this fix.
     LLM_MAX_RETRIES: int = _int(os.getenv("LLM_MAX_RETRIES"), default=2)
     LLM_RETRY_BASE_DELAY_S: float = _float(
         os.getenv("LLM_RETRY_BASE_DELAY_S"), default=1.5
@@ -297,9 +296,6 @@ class Config:
         default=int(_DEFAULT_CUDA_MEM_LIMIT_GB * _BYTES_PER_GB),
     )
 
-    # Intra-op threads default lower when GPU is active — the CUDA EP does the
-    # heavy compute, so oversubscribing CPU threads only adds contention with
-    # STT/wake-word workers running alongside TTS.
     ORT_INTRA_THREADS: int = _int(
         os.getenv("ORT_INTRA_THREADS"),
         default=(
@@ -314,12 +310,6 @@ class Config:
     KOKORO_VOICE_EN: str = os.getenv("KOKORO_VOICE_EN", "af_heart")
     KOKORO_LANG_EN: str = os.getenv("KOKORO_LANG_EN", "en-us")
 
-    # FIX: KOKORO_SPEED used to be defined but never read anywhere in
-    # tts.py (only the _EN/_HI variants were), making it dead config. It
-    # is now a genuine base/fallback speed: if a user sets ONLY
-    # KOKORO_SPEED in .env, both per-language speeds inherit it
-    # automatically. Setting KOKORO_SPEED_EN/KOKORO_SPEED_HI explicitly
-    # still overrides this base value, exactly as you'd expect.
     KOKORO_SPEED: float = _float(os.getenv("KOKORO_SPEED"), default=1.0)
 
     KOKORO_VOICE_HI: str = os.getenv("KOKORO_VOICE_HI", "hf_alpha")
@@ -340,15 +330,11 @@ class Config:
         os.getenv("TTS_PHRASE_CACHE_MAXLEN"), default=40
     )
 
-    # NEW: was read via getattr(self, "TTS_BLEED_GUARD_MULTIPLIER", 1.6) in
-    # stt.py's is_user_speaking() with no definition here.
     TTS_BLEED_GUARD_MULTIPLIER: float = _float(
         os.getenv("TTS_BLEED_GUARD_MULTIPLIER"), default=1.6
     )
 
     # ── Core ──────────────────────────────────────────────────────────────
-    # FIX: default changed True -> False. A production build should be
-    # quiet by default; set DEBUG_MODE=true in .env during development.
     DEBUG_MODE: bool = _bool(os.getenv("DEBUG_MODE", "False"), default=False)
     WAKE_WORD: str = os.getenv("WAKE_WORD", "sara , sarah").lower().strip()
     SARA_NAME: str = os.getenv("SARA_NAME", "Sara")
@@ -362,46 +348,17 @@ class Config:
         if w.strip()
     ]
 
-    # NEW: controls whether validate() force-adds the four built-in wake
-    # word variants to a user-supplied WAKE_WORDS list. Default (False)
-    # preserves the exact previous behavior (defaults always added) so
-    # existing .env files keep working unchanged. Set to True in .env if
-    # you want ONLY your custom wake words, with no forced additions.
     WAKE_WORD_ALLOW_CUSTOM_ONLY: bool = _bool(
         os.getenv("WAKE_WORD_ALLOW_CUSTOM_ONLY", "False"), default=False
     )
 
-    # Path to a CUSTOM-TRAINED openwakeword model file/dir for "sara"/
-    # "sarah". Leave unset (default) until one is actually trained — a
-    # pretrained model such as "hey_jarvis" does NOT recognize "sara" and
-    # loading it would make stt.py listen for the wrong word entirely.
-    # When this is None, stt.py skips openwakeword and uses the
-    # STT-based fallback (WAKE_WORDS above) instead.
     WAKE_WORD_MODEL_PATH: str | None = _optional_str(os.getenv("WAKE_WORD_MODEL_PATH"))
 
-    # ── Wake-word STT-fallback speed/accuracy (only used when
-    # WAKE_WORD_MODEL_PATH above is unset, i.e. no dedicated openwakeword
-    # model is configured) ───────────────────────────────────────────────
-    # A dedicated small/fast Whisper model just for "did they say the wake
-    # word?" checks, separate from WHISPER_MODEL_SIZE (which stays large/
-    # accurate for real commands). This was the main latency+accuracy
-    # bottleneck: every wake attempt used to pay the full large-model
-    # transcription cost just to check for a 1-2 word phrase.
     WAKE_WORD_FAST_MODEL_SIZE: str = os.getenv("WAKE_WORD_FAST_MODEL_SIZE", "tiny")
-    # Shorter capture window than a real command -- "Sara"/"Hey Sara" is
-    # said and done in under a second; waiting the old 3.0s/5.0s command-
-    # sized window before even starting to transcribe was pure added
-    # latency on every single wake attempt.
     WAKE_LISTEN_TIMEOUT_S: float = _float(os.getenv("WAKE_LISTEN_TIMEOUT_S"), default=1.5)
     WAKE_LISTEN_MAX_DURATION_S: float = _float(
         os.getenv("WAKE_LISTEN_MAX_DURATION_S"), default=1.8
     )
-    # Fuzzy fallback for when the fast/small model mishears "sara" as
-    # something close ("sarah", "sada", "zara", ...) instead of an exact
-    # regex match -- trades a small amount of false-positive risk for a
-    # meaningfully lower miss rate, which is the right tradeoff for a
-    # wake word (a missed wake is far more annoying than an extra
-    # false-triggered listen).
     WAKE_FUZZY_MATCH_ENABLED: bool = _bool(
         os.getenv("WAKE_FUZZY_MATCH_ENABLED", "True"), default=True
     )
@@ -411,56 +368,21 @@ class Config:
 
     WAKE_WORD_COOLDOWN_S: float = _float(os.getenv("WAKE_WORD_COOLDOWN_S"), default=2.0)
     WAKE_WORD_THRESHOLD: float = _float(os.getenv("WAKE_WORD_THRESHOLD"), default=0.5)
-    # NEW: was read via getattr(cfg, "WAKE_WORD_BEAM_SIZE", 1) in both
-    # stt.py (listen(mode="wake")) and gui_main.py's debug log, with no
-    # definition here.
     WAKE_WORD_BEAM_SIZE: int = _int(os.getenv("WAKE_WORD_BEAM_SIZE"), default=1)
 
     # ── Mic settle time after TTS stops (echo / room-decay guard) ──────────
-    # Kept as a secondary safety margin even with AEC active below — AEC
-    # cancels the correlated echo component in real time, but this still
-    # guards against any residual tail immediately after TTS stops.
     STT_SETTLE_MIN_GAP_S: float = _float(os.getenv("STT_SETTLE_MIN_GAP_S"), default=1.3)
 
     # ── Acoustic Echo Cancellation (AEC) — WebRTC APM (aec-audio-processing) ─
-    # Real echo cancellation: the exact audio Sara is playing through the
-    # speakers is fed to the processor as a "reverse"/far-end reference
-    # stream in real time, and it's subtracted (via WebRTC's adaptive
-    # filter) from the microphone's "forward"/near-end stream before STT
-    # ever sees it. This replaces trying to guess echo vs. real speech
-    # from energy/VAD heuristics alone.
     AEC_ENABLED: bool = _bool(os.getenv("AEC_ENABLED", "True"), default=True)
 
-    # WebRTC APM only accepts 8000 / 16000 / 32000 / 48000 Hz. This MUST
-    # match SpeechToText.SAMPLE_RATE (16000) since the near-end/forward
-    # stream is the raw mic audio — changing one without the other will
-    # silently break AEC's alignment.
     AEC_SAMPLE_RATE: int = _int(os.getenv("AEC_SAMPLE_RATE"), default=16000)
 
-    # How many milliseconds of latency exist between a sample leaving
-    # Kokoro's output buffer (speaker) and that same sound arriving back
-    # at the microphone. This is a starting estimate (typical Windows
-    # sounddevice + speaker/mic round-trip) — if echo still leaks through
-    # after AEC is wired in, tune this value up/down in small steps
-    # (e.g. 20ms at a time) while testing; too small a delay and AEC's
-    # adaptive filter never converges, too large and it converges to the
-    # wrong echo path.
     AEC_STREAM_DELAY_MS: int = _int(os.getenv("AEC_STREAM_DELAY_MS"), default=80)
 
-    # Bundled extras from the same WebRTC APM engine. NS (noise
-    # suppression) is safe to leave on — it helps Hindi/Hinglish capture
-    # in noisy rooms. AGC (automatic gain control) is left OFF by default
-    # because it continuously re-scales mic volume, which would fight
-    # with SpeechToText's own energy-threshold-based endpointing/wake
-    # detection unless that logic is also revisited — enable only if you
-    # explicitly want APM to manage mic gain instead.
     AEC_ENABLE_NS: bool = _bool(os.getenv("AEC_ENABLE_NS", "True"), default=True)
     AEC_ENABLE_AGC: bool = _bool(os.getenv("AEC_ENABLE_AGC", "False"), default=False)
 
-    # APM has its own built-in VAD (has_voice()). Sara already has
-    # webrtcvad wired directly into stt.py's endpointing logic, so this
-    # stays off by default to avoid two independent VADs disagreeing;
-    # exposed here in case stt.py is later extended to cross-check both.
     AEC_ENABLE_VAD: bool = _bool(os.getenv("AEC_ENABLE_VAD", "False"), default=False)
 
     # ── Memory ────────────────────────────────────────────────────────────
@@ -470,21 +392,11 @@ class Config:
     LANG_DETECTION_MODE: str = os.getenv("LANG_DETECTION_MODE", "auto").lower().strip()
     STT_LANGUAGE: str | None = _optional_str(os.getenv("STT_LANGUAGE"))
 
-    # NEW: was read via getattr(cfg, "STT_FORCE_LANG_FOR_HINGLISH", True)
-    # in stt.py's _resolve_forced_language() with no definition here.
-    # When SARA_LANGUAGE is "hindi" or "hinglish", this forces Whisper's
-    # language parameter to "hi" for transcription (see stt.py for the
-    # full reasoning). Kept True by default to preserve existing behavior.
     STT_FORCE_LANG_FOR_HINGLISH: bool = _bool(
         os.getenv("STT_FORCE_LANG_FOR_HINGLISH", "True"), default=True
     )
 
     # ── Whisper transcription tuning ─────────────────────────────────────
-    # NEW: all of the settings in this block were previously read via
-    # getattr(Config, "X", default) in stt.py's _load_faster_whisper() /
-    # _transcribe() with NO matching definition here — meaning none of
-    # them were actually configurable via .env before this fix, despite
-    # looking like they should be.
     WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "large-v3")
     WHISPER_BEAM_SIZE: int = _int(os.getenv("WHISPER_BEAM_SIZE"), default=3)
     STT_NO_SPEECH_THRESHOLD: float = _float(
@@ -518,232 +430,120 @@ class Config:
     REMINDER_CHECK_INTERVAL: int = _int(os.getenv("REMINDER_CHECK_INTERVAL"), default=5)
 
     # ── Proactive Engine (sara/orchestrator/proactive.py) ────────────────────
-    # Sara periodically checks a few passive signals (battery, upcoming
-    # reminders, how long since the last conversation turn) and speaks up
-    # on her own — without a wake word — when one of them crosses a
-    # threshold. Each trigger has its own cooldown so the same nudge can't
-    # repeat before PROACTIVE_COOLDOWN_MINUTES have passed. Always silenced
-    # while focus_mode is on or the assistant is paused (Home page
-    # Pause/Resume Listening), and can be turned off entirely from the
-    # Settings page (defaults ON — see get_ui_settings()/update_setting()
-    # in sara/gui/app/settings.py, "setting:proactive_mode").
     PROACTIVE_ENABLED: bool = _bool(os.getenv("PROACTIVE_ENABLED", "True"), default=True)
-    # How often (seconds) the background thread re-checks all signals.
     PROACTIVE_CHECK_INTERVAL_S: int = _int(
         os.getenv("PROACTIVE_CHECK_INTERVAL_S"), default=60
     )
-    # Battery-low trigger: fires once per cooldown window while on battery
-    # power (not charging) and at/under this percentage.
     PROACTIVE_BATTERY_LOW_PERCENT: int = _int(
         os.getenv("PROACTIVE_BATTERY_LOW_PERCENT"), default=15
     )
-    # Reminder heads-up trigger: gives a spoken heads-up this many minutes
-    # before a reminder is actually due (in addition to the existing
-    # on-time alarm in sara/tools/reminders.py — this is additive, not a
-    # replacement).
     PROACTIVE_REMINDER_LEAD_MINUTES: int = _int(
         os.getenv("PROACTIVE_REMINDER_LEAD_MINUTES"), default=15
     )
-    # Idle/break trigger: fires if this many minutes have passed since the
-    # last conversation turn (wake + at least one exchange), suggesting a
-    # short break.
     PROACTIVE_IDLE_BREAK_MINUTES: int = _int(
         os.getenv("PROACTIVE_IDLE_BREAK_MINUTES"), default=90
     )
-    # Shared cooldown: minimum minutes between two firings of the SAME
-    # trigger (different triggers don't share this cooldown with each other).
     PROACTIVE_COOLDOWN_MINUTES: int = _int(
         os.getenv("PROACTIVE_COOLDOWN_MINUTES"), default=30
     )
-    # If True, asks the LLM (brain.generate_response) to phrase each nudge
-    # naturally/bilingually instead of using the fixed template string.
-    # Falls back to the template automatically if the LLM isn't ready yet,
-    # is disabled, or the call fails/times out for any reason — this must
-    # never block or crash the proactive thread.
     PROACTIVE_LLM_PHRASING: bool = _bool(
         os.getenv("PROACTIVE_LLM_PHRASING", "True"), default=True
     )
-    # Upcoming-meeting trigger (sara/tools/calendar.py + Google Calendar):
-    # gives a spoken heads-up this many minutes before a real calendar
-    # event is due — same shape as PROACTIVE_REMINDER_LEAD_MINUTES above,
-    # just backed by Google Calendar instead of Sara's own reminders table.
     PROACTIVE_MEETING_LEAD_MINUTES: int = _int(
         os.getenv("PROACTIVE_MEETING_LEAD_MINUTES"), default=15
     )
 
+    # ── File Notifications (sara/orchestrator/notifications.py) ─────────
+    # Watches a single folder (default: the real Windows Downloads
+    # folder, resolved via SHGetKnownFolderPath -- see
+    # notifications.py's get_downloads_folder()) for a file completing,
+    # and announces it once via the existing TTS worker. Only one watch
+    # is active at a time -- see NotificationWatcher.watch_for_next_file()
+    # for what happens if a second watch is requested while one is
+    # already running (it silently replaces the first).
+    NOTIFICATIONS_ENABLED: bool = _bool(
+        os.getenv("NOTIFICATIONS_ENABLED", "True"), default=True
+    )
+    # How often (seconds) the background thread re-checks the
+    # NOTIFICATIONS_ENABLED gate and the watched folder's state. Same
+    # role as PROACTIVE_CHECK_INTERVAL_S, kept much shorter since a
+    # download-finished notification should feel near-instant, not
+    # delayed up to a full minute.
+    NOTIFICATIONS_CHECK_INTERVAL_S: int = _int(
+        os.getenv("NOTIFICATIONS_CHECK_INTERVAL_S"), default=2
+    )
+
+    # ── Emergency Stop Hotkey (sara/orchestrator/emergency_stop.py) ──────
+    # Global "panic button": stops TTS immediately and cancels any
+    # pending file-notification watch, WITHOUT closing the app. Reuses
+    # the `keyboard` library already in requirements.txt.
+    EMERGENCY_STOP_ENABLED: bool = _bool(
+        os.getenv("EMERGENCY_STOP_ENABLED", "True"), default=True
+    )
+    EMERGENCY_STOP_HOTKEY: str = os.getenv("EMERGENCY_STOP_HOTKEY", "ctrl+alt+s")
+
     # ── Skills (sara/skills/) ─────────────────────────────────────────────
-    # Daily Briefing (sara/skills/daily_briefing.py): combines weather +
-    # today's reminders + a news headline into one spoken summary. No
-    # per-user city setting exists yet for voice queries (only the GUI
-    # weather card's WEATHER_CITY in sara/gui/app/helpers.py, which this
-    # intentionally does NOT touch/reuse, to avoid coupling a skill module
-    # to the GUI layer) — same default city, kept independently so each
-    # can be changed without affecting the other.
     DAILY_BRIEFING_LOCATION: str = os.getenv("DAILY_BRIEFING_LOCATION", "Ajmer,IN")
 
-    # Notes Q&A (sara/skills/notes_qa.py): lets Sara answer questions from
-    # .txt/.md class-notes files dropped into NOTES_FOLDER, via the
-    # existing (previously unused) sara/core/rag.py LongTermMemory vector
-    # store. Files are chunked to roughly NOTES_CHUNK_CHARS characters
-    # each before embedding.
     NOTES_FOLDER: str = os.getenv("NOTES_FOLDER") or str(_PROJECT_ROOT / "sara_class_notes")
     NOTES_CHUNK_CHARS: int = _int(os.getenv("NOTES_CHUNK_CHARS"), default=800)
     NOTES_QA_TOP_K: int = _int(os.getenv("NOTES_QA_TOP_K"), default=4)
-    # Safety cap: protects startup from a pathologically large single file
-    # (e.g. an entire textbook accidentally dropped in) turning into
-    # thousands of blocking embedding calls. Extra content beyond this
-    # many chunks per file is simply skipped, not an error.
     NOTES_MAX_CHUNKS_PER_FILE: int = _int(
         os.getenv("NOTES_MAX_CHUNKS_PER_FILE"), default=200
     )
 
     # ── Personality: festival-aware greeting ─────────────────────────────
-    # Fixed-date national days (Republic Day, Independence Day, New Year,
-    # Teachers' Day, Gandhi Jayanti) are the same date every year, so
-    # they're safe to hardcode in sara/orchestrator/core_wiring.py's
-    # greeting logic directly. Diwali and Holi follow the lunar calendar
-    # and shift every year — hardcoding a fixed month/day for them would
-    # eventually greet "Happy Diwali" on a random unrelated day, which is
-    # worse than not having the greeting at all. Instead they're set here,
-    # once a year, as plain "YYYY-MM-DD" strings (leave blank to disable
-    # — blank is the default here since no fixed date was provided):
-    #   DIWALI_DATE=2026-11-08
-    #   HOLI_DATE=2026-03-03
     DIWALI_DATE: str = os.getenv("DIWALI_DATE", "")
     HOLI_DATE: str = os.getenv("HOLI_DATE", "")
 
     # ── RAG / long-term semantic memory (sara/core/rag.py) ──────────────────
-    # Uses Ollama's own /api/embeddings endpoint — no extra heavy ML
-    # dependency, reuses the Ollama server Sara already depends on for chat.
-    # "nomic-embed-text" is a small (~270MB), fast, well-regarded local
-    # embedding model — pull it once with `ollama pull nomic-embed-text`.
     RAG_ENABLED: bool = _bool(os.getenv("RAG_ENABLED", "True"), default=True)
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
-    # How many past memories to retrieve and inject into the LLM's context
-    # per turn, and the minimum cosine-similarity score (0-1) a memory must
-    # clear to be considered relevant enough to include at all.
     RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=4)
     RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.55)
-    # Caps how many memory rows are loaded into the in-memory similarity
-    # matrix at startup (most recent N) — bounds RAM use on a very
-    # long-running install without needing a real vector DB dependency.
     RAG_MAX_IN_MEMORY: int = _int(os.getenv("RAG_MAX_IN_MEMORY"), default=5000)
 
-    # ── Memory Management: decision memory & consolidation (NEW) ─────────
-    # Decision memory (sara/core/memory.py's decision_log table, hooked
-    # via sara/gui/app/helpers.py's _PrefWriter) has no config gate of
-    # its own -- it's a lightweight append-only log, always on, same as
-    # proactive_log. Memory CONSOLIDATION below is the one that needs
-    # gating since it makes periodic LOCAL LLM calls via
-    # sara/core/memory_consolidation.py.
+    # ── Memory Management: decision memory & consolidation ──────────────
     MEMORY_CONSOLIDATION_ENABLED: bool = _bool(
         os.getenv("MEMORY_CONSOLIDATION_ENABLED", "True"), default=True
     )
-    # How often (seconds) the background thread wakes up and attempts a
-    # consolidation pass. Default 30 minutes -- frequent enough to catch
-    # a session's conversation, not so frequent it spams the local LLM.
     MEMORY_CONSOLIDATION_INTERVAL_S: int = _int(
         os.getenv("MEMORY_CONSOLIDATION_INTERVAL_S"), default=60
     )
-    # How many of the most recent raw conversation_log rows are fed to
-    # the LLM per consolidation pass.
     MEMORY_CONSOLIDATION_BATCH_SIZE: int = _int(
         os.getenv("MEMORY_CONSOLIDATION_BATCH_SIZE"), default=20
     )
-    # Hard cap on how many facts a single consolidation pass may extract
-    # and store into the RAG long-term memory store.
     MEMORY_CONSOLIDATION_MAX_FACTS: int = _int(
         os.getenv("MEMORY_CONSOLIDATION_MAX_FACTS"), default=3
     )
-    # Fuzzy-match confidence threshold (0-1) the "forget that I like X"
-    # voice intent requires before it will delete a specific RAG memory
-    # -- see sara/orchestrator/intent_handlers.py's
-    # _h_memory_forget_specific. Below this, Sara says she couldn't find
-    # a confident match instead of guessing and deleting the wrong thing.
     MEMORY_FORGET_MATCH_THRESHOLD: float = _float(
         os.getenv("MEMORY_FORGET_MATCH_THRESHOLD"), default=0.45
     )
 
     # ── LLM tool-calling (sara/core/tool_router.py) ──────────────────────────
-    # When the fast regex-based intent.py finds no match at all, this makes
-    # ONE extra bounded-time LLM call (structured function-calling, not a
-    # free-form chat reply) to see if a known tool genuinely applies before
-    # falling back to a purely conversational reply — catches natural
-    # phrasing that intent.py's ~100 hand-written patterns don't cover
-    # ("could you check what the weather's doing in Jaipur" vs the rigid
-    # "weather in <x>" pattern), without replacing or slowing down the
-    # existing fast path for anything intent.py already matches directly.
     TOOL_CALLING_ENABLED: bool = _bool(
         os.getenv("TOOL_CALLING_ENABLED", "True"), default=True
     )
     TOOL_CALLING_TIMEOUT_S: float = _float(
         os.getenv("TOOL_CALLING_TIMEOUT_S"), default=3.0
     )
-    # "llm" (default): real Ollama tool-calling (tools= schema) decides the
-    # tool + arguments. "heuristic": skip the LLM call, use only the old
-    # keyword-matching fallback in tool_router.py -- useful if you want to
-    # avoid the extra Ollama round-trip on every unmatched command.
     TOOL_CALLING_MODE: str = os.getenv("TOOL_CALLING_MODE", "llm").lower()
 
     # ── Multi-step planning engine (sara/core/planning/) ────────────────────
-    # Sits between the fast-path regex matcher and tool execution — only
-    # activates for "chat"-intent messages that show signs of needing more
-    # than one action (see sara/core/planning/trigger.py's cheap gate).
-    # Makes ONE bounded LLM call to propose a full ordered step sequence,
-    # then executes it with per-step + total-plan timeouts and one bounded
-    # self-correction retry per failed step. Falls back cleanly to today's
-    # single-tool sara.core.tool_router.resolve_tool_call() path if this is
-    # disabled, if the trigger gate declines, or if planning itself
-    # fails/times out for any reason -- never a regression below existing
-    # behavior. See sara/core/planning/__init__.py's try_plan_and_execute()
-    # for the full contract.
     PLANNING_ENABLED: bool = _bool(os.getenv("PLANNING_ENABLED", "True"), default=True)
-    # Hard cap on how many steps a single plan may contain, protecting
-    # against a hallucinating local model proposing a runaway plan.
     PLANNING_MAX_STEPS: int = _int(os.getenv("PLANNING_MAX_STEPS"), default=4)
-    # Bounds EACH individual step dispatch attempt (and each correction
-    # call). Defaults to match TOOL_CALLING_TIMEOUT_S's spirit -- kept as
-    # its own setting so planning-specific tuning never has to touch the
-    # single-tool path's timeout.
     PLANNING_STEP_TIMEOUT_S: float = _float(
         os.getenv("PLANNING_STEP_TIMEOUT_S"), default=3.0
     )
-    # Independent wall-clock budget for the WHOLE plan (proposal +
-    # every step + every retry combined) -- prevents N steps at their
-    # individual timeout from silently summing to an unacceptable total
-    # wait. Must be >= PLANNING_STEP_TIMEOUT_S (enforced in validate()).
     PLANNING_TOTAL_TIMEOUT_S: float = _float(
         os.getenv("PLANNING_TOTAL_TIMEOUT_S"), default=6.0
     )
-    # When a step fails (unknown tool at dispatch time, raised exception,
-    # or timeout), the model is shown the real error and given ONE chance
-    # to correct that single step's arguments before it's marked failed.
-    # Set to False to skip this and mark a failed step failed immediately
-    # (saves one bounded LLM call per failure, at the cost of a lower
-    # recovery rate for transient/malformed-argument failures).
     PLANNING_STEP_RETRY_ENABLED: bool = _bool(
         os.getenv("PLANNING_STEP_RETRY_ENABLED", "True"), default=True
     )
 
     # ── Application launch allowlist (sara/core/planning/schema.py) ─────────
-    # Hardens open_app/close_app (both the existing single-tool fast path
-    # AND anything the planner proposes) against launching or closing an
-    # application that isn't explicitly recognized. Comma-separated list
-    # of app name/alias substrings, case-insensitive, matched in either
-    # direction ("chrome" matches a request for "google chrome" and vice
-    # versa). A sensible default list of common desktop apps ships built
-    # in (see _DEFAULT_APP_LAUNCH_ALLOWLIST above) so a fresh install is
-    # protected out of the box without requiring .env configuration first.
-    #
-    # Setting APP_LAUNCH_ALLOWLIST_ENABLED=false disables enforcement
-    # entirely (open_app/close_app accept any target) -- an explicit,
-    # deliberate opt-out for installs that want the old unrestricted
-    # behavior back. NOT recommended: see schema.py's validate_app_target()
-    # docstring for why an *enabled* allowlist that ends up empty always
-    # rejects rather than silently permitting everything (the safer
-    # failure direction), which is a different situation from this
-    # explicit disable switch.
     APP_LAUNCH_ALLOWLIST_ENABLED: bool = _bool(
         os.getenv("APP_LAUNCH_ALLOWLIST_ENABLED", "True"), default=True
     )
@@ -755,48 +555,16 @@ class Config:
         if w.strip()
     ]
 
-    # ── Shared file paths (CWD-independent — resolved from this file's own
-    # location, i.e. the project root, NOT os.getcwd()) ─────────────────────
-    # PRODUCTION-AUDIT FIX: database.py, reminders.py, and system.py each
-    # used to compute their own path to the shared SQLite DB / notes file
-    # independently via os.getcwd(), which meant launching the app from a
-    # different working directory could point different modules at
-    # different physical files. All modules should now import DB_PATH /
-    # NOTES_FILE_PATH from here instead of computing their own.
-    # BUGFIX: .env.example ships DB_PATH= and NOTES_FILE_PATH= with empty
-    # values (as placeholders to fill in) — os.getenv("X", default) only
-    # falls back to `default` when the variable is completely UNSET, not
-    # when it's set-but-empty. So anyone who copied .env.example -> .env
-    # without filling these in got DB_PATH="" silently, which pointed
-    # PreferencesDB at a bogus empty path (created with no schema) instead
-    # of the real sara_data.db — surfacing later as "no such table:
-    # preferences" / "no such table: conversation_log" errors. `or` here
-    # treats both "unset" and "set to empty string" as "use the default".
+    # ── Shared file paths (CWD-independent) ─────────────────────────────────
     DB_PATH: str = os.getenv("DB_PATH") or str(_PROJECT_ROOT / "sara_data.db")
     NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH") or str(
         _PROJECT_ROOT / "sara_notes.txt"
     )
-    # NEW: self-learning fast-path log (sara/core/unmatched_log.py) — every
-    # user input that falls all the way through detect_intent() AND the
-    # planner AND the LLM tool-router without being resolved to a real
-    # tool gets appended here as one JSON line. Reviewing this file
-    # periodically is how new _INTENT_PATTERNS/_INTENT_GATES entries get
-    # discovered from real usage instead of only from bug reports — same
-    # CWD-independent-path convention as DB_PATH above.
     UNMATCHED_LOG_PATH: str = os.getenv("UNMATCHED_LOG_PATH") or str(
         _PROJECT_ROOT / "sara_unmatched_queries.jsonl"
     )
 
     # ── Google Calendar (sara/tools/calendar.py) ─────────────────────────
-    # OAuth2 "installed app" flow. credentials.json (client_id + secret) is
-    # a PRE-REQUISITE the user generates themselves in Google Cloud Console
-    # and drops into the project root — this app never creates it. The
-    # first time calendar.py needs the API it opens a browser for one-time
-    # consent, then saves the resulting refresh token to token.json (also
-    # project root, same CWD-independent-path pattern as DB_PATH above) so
-    # every later call is silent. Both are safe to leave missing — calendar
-    # features simply report "not connected" instead of crashing (see
-    # sara/tools/calendar.py's get_calendar_service()).
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = os.getenv(
         "GOOGLE_CALENDAR_CREDENTIALS_PATH"
     ) or str(_PROJECT_ROOT / "credentials.json")
@@ -806,9 +574,6 @@ class Config:
 
     @classmethod
     def validate(cls, force: bool = False) -> None:
-        # Idempotency guard — see ConfigError docstring at the top of this
-        # file for why. Running validate() more than once (e.g. from a
-        # test) is now a safe no-op unless force=True is passed explicitly.
         if cls._validated and not force:
             return
 
@@ -964,9 +729,6 @@ class Config:
             print("[Warning] WAKE_WORDS is empty, defaulting to sara/sarah variants.")
             cls.WAKE_WORDS = ["sara", "sarah", "hey sara", "hey sarah"]
         elif not cls.WAKE_WORD_ALLOW_CUSTOM_ONLY:
-            # Preserves the original behavior exactly: the four built-in
-            # variants are always present unless the user opted out via
-            # WAKE_WORD_ALLOW_CUSTOM_ONLY=true.
             for must in ("sara", "sarah", "hey sara", "hey sarah"):
                 if must not in cls.WAKE_WORDS:
                     cls.WAKE_WORDS.append(must)
@@ -1013,7 +775,7 @@ class Config:
         cls.RAG_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_MIN_SIMILARITY))
         cls.RAG_MAX_IN_MEMORY = max(100, min(50_000, cls.RAG_MAX_IN_MEMORY))
 
-        # ── Memory consolidation / decision-memory clamps (NEW) ────────────
+        # ── Memory consolidation / decision-memory clamps ────────────────
         cls.MEMORY_CONSOLIDATION_INTERVAL_S = max(
             _MIN_MEMORY_CONSOLIDATION_INTERVAL_S,
             min(_MAX_MEMORY_CONSOLIDATION_INTERVAL_S, cls.MEMORY_CONSOLIDATION_INTERVAL_S),
@@ -1047,11 +809,6 @@ class Config:
             _MIN_PLANNING_STEP_TIMEOUT_S,
             min(_MAX_PLANNING_STEP_TIMEOUT_S, cls.PLANNING_STEP_TIMEOUT_S),
         )
-        # PLANNING_TOTAL_TIMEOUT_S must never be smaller than a single
-        # step's own timeout -- a total budget shorter than one step's
-        # bound would make even a 1-step plan unable to finish within its
-        # own total window. Clamped to the wider of (its own configured
-        # value, the step timeout) before applying the absolute ceiling.
         cls.PLANNING_TOTAL_TIMEOUT_S = max(
             cls.PLANNING_STEP_TIMEOUT_S,
             min(_MAX_PLANNING_TOTAL_TIMEOUT_S, cls.PLANNING_TOTAL_TIMEOUT_S),
@@ -1061,9 +818,6 @@ class Config:
         )
 
         # ── Application launch allowlist normalization ───────────────────────
-        # Deduplicate while preserving first-seen order (a user might list
-        # "chrome" twice across a base .env and a local override) and drop
-        # any empty entries that could slip through a trailing comma.
         if cls.APP_LAUNCH_ALLOWLIST:
             seen: set[str] = set()
             deduped: list[str] = []
@@ -1087,8 +841,6 @@ class Config:
             ]
 
         # ── Proactive Engine clamps ─────────────────────────────────────────
-        # A too-small check interval would turn the background thread into
-        # a near-busy-loop; a too-small cooldown would make nudges spammy.
         cls.PROACTIVE_CHECK_INTERVAL_S = max(5, min(3600, cls.PROACTIVE_CHECK_INTERVAL_S))
         cls.PROACTIVE_BATTERY_LOW_PERCENT = max(
             1, min(90, cls.PROACTIVE_BATTERY_LOW_PERCENT)
@@ -1104,9 +856,21 @@ class Config:
             1, min(180, cls.PROACTIVE_MEETING_LEAD_MINUTES)
         )
 
+        # ── File Notifications clamps ───────────────────────────────────
+        cls.NOTIFICATIONS_CHECK_INTERVAL_S = max(
+            1, min(30, cls.NOTIFICATIONS_CHECK_INTERVAL_S)
+        )
+
+        # ── Emergency Stop Hotkey clamp ─────────────────────────────────
+        if not cls.EMERGENCY_STOP_HOTKEY or not cls.EMERGENCY_STOP_HOTKEY.strip():
+            print(
+                "[Warning] EMERGENCY_STOP_HOTKEY is empty, defaulting to 'ctrl+alt+s'."
+            )
+            cls.EMERGENCY_STOP_HOTKEY = "ctrl+alt+s"
+        else:
+            cls.EMERGENCY_STOP_HOTKEY = cls.EMERGENCY_STOP_HOTKEY.strip().lower()
+
         # ── Notes Q&A clamps ─────────────────────────────────────────────────
-        # A too-small chunk size would explode a modest notes folder into
-        # thousands of embedding calls at startup.
         cls.NOTES_CHUNK_CHARS = max(200, min(4000, cls.NOTES_CHUNK_CHARS))
         cls.NOTES_QA_TOP_K = max(1, min(20, cls.NOTES_QA_TOP_K))
         cls.NOTES_MAX_CHUNKS_PER_FILE = max(1, min(5000, cls.NOTES_MAX_CHUNKS_PER_FILE))
@@ -1233,15 +997,17 @@ class Config:
                 f"cooldown={cls.PROACTIVE_COOLDOWN_MINUTES}m"
             )
             print(
+                f"[Debug] Notifications : enabled={cls.NOTIFICATIONS_ENABLED} | "
+                f"check_every={cls.NOTIFICATIONS_CHECK_INTERVAL_S}s"
+            )
+            print(
+                f"[Debug] Emergency stop: enabled={cls.EMERGENCY_STOP_ENABLED} | "
+                f"hotkey='{cls.EMERGENCY_STOP_HOTKEY}'"
+            )
+            print(
                 f"[Debug] Notes Q&A    : folder={cls.NOTES_FOLDER} | "
                 f"chunk_chars={cls.NOTES_CHUNK_CHARS} | top_k={cls.NOTES_QA_TOP_K}"
             )
-            # FIX: these two lines used to sit OUTSIDE the `if cls.DEBUG_MODE:`
-            # block above (a separate `if cls.LLM_BACKEND == "ollama":` check),
-            # meaning they printed even when DEBUG_MODE was False. Now that
-            # DEBUG_MODE defaults to False for production quietness, these
-            # are moved inside the same debug-gated block for consistency —
-            # a production run should print nothing at all by default.
             if cls.LLM_BACKEND == "ollama":
                 print(
                     f"[Debug] Ollama ctx   : {cls.OLLAMA_NUM_CTX} tokens (summary: {cls.OLLAMA_SUMMARY_NUM_CTX})"

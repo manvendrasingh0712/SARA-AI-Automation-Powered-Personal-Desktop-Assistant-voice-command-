@@ -197,7 +197,7 @@ def start_memory_consolidation(
     thread.start()
     print(
         f"[MemoryConsolidation] Started -- every "
-        f"{getattr(Config, 'MEMORY_CONSOLIDATION_INTERVAL_S', )}s, "
+        f"{getattr(Config, 'MEMORY_CONSOLIDATION_INTERVAL_S', 60)}s, "
         f"batch={getattr(Config, 'MEMORY_CONSOLIDATION_BATCH_SIZE', 20)}, "
         f"max_facts={getattr(Config, 'MEMORY_CONSOLIDATION_MAX_FACTS', 3)}"
     )
