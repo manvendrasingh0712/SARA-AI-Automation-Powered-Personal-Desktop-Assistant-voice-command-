@@ -84,6 +84,22 @@
 #     install, the DLLs match. If you ever see DLL-load errors after a
 #     fresh `pip install`, re-run `pip install --force-reinstall
 #     onnxruntime-gpu==1.21.0` last, so its GPU-capable build wins.
+#
+# NEW (event-based file notifications, sara/orchestrator/notifications.py):
+# - watchdog: cross-platform filesystem-event library, pure-Python with a
+#     native ReadDirectoryChangesW-based backend on Windows — free, no
+#     native compile step, ships a Windows wheel. Proposed per the task
+#     spec as the filesystem-watching dependency.
+#     FLAGGED, NOT HIDDEN: the notifications.py implementation delivered
+#     in this pass does NOT actually import/use this yet — it uses a
+#     plain os.listdir() poll instead, specifically to keep the SAME
+#     single-daemon-thread + stop-event shape as
+#     sara/orchestrator/proactive.py (watchdog's own Observer manages its
+#     own separate internal thread, which would mean two differently-
+#     shaped background threads for one feature). Left in requirements.txt
+#     because it's still the right dependency if you'd rather I switch the
+#     implementation to use it directly — tell me and I'll redo that file.
+watchdog==4.0.2
 
 # Audio / TTS / STT
 PyAudio==0.2.14
