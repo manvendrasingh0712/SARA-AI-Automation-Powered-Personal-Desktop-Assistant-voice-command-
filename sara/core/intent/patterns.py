@@ -5,6 +5,32 @@ intent. Split into its own file since it is pure data (~650 lines) and
 changes far more often than the matching logic in engine.py.
 """
 _INTENT_PATTERNS = [
+    # ── Modes / Personas (voice-triggerable, NEW) ─────────────────────
+    # "switch to study mode" / "study mode on karo" -- applies a fixed
+    # bundle of EXISTING preference toggles (focus_mode, assistant_active,
+    # and -- Gaming Mode only -- mic_sensitivity) via
+    # sara/orchestrator/intent_handlers.py's _h_switch_mode(). Placed
+    # FIRST in this list, deliberately, because two other broad
+    # patterns further down would otherwise swallow phrases like
+    # "switch to study mode" or "start gaming mode" before this group
+    # ever gets a chance to run:
+    #   - switch_to_application's r"switch to (?:the )?(.+?)..." (Window
+    #     Management section below) would capture "study mode" as an
+    #     app name.
+    #   - open_app's catch-all r"start (?!https?://)([a-zA-Z0-9][\w\s]
+    #     {1,40}?)(?:\s+app)?$" (Apps section, near the bottom) would
+    #     capture "gaming mode" the same way.
+    # Being first in this list guarantees switch_mode is always tried,
+    # and always wins, before either of those.
+    ("switch_mode", [
+        r"switch to (?:the )?(study|work|gaming|home|normal|default) mode",
+        r"go to (?:the )?(study|work|gaming|home|normal|default) mode",
+        r"(?:turn on|enable|activate) (?:the )?(study|work|gaming|home|normal|default) mode",
+        r"(study|work|gaming|home|normal|default) mode (?:on karo|on kro|chalu karo|shuru karo)",
+        r"(study|work|gaming|home|normal|default) mode (?:mein jao|mein switch karo|activate karo)",
+        r"^(study|work|gaming|home|normal|default) mode$",
+    ]),
+
     # ── Reminders ──────────────────────────────────────────────────────
     ("reminder_add", [
         r"remind me to (.+) (?:at|on|in) (.+)",
@@ -70,16 +96,6 @@ _INTENT_PATTERNS = [
     ]),
 
     # ── Weather ────────────────────────────────────────────────────────
-    # NOTE: "whether" is accepted here as a common typo/homophone for
-    # "weather" (e.g. "give the whether report of ajmer"). It is ONLY
-    # wired into the two patterns that already anchor on the bare word
-    # "weather" followed by a location-style preposition/report — the
-    # same structure the existing patterns use. This does NOT touch the
-    # rain/temperature/forecast patterns below (they never contained the
-    # word "weather" to begin with), and it still requires a
-    # location-shaped tail after "weather|whether", so ordinary
-    # conjunction usage like "I don't know whether to go" cannot match
-    # (there is no "in/at/for/near/of ..." location clause following it).
     ("weather", [
         r"(?:what'?s|how'?s|get|check|give)(?: me)? (?:the )?(?:weather|whether)(?: report)? (?:like )?(?:in|at|for|near|of) (.+)",
         r"(?:weather|whether)(?: report)? (?:in|at|for|near|of) (.+)",
@@ -99,17 +115,6 @@ _INTENT_PATTERNS = [
     ]),
 
     # ── Context Follow-ups ─────────────────────────────────────────────
-    # "and what about jaipur?" / "aur dilli ka?" right after a weather/
-    # news query. This intent captures ONLY the new slot value — it does
-    # NOT know or care which prior intent it continues. The handler
-    # (sara/orchestrator/intent_handlers.py:_h_followup_query) looks that
-    # up from ctx["context_state"], which is only populated by intents
-    # that explicitly opt in (currently weather, news) and expires after
-    # a short TTL, so a stale follow-up minutes later — or a follow-up
-    # when nothing was ever asked — falls back to a clarifying reply
-    # instead of guessing. MUST come after weather/news above (a real
-    # "weather in X" phrasing should always be read as a fresh request,
-    # never as this shorter continuation form).
     ("followup_query", [
         r"^(?:and |aur )?what about (.+?)\??$",
         r"^(?:and |aur )?how about (.+?)\??$",
@@ -117,7 +122,6 @@ _INTENT_PATTERNS = [
     ]),
 
     # ── YouTube — MUST come before web_search and open_url ────────────
-    # "play <song> on youtube" / "play <song>" / "youtube <song>"
     ("play_youtube", [
         r"play (.+?) on youtube",
         r"youtube (.+)",
@@ -125,9 +129,6 @@ _INTENT_PATTERNS = [
         r"play (?:the )?(?:song|video|music) (?:called |named )?(.+?) on youtube",
         r"open youtube and play (.+)",
         r"play (.+?) (?:song|video|music) on youtube",
-        # bare "play <song>" — intentionally last so explicit "on youtube" wins.
-        # Excludes "spotify" so phrases mentioning it fall through to
-        # play_spotify below instead of being swallowed here.
         r"play (?:the )?(?:song|video|music) (?:called |named )?(?!.*\bspotify\b)(.+)",
         r"play (.+?) (?:song|video|music)$",
         r"^play (?!.*\bspotify\b)(.+?)$",
@@ -146,15 +147,12 @@ _INTENT_PATTERNS = [
         r"(?:search|google|look up|find|search for) (.+?)(?:\s+for me)?$",
         r"(?:search the web|search online) (?:for )?(.+)",
     ]),
-    # summarize_url MUST come before open_url/web_search so "summarize
-    # this article: <url>" doesn't get swallowed by a broader pattern.
     ("summarize_url", [
         r"summarize (?:this |that |the )?(?:article|page|link|url)?:?\s*(\S+\.\S+)",
         r"(?:read|tell me about) (?:this |that |the )?(?:article|page|link):?\s*(\S+\.\S+)",
         r"what does (?:this |that |the )?(?:article|page|link) (?:say|about):?\s*(\S+\.\S+)",
         r"tl;?dr:?\s*(\S+\.\S+)",
     ]),
-    # open_url MUST come before open_app (URL has a dot in the hostname)
     ("open_url", [
         r"open (?:the )?(?:website |site )?([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+(?:/\S*)?)",
         r"(?:go to|visit|navigate to) ([a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z]{2,})+(?:/\S*)?)",
@@ -297,7 +295,6 @@ _INTENT_PATTERNS = [
         r"switch (?:to (?:the )?(?:next|other) )?window",
         r"alt tab",
     ]),
-    # ── Window Control (extended) — named-window control via pywin32 ───
     ("restart_application", [
         r"restart (?:the )?(.+?)(?:\s+app(?:lication)?)?$",
         r"(.+?) (?:ko )?restart (?:karo|kro)",
@@ -478,15 +475,6 @@ _INTENT_PATTERNS = [
         r"delete (?:all )?(?:the )?(?:items in (?:the )?)?recycle bin",
     ]),
     
-    # ── File / Download Notifications (NEW, sara/orchestrator/notifications.py) ──
-    # "tell me when the download finishes" / "jab download complete ho
-    # jaye batana" -- arms a single background watch on the Downloads
-    # folder. No capturing groups: v1 always watches the default
-    # Downloads folder (see notifications.py's get_downloads_folder()),
-    # so the handler needs nothing out of the match beyond "it matched".
-    # Placed here (File Operations area) and BEFORE the open_app catch-
-    # all further down, though there's no real collision risk -- none of
-    # these phrasings start with "open/launch/start/run".
     ("notify_on_file", [
         r"tell me when (?:the |a |my )?download(?:s)? (?:is |are )?(?:finished|done|complete|ready)",
         r"let me know when (?:the |a |my )?download(?:s)? (?:is |are )?(?:finished|done|complete|ready)",
@@ -500,7 +488,6 @@ _INTENT_PATTERNS = [
         r"file (?:aane|complete hone) (?:par|pe) (?:mujhe )?batana",
     ]),
 
-    # ── Folders (open_* MUST come before open_app's broad catch-all) ──
     ("open_downloads", [
         r"open (?:my )?downloads?(?: folder)?",
     ]),
@@ -538,7 +525,6 @@ _INTENT_PATTERNS = [
         r"open task manager",
     ]),
 
-    # ── Windows Settings pages ────────────────────────────────────────
     ("open_display_settings", [
         r"open display settings",
         r"(?:change|adjust) (?:the )?display settings",
@@ -593,7 +579,6 @@ _INTENT_PATTERNS = [
         r"(?:airplane|flight) mode (?:setting|settings) (?:kholo|dikhao)",
     ]),
 
-    # ── System Info (extended) ────────────────────────────────────────
     ("disk_usage", [
         r"(?:disk|storage) (?:usage|space|status)",
         r"how much (?:disk space|storage) (?:do i have|is left|is free)",
@@ -646,7 +631,6 @@ _INTENT_PATTERNS = [
         r"service (.+?) (?:band karo|roko)",
     ]),
 
-    # ── Time / Date ────────────────────────────────────────────────────
     ("time_query", [
         r"what(?:'?s| is) (?:the )?(?:current )?time",
         r"what time is it",
@@ -659,10 +643,6 @@ _INTENT_PATTERNS = [
         r"what(?:'?s| is) (?:the )?day today",
     ]),
 
-    # ── Google Calendar (sara/tools/calendar.py) ──────────────────────
-    # calendar_today MUST come before calendar_create in this list —
-    # "what's on my calendar today" would otherwise be swallowed by the
-    # looser calendar_create patterns below.
     ("calendar_today", [
         r"(?:what'?s|show|tell me) (?:on )?(?:my )?(?:calendar|schedule) (?:for )?today",
         r"(?:what'?s|show|tell me) (?:my )?(?:calendar|schedule)$",
@@ -672,30 +652,16 @@ _INTENT_PATTERNS = [
         r"what meetings? do i have today",
     ]),
     ("calendar_create", [
-        # Title-first, explicit "called"/"named" right after the noun —
-        # e.g. "schedule a meeting called team sync for tomorrow at 5pm".
         r"(?:set|schedule|create) (?:a |an )?meeting (?:called|named) (?P<title>.+?) (?:for|at|on) (?P<when>.+)",
         r"(?:create|add|schedule) (?:a |an )?(?:calendar )?event (?:called|named) (?P<title>.+?) (?:for|at|on) (?P<when>.+)",
-        # When-first — "called" is the reliable anchor here regardless of
-        # whether "for"/"at"/"on" appears before the time phrase, so this
-        # correctly handles BOTH "...meeting for tomorrow at 5pm called X"
-        # AND "...meeting tomorrow at 5pm called X" (no "for") the same
-        # way: everything up to " called " is the when-text, everything
-        # after is the title. MUST come before the no-title fallbacks
-        # below, or a bare "for|at|on" split would wrongly grab part of
-        # the time phrase itself as the title (e.g. "tomorrow" instead of
-        # the real title, with "at 5pm" bleeding into the when-text).
         r"(?:set|schedule|create) (?:a |an )?meeting (?:for|at|on )?(?P<when>.+?) called (?P<title>.+)",
         r"(?:create|add|schedule) (?:a |an )?(?:calendar )?event (?:for|at|on )?(?P<when>.+?) called (?P<title>.+)",
-        # No title at all — handler defaults to "Meeting".
         r"(?:set|schedule|create) (?:a |an )?meeting (?:for|at|on) (?P<when>.+)",
         r"(?:create|add|schedule) (?:a |an )?(?:calendar )?event (?:for|at|on) (?P<when>.+)",
-        # Hinglish.
         r"(?P<when>.+?) (?:baje|ko) meeting (?:set|schedule) karo(?: (?:naam|called) (?P<title>.+))?",
         r"meeting (?:set|schedule) karo (?P<when>.+? baje)",
     ]),
 
-    # ── Proactive Transparency (explainable-AI: "why did you say that?") ──
     ("why_proactive", [
         r"why did you say (?:that|this)",
         r"why did you (?:tell|mention) (?:me )?(?:that|this)",
@@ -709,13 +675,6 @@ _INTENT_PATTERNS = [
         r"vo kyu(?:n)? bola tha",
     ]),
 
-    # ── Decision Memory ("why did I change X?") — NEW ───────────────────
-    # Distinct from why_proactive above: "why did YOU say" (explainable-
-    # AI, about Sara's own proactive nudges) vs "why did I change" (about
-    # a settings/config change the USER made, backed by
-    # sara/core/memory.py's new decision_log table). Placed right after
-    # why_proactive since they share the same gate keywords but never
-    # the same sentence shape.
     ("why_decision", [
         r"why did i change (.+)",
         r"why did i (?:set|update|adjust) (.+)",
@@ -723,21 +682,6 @@ _INTENT_PATTERNS = [
         r"maine (.+?) kyu(?:n)? badla (?:tha)?$",
     ]),
 
-    # ── Memory Management (voice-triggerable, NEW) ──────────────────────
-    # memory_forget_all MUST come before memory_forget_specific -- "forget
-    # everything you know about me" would otherwise be swallowed by
-    # memory_forget_specific's broad "forget that ..."/"please forget
-    # ..." catch-alls if checked first. Deliberately anchored on
-    # "everything"/"all"/"saari" + "memory/memories/yaad" so this NEVER
-    # collides with the EXISTING _FORGET_WORDS-based "forget everything"
-    # / "forget our conversation" conversation-log wipe (handled earlier
-    # in the pipeline, before intent detection, in
-    # sara/orchestrator/intent_handlers.py) -- that existing feature is
-    # completely untouched and still wipes conversation_log only. This
-    # new intent is specifically about the RAG long-term memory store
-    # (sara/core/rag.py) and always requires a follow-up spoken
-    # confirmation before anything is deleted (see intent_handlers.py's
-    # _h_memory_forget_all + its confirm_state handling).
     ("memory_forget_all", [
         r"forget everything you know about me",
         r"forget all (?:my )?(?:memories|long[- ]term memories)",
@@ -764,12 +708,6 @@ _INTENT_PATTERNS = [
         r"mere baare mein kya (?:pata|yaad) hai tumhe",
     ]),
 
-    # ── Routines (Automation) — MUST come before open_app below.
-    #    open_app's catch-all "run (...)"/"start (...)" patterns are
-    #    deliberately broad (no gate) and WILL swallow "run good morning
-    #    routine" as an app-launch request ("good morning routine") if
-    #    checked first — same ordering hazard the open_url comment below
-    #    already warns about. ────────────────────────────────────────
     ("run_routine", [
         r"run (?:my |the )?(.+?) routine\b",
         r"start (?:my |the )?(.+?) routine\b",
@@ -780,10 +718,6 @@ _INTENT_PATTERNS = [
         r"chalao (?:mera )?(.+?) routine",
     ]),
 
-    # ── Apps — open_app MUST come after open_url AND after all the
-    #    specific open_* folder/settings/shell intents above ──────────
-    # Matches "open <word>" where the word is NOT a URL (no dot+TLD).
-    # Requires at least 2 characters to avoid "open ." matching.
     ("open_app", [
         r"open (?!https?://)([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
         r"launch (?!https?://)([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
@@ -797,15 +731,8 @@ _INTENT_PATTERNS = [
 ]
 
 # ── Cheap pre-filter gates ──────────────────────────────────────────────
-# For each intent, a tuple of lowercase literal substrings such that at
-# least one MUST appear in the input for any of that intent's patterns to
-# have a chance of matching. Lets detect_intent() skip an entire group of
-# compiled regexes with a few `in` checks instead of invoking the regex
-# engine. Gates are intentionally conservative (superset of the true
-# requirement) — this can only reduce wasted regex calls, never cause a
-# missed match. Intents not listed here (calculator, open_app, close_app)
-# have no safe substring gate and are always attempted.
 _INTENT_GATES = {
+    "switch_mode": ("mode",),
     "run_routine": ("routine",),
     "reminder_add": ("remind", "reminder", "alert"),
     "reminder_list": ("reminder",),
@@ -817,10 +744,6 @@ _INTENT_GATES = {
     "clipboard_read": ("clipboard", "copy"),
     "clipboard_write": ("copy", "clipboard"),
     "screenshot_describe": ("screen",),
-    # "whether" added as a common typo/homophone for "weather" — kept
-    # alongside the original gate words, so this only widens which
-    # inputs are allowed to reach the weather regexes above; those
-    # regexes still enforce the location-based structure.
     "weather": ("weather", "whether", "rain", "temperature", "forecast"),
     "news": ("news", "headline", "happening"),
     "followup_query": ("what about", "how about", "aur "),

@@ -7,7 +7,7 @@
    <title>SARA AI</title>
    <link rel="preconnect" href="https://fonts.googleapis.com">
    <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet">
    <link rel="stylesheet" href="style/style.css">
    <style>
@@ -264,6 +264,12 @@
                         <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
                      </svg>
                      <span>Automation</span>
+                  </button></li>
+               <li data-page="analytics"><button>
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M4 20V10M12 20V4M20 20v-7" />
+                     </svg>
+                     <span>Analytics</span>
                   </button></li>
                <li data-page="diagnostics"><button>
                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -890,6 +896,62 @@
                <div class="card section-gap" style="margin-top:16px;">
                   <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Scheduled reminders</h3>
                   <div id="automationList"></div>
+               </div>
+            </section>
+
+            <!-- ── ANALYTICS ────────────────────────────────────────── -->
+            <section class="page" id="page-analytics">
+               <div class="page-head">
+                  <h2>Analytics</h2>
+                  <p>How you've been using Sara — commands, trends, and conversations.</p>
+               </div>
+
+               <div class="stat-grid-3">
+                  <div class="card stat-card">
+                     <div class="top"><span>Total Commands</span><svg viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="M4 20V10M12 20V4M20 20v-7" />
+                        </svg></div>
+                     <div class="stat-val mono" id="anTotalCommands">--</div>
+                  </div>
+                  <div class="card stat-card">
+                     <div class="top"><span>Conversations</span><svg viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path
+                              d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" />
+                        </svg></div>
+                     <div class="stat-val mono" id="anTotalMessages">--</div>
+                  </div>
+                  <div class="card stat-card">
+                     <div class="top"><span>Proactive Nudges</span><svg viewBox="0 0 24 24" fill="none"
+                           stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
+                        </svg></div>
+                     <div class="stat-val mono" id="anTotalProactive">--</div>
+                  </div>
+               </div>
+
+               <div class="card section-gap">
+                  <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Most-Used Commands</h3>
+                  <div id="anTopCommands"></div>
+               </div>
+
+               <div class="card section-gap">
+                  <h3 style="font-size:13px; margin-bottom:6px; color:var(--text-md);">Activity — Last 14 Days</h3>
+                  <p style="font-size:11.5px; color:var(--text-lo); margin-bottom:10px;">Counts commands sent through
+                     chat, quick actions, and web search. Purely voice-triggered commands aren't included here.</p>
+                  <div class="an-trend-chart" id="anTrendChart"></div>
+               </div>
+
+               <div class="two-col section-gap">
+                  <div class="card">
+                     <h3 style="font-size:13px; margin-bottom:6px; color:var(--text-md);">Conversation Stats</h3>
+                     <div id="anConversationStats"></div>
+                  </div>
+                  <div class="card">
+                     <h3 style="font-size:13px; margin-bottom:6px; color:var(--text-md);">Proactive Stats</h3>
+                     <div id="anProactiveStats"></div>
+                  </div>
                </div>
             </section>
 

@@ -37,6 +37,59 @@ the actual sara.core.rag.LongTermMemory.clear_all() call happens only
 after an explicit "yes" is resolved in _handle_command()'s existing
 pending-confirmation block below. See that block for the
 "forget_all_memories" branch.
+
+MODES / PERSONAS (NEW)
+--------------------------------------------
+_h_switch_mode() backs the voice-triggerable named-mode switcher
+(Study/Work/Gaming/Home/Normal). It applies a FIXED bundle of already-
+existing preference keys together -- "focus_mode" (already read by
+sara/orchestrator/proactive.py to suppress proactive nudges),
+"assistant_active" (already read at startup by
+sara/orchestrator/core_wiring.py), and, Gaming Mode only,
+"mic_sensitivity" (already read at startup by sara/orchestrator/
+history.py and already live-wired by sara/gui/app/settings.py's
+set_mic_sensitivity()). No new underlying behavior is introduced -- this
+is purely "write several existing preference keys at once, using the
+same db.set_preference()/get_preference() mechanism every other
+preference in this codebase already uses" plus, for Gaming Mode, the
+same live ears.set_manual_energy_threshold() call the GUI setter already
+makes when that object happens to be available in ctx. The currently
+active mode name itself is persisted under one new preference key,
+"active_mode", purely so it can be recalled/displayed later -- that key
+does not drive any behavior on its own.
+
+ACTION AUDIT LOG (NEW)
+--------------------------------------------
+_log_action() below writes to sara/core/memory.py's new action_log
+table ("what did Sara actually DO", distinct from conversation_log and
+proactive_log). It is called from exactly TWO places in
+_handle_command():
+
+  1. The _INTENT_HANDLERS dispatch block ("handler = _INTENT_HANDLERS.get(intent)").
+     This is the single chokepoint every fast-path regex intent AND every
+     auto-discovered sara/skills/ plugin already passes through -- skills
+     register themselves into this same _INTENT_HANDLERS dict via
+     register_handler(), so no separate hook is needed for them.
+  2. The SIMPLE_ACTIONS dispatch block ("intent in system_tools.SIMPLE_ACTIONS").
+     This is the single chokepoint every zero-arg system-tool action
+     (lock_pc, mute, open_downloads, ...) passes through. Note this
+     block already lives here in intent_handlers.py, not in
+     sara/tools/system/dispatch.py (dispatch.py only defines the
+     SIMPLE_ACTIONS lookup table itself) -- so dispatch.py needed no
+     changes for this feature.
+
+KNOWN SCOPE LIMIT: intents resolved via the LLM single-tool router
+(resolve_tool_call(), further down this file) or the multi-step planner
+(_build_plan_dispatch_fn()) call _INTENT_HANDLERS entries directly at
+their own separate call sites, bypassing these two chokepoints, so
+those two paths are NOT currently audit-logged. Both only ever engage
+for "chat"-intent input that the fast-path regex matcher already failed
+to route (see should_attempt_plan()'s trigger conditions and the
+TOOL_CALLING_ENABLED block below) -- i.e. the less common paths. Logging
+those too would mean editing sara/core/tool_router.py and
+sara/core/planning/executor.py, which are out of scope for this change;
+flagging this here so it's a deliberate, visible decision rather than a
+silent gap.
 """
 from .calc_utils import _safe_calc, _parse_duration_to_seconds
 from .network_utils import _call_with_timeout
@@ -314,6 +367,43 @@ _THREAD_ERROR_BACKOFF_S = 0.5
 _MEMORY_FORGET_MATCH_THRESHOLD = getattr(Config, "MEMORY_FORGET_MATCH_THRESHOLD", 0.45)
 
 
+# ── Modes / Personas (NEW) ───────────────────────────────────────────────
+# Each mode is JUST a named bundle of EXISTING preference keys, applied
+# together via db.set_preference() -- the exact same mechanism
+# sara/gui/app/settings.py's individual toggles already use. No new
+# underlying behavior: "focus_mode" is already read by
+# sara/orchestrator/proactive.py to suppress proactive nudges,
+# "assistant_active" is already read at startup by
+# sara/orchestrator/core_wiring.py, and "mic_sensitivity" is already
+# read at startup by sara/orchestrator/history.py and already live-wired
+# by settings.py's set_mic_sensitivity(). See that confirmed bundle
+# table for exactly why each mode contains what it does.
+#
+# A key's absence from a mode's dict means "leave it untouched" -- the
+# handler below only ever calls db.set_preference() for keys that are
+# actually present in the chosen mode's dict, so whatever the user had
+# set previously for any other key is left exactly as-is.
+_MODE_BUNDLES = {
+    "normal": {"focus_mode": "0", "assistant_active": "1"},
+    "study": {"focus_mode": "1", "assistant_active": "1"},
+    "work": {"focus_mode": "0", "assistant_active": "1"},
+    "gaming": {"focus_mode": "0", "assistant_active": "1", "mic_sensitivity": "20"},
+    "home": {"focus_mode": "0", "assistant_active": "1"},
+}
+
+# "default" is a spoken synonym for the "normal" bundle above -- kept as
+# a separate alias table (rather than a duplicate _MODE_BUNDLES entry)
+# so _MODE_BUNDLES stays the single source of truth for what each real
+# mode name actually applies.
+_MODE_ALIASES = {"default": "normal"}
+
+_MODE_CONFIRMATIONS = {
+    "normal": "Normal mode on — proactive nudges and mic sensitivity are back to default.",
+    "study": "Study mode on — proactive nudges are off now.",
+    "work": "Work mode on — proactive nudges are set to normal.",
+    "gaming": "Gaming mode on — proactive nudges are off and mic sensitivity is lowered.",
+    "home": "Home mode on — proactive nudges are fully on.",
+}
 
 
 # ----------------------------------------------------------------------------
@@ -352,6 +442,31 @@ def _ack(ctx: dict) -> None:
         ctx["tts"].speak(random.choice(_ACK_PHRASES), fast=True, block=False)
     except Exception as e:
         print(f"[Core] _ack() failed (non-fatal, command continues): {e}")
+
+
+# ── Action audit log (NEW) ───────────────────────────────────────────
+def _log_action(db, action_type: str, action_name: str, outcome: str) -> None:
+    """
+    Fire-and-forget write to sara/core/memory.py's action_log table
+    ("what did Sara actually DO"). Called from _handle_command()'s two
+    dispatch chokepoints -- see this module's docstring for exactly
+    which two, and why those two cover every fast-path intent, every
+    auto-discovered sara/skills/ plugin, and every zero-arg system
+    action without sprinkling logging calls through individual
+    tool/skill files.
+
+    Must NEVER raise or add latency: an audit-log hiccup must never
+    break, slow down, or change the outcome of the command that was
+    actually just run. `db` may legitimately be None (e.g. during
+    early startup wiring or in a stripped-down test ctx), so that's
+    just a silent no-op, not an error.
+    """
+    if db is None or not hasattr(db, "log_action"):
+        return
+    try:
+        db.log_action(action_type, action_name, outcome, wait=False)
+    except Exception as e:  # noqa: BLE001 -- audit logging must never break dispatch
+        print(f"[AuditLog] log_action('{action_type}', '{action_name}') failed (non-fatal): {e}")
 
 
 def _h_reminder_add(match, ctx):
@@ -741,8 +856,6 @@ def _h_close_app(match, ctx):
             system_tools.close_application, app_name, tool_name="close_application"
         ),
     )
-
-
 def _h_typing_text(match, ctx):
     if not match:
         return None
@@ -1049,6 +1162,78 @@ def _h_memory_forget_all(match, ctx):
     )
 
 
+def _h_switch_mode(match, ctx):
+    """
+    "switch to study mode" / "study mode on karo" -- voice-triggerable
+    named persona/mode switcher. Applies a FIXED bundle of already-
+    existing preference keys together (see _MODE_BUNDLES above) via
+    db.set_preference() -- the exact same mechanism every other
+    preference toggle in this codebase already uses. Adds NO new
+    underlying behavior: "focus_mode" is already read by
+    sara/orchestrator/proactive.py, "assistant_active" is already read
+    at startup by sara/orchestrator/core_wiring.py, and
+    "mic_sensitivity" (Gaming Mode only) is already read at startup by
+    sara/orchestrator/history.py.
+
+    A key absent from the chosen mode's bundle is left completely
+    untouched -- whatever the user had set before for that key persists
+    as-is (e.g. switching to Study Mode never touches mic_sensitivity).
+
+    For Gaming Mode, if ctx has an "ears" object available (the same
+    audio-input object sara/gui/app/settings.py's set_mic_sensitivity()
+    already calls), the new sensitivity is ALSO applied live via
+    ears.set_manual_energy_threshold(...) so it takes effect
+    immediately instead of only on next restart. If "ears" isn't in
+    ctx, the preference is still saved (and will be restored on next
+    startup per history.py), and the spoken confirmation says so.
+
+    The active mode name itself is persisted under one new preference
+    key, "active_mode" -- purely for later recall/display, it does not
+    drive any behavior on its own.
+    """
+    if not match or not match.lastindex:
+        return None
+    raw_mode = match.group(1).strip().lower()
+    mode_name = _MODE_ALIASES.get(raw_mode, raw_mode)
+    bundle = _MODE_BUNDLES.get(mode_name)
+    if bundle is None:
+        return _quick(ctx, "I don't recognize that mode.")
+
+    db = ctx.get("db")
+    if db is None or not hasattr(db, "set_preference"):
+        return _quick(ctx, "Sorry, I can't save mode changes right now.")
+
+    try:
+        for key, value in bundle.items():
+            db.set_preference(key, value)
+        db.set_preference("active_mode", mode_name)
+    except Exception as e:
+        print(f"[Mode] set_preference failed while switching to '{mode_name}': {e}")
+        return _quick(ctx, "Sorry, I ran into a problem switching modes.")
+
+    confirmation = _MODE_CONFIRMATIONS[mode_name]
+
+    if "mic_sensitivity" in bundle:
+        ears = ctx.get("ears")
+        applied_live = False
+        if ears is not None:
+            try:
+                value = int(bundle["mic_sensitivity"])
+                threshold = max(100, 1000 - (value * 9))
+                if hasattr(ears, "set_manual_energy_threshold"):
+                    ears.set_manual_energy_threshold(threshold)
+                    applied_live = True
+                elif hasattr(ears, "energy_threshold"):
+                    ears.energy_threshold = threshold
+                    applied_live = True
+            except Exception as e:
+                print(f"[Mode] live mic sensitivity update failed: {e}")
+        if not applied_live:
+            confirmation += " Mic sensitivity change will apply after a restart."
+
+    return _quick(ctx, confirmation)
+
+
 def _h_calendar_today(match, ctx):
     """
     "aaj ka schedule batao" / "what's on my calendar today" -- reads
@@ -1184,6 +1369,7 @@ def _h_notify_on_file(match, ctx):
 
 
 _INTENT_HANDLERS = {
+    "switch_mode": _h_switch_mode,
     "reminder_add": _h_reminder_add,
     "reminder_list": _h_reminder_list,
     "reminder_cancel": _h_reminder_cancel,
@@ -1285,6 +1471,10 @@ def _build_plan_dispatch_fn(ctx: dict):
     executor in sara.core.planning.executor treats any raised exception
     from this callback identically to a tool function raising directly,
     triggering its existing retry/skip/partial-success logic.
+
+    NOTE: steps executed through this callback are NOT written to the
+    action_log audit table -- see this module's docstring ("KNOWN SCOPE
+    LIMIT") for why.
     """
 
     def _dispatch(tool_name: str, tool_args: dict) -> str:
@@ -1412,14 +1602,31 @@ def _handle_command(
             result = _quick(
                 ctx, "Sorry, I ran into a problem with that. Let's try something else."
             )
-        if result is not None:
+            # AUDIT LOG (NEW): handler raised -- one "fail" entry for this
+            # intent/skill. See this module's docstring for why this is
+            # one of the two dispatch chokepoints action_log is written from.
+            _log_action(db, "intent", intent, "fail")
             return result
+        if result is not None:
+            # AUDIT LOG (NEW): handler ran and produced a spoken result --
+            # one "success" entry.
+            _log_action(db, "intent", intent, "success")
+            return result
+        # AUDIT LOG (NEW): handler explicitly declined (returned None,
+        # e.g. "if not match: return None") -- one "skipped" entry, then
+        # fall through to the next dispatch stage exactly as before.
+        _log_action(db, "intent", intent, "skipped")
 
     if intent in system_tools.SIMPLE_ACTIONS:
         try:
-            return _quick(ctx, system_tools.SIMPLE_ACTIONS[intent]())
+            result = _quick(ctx, system_tools.SIMPLE_ACTIONS[intent]())
+            # AUDIT LOG (NEW): zero-arg system action executed successfully.
+            _log_action(db, "system_action", intent, "success")
+            return result
         except Exception as e:
             print(f"[Core] SIMPLE_ACTIONS['{intent}'] raised: {e}")
+            # AUDIT LOG (NEW): zero-arg system action raised.
+            _log_action(db, "system_action", intent, "fail")
             return _quick(
                 ctx, "Sorry, I ran into a problem with that. Let's try something else."
             )

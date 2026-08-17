@@ -39,6 +39,19 @@ _DEFAULT_DB_PATH = Config.DB_PATH
 
 _VALID_ROLES = frozenset({"user", "assistant", "system"})
 
+# ── Action audit log (NEW) ───────────────────────────────────────────
+# Retention policy for action_log: no existing table in this file is
+# trimmed automatically (conversation_log grows forever until the user
+# explicitly calls clear_conversation_log()), so there's no established
+# precedent to follow. action_log is written far more often though
+# (every dispatched intent/skill/system action, not just chat turns),
+# so it gets a simple sane default: keep the most recent 500 rows.
+# Trimmed via an indexed id-range DELETE on every write (cheap — no
+# table scan) rather than a periodic sweep, so it can never silently
+# fall behind.
+_ACTION_LOG_MAX_ENTRIES = 500
+_VALID_OUTCOMES = frozenset({"success", "fail", "skipped"})
+
 
 class PreferencesDB:
     """Manages persistent user preferences and conversation logs via SQLite."""
@@ -142,6 +155,13 @@ class PreferencesDB:
                 old_value   TEXT,
                 new_value   TEXT    NOT NULL,
                 reason      TEXT    NOT NULL,
+                timestamp   TEXT    NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS action_log (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                action_type TEXT    NOT NULL,
+                action_name TEXT    NOT NULL,
+                outcome     TEXT    NOT NULL,
                 timestamp   TEXT    NOT NULL
             );
             """)
@@ -629,6 +649,93 @@ class PreferencesDB:
         if best_entry is not None and best_score >= _MATCH_THRESHOLD:
             return best_entry
         return None
+
+    # ── Action audit log (NEW) ───────────────────────────────────────────
+    # Backs "what have you done recently" / "abhi tak kya kiya hai"
+    # (sara/skills/recent_actions.py). Distinct from conversation_log
+    # (raw chat text) and proactive_log (unprompted nudges only) -- this
+    # is specifically "what did Sara DO": every dispatched fast-path
+    # intent, every auto-discovered skill call, and every zero-arg
+    # system action. Written from exactly two chokepoints inside
+    # sara/orchestrator/intent_handlers.py's _handle_command() -- see
+    # that file's _log_action() helper and its module docstring for the
+    # full chokepoint rationale.
+
+    def log_action(
+        self, action_type: str, action_name: str, outcome: str, wait: bool = False
+    ) -> bool:
+        """
+        Records one executed action. Defaults to fire-and-forget
+        (wait=False) -- called right after a voice command finishes, so
+        it must never add latency to the spoken response (same contract
+        as log_proactive_event()/log_decision() above).
+
+        Also trims action_log down to the most recent
+        _ACTION_LOG_MAX_ENTRIES rows on every write, via a single
+        indexed id-range DELETE in the same transaction as the insert --
+        cheap (no table scan) and keeps the table from growing forever
+        without needing a separate scheduled cleanup job.
+        """
+        if not action_type or not action_name:
+            return False
+        if outcome not in _VALID_OUTCOMES:
+            outcome = "unknown"
+
+        def _do(conn: sqlite3.Connection) -> bool:
+            try:
+                conn.execute(
+                    "INSERT INTO action_log (action_type, action_name, outcome, timestamp) "
+                    "VALUES (?, ?, ?, ?)",
+                    (action_type, action_name, outcome, datetime.now().isoformat()),
+                )
+                conn.execute(
+                    "DELETE FROM action_log WHERE id <= "
+                    "(SELECT MAX(id) FROM action_log) - ?",
+                    (_ACTION_LOG_MAX_ENTRIES,),
+                )
+                conn.commit()
+                return True
+            except sqlite3.Error as e:
+                conn.rollback()
+                logger.error("log_action('%s','%s'): %s", action_type, action_name, e)
+                print(f"[Error] log_action('{action_type}','{action_name}'): {e}")
+                return False
+
+        return self._submit_write(_do, wait=wait)
+
+    def get_recent_actions(self, limit: int = 10) -> list[dict[str, str]]:
+        """Returns the most recent `limit` action_log entries, newest last."""
+        if not isinstance(limit, int) or limit <= 0:
+            return []
+        if self._closed:
+            return []
+        try:
+            conn = self._get_read_conn()
+            cursor = conn.execute(
+                """
+                SELECT action_type, action_name, outcome, timestamp
+                FROM (
+                    SELECT action_type, action_name, outcome, timestamp, id
+                    FROM action_log
+                    ORDER BY id DESC
+                    LIMIT ?
+                ) ORDER BY id ASC
+                """,
+                (limit,),
+            )
+            return [
+                {
+                    "action_type": r[0],
+                    "action_name": r[1],
+                    "outcome": r[2],
+                    "timestamp": r[3],
+                }
+                for r in cursor.fetchall()
+            ]
+        except sqlite3.Error as e:
+            logger.error("get_recent_actions: %s", e)
+            print(f"[Error] get_recent_actions: {e}")
+            return []
 
     # ── Daily talk streak (personality feature) ─────────────────────────
     # Backs "how many days in a row have we talked" and
