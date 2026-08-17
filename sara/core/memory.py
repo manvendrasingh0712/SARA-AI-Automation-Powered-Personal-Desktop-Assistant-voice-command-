@@ -526,13 +526,15 @@ class PreferencesDB:
 
     # ── Decision memory (NEW) ────────────────────────────────────────────
     # Backs the "why did I change X" voice intent
-    # (sara/orchestrator/intent_handlers.py's _h_why_decision). Hooked
-    # from sara/gui/app/helpers.py's _PrefWriter._run() -- the single
-    # chokepoint every settings/config change (voice OR GUI) already
-    # flows through, since every one of sara/gui/app/settings.py's
-    # setter methods (set_mute, set_focus_mode, update_setting,
-    # set_assistant_active, set_mic_sensitivity, set_speech_speed,
-    # set_language, set_skill_enabled) calls
+    # (sara/orchestrator/intent_handlers.py's _h_why_decision) and the
+    # "undo my last change" voice intent
+    # (sara/orchestrator/intent_handlers.py's _h_undo_setting_change).
+    # Hooked from sara/gui/app/helpers.py's _PrefWriter._run() -- the
+    # single chokepoint every settings/config change (voice OR GUI)
+    # already flows through, since every one of
+    # sara/gui/app/settings.py's setter methods (set_mute, set_focus_mode,
+    # update_setting, set_assistant_active, set_mic_sensitivity,
+    # set_speech_speed, set_language, set_skill_enabled) calls
     # self._pref_writer.enqueue(key, value) rather than
     # db.set_preference() directly. NOT hooked into update_setting()
     # alone -- that would miss 7 of the 8 setter methods.
@@ -649,6 +651,25 @@ class PreferencesDB:
         if best_entry is not None and best_score >= _MATCH_THRESHOLD:
             return best_entry
         return None
+
+    def get_last_decision(self) -> Optional[dict[str, str]]:
+        """
+        Returns the single most recent decision_log entry (same dict
+        shape as get_recent_decisions()'s per-row entries), or None if
+        the log is empty.
+
+        Backs the "undo my last change" voice intent
+        (sara/orchestrator/intent_handlers.py's _h_undo_setting_change).
+        find_decision_by_query() isn't a fit here -- it needs a search
+        query to fuzzy-match against, and "undo my last change" has no
+        query, it just wants the newest row, full stop. Rather than add
+        a new raw SQL query, this is a thin read-only wrapper around
+        get_recent_decisions(limit=1), which already returns exactly the
+        single newest row (that method's own ORDER BY id DESC LIMIT 1,
+        re-sorted ASC, degenerates to a one-element list for limit=1).
+        """
+        recent = self.get_recent_decisions(limit=1)
+        return recent[0] if recent else None
 
     # ── Action audit log (NEW) ───────────────────────────────────────────
     # Backs "what have you done recently" / "abhi tak kya kiya hai"

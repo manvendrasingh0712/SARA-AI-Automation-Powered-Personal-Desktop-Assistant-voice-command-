@@ -38,6 +38,22 @@ after an explicit "yes" is resolved in _handle_command()'s existing
 pending-confirmation block below. See that block for the
 "forget_all_memories" branch.
 
+UNDO / ROLLBACK FOR SETTINGS CHANGES (NEW, v1 -- single-step only)
+--------------------------------------------------------------------
+_h_undo_setting_change() backs the voice-triggerable "undo my last
+change" / "revert my last setting" intent ("undo_setting_change" --
+NOT the pre-existing, unrelated "undo" intent that sends a keyboard
+Ctrl+Z; see that handler's own docstring below for how the two stay
+separate). It reads the single most recent sara/core/memory.py
+decision_log entry via the new PreferencesDB.get_last_decision(), and
+reverts it via the exact same db.set_preference() mechanism every other
+preference write in this codebase already uses. v1 scope is a single
+most-recent change only -- there is no multi-step undo chain, and a
+successful revert is itself logged (via the existing, unchanged
+log_decision()) with a reason prefix so a second "undo" right after
+stops cleanly instead of ping-ponging the setting back and forth. See
+that handler's own docstring for the full design rationale.
+
 MODES / PERSONAS (NEW)
 --------------------------------------------
 _h_switch_mode() backs the voice-triggerable named-mode switcher
@@ -365,6 +381,17 @@ _THREAD_ERROR_BACKOFF_S = 0.5
 # rationale -- below this, Sara says she couldn't find a confident match
 # instead of guessing and deleting the wrong memory.
 _MEMORY_FORGET_MATCH_THRESHOLD = getattr(Config, "MEMORY_FORGET_MATCH_THRESHOLD", 0.45)
+
+# ── Undo / rollback for settings changes (NEW, v1) ──────────────────────
+# Reason-string prefix stamped on the FRESH decision_log entry that
+# _h_undo_setting_change() writes after a successful revert (see that
+# handler's docstring for why a fresh entry, not a schema change, is
+# how "consumption" is represented). Checked by that same handler
+# against the MOST RECENT decision_log entry before reverting anything,
+# so "undo, undo, undo" in a row stops cleanly after one real revert
+# instead of ping-ponging a setting back and forth forever -- v1 is
+# single-step only.
+_UNDO_REASON_MARKER = "[undo] "
 
 
 # ── Modes / Personas (NEW) ───────────────────────────────────────────────
@@ -1019,6 +1046,100 @@ def _h_why_decision(match, ctx):
     return _quick(ctx, reason)
 
 
+def _h_undo_setting_change(match, ctx):
+    """
+    "undo my last change" / "revert my last setting" / Hindi equivalents
+    -- reverts the single most recent sara/core/memory.py decision_log
+    entry back to its old_value, via the exact same db.set_preference()
+    mechanism every other preference write in this codebase already
+    uses. Distinct from, and must never collide with, the pre-existing
+    "undo" intent (see sara/core/intent/patterns.py's undo_setting_change
+    block comment) which sends a keyboard Ctrl+Z to whatever app is
+    focused -- that intent and its handler are completely untouched by
+    this feature.
+
+    v1 SCOPE: single most-recent change only. There is no multi-step
+    "undo, undo again" chain -- see the design note below for exactly
+    what happens if this is invoked twice in a row.
+
+    DESIGN DECISION (does undo consume the entry it reverted, or log a
+    fresh one?): sara/core/memory.py's decision_log schema and its
+    existing writer (log_decision()) are explicitly off-limits for this
+    feature -- no new column, no changed signature -- so "marking" the
+    original row as consumed in-place isn't an option without violating
+    that constraint. Instead, a successful revert logs a FRESH
+    decision_log entry (via the existing, unchanged log_decision()) whose
+    reason is prefixed with _UNDO_REASON_MARKER.
+
+    Before reverting anything, this handler checks whether the MOST
+    RECENT decision_log entry already carries that marker. If it does,
+    the last change on record was itself an undo, and reverting IT again
+    would just toggle the setting back and forth with no clearly
+    "correct" end state -- so this handler stops and says so instead of
+    chaining undos. That keeps decision_log itself as the single,
+    append-only source of truth (nothing is ever deleted or silently
+    reinterpreted) while still making repeated "undo" a clean, harmless
+    no-op rather than a confusing ping-pong. This is the simpler and
+    safer of the two options, since it needs no schema change and no new
+    write path -- it reuses log_decision() and get_last_decision()
+    exactly as written.
+    """
+    db = ctx.get("db")
+    if db is None or not hasattr(db, "get_last_decision") or not hasattr(db, "set_preference"):
+        return _quick(ctx, "I don't have any change history available right now.")
+
+    try:
+        entry = db.get_last_decision()
+    except Exception as e:
+        print(f"[Undo] get_last_decision failed: {e}")
+        return _quick(ctx, "Sorry, I couldn't look up your last change right now.")
+
+    if not entry:
+        return _quick(
+            ctx, "You haven't changed any settings yet, so there's nothing to undo."
+        )
+
+    reason = entry.get("reason") or ""
+    if reason.startswith(_UNDO_REASON_MARKER):
+        return _quick(
+            ctx,
+            "Your last change was already an undo, so I can't undo that again right now.",
+        )
+
+    setting_key = entry.get("setting_key")
+    old_value = entry.get("old_value")
+    if not setting_key or old_value is None:
+        display_key = (setting_key or "that setting").replace("_", " ")
+        return _quick(
+            ctx,
+            f"That was the first time {display_key} was ever set, so there's nothing to revert it to.",
+        )
+
+    _ack(ctx)
+    try:
+        ok = db.set_preference(setting_key, old_value)
+    except Exception as e:
+        print(f"[Undo] set_preference('{setting_key}') failed: {e}")
+        ok = False
+
+    if not ok:
+        return _quick(ctx, "Sorry, I ran into a problem reverting that change.")
+
+    try:
+        db.log_decision(
+            setting_key,
+            entry.get("new_value"),
+            old_value,
+            f"{_UNDO_REASON_MARKER}Reverted via voice undo command.",
+            wait=False,
+        )
+    except Exception as e:  # noqa: BLE001 -- audit logging must never break the revert
+        print(f"[Undo] log_decision failed (non-fatal, revert already applied): {e}")
+
+    display_key = setting_key.replace("_", " ")
+    return _quick(ctx, f"Okay, I've set {display_key} back to {old_value}.")
+
+
 def _best_fuzzy_memory_match(target_phrase: str, candidates: list) -> "dict | None":
     """
     Finds the RAG memory in `candidates` (list of {"id","text",...} from
@@ -1370,6 +1491,7 @@ def _h_notify_on_file(match, ctx):
 
 _INTENT_HANDLERS = {
     "switch_mode": _h_switch_mode,
+    "undo_setting_change": _h_undo_setting_change,
     "reminder_add": _h_reminder_add,
     "reminder_list": _h_reminder_list,
     "reminder_cancel": _h_reminder_cancel,
