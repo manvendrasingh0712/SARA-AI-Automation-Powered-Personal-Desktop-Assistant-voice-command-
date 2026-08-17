@@ -31,6 +31,39 @@ _INTENT_PATTERNS = [
         r"^(study|work|gaming|home|normal|default) mode$",
     ]),
 
+    # ── Undo Setting Change (voice-triggerable, NEW) ──────────────────
+    # "undo my last change" / "revert my last setting" / Hindi equivalents
+    # -- reverts the most recent sara/core/memory.py decision_log entry
+    # back to its old_value via db.set_preference(), same mechanism as
+    # switch_mode above. Placed early in this list (same defense-in-depth
+    # reasoning as switch_mode's placement comment above) so it is always
+    # tried, and always wins, before it could ever reach the EXISTING,
+    # UNRELATED "undo" intent much further down (Keyboard / Typing
+    # section) -- r"undo(?: that)?", which sends a keyboard Ctrl+Z to
+    # whatever app is currently focused. That intent is untouched by this
+    # feature and must keep matching bare "undo" / "undo that" exactly as
+    # before.
+    #
+    # None of the phrasings below are bare "undo" or "undo that" -- every
+    # one requires "last change" / "last setting" (or the Hindi
+    # equivalent), so a bare "undo that" never matches here and falls
+    # through, completely unaffected, to the old Ctrl+Z "undo" intent
+    # further down the list, exactly as it did before this feature
+    # existed. Verified by inspection: "undo that" does not contain
+    # "last", "wapas", or "pichla"/"pichli", so none of these patterns
+    # can match it.
+    ("undo_setting_change", [
+        r"undo my last (?:change|setting|preference)",
+        r"revert my last (?:change|setting|preference)",
+        r"undo (?:the )?last (?:change|setting|preference)",
+        r"revert (?:the )?last (?:change|setting|preference)",
+        r"meri last setting wapas karo",
+        r"meri last change wapas karo",
+        r"pichla change undo karo",
+        r"pichli setting wapas karo",
+        r"wapas karo jo maine (?:change|badla) kiya(?: tha)?",
+    ]),
+
     # ── Reminders ──────────────────────────────────────────────────────
     ("reminder_add", [
         r"remind me to (.+) (?:at|on|in) (.+)",
@@ -733,6 +766,7 @@ _INTENT_PATTERNS = [
 # ── Cheap pre-filter gates ──────────────────────────────────────────────
 _INTENT_GATES = {
     "switch_mode": ("mode",),
+    "undo_setting_change": ("undo", "revert", "wapas", "badla"),
     "run_routine": ("routine",),
     "reminder_add": ("remind", "reminder", "alert"),
     "reminder_list": ("reminder",),
