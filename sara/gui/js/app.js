@@ -139,6 +139,34 @@ function mockApi(name, args) {
         setTimeout(() => window.saraEvent({ kind: 'status', args: ['sleeping'] }), 1200);
       }, 500);
       return { ok: true };
+    // NEW: Usage Analytics Dashboard. record_command_usage() is a
+    // fire-and-forget counter bump (see app.js callers); the mock just
+    // acks it. get_analytics_dashboard() mirrors the real
+    // ApiAnalyticsMixin.get_analytics_dashboard() payload shape so the
+    // Analytics page is fully explorable in preview mode too.
+    case 'record_command_usage':
+      return { ok: true };
+    case 'get_analytics_dashboard':
+      return {
+        ok: true,
+        data: {
+          total_commands: 12,
+          top_commands: [
+            { name: 'play latest music', count: 5 },
+            { name: 'take a screenshot', count: 3 },
+            { name: 'open chrome', count: 2 },
+            { name: 'lock the pc', count: 1 },
+            { name: 'search the web for weather', count: 1 },
+          ],
+          daily_trend: Array.from({ length: 14 }, (_, i) => {
+            const d = new Date();
+            d.setDate(d.getDate() - (13 - i));
+            return { date: d.toISOString().slice(0, 10), count: Math.round(Math.random() * 6) };
+          }),
+          conversation_stats: { total_messages: 128, current_streak: 5, longest_streak: 9 },
+          proactive_stats: { total: 3, by_trigger: { battery: 1, reminder: 1, idle_break: 1, streak: 0 } },
+        }
+      };
     case 'wake_now':
       window.saraEvent({ kind: 'status', args: ['waking'] });
       setTimeout(() => window.saraEvent({ kind: 'status', args: ['listening'] }), 400);
@@ -559,7 +587,14 @@ document.querySelectorAll('[data-action]').forEach(el => {
   el.addEventListener('click', () => callApi('run_action', el.dataset.action));
 });
 document.querySelectorAll('[data-cmd]').forEach(el => {
-  el.addEventListener('click', () => { gotoPage('chat'); callApi('send_text_command', el.dataset.cmd); });
+  el.addEventListener('click', () => {
+    gotoPage('chat');
+    callApi('send_text_command', el.dataset.cmd);
+    // Usage Analytics: mirror every dispatched command into the counter
+    // owned by ApiAnalyticsMixin. Fire-and-forget — never blocks the
+    // actual command.
+    callApi('record_command_usage', el.dataset.cmd);
+  });
 });
 async function doWifiToggle() {
   const res = await callApi('toggle_wifi');
@@ -601,6 +636,8 @@ function sendChat() {
   // renders it. Appending it here too used to make every typed message
   // show up twice in a row.
   callApi('send_text_command', text);
+  // Usage Analytics: record every typed command too.
+  callApi('record_command_usage', text);
 }
 document.getElementById('chatSendBtn').addEventListener('click', sendChat);
 document.getElementById('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
@@ -616,7 +653,10 @@ function doSearch() {
   div.textContent = 'Search: ' + q;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
-  callApi('send_text_command', 'search the web for ' + q);
+  const fullCommand = 'search the web for ' + q;
+  callApi('send_text_command', fullCommand);
+  // Usage Analytics: record search commands too.
+  callApi('record_command_usage', fullCommand);
   input.value = '';
 }
 document.getElementById('searchBtn').addEventListener('click', doSearch);
@@ -1399,6 +1439,89 @@ async function loadSkills() {
   });
 }
 
+// ── analytics dashboard (Analytics page) ──────────────────────────
+// Backed by sara/gui/app/analytics.py's ApiAnalyticsMixin. Combines its
+// own JSON-file command counter with the existing memory.py stats
+// (get_conversation_stats() / get_proactive_stats(), read-only via
+// self.db) into one payload from get_analytics_dashboard().
+function _anBarRowHtml(name, count, maxCount) {
+  const pct = maxCount > 0 ? Math.round((count / maxCount) * 100) : 0;
+  return `
+    <div class="an-bar-row">
+      <div class="an-bar-label">${escapeHtml(name)}</div>
+      <div class="an-bar-track"><div class="an-bar-fill" style="width:${pct}%"></div></div>
+      <div class="an-bar-count mono">${count}</div>
+    </div>`;
+}
+
+function _anPrettyLabel(key) {
+  return String(key).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function _anRenderStatsRows(wrap, obj) {
+  if (!wrap) return;
+  const entries = Object.entries(obj || {});
+  if (!entries.length) {
+    wrap.innerHTML = `<p style="font-size:12px; color:var(--text-lo);">No data yet.</p>`;
+    return;
+  }
+  wrap.innerHTML = entries.map(([k, v]) => `
+    <div class="model-row"><span>${escapeHtml(_anPrettyLabel(k))}</span><span>${escapeHtml(String(v))}</span></div>
+  `).join('');
+}
+
+async function loadAnalytics() {
+  const res = await callApi('get_analytics_dashboard');
+  if (!res || !res.ok) return;
+  const d = res.data || {};
+
+  const totalCommandsEl = document.getElementById('anTotalCommands');
+  if (totalCommandsEl) totalCommandsEl.textContent = d.total_commands != null ? d.total_commands : 0;
+
+  const convo = d.conversation_stats || {};
+  const proactive = d.proactive_stats || {};
+
+  const totalMessagesEl = document.getElementById('anTotalMessages');
+  if (totalMessagesEl) {
+    const messages = convo.total_messages != null ? convo.total_messages
+      : (convo.message_count != null ? convo.message_count : null);
+    totalMessagesEl.textContent = messages != null ? messages : '--';
+  }
+  const totalProactiveEl = document.getElementById('anTotalProactive');
+  if (totalProactiveEl) totalProactiveEl.textContent = proactive.total != null ? proactive.total : '--';
+
+  const topWrap = document.getElementById('anTopCommands');
+  if (topWrap) {
+    const top = d.top_commands || [];
+    if (!top.length) {
+      topWrap.innerHTML = `<p style="font-size:12px; color:var(--text-lo);">No commands recorded yet — try asking Sara something.</p>`;
+    } else {
+      const maxCount = Math.max(...top.map(t => t.count));
+      topWrap.innerHTML = top.map(t => _anBarRowHtml(t.name, t.count, maxCount)).join('');
+    }
+  }
+
+  const trendWrap = document.getElementById('anTrendChart');
+  if (trendWrap) {
+    const trend = d.daily_trend || [];
+    const maxTrend = Math.max(1, ...trend.map(t => t.count));
+    trendWrap.innerHTML = trend.map(t => {
+      const pct = t.count > 0 ? Math.max(Math.round((t.count / maxTrend) * 100), 6) : 2;
+      const dayLabel = (t.date || '').slice(5); // MM-DD
+      return `<div class="an-trend-bar" title="${escapeHtml(t.date)}: ${t.count}">
+        <div class="an-trend-bar-fill" style="height:${pct}%"></div>
+        <span class="an-trend-label">${escapeHtml(dayLabel)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  _anRenderStatsRows(document.getElementById('anConversationStats'), convo);
+  const proactiveRows = proactive.by_trigger
+    ? { total: proactive.total != null ? proactive.total : 0, ...proactive.by_trigger }
+    : proactive;
+  _anRenderStatsRows(document.getElementById('anProactiveStats'), proactiveRows);
+}
+
 /* ══════════════════════════════════════════════════════════════════
    Premium music player
    ══════════════════════════════════════════════════════════════════ */
@@ -1672,6 +1795,7 @@ function boot() {
   loadNotesStatus();
   loadCalendarStatus();
   loadSkills();
+  loadAnalytics();
   initSetupWizard();
   pollStats();
   pollMedia();
@@ -1683,6 +1807,7 @@ function boot() {
   setInterval(loadProactiveStats, 60 * 1000);
   setInterval(loadNotesStatus, 60 * 1000);
   setInterval(loadCalendarStatus, 5 * 60 * 1000);
+  setInterval(loadAnalytics, 60 * 1000);
 }
 // FIX (root cause of "preview mode, no backend connected"): pywebview
 // injects window.pywebview ASYNCHRONOUSLY relative to this script running

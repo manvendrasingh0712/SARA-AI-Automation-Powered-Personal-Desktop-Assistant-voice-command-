@@ -11,6 +11,7 @@ from .media import ApiMediaMixin
 from .setup_wizard import ApiSetupWizardMixin
 from .calendar_api import ApiCalendarMixin
 from .routines_api import ApiRoutinesMixin
+from .analytics import ApiAnalyticsMixin
 
 
 _MIXINS = (
@@ -22,6 +23,7 @@ _MIXINS = (
     ApiSetupWizardMixin,
     ApiCalendarMixin,
     ApiRoutinesMixin,
+    ApiAnalyticsMixin,
 )
 
 
