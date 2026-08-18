@@ -976,6 +976,22 @@
                   <h2>Settings</h2>
                   <p>General preferences for Sara.</p>
                </div>
+               <!-- NEW: Mode Switcher -- same bundles/confirmations as the voice
+                    mode-switcher in sara/orchestrator/intent_handlers.py, via
+                    sara/gui/app/modes.py's ApiModesMixin. -->
+               <div class="card section-gap">
+                  <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Mode</h3>
+                  <p style="font-size:11.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">
+                     Same as saying "switch to study mode" out loud — applies a bundle of settings at once.
+                  </p>
+                  <div class="mode-switcher-grid" id="modeSwitcherGrid">
+                     <button class="mode-opt" data-mode="normal"><b>Normal</b></button>
+                     <button class="mode-opt" data-mode="study"><b>Study</b></button>
+                     <button class="mode-opt" data-mode="work"><b>Work</b></button>
+                     <button class="mode-opt" data-mode="gaming"><b>Gaming</b></button>
+                     <button class="mode-opt" data-mode="home"><b>Home</b></button>
+                  </div>
+               </div>
                <div class="card">
                   <div class="settings-row">
                      <div><b>Mute Sara's voice</b><span>Stop spoken replies, text still works</span></div>
@@ -1233,7 +1249,7 @@
          }
 
          var rippleTargets = document.querySelectorAll(
-            '.qa-card, .app-tile, .qt-btn, .btn, button.icon-btn'
+            '.qa-card, .app-tile, .qt-btn, .btn, button.icon-btn, .mode-opt'
          );
          rippleTargets.forEach(function (el) {
             el.addEventListener('click', addRipple);

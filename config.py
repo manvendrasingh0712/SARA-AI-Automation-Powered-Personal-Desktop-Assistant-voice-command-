@@ -500,8 +500,14 @@ class Config:
     RAG_ENABLED: bool = _bool(os.getenv("RAG_ENABLED", "True"), default=True)
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
-    RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=4)
-    RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.55)
+    RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=6)
+    RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.40)
+    # NEW: durable, explicitly-stated facts ("my girlfriend's name is
+    # Parul") get their own lower threshold in rag.py's search() -- they
+    # shouldn't depend on the same lucky semantic overlap a full
+    # conversational exchange needs, since there's usually only ONE
+    # short sentence to match against a query like "who is Parul".
+    RAG_FACT_MIN_SIMILARITY: float = _float(os.getenv("RAG_FACT_MIN_SIMILARITY"), default=0.30)
     RAG_MAX_IN_MEMORY: int = _int(os.getenv("RAG_MAX_IN_MEMORY"), default=5000)
 
     # ── Memory Management: decision memory & consolidation ──────────────
@@ -773,6 +779,7 @@ class Config:
         cls.EMBEDDING_TIMEOUT_S = max(1.0, min(15.0, cls.EMBEDDING_TIMEOUT_S))
         cls.RAG_TOP_K = max(1, min(20, cls.RAG_TOP_K))
         cls.RAG_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_MIN_SIMILARITY))
+        cls.RAG_FACT_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_FACT_MIN_SIMILARITY))
         cls.RAG_MAX_IN_MEMORY = max(100, min(50_000, cls.RAG_MAX_IN_MEMORY))
 
         # ── Memory consolidation / decision-memory clamps ────────────────
@@ -964,6 +971,7 @@ class Config:
             print(
                 f"[Debug] RAG memory   : enabled={cls.RAG_ENABLED} | model={cls.EMBEDDING_MODEL} | "
                 f"top_k={cls.RAG_TOP_K} | min_sim={cls.RAG_MIN_SIMILARITY} | "
+                f"fact_min_sim={cls.RAG_FACT_MIN_SIMILARITY} | "
                 f"timeout={cls.EMBEDDING_TIMEOUT_S}s | max_in_ram={cls.RAG_MAX_IN_MEMORY}"
             )
             print(

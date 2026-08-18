@@ -2360,3 +2360,43 @@ input[type=range]::-webkit-slider-thumb {
   color: var(--text-lo);
   white-space: nowrap;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Mode Switcher (Settings page) — NEW
+   Same selectable-card pattern as .lang-opt (AI Brain page), same
+   design tokens, just applied to a 5-wide row.
+   ══════════════════════════════════════════════════════════════════ */
+.mode-switcher-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.mode-opt {
+  padding: 14px 8px;
+  border-radius: var(--r-md);
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.mode-opt:hover {
+  background: var(--surface-2);
+}
+
+.mode-opt b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mode-opt.active {
+  border-color: var(--violet);
+  background: rgba(139, 92, 246, 0.14);
+  box-shadow: 0 0 0 1px var(--violet) inset;
+}
+
+.mode-opt:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

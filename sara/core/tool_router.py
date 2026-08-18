@@ -17,6 +17,33 @@ fails for any reason -- same "never block, always degrade gracefully"
 shape used everywhere else in this codebase (RAG, proactive rephrasing,
 skills auto-discovery, etc).
 
+WHY THIS FILE CHANGED (v3 -- Bug 1 fix, "what is my girlfriend's name"
+getting routed to calculator):
+_TOOL_KEYWORD_GATE used to contain the BARE substrings "what is" and
+"what's". Any message containing them -- even purely personal/factual
+ones -- passed has_probable_tool_intent() and got sent to the small
+local model (qwen3:4b) for tool-call resolution, which then frequently
+hallucinated a `calculator` call because that tool's description is
+the closest semantic match to "what is ...?" phrasing. Three things
+changed to fix this, not just one, because the bug had two independent
+entry points:
+  1. The gate itself (has_probable_tool_intent) -- "what is"/"what's"/
+     "how much" now only count as a tool signal when the message ALSO
+     contains a digit/operator/spelled-out math keyword (see
+     _has_math_signal / _MATH_QUESTION_PHRASES below).
+  2. _resolve_tool_call_heuristic()'s OWN calculator branch -- this
+     function is not just the TOOL_CALLING_MODE="heuristic" path, it's
+     ALSO the fallback resolve_tool_call() uses whenever the LLM call
+     times out or errors. It had the exact same "what is"/"what's"
+     unconditional match, so fixing only the gate would have left the
+     bug alive (just intermittent, only firing on LLM-timeout).
+  3. A defensive validation layer (_validate_tool_result) applied at
+     the single return funnel in resolve_tool_call() -- rejects ANY
+     resolved `calculator` call (from either the LLM path or the
+     heuristic path) whose `expr` has no digit/operator, downgrading it
+     to "unknown" (=no tool applies, fall back to normal chat) instead
+     of ever reaching the caller as a broken calculator call.
+
 Toggle via Config.TOOL_CALLING_MODE:
     "llm"       (default) -- try the real LLM tool-call first, fall back
                  to the keyword heuristic below on any failure/timeout.
@@ -223,7 +250,12 @@ _TOOL_ROUTER_SYSTEM_PROMPT = (
     "and decide if ONE of the available tools clearly fulfills it. If so, "
     "call that tool with the correct arguments inferred from the message. "
     "If no tool clearly applies, do not call any tool -- just don't respond "
-    "with a function call."
+    "with a function call. Only call `calculator` if the message contains "
+    "an actual numeric expression to evaluate (a number, an arithmetic "
+    "operator, or a percentage). Personal or factual questions phrased as "
+    "'what is ...?' or 'what's ...?' -- such as someone's name, a fact "
+    "about the user, or general knowledge -- are NEVER a calculator call; "
+    "if no other tool clearly fits those, don't call any tool at all."
 )
 
 # Bounded-size executor for the LLM tool-routing call, so a slow/hung
@@ -261,6 +293,36 @@ def _extract_after_phrases(text: str, phrases: tuple[str, ...]) -> str:
         if match:
             return match.group(1).strip()
     return ""
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Math-signal detection (Bug 1 fix, v3) -- shared by both the gate
+# (has_probable_tool_intent) and the defensive validation layer
+# (_validate_tool_result) below, so the two can never drift out of sync
+# about what "actually looks like math" means.
+# ══════════════════════════════════════════════════════════════════════
+
+_MATH_SIGNAL_RE = re.compile(
+    r"\d"  # any digit
+    r"|[%+\-*/^]"  # arithmetic operator / percent symbol
+    r"|\b(plus|minus|times|divided|multiplied|"
+    r"squared|cubed|square\s*root|cube\s*root|"
+    r"percent|percentage|sum\s+of|product\s+of|"
+    r"average\s+of)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_math_signal(text: str) -> bool:
+    """
+    True if `text` contains a digit, an arithmetic operator symbol, or a
+    spelled-out arithmetic keyword. Used both to gate the "what is"/
+    "what's"/"how much" phrases in has_probable_tool_intent() (does this
+    message even look like it MIGHT be a math question?) and to validate
+    a resolved calculator call's `expr` argument in _validate_tool_result
+    (is this actually something the calculator tool can evaluate?).
+    """
+    return bool(_MATH_SIGNAL_RE.search(text or ""))
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -320,6 +382,11 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
 # tool-shaped?", used by resolve_tool_call() to skip the LLM round-trip
 # entirely for ordinary conversation that obviously isn't asking for
 # weather/news/an app/a calculation/etc.
+#
+# NOTE (Bug 1 fix, v3): "what is"/"what's"/"how much" used to be bare
+# entries here -- REMOVED. They are now handled separately below via
+# _MATH_QUESTION_PHRASES + _has_math_signal(), so they only count as a
+# tool signal when actually paired with something math-shaped.
 _TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
     {
         "weather", "temperature", "rain", "forecast",
@@ -332,9 +399,11 @@ _TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
         "clipboard",
         "open ", "launch ", "start ",
         "close ", "quit ", "exit ", "terminate ",
-        "calculate", "what is", "what's", "how much",
+        "calculate",
     }
 )
+
+_MATH_QUESTION_PHRASES: tuple[str, ...] = ("what is", "what's", "how much")
 
 
 def has_probable_tool_intent(user_input: str) -> bool:
@@ -349,7 +418,16 @@ def has_probable_tool_intent(user_input: str) -> bool:
     tools, not to replace the heuristic's real matching logic below.
     """
     lowered = (user_input or "").lower()
-    return any(kw in lowered for kw in _TOOL_KEYWORD_GATE)
+    if any(kw in lowered for kw in _TOOL_KEYWORD_GATE):
+        return True
+    # BUGFIX (Bug 1, fix #1): "what is"/"what's"/"how much" only count
+    # as a tool signal when the message ALSO contains an actual
+    # number/operator/math keyword -- e.g. "what is 5 + 3" or "what's
+    # 20% of 400" gate through, but "what is my girlfriend's name" does
+    # not. See module docstring for the full explanation.
+    if any(phrase in lowered for phrase in _MATH_QUESTION_PHRASES) and _has_math_signal(lowered):
+        return True
+    return False
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -407,9 +485,51 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
 
     if any(keyword in lowered for keyword in ("calculate", "what is", "what's", "how much")):
         expression = _extract_after_phrases(text, ("calculate", "what is", "what's", "how much is"))
-        return {"name": "calculator", "arguments": {"expr": expression or text}}
+        candidate_expr = expression or text
+        # BUGFIX (Bug 1, fix #1 -- applied here too, not just the gate):
+        # this heuristic is not only the TOOL_CALLING_MODE="heuristic"
+        # path, it's ALSO the fallback resolve_tool_call() uses whenever
+        # the LLM tool-call above times out or errors. Without this same
+        # math-signal guard, "what's my dog's name" could still reach
+        # calculator via the fallback path even after the gate above was
+        # fixed. "calculate" is treated as an explicit-enough trigger to
+        # still attempt the call even without a visible digit (e.g.
+        # "calculate my BMI" needs a follow-up); _validate_tool_result()
+        # in resolve_tool_call() is the final safety net either way.
+        if _has_math_signal(candidate_expr) or "calculate" in lowered:
+            return {"name": "calculator", "arguments": {"expr": candidate_expr}}
+        return {"name": "unknown", "arguments": {}}
 
     return {"name": "unknown", "arguments": {}}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Defensive validation layer (Bug 1, fix #2)
+# ══════════════════════════════════════════════════════════════════════
+
+
+def _validate_tool_result(result: Dict[str, Any], cfg=None) -> Dict[str, Any]:
+    """
+    Final safety net applied to EVERY resolved tool call, regardless of
+    which path produced it (LLM tool-call or keyword heuristic). Rejects
+    a `calculator` call whose `expr` argument has no digit and no
+    arithmetic operator/keyword -- exactly the shape of a hallucinated
+    call (e.g. expr="the name of my girlfriend") -- and downgrades it to
+    {"name": "unknown", ...}. Callers already treat "unknown" as "no
+    tool applies, respond conversationally instead", so this never
+    surfaces a "can't calculate that" error to the user for what was
+    really just a normal question.
+    """
+    if result.get("name") == "calculator":
+        expr = str(result.get("arguments", {}).get("expr", ""))
+        if not _has_math_signal(expr):
+            if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
+                print(
+                    f"[ToolRouter] Rejected hallucinated calculator call "
+                    f"(no digits/operators in expr={expr!r}) -- falling back to chat."
+                )
+            return {"name": "unknown", "arguments": {}}
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -419,7 +539,12 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
 
 
 def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, Any]:
-    """Return a resolved tool call candidate for an unmatched ("chat" intent) command."""
+    """
+    Return a resolved tool call candidate for an unmatched ("chat"
+    intent) command. Every return path funnels through
+    _validate_tool_result() so the defensive calculator check (Bug 1,
+    fix #2) applies no matter which internal path resolved the call.
+    """
     if cfg is None:
         # Lazy import, mirroring the pattern used throughout this codebase
         # (sara/skills/__init__.py, sara/orchestrator/proactive.py) to
@@ -441,15 +566,21 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
     # that entire round-trip from the common case, with no behavior
     # change for messages that actually do look tool-related.
     if mode == "llm" and not has_probable_tool_intent(user_input):
-        return _resolve_tool_call_heuristic(user_input)
+        return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
 
     if mode == "llm":
         timeout_s = float(getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 5.0))
         try:
             future = _TOOL_CALL_EXECUTOR.submit(_resolve_tool_call_llm, user_input, model_name, cfg)
-            result = future.result(timeout=timeout_s)
-            if result is not None:
-                return result
+            llm_result = future.result(timeout=timeout_s)
+            if llm_result is not None:
+                # A calculator call the LLM hallucinated with no numeric
+                # content gets downgraded to "unknown" here -- that's a
+                # normal "no tool applies" outcome, NOT a failure, so it
+                # returns immediately rather than falling through to the
+                # heuristic below (which could otherwise re-match the
+                # same bad phrasing via its own "what is"/"what's" branch).
+                return _validate_tool_result(llm_result, cfg)
         except concurrent.futures.TimeoutError:
             # BUGFIX: bare `TimeoutError` stringifies to an EMPTY string,
             # so the debug print below used to read
@@ -473,7 +604,7 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
             if getattr(cfg, "DEBUG_MODE", False):
                 print(f"[ToolRouter] LLM tool-call failed ({type(e).__name__}: {e}), using heuristic fallback.")
 
-    return _resolve_tool_call_heuristic(user_input)
+    return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
 
 
 def build_fake_match(tool_name: str, arguments: Dict[str, Any]) -> Optional[_FakeMatch]:

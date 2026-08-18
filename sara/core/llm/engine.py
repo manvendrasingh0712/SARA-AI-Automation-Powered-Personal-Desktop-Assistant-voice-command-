@@ -650,6 +650,18 @@ class SaraLLM:
                 if getattr(self._cfg, "DEBUG_MODE", False):
                     print(f"[LLM] RAG retrieval failed (continuing without it): {e}")
 
+            # PRODUCTION-AUDIT ADDITION (Bug 2 fix, item 3): fire-and-forget
+            # regex-based fact extraction on the raw user prompt -- runs
+            # independent of and in addition to the retrieval above, and
+            # independent of the ordinary post-reply add_memory() call
+            # further down. Never raises into the response (maybe_extract_fact
+            # itself never raises, but wrapped anyway as defense-in-depth,
+            # same posture as the retrieval call right above it).
+            try:
+                self._memory.maybe_extract_fact(prompt)
+            except Exception as e:
+                if getattr(self._cfg, "DEBUG_MODE", False):
+                    print(f"[LLM] Fact extraction failed (continuing): {e}")
         def _open(attempt: int):
             return (
                 self._open_ollama_stream(prompt, history, memory_context)
