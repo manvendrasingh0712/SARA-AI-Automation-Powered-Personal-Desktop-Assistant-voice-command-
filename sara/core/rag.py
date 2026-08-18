@@ -47,7 +47,7 @@ ARCHITECTURE
     return an empty list rather than raising — a broken embedding
     backend degrades Sara back to exactly her pre-RAG behavior, never a
     crash or a hang.
-  - DELETES (delete_memory / clear_all — NEW) also go through the SAME
+  - DELETES (delete_memory / clear_all) also go through the SAME
     background writer thread/queue as add_memory(), tagged with a
     leading string sentinel ("__DELETE__" / "__CLEAR__") so the writer
     loop can tell an add-job from a delete-job apart without changing
@@ -57,13 +57,42 @@ ARCHITECTURE
     / "forget everything" voice intents) can know for certain the
     delete actually happened before telling the user it did.
 
+WHAT'S NEW IN THIS REVISION (Bug 2 fix -- "Sara doesn't remember facts")
+-------------------------------------------------------------------------
+1. VISIBLE DIAGNOSTICS: every point where search()/add_memory() used to
+   fail silently (embedding call down, dimension mismatch, no rows
+   cleared the similarity threshold) now also prints a `[RAG] ...` line
+   whenever Config.DEBUG_MODE is True, in addition to the existing
+   logger calls -- so "why isn't Sara remembering this" is diagnosable
+   from the console instead of requiring log-level surgery.
+2. run_diagnostics(): a real, on-demand round-trip test -- confirms the
+   embedding model is actually reachable, then writes a throwaway probe
+   memory and confirms search() can find it back, cleaning up after
+   itself. Returns a structured result consumable by both console
+   output and the self_diagnostics voice skill.
+3. FACT EXTRACTION LAYER: maybe_extract_fact() -- a lightweight,
+   regex-based (NOT LLM-based, so it's instant and has zero extra
+   Ollama round-trips) detector for durable personal-fact statements
+   ("my girlfriend's name is Parul", "meri girlfriend ka naam Parul
+   hai", "I study at DPS Ajmer"). Matches are stored as their own
+   memory entry tagged source="fact", SEPARATE from the raw
+   "User said/Sara replied" exchange text that's already being
+   embedded -- so recall of a stated fact doesn't depend on lucky
+   semantic overlap with an entire Q&A pair. Fact-tagged rows use their
+   own, more permissive Config.RAG_FACT_MIN_SIMILARITY threshold in
+   search() (see the docstring on search() below for why).
+
 WHAT THIS IS NOT
 -----------------
 This is not a general-purpose document RAG system (no chunking
 strategy, no file ingestion pipeline) — it is specifically long-term
 CONVERSATIONAL memory. Feeding it documents/files is a reasonable
 future extension (the storage/retrieval core here would work
-unchanged) but is out of scope for this revision.
+unchanged) but is out of scope for this revision. The fact extractor
+above is also intentionally simple pattern-matching, not an LLM-based
+extractor -- it will miss facts phrased in ways the patterns don't
+cover. It's a floor, not a replacement for whatever your existing
+memory-consolidation pass (Config.MEMORY_CONSOLIDATION_*) does.
 """
 
 from __future__ import annotations
@@ -71,8 +100,10 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import sqlite3
 import threading
+import time
 import urllib.request
 from concurrent.futures import Future
 from dataclasses import dataclass
@@ -108,6 +139,86 @@ def _cosine_sim_batch(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
     return (matrix @ query_vec) / denom
 
 
+# ══════════════════════════════════════════════════════════════════════
+# Fact extraction (Bug 2 fix, item 3) -- pure regex, no model call.
+# ══════════════════════════════════════════════════════════════════════
+#
+# Each pattern maps to a normalized output sentence. Name-style facts
+# ("my girlfriend's name is Parul") are normalized as
+# "<Value> is the user's <label>." specifically because that phrasing
+# has strong lexical/semantic overlap with how the RECALL question will
+# actually be asked later ("who is Parul") -- maximizing the odds it
+# clears even the (already lowered) fact similarity threshold.
+
+_FACT_NAME_EN_RE = re.compile(
+    r"\bmy\s+([a-zA-Z][a-zA-Z '\-]{1,40}?)'?s?\s+name\s+is\s+"
+    r"([A-Za-z][A-Za-z '\-]{1,60})",
+    re.IGNORECASE,
+)
+_FACT_NAME_HI_RE = re.compile(
+    r"\b(?:meri|mera|mere)\s+([a-zA-Z]+)\s+ka\s+naam\s+"
+    r"([A-Za-z][A-Za-z '\-]{1,60}?)\s+hai",
+    re.IGNORECASE,
+)
+_FACT_STUDY_WORK_RE = re.compile(
+    r"\bi\s+(study|work)\s+at\s+([^.?!]{1,80})", re.IGNORECASE
+)
+_FACT_LIVE_RE = re.compile(r"\bi\s+live\s+in\s+([^.?!]{1,60})", re.IGNORECASE)
+_FACT_GENERIC_RE = re.compile(
+    r"\bmy\s+([a-zA-Z][a-zA-Z '\-]{1,40}?)\s+is\s+([^.?!]{1,80})", re.IGNORECASE
+)
+
+# Generic "my X is Y" matches on filler/idiom that aren't real facts --
+# skip these rather than storing junk memories.
+_FACT_GENERIC_STOPWORDS = frozenset({"bad", "pleasure", "fault", "point", "opinion"})
+
+
+def _extract_fact_sentence(text: str) -> Optional[str]:
+    """
+    Returns a normalized fact sentence if `text` looks like the user
+    stating a durable personal fact, else None. Deliberately simple and
+    pattern-based (not LLM-based) -- see module docstring. Checked in
+    order from most to least specific so "my girlfriend's name is
+    Parul" hits the name pattern before the generic "my X is Y" one.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None
+
+    m = _FACT_NAME_EN_RE.search(text)
+    if m:
+        label, value = m.group(1).strip(), m.group(2).strip().rstrip(".,!?")
+        if label and value:
+            return f"{value} is the user's {label}."
+
+    m = _FACT_NAME_HI_RE.search(text)
+    if m:
+        label, value = m.group(1).strip(), m.group(2).strip().rstrip(".,!?")
+        if label and value:
+            return f"{value} is the user's {label}."
+
+    m = _FACT_STUDY_WORK_RE.search(text)
+    if m:
+        verb, value = m.group(1).strip().lower(), m.group(2).strip().rstrip(".,!?")
+        verb_phrase = "studies at" if verb == "study" else "works at"
+        if value:
+            return f"The user {verb_phrase} {value}."
+
+    m = _FACT_LIVE_RE.search(text)
+    if m:
+        value = m.group(1).strip().rstrip(".,!?")
+        if value:
+            return f"The user lives in {value}."
+
+    m = _FACT_GENERIC_RE.search(text)
+    if m:
+        label, value = m.group(1).strip(), m.group(2).strip().rstrip(".,!?")
+        if label and value and len(value) > 1 and label.lower() not in _FACT_GENERIC_STOPWORDS:
+            return f"The user's {label} is {value}."
+
+    return None
+
+
 class LongTermMemory:
     """Thread-safe long-term semantic memory store. See module docstring
     for the full architecture explanation."""
@@ -118,9 +229,15 @@ class LongTermMemory:
         self._embed_model = getattr(Config, "EMBEDDING_MODEL", "nomic-embed-text")
         self._embed_timeout_s = float(getattr(Config, "EMBEDDING_TIMEOUT_S", 4.0))
         self._top_k_default = int(getattr(Config, "RAG_TOP_K", 4))
-        self._min_similarity = float(getattr(Config, "RAG_MIN_SIMILARITY", 0.55))
+        self._min_similarity = float(getattr(Config, "RAG_MIN_SIMILARITY", 0.40))
+        # NEW: durable facts get their own, more permissive threshold --
+        # see search()'s docstring for why.
+        self._fact_min_similarity = float(
+            getattr(Config, "RAG_FACT_MIN_SIMILARITY", 0.30)
+        )
         self._max_in_memory = int(getattr(Config, "RAG_MAX_IN_MEMORY", 5000))
         self._ollama_host = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
+        self._debug = bool(getattr(Config, "DEBUG_MODE", False))
 
         self._closed = False
         self._matrix_lock = threading.Lock()
@@ -155,7 +272,8 @@ class LongTermMemory:
         self._writer_thread.start()
         print(
             f"[RAG] Ready — {len(self._ids)} memories loaded | "
-            f"model={self._embed_model} | top_k={self._top_k_default}"
+            f"model={self._embed_model} | top_k={self._top_k_default} | "
+            f"min_sim={self._min_similarity} | fact_min_sim={self._fact_min_similarity}"
         )
 
     # ── Setup ────────────────────────────────────────────────────────────
@@ -232,10 +350,21 @@ class LongTermMemory:
                 body = json.loads(resp.read().decode("utf-8"))
             embedding = body.get("embedding")
             if not embedding:
+                if self._debug:
+                    print(
+                        f"[RAG] Embedding call to '{self._embed_model}' returned no "
+                        f"vector for text: {text[:80]!r} -- is the model actually pulled?"
+                    )
                 return None
             return np.asarray(embedding, dtype=np.float32)
         except Exception as e:
             logger.debug(f"[RAG] embedding request failed: {e}")
+            if self._debug:
+                print(
+                    f"[RAG] Embedding request FAILED ({type(e).__name__}: {e}) -- "
+                    f"is Ollama running at {self._ollama_host} and is "
+                    f"'{self._embed_model}' pulled? (ollama pull {self._embed_model})"
+                )
             return None
 
     # ── Writer thread ────────────────────────────────────────────────────
@@ -248,11 +377,6 @@ class LongTermMemory:
                 continue
             if job is None:
                 break
-            # NEW: delete_memory()/clear_all() tag their jobs with a
-            # leading string sentinel so this loop can dispatch them
-            # without disturbing the original (text, source, timestamp)
-            # add-memory job shape below at all — add_memory()'s path is
-            # completely unchanged.
             if isinstance(job, tuple) and job and job[0] == "__DELETE__":
                 _, memory_id, future = job
                 try:
@@ -279,6 +403,11 @@ class LongTermMemory:
             # Embedding backend unavailable for this item — skip it rather
             # than storing a memory with no vector (would be unsearchable
             # and would corrupt the in-memory matrix's row width anyway).
+            if self._debug:
+                print(
+                    f"[RAG] Skipped storing memory -- embedding unavailable "
+                    f"for text: {text[:80]!r} (source={source})"
+                )
             return
 
         try:
@@ -291,6 +420,8 @@ class LongTermMemory:
             new_id = cursor.lastrowid
         except sqlite3.Error as e:
             logger.error(f"[RAG] DB insert failed: {e}")
+            if self._debug:
+                print(f"[RAG] DB insert FAILED for text {text[:80]!r}: {e}")
             return
 
         with self._matrix_lock:
@@ -313,6 +444,9 @@ class LongTermMemory:
                 self._sources = self._sources[overflow:]
                 self._timestamps = self._timestamps[overflow:]
                 self._matrix = self._matrix[overflow:]
+
+        if self._debug:
+            print(f"[RAG] Stored memory id={new_id} source={source} text={text[:80]!r}")
 
     def _delete_one(self, memory_id: int, future: Optional[Future]) -> None:
         """
@@ -389,6 +523,28 @@ class LongTermMemory:
             self._write_queue.put_nowait((text.strip(), source, timestamp))
         except Exception as e:
             logger.debug(f"[RAG] add_memory enqueue failed: {e}")
+            if self._debug:
+                print(f"[RAG] add_memory enqueue FAILED: {e}")
+
+    def maybe_extract_fact(self, user_text: str) -> None:
+        """
+        Fire-and-forget: if `user_text` looks like the user stating a
+        durable personal fact ("my girlfriend's name is Parul", "meri
+        girlfriend ka naam Parul hai", "I study at DPS Ajmer"), stores a
+        distinct, normalized memory entry tagged source="fact" --
+        separate from the regular full-exchange embedding -- so recall
+        doesn't depend on lucky semantic overlap with an entire Q&A
+        exchange. Purely regex-based (see module docstring for why), so
+        this is effectively free to call on every user turn. Safe no-op
+        if nothing matches or RAG is disabled.
+        """
+        if not self.enabled:
+            return
+        fact_text = _extract_fact_sentence(user_text)
+        if fact_text:
+            if self._debug:
+                print(f"[RAG] Extracted fact from user message: {fact_text!r}")
+            self.add_memory(fact_text, source="fact")
 
     def list_memories(self) -> List[dict]:
         """
@@ -476,25 +632,54 @@ class LongTermMemory:
     ) -> List[MemoryHit]:
         """
         Returns up to `top_k` memories most semantically similar to
-        `query`, above `min_similarity` (cosine, 0-1). Returns an empty
-        list (never raises) if RAG is disabled, the query is empty, the
-        embedding backend is unavailable/times out, or nothing clears
-        the similarity threshold.
+        `query`, above a similarity threshold (cosine, 0-1). Returns an
+        empty list (never raises) if RAG is disabled, the query is
+        empty, the embedding backend is unavailable/times out, or
+        nothing clears the threshold.
+
+        PER-SOURCE THRESHOLD (Bug 2 fix, item 3): rows with
+        source="fact" (see maybe_extract_fact() above) are compared
+        against Config.RAG_FACT_MIN_SIMILARITY instead of the general
+        `min_similarity` -- a short, explicitly-stated fact like "Parul
+        is the user's girlfriend" against a query like "who is Parul"
+        genuinely tends to score lower on cosine similarity than a
+        topically-similar full conversational exchange would, simply
+        because there's so little text on either side to overlap. A
+        single lower threshold for ALL memories would either miss these
+        facts (threshold too high) or flood every search with loosely-
+        related conversational noise (threshold too low) -- splitting
+        it by source avoids that trade-off. `min_similarity` passed in
+        explicitly by a caller still overrides both defaults uniformly.
         """
         if not self.enabled or not query or not query.strip():
             return []
 
         top_k = top_k if top_k is not None else self._top_k_default
-        min_similarity = (
-            min_similarity if min_similarity is not None else self._min_similarity
+        explicit_min_similarity = min_similarity
+        general_min_similarity = (
+            explicit_min_similarity
+            if explicit_min_similarity is not None
+            else self._min_similarity
+        )
+        fact_min_similarity = (
+            explicit_min_similarity
+            if explicit_min_similarity is not None
+            else self._fact_min_similarity
         )
 
         query_vec = self._get_embedding(query)
         if query_vec is None:
+            if self._debug:
+                print(
+                    f"[RAG] search() aborted -- embedding unavailable for "
+                    f"query: {query[:80]!r}"
+                )
             return []
 
         with self._matrix_lock:
             if self._matrix.size == 0 or len(self._texts) == 0:
+                if self._debug:
+                    print("[RAG] search() found no stored memories yet.")
                 return []
             # Snapshot references under the lock; numpy arrays/lists are
             # not mutated in place elsewhere (only reassigned), so reading
@@ -507,40 +692,163 @@ class LongTermMemory:
         if matrix.shape[1] != query_vec.shape[0]:
             # Embedding model changed since these memories were stored
             # (different dimensionality) — can't compare them meaningfully.
-            logger.warning(
+            msg = (
                 f"[RAG] Embedding dimension mismatch (stored={matrix.shape[1]}, "
                 f"query={query_vec.shape[0]}) — did Config.EMBEDDING_MODEL change? "
                 f"Returning no results for this search."
             )
+            logger.warning(msg)
+            if self._debug:
+                print(msg)
             return []
 
         scores = _cosine_sim_batch(query_vec, matrix)
         if scores.size == 0:
             return []
 
-        top_indices = np.argsort(scores)[::-1][
-            : max(1, top_k) * 2
-        ]  # small buffer before filtering
+        # Buffer widened (was *2) to make room for lower-threshold "fact"
+        # rows that might rank below the top general-conversation hits
+        # but still need to be considered against their own threshold.
+        top_indices = np.argsort(scores)[::-1][: max(1, top_k) * 3]
         hits: List[MemoryHit] = []
         for idx in top_indices:
             score = float(scores[idx])
-            if score < min_similarity:
+            row_source = sources[idx]
+            threshold = (
+                fact_min_similarity if row_source == "fact" else general_min_similarity
+            )
+            if score < threshold:
                 continue
             hits.append(
                 MemoryHit(
                     text=texts[idx],
                     score=score,
-                    source=sources[idx],
+                    source=row_source,
                     timestamp=timestamps[idx],
                 )
             )
             if len(hits) >= top_k:
                 break
+
+        if not hits and self._debug:
+            top_score = float(scores.max())
+            print(
+                f"[RAG] search() found {scores.size} candidates but none cleared "
+                f"the similarity threshold for query {query[:80]!r} "
+                f"(top score={top_score:.3f}, min_sim={general_min_similarity}, "
+                f"fact_min_sim={fact_min_similarity})."
+            )
         return hits
 
     def memory_count(self) -> int:
         with self._matrix_lock:
             return len(self._ids)
+
+    def run_diagnostics(self, timeout_s: float = 8.0) -> dict:
+        """
+        Positively verifies, right now, whether long-term memory is
+        actually working end-to-end (Bug 2 fix, item 1):
+          1. Embedding model reachable -- a live test call to Ollama's
+             /api/embeddings for self._embed_model.
+          2. Round-trip write+search -- stores a throwaway probe memory,
+             waits (briefly) for the background writer thread to
+             actually embed+persist it, searches for it, confirms it
+             comes back, then deletes the probe so it never pollutes
+             real memory or counts.
+        Returns a structured result dict -- {"name", "friendly_name",
+        "ok", "detail", ...} -- shaped to match the result format
+        health_check.py's checks already use, so this can be merged
+        straight into that list (see sara/skills/self_diagnostics.py).
+        Never raises.
+        """
+        result = {
+            "name": "rag_memory",
+            "friendly_name": "long-term memory",
+            "ok": False,
+            "detail": "",
+            "embedding_model_ok": False,
+            "round_trip_ok": False,
+            "memory_count": self.memory_count(),
+        }
+
+        if not self.enabled:
+            result["detail"] = "Long-term memory is disabled (Config.RAG_ENABLED=False)."
+            return result
+
+        try:
+            probe_vec = self._get_embedding("diagnostic connectivity check")
+        except Exception as e:  # noqa: BLE001 -- diagnostics must never raise
+            probe_vec = None
+            logger.error(f"[RAG] run_diagnostics embedding check crashed: {e}")
+
+        if probe_vec is None:
+            result["detail"] = (
+                f"Can't reach the '{self._embed_model}' embedding model on Ollama "
+                f"({self._ollama_host}). Long-term memory recall is effectively OFF "
+                f"right now -- run `ollama pull {self._embed_model}` and make sure "
+                f"Ollama is running."
+            )
+            return result
+        result["embedding_model_ok"] = True
+
+        probe_text = f"__sara_rag_diagnostic_probe__ {datetime.now().isoformat()}"
+        before_count = self.memory_count()
+        self.add_memory(probe_text, source="diagnostic")
+
+        deadline = time.monotonic() + timeout_s
+        written = False
+        while time.monotonic() < deadline:
+            if self.memory_count() > before_count:
+                written = True
+                break
+            time.sleep(0.2)
+
+        if not written:
+            result["detail"] = (
+                f"The embedding model responds, but a real memory write didn't "
+                f"complete within {timeout_s:.0f}s. Something is stuck in the "
+                f"background writer -- check the logs for '[RAG] DB insert FAILED' "
+                f"or '[RAG] Skipped storing memory'."
+            )
+            return result
+
+        try:
+            hits = self.search(probe_text, top_k=3, min_similarity=0.0)
+            found = any(h.text == probe_text for h in hits)
+        except Exception as e:  # noqa: BLE001
+            found = False
+            logger.error(f"[RAG] run_diagnostics search step crashed: {e}")
+
+        # Clean up the probe row either way so it never lingers as a real
+        # memory or skews memory_count().
+        probe_id: Optional[int] = None
+        with self._matrix_lock:
+            for i, t in enumerate(self._texts):
+                if t == probe_text:
+                    probe_id = self._ids[i]
+                    break
+        if probe_id is not None:
+            self.delete_memory(probe_id, wait=False)
+
+        if not found:
+            result["detail"] = (
+                "Embeddings write successfully, but search() isn't finding them "
+                "back. Check RAG_MIN_SIMILARITY / RAG_TOP_K in your .env, or an "
+                "embedding-dimension mismatch (look for a '[RAG] Embedding "
+                "dimension mismatch' warning in the logs -- it means "
+                "EMBEDDING_MODEL changed after existing memories were stored)."
+            )
+            return result
+
+        result["round_trip_ok"] = True
+        result["ok"] = True
+        result["memory_count"] = self.memory_count()
+        result["detail"] = (
+            f"Long-term memory is working -- {result['memory_count']} memories "
+            f"stored, embedding model '{self._embed_model}' responding, "
+            f"round-trip write+search confirmed."
+        )
+        return result
 
     def close(self) -> None:
         if self._closed:
