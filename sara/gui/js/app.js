@@ -19,11 +19,15 @@ const _mockState = {
     { id: 3, date: '2026-05-14', time: '20:00', text: 'Call with Parul', done: false },
   ],
   notes: [],
-  // NEW: mock backing store for the Routines UI, only used in preview mode
+  // mock backing store for the Routines UI, only used in preview mode
   // (no window.pywebview) -- mirrors what routines_api.py's
   // list_routines()/get_routine() return from the real PreferencesDB.
   routines: [],
   mediaActive: false, mediaPlaying: false, mediaPos: 0, mediaDur: 222,
+  // NEW: mock backing store for the Mode Switcher UI, only used in
+  // preview mode (no window.pywebview) -- mirrors what modes.py's
+  // ApiModesMixin returns from the real PreferencesDB.
+  activeMode: 'normal',
 };
 let _mockRemId = 100;
 
@@ -71,7 +75,7 @@ function mockApi(name, args) {
     case 'toggle_reminder':
       _mockState.reminders.forEach(r => { if (r.id === args[0]) r.done = !r.done; });
       return { ok: true };
-    // NEW: mock backend for the Routines UI (Automation page), matching
+    // mock backend for the Routines UI (Automation page), matching
     // sara/gui/app/routines_api.py's real ApiRoutinesMixin shape so preview
     // mode (no window.pywebview) is still fully explorable.
     case 'list_routines':
@@ -94,6 +98,25 @@ function mockApi(name, args) {
     case 'run_routine_now':
       setTimeout(() => window.saraEvent({ kind: 'transcript', args: ['sara', `(preview mode) Ran routine "${args[0]}" — no real backend connected.`] }), 500);
       return { ok: true };
+    // NEW: mock backend for the Mode Switcher (Settings page), matching
+    // sara/gui/app/modes.py's ApiModesMixin. Uses the same confirmation
+    // text as _MODE_CONFIRMATIONS in sara/orchestrator/intent_handlers.py.
+    case 'get_modes_status':
+      return { ok: true, active_mode: _mockState.activeMode, modes: ['normal', 'study', 'work', 'gaming', 'home'] };
+    case 'apply_mode': {
+      const _MODE_CONFIRMATIONS_MOCK = {
+        normal: 'Normal mode on — proactive nudges and mic sensitivity are back to default.',
+        study: 'Study mode on — proactive nudges are off now.',
+        work: 'Work mode on — proactive nudges are set to normal.',
+        gaming: 'Gaming mode on — proactive nudges are off and mic sensitivity is lowered.',
+        home: 'Home mode on — proactive nudges are fully on.',
+      };
+      const requested = String(args[0] || '').toLowerCase();
+      const confirmation = _MODE_CONFIRMATIONS_MOCK[requested];
+      if (!confirmation) return { ok: false, error: "I don't recognize that mode.", active_mode: null };
+      _mockState.activeMode = requested;
+      return { ok: true, active_mode: requested, message: confirmation };
+    }
     case 'get_notes':
       return { ok: true, data: _mockState.notes };
     case 'save_note': {
@@ -139,7 +162,7 @@ function mockApi(name, args) {
         setTimeout(() => window.saraEvent({ kind: 'status', args: ['sleeping'] }), 1200);
       }, 500);
       return { ok: true };
-    // NEW: Usage Analytics Dashboard. record_command_usage() is a
+    // Usage Analytics Dashboard. record_command_usage() is a
     // fire-and-forget counter bump (see app.js callers); the mock just
     // acks it. get_analytics_dashboard() mirrors the real
     // ApiAnalyticsMixin.get_analytics_dashboard() payload shape so the
@@ -361,7 +384,7 @@ function attachRipple(el) {
     setTimeout(() => span.remove(), 600);
   });
 }
-document.querySelectorAll('.btn, .qa-card, .qt-btn, .app-tile, .icon-btn, .lang-opt, .pp-controls button, .mic-btn, .send-btn').forEach(attachRipple);
+document.querySelectorAll('.btn, .qa-card, .qt-btn, .app-tile, .icon-btn, .lang-opt, .pp-controls button, .mic-btn, .send-btn, .mode-opt').forEach(attachRipple);
 
 // ── mock media auto-progress (preview mode only) ────────────────────
 setInterval(() => {
@@ -1022,6 +1045,39 @@ function renderRoutinesList(routines) {
     });
   });
 }
+
+// ══════════════════════════════════════════════════════════════════
+// Mode Switcher (Settings page) — NEW
+// Talks to sara/gui/app/modes.py's ApiModesMixin (get_modes_status /
+// apply_mode), which reuses the exact same _MODE_BUNDLES/_MODE_ALIASES/
+// _MODE_CONFIRMATIONS tables as the voice mode-switcher in
+// sara/orchestrator/intent_handlers.py, so voice and GUI always apply
+// the identical bundle and say the identical thing for the identical
+// mode.
+// ══════════════════════════════════════════════════════════════════
+function renderActiveMode(activeMode) {
+  document.querySelectorAll('.mode-opt').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === activeMode);
+  });
+}
+async function loadModesStatus() {
+  const res = await callApi('get_modes_status');
+  if (res && res.ok) renderActiveMode(res.active_mode);
+}
+document.querySelectorAll('.mode-opt').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const mode = btn.dataset.mode;
+    btn.disabled = true;
+    const res = await callApi('apply_mode', mode);
+    btn.disabled = false;
+    if (res && res.ok) {
+      renderActiveMode(res.active_mode);
+      showToast('ti-check', '#34d399', res.message || 'Mode applied');
+    } else {
+      showToast('ti-alert-triangle', '#f87171', (res && res.error) || 'Could not switch mode');
+    }
+  });
+});
 
 // ── notes ────────────────────────────────────────────────────────
 async function loadNotes() {
@@ -1789,6 +1845,7 @@ function boot() {
   loadReminders();
   loadNotes();
   loadRoutines();
+  loadModesStatus();
   loadWeather();
   loadMemoryStats();
   loadProactiveStats();

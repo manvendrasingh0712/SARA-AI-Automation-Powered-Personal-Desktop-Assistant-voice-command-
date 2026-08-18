@@ -28,6 +28,19 @@ Every check inside health_check.py already has its own try/except (see
 that module's docstring), and this skill wraps the whole call in one
 more try/except so a totally unexpected crash still can't take down the
 voice loop -- it just becomes "sorry, I ran into a problem".
+
+NEW (Bug 2 fix, item 4): run_startup_diagnostics() / health_check.py has
+NO check for long-term/RAG memory health at all -- Ollama being down or
+the embedding model missing silently degrades Sara back to zero recall
+with no diagnostic ever surfacing it. Rather than editing health_check.py
+directly (not reviewed in this revision), this skill now ALSO calls
+sara/core/rag.py's LongTermMemory.run_diagnostics() itself, using the
+`notes_memory` key already present in `ctx` (the same key
+sara/orchestrator/intent_handlers.py's memory-recall handlers use), and
+merges that result into the same list _summarize() already knows how to
+read. If ctx has no `notes_memory` (e.g. RAG wasn't wired into this
+particular orchestrator instance), this step is skipped silently rather
+than treated as a failure.
 """
 import logging
 
@@ -82,6 +95,28 @@ def _summarize(results: list) -> str:
     return f"{ok_names} {verb} fine, but {fail_text}"
 
 
+def _run_rag_diagnostics(ctx: dict) -> dict | None:
+    """
+    Runs sara/core/rag.py's LongTermMemory.run_diagnostics() using
+    ctx["notes_memory"], returning a result dict in the same shape as
+    health_check.py's checks, or None if there's no memory store wired
+    into this ctx to check. Never raises.
+    """
+    notes_memory = ctx.get("notes_memory")
+    if notes_memory is None:
+        return None
+    try:
+        return notes_memory.run_diagnostics()
+    except Exception as e:  # noqa: BLE001 -- diagnostics must never crash the voice loop
+        logger.exception(f"[SelfDiagnostics] RAG diagnostics crashed: {e}")
+        return {
+            "name": "rag_memory",
+            "friendly_name": "long-term memory",
+            "ok": False,
+            "detail": "I couldn't check long-term memory just now.",
+        }
+
+
 def handle(match, ctx):
     tts = ctx["tts"]
     ui_update = ctx.get("ui_update")
@@ -92,12 +127,16 @@ def handle(match, ctx):
             pass
 
     try:
-        results = run_startup_diagnostics(ui_update=None)
+        results = list(run_startup_diagnostics(ui_update=None) or [])
     except Exception as e:  # noqa: BLE001 -- must never crash the voice loop
         logger.exception(f"[SelfDiagnostics] run_startup_diagnostics crashed: {e}")
         text = "Sorry, I ran into a problem running diagnostics."
         tts.speak(text, fast=True)
         return text
+
+    rag_result = _run_rag_diagnostics(ctx)
+    if rag_result is not None:
+        results.append(rag_result)
 
     text = _summarize(results)
     tts.speak(text, fast=True)
