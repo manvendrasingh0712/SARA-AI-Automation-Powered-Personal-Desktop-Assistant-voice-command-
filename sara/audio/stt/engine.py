@@ -98,6 +98,26 @@ import queue
 
 from config import Config
 
+
+class TranscriptionResult(str):
+    """
+    A plain `str` subclass carrying an extra `.confidence` float
+    attribute (0.0-1.0) alongside the transcribed text itself.
+
+    WHY A str SUBCLASS (backward compatibility): every existing caller of
+    SpeechToText.listen()/._transcribe() treats the return value as a
+    plain string (`if not text:`, `.strip()`, `.lower()`, regex
+    `.search()`, comparisons, f-strings, etc.). Because TranscriptionResult
+    IS-A str, every one of those usages keeps working unchanged. New code
+    that wants the confidence value reads `.confidence` off the same
+    object.
+    """
+
+    def __new__(cls, text: str, confidence: float = 0.0) -> "TranscriptionResult":
+        obj = super().__new__(cls, text)
+        obj.confidence = float(confidence)
+        return obj
+
 # ══════════════════════════════════════════════════════════════════════
 # Audio Math & Utilities
 # ══════════════════════════════════════════════════════════════════════
@@ -806,14 +826,14 @@ class SpeechToText:
         audio_bytes: bytes,
         beam_size_override: Optional[int] = None,
         model_override: Optional[object] = None,
-    ) -> str:
+    ) -> "TranscriptionResult":
         model = model_override if model_override is not None else self._whisper_model
         if not audio_bytes or model is None:
-            return ""
+            return TranscriptionResult("", 0.0)
 
         duration_s = len(audio_bytes) / (self.SAMPLE_RATE * self.SAMPLE_WIDTH)
         if duration_s < 0.20:
-            return ""
+            return TranscriptionResult("", 0.0)
 
         try:
             audio_np = self._normalize_audio_float32(audio_bytes)
@@ -826,13 +846,6 @@ class SpeechToText:
             )
             no_speech_thr = float(getattr(Config, "STT_NO_SPEECH_THRESHOLD", 0.6))
 
-            # v8.2: temperature fallback ladder (see v8.2 CHANGES note at top
-            # of file). Config.STT_TEMPERATURE_FALLBACK can override this;
-            # default matches Whisper's own standard ladder. Only the first
-            # (0.0, greedy/beam) pass runs for normal speech — later, higher
-            # temperatures are only attempted by faster-whisper itself if
-            # that first pass fails no_speech/log_prob/compression_ratio
-            # checks, so this adds zero latency in the common case.
             temperature = getattr(
                 Config, "STT_TEMPERATURE_FALLBACK", (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
             )
@@ -862,11 +875,24 @@ class SpeechToText:
             ]
             text = "".join(segment.text for segment in usable).strip()
 
+            # ── STT CONFIDENCE SIGNAL (NEW) ─────────────────────────────
+            # Mean of (1 - no_speech_prob) across the SAME `usable`
+            # segments already computed above -- free, no extra model
+            # call. Restricted to `usable` so a segment thrown away by
+            # the no_speech filter can't skew the confidence of the
+            # segments that actually made it into `text`.
+            if usable:
+                confidence = sum(
+                    1.0 - getattr(s, "no_speech_prob", 0.0) for s in usable
+                ) / len(usable)
+            else:
+                confidence = 0.0
+
             min_repeats = int(getattr(Config, "STT_HALLUCINATION_MIN_REPEATS", 3))
             if _is_hallucinated_repetition(text, min_repeats=min_repeats):
                 if getattr(Config, "DEBUG_MODE", False):
                     print(f"[STT] Discarded hallucinated repetition: {text[:80]!r}...")
-                return ""
+                return TranscriptionResult("", 0.0)
 
             # BUGFIX: see _HALLUCINATION_PHRASES docstring in helpers.py —
             # catches single-shot boilerplate hallucinations (e.g.
@@ -875,7 +901,7 @@ class SpeechToText:
             if _is_known_hallucination(text):
                 if getattr(Config, "DEBUG_MODE", False):
                     print(f"[STT] Discarded known hallucination phrase: {text[:80]!r}")
-                return ""
+                return TranscriptionResult("", 0.0)
 
             if text:
                 with self._transcript_lock:
@@ -884,22 +910,24 @@ class SpeechToText:
                     ]
                 self._update_detected_language(text)
 
-            return text
+            return TranscriptionResult(text, confidence)
 
         except Exception as e:
             print(f"[STT Error] Faster-Whisper Inference Failed: {e}")
-            return ""
+            return TranscriptionResult("", 0.0)
 
-    def listen(self, mode: str = "command", model_override: Optional[object] = None) -> str:
+    def listen(
+        self, mode: str = "command", model_override: Optional[object] = None
+    ) -> "TranscriptionResult":
         if self._closed:
-            return ""
+            return TranscriptionResult("", 0.0)
 
         if not self._listen_lock.acquire(blocking=False):
             if getattr(Config, "DEBUG_MODE", False):
                 print(
                     f"[STT] listen(mode='{mode}') skipped — another listen() session is already active."
                 )
-            return ""
+            return TranscriptionResult("", 0.0)
 
         try:
             cfg = {
@@ -930,7 +958,7 @@ class SpeechToText:
                 silence_limit=self._silence_gate.silence_limit,
             )
             if not audio:
-                return ""
+                return TranscriptionResult("", 0.0)
 
             beam_override = (
                 int(getattr(Config, "WAKE_WORD_BEAM_SIZE", 1))

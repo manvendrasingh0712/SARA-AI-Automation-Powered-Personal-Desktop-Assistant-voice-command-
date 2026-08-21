@@ -276,9 +276,22 @@ def build_core_objects(ui_update):
 
     ui_update("boot_progress", "Starting core services...", 68)
 
+    # BUGFIX (Bug 1 — RAG memory never reached the chat brain): built here,
+    # BEFORE _make_brain is defined/wrapped in _Lazy(...) below. This
+    # ordering is required, not cosmetic: _Lazy starts a background thread
+    # and calls its factory (_make_brain) IMMEDIATELY inside __init__ (see
+    # sara/orchestrator/lazy.py) — not on first access, despite the name —
+    # so notes_memory must already exist before that thread can possibly
+    # run, or _make_brain's closure could read it before assignment.
+    notes_memory = LongTermMemory() if _HAS_RAG else None
+
     def _make_brain():
         _ensure_ollama_running(ui_update)
-        b = SaraLLM()
+        # BUGFIX (Bug 1): pass the SAME notes_memory instance used by the
+        # voice-intent path (ctx["notes_memory"], see run_sara_logic below)
+        # into the brain, so a memory saved via one path is recallable via
+        # the other instead of each path silently keeping its own store.
+        b = SaraLLM(memory=notes_memory)
         _finish_brain_setup(db, b)
         ui_update("boot_progress", "AI brain ready...", 88)
         return b
@@ -317,6 +330,7 @@ def build_core_objects(ui_update):
         db_writer,
         lang_state,
         assistant_state,
+        notes_memory,
     )
 
 
@@ -445,6 +459,7 @@ def run_sara_logic(
     vision,
     reminders,
     db_writer,
+    notes_memory,
     manual_wake_event=None,
     lang_state=None,
     assistant_state=None,
@@ -490,12 +505,14 @@ def run_sara_logic(
     )
     proactive_engine.start()
 
-    # NOTES Q&A (sara/skills/notes_qa.py): one shared LongTermMemory
-    # instance for the whole run, passed into _handle_command() below via
-    # notes_memory so the skill can search() it, and synced once here in
-    # a background thread (embedding a folder of notes can take a few
-    # seconds and must never delay the assistant becoming responsive).
-    notes_memory = LongTermMemory() if _HAS_RAG else None
+    # NOTES Q&A (sara/skills/notes_qa.py): notes_memory is now built in
+    # build_core_objects() and shared with the brain (see Bug 1 fix in
+    # that function) — it arrives here as a parameter instead of being
+    # constructed locally, but is otherwise used exactly as before: passed
+    # into _handle_command() below via notes_memory so the skill can
+    # search() it, and synced once here in a background thread (embedding
+    # a folder of notes can take a few seconds and must never delay the
+    # assistant becoming responsive).
     if notes_memory is not None:
         def _sync_notes_once():
             try:
@@ -596,6 +613,13 @@ def run_sara_logic(
                 ui_update("footer", "Listening...")
                 ears.wait_settle(min_gap=post_tts_settle_s)
                 user_input = ears.listen(mode="command")
+                # NEW: confidence signal riding along on the
+                # TranscriptionResult (str subclass) returned by
+                # ears.listen() -- see engine.py's TranscriptionResult.
+                # Default 1.0 = "fully confident" if this attribute is
+                # ever missing, so the new confirmation gate never fires
+                # unexpectedly.
+                stt_confidence = getattr(user_input, "confidence", 1.0)
 
                 if stop_event.is_set():
                     break
@@ -689,6 +713,7 @@ def run_sara_logic(
                     playback_state=playback_state,
                     confirm_state=confirm_state,
                     context_state=context_state,
+                    stt_confidence=stt_confidence,
                 )
 
                 ui_update("transcript", "sara", reply_text or "(no response)")
