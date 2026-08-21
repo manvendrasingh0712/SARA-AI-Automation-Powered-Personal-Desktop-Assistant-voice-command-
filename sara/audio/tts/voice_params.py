@@ -14,6 +14,12 @@ from functools import lru_cache
 
 from config import Config
 
+# BUGFIX (Bug 2a — Hinglish spoken in English voice): single source of
+# truth for language detection is sara.audio.stt.helpers._detect_language
+# (Devanagari + romanized Hinglish marker words) — this module no longer
+# keeps its own weaker Devanagari-only duplicate.
+from sara.audio.stt.helpers import _detect_language as _stt_detect_language
+
 try:
     import sounddevice as sd
 
@@ -107,8 +113,13 @@ _PHRASE_CACHE_MAXLEN = int(getattr(Config, "TTS_PHRASE_CACHE_MAXLEN", 40))
 
 
 def _detect_lang(text: str) -> str:
-    """Return 'hi' if text contains Devanagari script, else 'en'."""
-    return "hi" if _DEVANAGARI_RE.search(text) else "en"
+    """Return 'hi', 'hinglish', or 'en' — delegates to
+    sara.audio.stt.helpers._detect_language(), the same three-way
+    detector STT already uses (Devanagari script AND romanized Hinglish
+    marker words like 'hai'/'nahi'/'kya'/'bhai'), instead of this
+    module's old Devanagari-only check that missed romanized Hinglish
+    entirely."""
+    return _stt_detect_language(text)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -126,7 +137,12 @@ class _VoiceParams:
 @lru_cache(maxsize=4)
 def _build_params(lang: str) -> _VoiceParams:
     """Cached per-language voice routing — avoids repeated Config lookups per sentence."""
-    if lang == "hi":
+    if lang in ("hi", "hinglish"):
+        # BUGFIX (Bug 2a): a Hinglish sentence contains real Hindi words
+        # that need Hindi phonemes, not English ones — route it to the
+        # same Hindi Kokoro voice as pure Hindi text. @lru_cache above
+        # still applies per-key, so "hi" and "hinglish" each cache their
+        # own (identical) _VoiceParams independently.
         return _VoiceParams(
             voice=getattr(Config, "KOKORO_VOICE_HI", "hf_alpha"),
             lang_code=getattr(Config, "KOKORO_LANG_HI", "hi"),

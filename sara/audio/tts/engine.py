@@ -398,16 +398,20 @@ class TextToSpeech:
         """
         v12: manually force a language, or return to automatic detection.
 
-        - "auto"      -> self._forced_lang = None  (per-sentence Devanagari
-                          detection via _detect_lang() decides, as before)
-        - "en" / "hi" -> self._forced_lang = lang   (every segment spoken via
-                          speak()/speak_stream() uses this language, ignoring
-                          what script the text happens to contain)
+        - "auto"                  -> self._forced_lang = None (per-sentence
+                          auto-detection via _detect_lang() decides, as before)
+        - "en" / "hi" / "hinglish" -> self._forced_lang = lang (every segment
+                          spoken via speak()/speak_stream() uses this language,
+                          ignoring what script the text happens to contain).
+                          "hinglish" is stored and reported exactly as given
+                          (see get_language()) — only voice SELECTION
+                          (_build_params(), voice_params.py) treats it the
+                          same as "hi".
         Any other value is ignored (forced language stays unchanged).
         """
         if lang == "auto":
             self._forced_lang = None
-        elif lang in ("en", "hi"):
+        elif lang in ("en", "hi", "hinglish"):
             self._forced_lang = lang
 
     def get_language(self) -> str:
