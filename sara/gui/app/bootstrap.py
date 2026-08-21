@@ -32,7 +32,7 @@ def main():
             f"Place index.html inside sara/gui/ folder."
         )
 
-    brain, tts, ears, db, vision, reminders, db_writer, lang_state, assistant_state = (
+    brain, tts, ears, db, vision, reminders, db_writer, lang_state, assistant_state, notes_memory = (
         sara_main.build_core_objects(_push)
     )
 
@@ -68,6 +68,7 @@ def main():
             vision,
             reminders,
             db_writer,
+            notes_memory,
             events._manual_wake_event,
             lang_state,
             assistant_state,

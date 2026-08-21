@@ -382,6 +382,29 @@ _THREAD_ERROR_BACKOFF_S = 0.5
 # instead of guessing and deleting the wrong memory.
 _MEMORY_FORGET_MATCH_THRESHOLD = getattr(Config, "MEMORY_FORGET_MATCH_THRESHOLD", 0.45)
 
+# ── Low-confidence confirmation gate (NEW) ───────────────────────────────
+# Fixed set of destructive/disruptive zero-arg system actions that
+# additionally require confirmation when this turn's STT confidence was
+# below Config.STT_CONFIDENCE_CONFIRM_THRESHOLD -- separate from, and
+# layered alongside, the existing _RISKY_APP_KEYWORDS/
+# _RISKY_SERVICE_KEYWORDS check (untouched).
+_LOW_CONFIDENCE_CONFIRM_ACTIONS = {
+    "shutdown_system",
+    "restart_system",
+    "log_off",
+    "empty_recycle_bin",
+}
+
+_LOW_CONFIDENCE_CONFIRM_PHRASES = {
+    "shutdown_system": "shut down the system",
+    "restart_system": "restart the system",
+    "log_off": "log off",
+    "empty_recycle_bin": "empty the recycle bin",
+}
+
+_STT_CONFIDENCE_CONFIRM_THRESHOLD = getattr(
+    Config, "STT_CONFIDENCE_CONFIRM_THRESHOLD", 0.55
+)
 # ── Undo / rollback for settings changes (NEW, v1) ──────────────────────
 # Reason-string prefix stamped on the FRESH decision_log entry that
 # _h_undo_setting_change() writes after a successful revert (see that
@@ -1632,6 +1655,7 @@ def _handle_command(
     playback_state: dict = None,
     confirm_state: dict = None,
     context_state: dict = None,
+    stt_confidence: float = 1.0,
 ) -> str:
     if playback_state is None:
         playback_state = {}
@@ -1654,6 +1678,7 @@ def _handle_command(
         "playback_state": playback_state,
         "confirm_state": confirm_state,
         "context_state": context_state,
+        "stt_confidence": stt_confidence,
     }
 
     # ── Pending destructive-action confirmation (close_app / stop_service
@@ -1681,8 +1706,6 @@ def _handle_command(
                         system_tools.stop_service, target, tool_name="stop_service"
                     )
                 elif action == "forget_all_memories":
-                    # NEW: only place rag.clear_all() is ever actually
-                    # invoked -- always behind this explicit "yes".
                     rag = ctx.get("notes_memory")
                     if rag is None or not _HAS_RAG or not getattr(rag, "enabled", False):
                         result = "I don't have long-term memory available right now."
@@ -1697,6 +1720,23 @@ def _handle_command(
                             if ok
                             else "Sorry, I ran into a problem clearing my memory."
                         )
+                elif action in _LOW_CONFIDENCE_CONFIRM_ACTIONS:
+                    # NEW: confirmed low-confidence destructive action
+                    # (shutdown_system / restart_system / log_off /
+                    # empty_recycle_bin) -- reached the same way every
+                    # other zero-arg action is, via SIMPLE_ACTIONS.
+                    action_fn = system_tools.SIMPLE_ACTIONS.get(action)
+                    if action_fn is None:
+                        result = "Sorry, I don't know how to do that anymore."
+                        _log_action(db, "system_action", action, "fail")
+                    else:
+                        try:
+                            result = action_fn()
+                            _log_action(db, "system_action", action, "success")
+                        except Exception as e:
+                            print(f"[Core] Confirmed low-confidence action '{action}' raised: {e}")
+                            result = "Sorry, I ran into a problem with that."
+                            _log_action(db, "system_action", action, "fail")
                 else:
                     result = "Sorry, I lost track of what I was confirming."
                 return _quick(ctx, result)
@@ -1709,6 +1749,26 @@ def _handle_command(
             confirm_state.pop("pending", None)
 
     intent, match = detect_intent(user_input)
+
+    # ── Low-confidence confirmation gate (NEW) ──────────────────────────
+    # ONLY for the 4 actions above, and ONLY when this turn's confidence
+    # was below threshold. Every other intent — including these same 4
+    # actions at normal confidence — falls straight through, unaffected.
+    if (
+        intent in _LOW_CONFIDENCE_CONFIRM_ACTIONS
+        and ctx["stt_confidence"] < _STT_CONFIDENCE_CONFIRM_THRESHOLD
+    ):
+        ctx["confirm_state"]["pending"] = {
+            "action": intent,
+            "target": None,
+            "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+        }
+        phrase = _LOW_CONFIDENCE_CONFIRM_PHRASES.get(intent, intent.replace("_", " "))
+        return _quick(
+            ctx,
+            f"I didn't hear that too clearly -- are you sure you want to {phrase}? "
+            f"Say yes or cancel.",
+        )
 
     handler = _INTENT_HANDLERS.get(intent)
     if handler is not None:

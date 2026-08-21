@@ -1,7 +1,7 @@
 {
-  "total_commands": 84,
+  "total_commands": 100,
   "commands": {
-    "who is parul": 4,
+    "who is parul": 6,
     "what is the name of my": 3,
     "open whaysapp": 1,
     "open whatsapp": 1,
@@ -68,10 +68,24 @@
     "call me via respect via sir": 1,
     "how are you": 1,
     "check my health": 1,
-    "run diagnostics": 1
+    "run diagnostics": 1,
+    "play re kaya khagi deemak": 1,
+    "what is the full name of": 1,
+    "her full name is parul vaishnav": 1,
+    "her address is - subhash nagar": 1,
+    "abb batao parul kon h": 1,
+    "good": 1,
+    "abb mujhe usko baare me or": 1,
+    "tum pucho merse": 1,
+    "parul meri h tumhari nahi": 1,
+    "give me a summery about parul": 1,
+    "how is the weather": 1,
+    "ajmer": 1,
+    "what is ur thinking about me": 1,
+    "what is your thinking about me": 1
   },
   "daily": {
     "2026-08-17": 34,
-    "2026-08-18": 50
+    "2026-08-18": 66
   }
 }

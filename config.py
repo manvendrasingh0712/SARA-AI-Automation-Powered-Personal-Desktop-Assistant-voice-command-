@@ -190,6 +190,10 @@ _MAX_COMPRESSION_RATIO_THRESHOLD = 10.0
 _MIN_HALLUCINATION_MIN_REPEATS = 2
 _MAX_HALLUCINATION_MIN_REPEATS = 10
 
+# ── New bounds for low-confidence destructive-action confirmation (NEW) ──
+_MIN_STT_CONFIDENCE_CONFIRM_THRESHOLD = 0.0
+_MAX_STT_CONFIDENCE_CONFIRM_THRESHOLD = 1.0
+
 _MIN_TTS_BLEED_MULTIPLIER = 1.0
 _MAX_TTS_BLEED_MULTIPLIER = 5.0
 
@@ -410,6 +414,17 @@ class Config:
     )
     STT_HALLUCINATION_MIN_REPEATS: int = _int(
         os.getenv("STT_HALLUCINATION_MIN_REPEATS"), default=3
+    )
+
+    # ── Low-confidence destructive-action confirmation (NEW) ────────────
+    # When the STT confidence for a turn (see sara/audio/stt/engine.py's
+    # TranscriptionResult) falls below this, shutdown_system /
+    # restart_system / log_off / empty_recycle_bin additionally require
+    # a spoken "yes"/"cancel" confirmation even if the keyword-based
+    # risky-action check wouldn't otherwise flag them. Does NOT affect
+    # any other intent.
+    STT_CONFIDENCE_CONFIRM_THRESHOLD: float = _float(
+        os.getenv("STT_CONFIDENCE_CONFIRM_THRESHOLD"), default=0.55
     )
 
     # ── Barge-in ──────────────────────────────────────────────────────────
@@ -706,6 +721,15 @@ class Config:
             _MIN_WHISPER_BEAM_SIZE, min(_MAX_WHISPER_BEAM_SIZE, cls.WAKE_WORD_BEAM_SIZE)
         )
 
+        # ── Low-confidence confirmation clamp (NEW) ─────────────────────
+        cls.STT_CONFIDENCE_CONFIRM_THRESHOLD = max(
+            _MIN_STT_CONFIDENCE_CONFIRM_THRESHOLD,
+            min(
+                _MAX_STT_CONFIDENCE_CONFIRM_THRESHOLD,
+                cls.STT_CONFIDENCE_CONFIRM_THRESHOLD,
+            ),
+        )
+
         # ── Language / SARA ───────────────────────────────────────────────
         if cls.LANG_DETECTION_MODE not in ("auto", "manual"):
             print(
@@ -922,6 +946,9 @@ class Config:
                 f"[Debug] Whisper      : model={cls.WHISPER_MODEL_SIZE} beam={cls.WHISPER_BEAM_SIZE} "
                 f"no_speech_thr={cls.STT_NO_SPEECH_THRESHOLD} log_prob_thr={cls.STT_LOG_PROB_THRESHOLD} "
                 f"compression_thr={cls.STT_COMPRESSION_RATIO_THRESHOLD} halluc_repeats={cls.STT_HALLUCINATION_MIN_REPEATS}"
+            )
+            print(
+                f"[Debug] STT confirm  : low_confidence_threshold={cls.STT_CONFIDENCE_CONFIRM_THRESHOLD}"
             )
             print(
                 f"[Debug] AEC          : enabled={cls.AEC_ENABLED} | rate={cls.AEC_SAMPLE_RATE}Hz | "
