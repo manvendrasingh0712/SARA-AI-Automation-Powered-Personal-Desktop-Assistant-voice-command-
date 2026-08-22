@@ -9,7 +9,6 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from functools import lru_cache
 
 
 from config import Config
@@ -134,9 +133,19 @@ class _VoiceParams:
     speed: float
 
 
-@lru_cache(maxsize=4)
+# BUGFIX (staleness): this used to be @lru_cache(maxsize=4), keyed only
+# on `lang`. Once called once per language, the returned _VoiceParams was
+# cached FOREVER for that language — so changing Config.KOKORO_SPEED_HI /
+# KOKORO_VOICE_HI / etc. at runtime (e.g. a future settings save, or the
+# new set_speed() override in engine.py) silently had no effect after the
+# first sentence spoken in that language, no matter how many times you
+# changed it. Constructing a 3-field frozen dataclass from a handful of
+# getattr() calls is cheap enough (microseconds, not worth caching) that
+# there is no real latency cost to reading Config fresh on every call —
+# the caching was solving a problem that didn't need solving, at the cost
+# of a real correctness bug. Removed.
 def _build_params(lang: str) -> _VoiceParams:
-    """Cached per-language voice routing — avoids repeated Config lookups per sentence."""
+    """Per-language voice routing, read fresh from Config every call."""
     if lang in ("hi", "hinglish"):
         # BUGFIX (Bug 2a): a Hinglish sentence contains real Hindi words
         # that need Hindi phonemes, not English ones — route it to the
@@ -162,4 +171,19 @@ def _fast_variant(params: _VoiceParams) -> _VoiceParams:
         voice=params.voice,
         lang_code=params.lang_code,
         speed=min(1.4, params.speed + 0.2),
+    )
+
+
+def _speed_override_variant(params: _VoiceParams, speed: float) -> _VoiceParams:
+    """v15: used by TextToSpeech.set_speed() (engine.py) to override the
+    configured per-language speed with a live value from the GUI's Voice
+    Control slider, regardless of which language is actually being
+    spoken. Caller is responsible for clamping `speed` to the same
+    0.6-1.4 range TTSWorker.set_speed()'s docstring documents (engine.py
+    does this before calling here) — this function does not re-clamp,
+    to keep the single source of truth for the valid range in one place."""
+    return _VoiceParams(
+        voice=params.voice,
+        lang_code=params.lang_code,
+        speed=speed,
     )

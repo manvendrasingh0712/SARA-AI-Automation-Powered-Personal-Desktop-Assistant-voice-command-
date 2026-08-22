@@ -6,7 +6,12 @@ synth + player together into speak()/speak_stream().
 
 from __future__ import annotations
 
-from .voice_params import _detect_lang, _build_params, _fast_variant
+from .voice_params import (
+    _detect_lang,
+    _build_params,
+    _fast_variant,
+    _speed_override_variant,
+)
 from .text_prep import clean_for_tts, _split_adaptive
 from .synth import _synth_kokoro
 from .player import _PersistentPlayer, _drain
@@ -111,6 +116,15 @@ _PLAY_QUEUE_SIZE = int(
 _PHRASE_CACHE_MAX = int(getattr(Config, "TTS_PHRASE_CACHE_SIZE", 64))
 _PHRASE_CACHE_MAXLEN = int(getattr(Config, "TTS_PHRASE_CACHE_MAXLEN", 40))
 
+# v15: live speed-override range for set_speed() (GUI Voice Control
+# slider). Mirrors sara/orchestrator/tts_worker.py's _KOKORO_SPEED_MIN/MAX
+# — kept as a local constant rather than importing from tts_worker.py to
+# avoid the audio layer depending on the orchestrator layer. If you ever
+# change one, change the other; they document the same underlying
+# Kokoro-speed range and should not drift apart.
+_SPEED_OVERRIDE_MIN = 0.6
+_SPEED_OVERRIDE_MAX = 1.4
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  LANGUAGE DETECTION
@@ -176,17 +190,30 @@ class TextToSpeech:
         # lines repeat verbatim every cycle, so cache synthesized audio
         # and skip Kokoro synthesis on hits (only playback time remains).
         # FIFO eviction once _PHRASE_CACHE_MAX entries held. Keyed on
-        # (text, lang, fast) since fast=True uses different synth params.
-        # Only used by the non-streaming speak() path — speak_stream()
-        # sentences vary too much to benefit and aren't cached.
-        self._phrase_cache: dict[tuple[str, str, bool], np.ndarray] = {}
-        self._phrase_cache_order: list[tuple[str, str, bool]] = []
+        # (text, lang, fast, speed_override) since fast=True uses
+        # different synth params and a live speed override (v15, see
+        # set_speed() below) must not reuse audio cached at a different
+        # speed. Only used by the non-streaming speak() path —
+        # speak_stream() sentences vary too much to benefit and aren't
+        # cached.
+        self._phrase_cache: dict[tuple[str, str, bool, float | None], np.ndarray] = {}
+        self._phrase_cache_order: list[tuple[str, str, bool, float | None]] = []
         self._phrase_cache_lock = threading.Lock()
 
         # v12: None -> automatic per-sentence detection via _detect_lang().
         # "en" / "hi" -> caller has manually forced that language via
         # set_language(), overriding auto-detection everywhere below.
         self._forced_lang: str | None = None
+
+        # v15 (BUGFIX): live speed override for the Voice Control page's
+        # slider. Previously TextToSpeech had NO set_speed() method at
+        # all, so TTSWorker.set_speed()'s hasattr() check silently found
+        # nothing and the slider was a no-op. None = no override (use the
+        # per-language Config speed as before); a float = override every
+        # segment's speed to this value regardless of language, until
+        # cleared.
+        self._speed_override: float | None = None
+        self._speed_lock = threading.Lock()
 
         self._disabled = False
         self._synth_lock = threading.Lock()
@@ -372,7 +399,11 @@ class TextToSpeech:
                     )
                     if ack_pcm is not None and len(ack_pcm) > 0:
                         with self._phrase_cache_lock:
-                            key = (ack_text, "en", True)
+                            # v15: 4-tuple key now — None here matches
+                            # "no speed override active", which is the
+                            # state at warm-up time (nothing has called
+                            # set_speed() yet this session).
+                            key = (ack_text, "en", True, None)
                             if key not in self._phrase_cache:
                                 self._phrase_cache_order.append(key)
                             self._phrase_cache[key] = ack_pcm.copy()
@@ -419,6 +450,42 @@ class TextToSpeech:
         one is set, otherwise 'auto' (meaning per-sentence auto-detect)."""
         return self._forced_lang if self._forced_lang is not None else "auto"
 
+    def set_speed(self, speed: float | None) -> None:
+        """v15 (BUGFIX): live speed override, called by TTSWorker.set_speed()
+        (sara/orchestrator/tts_worker.py), itself called from the GUI's
+        Voice Control page slider. This method did not exist before —
+        TTSWorker's hasattr() guard silently found nothing and the slider
+        did nothing.
+
+        `speed=None` clears the override (falls back to the normal
+        per-language Config speed, i.e. KOKORO_SPEED_EN / KOKORO_SPEED_HI).
+        Any float is clamped to [_SPEED_OVERRIDE_MIN, _SPEED_OVERRIDE_MAX]
+        and applied to EVERY segment spoken from this point on — English
+        or Hindi — until cleared, since a single GUI slider controls "how
+        fast Sara talks" without a separate control per language.
+        """
+        with self._speed_lock:
+            if speed is None:
+                self._speed_override = None
+            else:
+                self._speed_override = max(
+                    _SPEED_OVERRIDE_MIN, min(_SPEED_OVERRIDE_MAX, float(speed))
+                )
+
+    def get_speed(self) -> float | None:
+        """v15: current override, or None if using per-language Config speed."""
+        with self._speed_lock:
+            return self._speed_override
+
+    def _apply_speed_override(self, params):
+        """v15: shared by every call site that builds _VoiceParams below —
+        applies the live override (if any) on top of whatever _build_params()/
+        _fast_variant() already produced."""
+        override = self.get_speed()
+        if override is None:
+            return params
+        return _speed_override_variant(params, override)
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def speak(self, text: str, fast: bool = False) -> None:
@@ -452,14 +519,22 @@ class TextToSpeech:
                params = _build_params(lang)
                if fast:
                    params = _fast_variant(params)
+               params = self._apply_speed_override(params)
 
                # v14 (LATENCY): phrase cache check FIRST, before waiting on
                # warm-up at all. A cache hit means Kokoro already
                # synthesized this exact (text, lang, fast) combo once
                # before — which can only happen after warm-up already ran
                # — so there's no reason to block on _warmup_done here.
+               #
+               # v15 (BUGFIX): cache key now also includes the current
+               # speed override. Before this fix, changing speed via
+               # set_speed() while a phrase was already cached at the OLD
+               # speed would silently keep returning the stale-speed
+               # cached audio forever — the override would have no
+               # audible effect on any previously-cached phrase.
                cacheable = len(text) <= _PHRASE_CACHE_MAXLEN
-               cache_key = (text, lang, fast) if cacheable else None
+               cache_key = (text, lang, fast, self.get_speed()) if cacheable else None
                pcm = None
                if cache_key is not None:
                    with self._phrase_cache_lock:
@@ -635,6 +710,7 @@ class TextToSpeech:
             params = _build_params(lang)
             if fast:
                 params = _fast_variant(params)
+            params = self._apply_speed_override(params)
             try:
                 pcm = _synth_kokoro(text, self._kokoro, params, self._synth_lock)
                 seg.pcm = pcm

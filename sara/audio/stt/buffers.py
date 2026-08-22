@@ -11,6 +11,8 @@ import threading
 from enum import Enum, auto
 from typing import Deque, List, Optional
 
+from config import Config
+
 
 if os.name == "nt":
     cuda_path = os.environ.get("CUDA_PATH")
@@ -143,7 +145,22 @@ class _RingBuffer:
 class _VADFilter:
     FRAME_MS = 32
 
-    def __init__(self, sample_rate: int = 16000, aggressiveness: int = 2):
+    # BUGFIX (was hardcoded): aggressiveness now defaults to
+    # Config.VAD_AGGRESSIVENESS (0-3, WebRTC VAD's own scale) instead of
+    # a fixed 2, so it's tunable via .env without a code edit. The
+    # explicit `aggressiveness` param is kept (not removed) so a caller
+    # can still override it directly if ever needed; the class-level
+    # clamp below is a defensive floor/ceiling independent of
+    # config.py's own validate() clamp, since this class has no
+    # guarantee it's only ever constructed after Config.validate() runs.
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        aggressiveness: "int | None" = None,
+    ):
+        if aggressiveness is None:
+            aggressiveness = int(getattr(Config, "VAD_AGGRESSIVENESS", 2))
+        aggressiveness = max(0, min(3, aggressiveness))
         self._sr = sample_rate
         self._vad_frame_bytes = int(sample_rate * 30 / 1000) * 2
         self._vad = webrtcvad.Vad(aggressiveness) if _HAS_VAD else None
