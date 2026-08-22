@@ -132,6 +132,32 @@ class TranscriptionResult(str):
 _AEC_QUEUE_MAXSIZE = 100
 _AEC_QUEUE_IDLE_POLL_S = 0.5
 
+# TUNING (accuracy — reduces hallucination on near-silent input): below
+# this raw peak amplitude (out of 1.0), a capture is treated as
+# effectively silence/noise-floor rather than quiet speech. The old
+# unconditional auto-gain (up to 8x) amplified a nearly-silent clip —
+# room tone, fan noise, a faint HVAC hum — into a "loud" signal, which is
+# exactly the kind of input Whisper is known to hallucinate boilerplate
+# phrases on (see _is_known_hallucination()'s docstring in helpers.py for
+# the established phrase list this project already guards against).
+# Skipping the gain below this floor means such clips reach the model at
+# their true (very quiet) level, which correlates with a genuinely higher
+# no_speech_prob and gets caught earlier by the existing no_speech_thr
+# filter instead of being artificially amplified into a false detection.
+_MIN_GAIN_APPLY_PEAK = 0.02
+
+# TUNING (accuracy — avoids biasing pure-English transcription toward
+# Hindi words): the original static prompt below is Hindi/Hinglish-styled
+# unconditionally, even when Config.SARA_LANGUAGE is "english" and
+# forced_lang resolves to something other than Hindi. Whisper's
+# initial_prompt measurably steers transcription style/vocabulary, so an
+# English-only setup was silently nudged toward Hindi-flavored output it
+# never asked for. _get_transcribe_prompt() below picks the right one.
+_STATIC_TRANSCRIBE_PROMPT_EN = (
+    "Transcribe naturally in English without translating or paraphrasing, "
+    "keep proper names exactly as spoken, do not invent words."
+)
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Main STT Engine
@@ -783,7 +809,12 @@ class SpeechToText:
     ) -> np.ndarray:
         arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         peak = np.max(np.abs(arr))
-        if peak > 0 and peak < target_peak:
+        # TUNING (accuracy): only auto-gain a clip whose peak is already
+        # above _MIN_GAIN_APPLY_PEAK -- see that constant's module-level
+        # comment. A clip quieter than this is treated as noise-floor, not
+        # under-recorded speech, and is left at its true (very quiet)
+        # level rather than amplified up to 8x into the model.
+        if _MIN_GAIN_APPLY_PEAK < peak < target_peak:
             gain = min(target_peak / peak, 8.0)
             arr = np.clip(arr * gain, -1.0, 1.0)
         return arr
@@ -821,6 +852,24 @@ class SpeechToText:
         "'mera naam Sara hai', 'kya haal hai bhai'."
     )
 
+    def _get_transcribe_prompt(self, forced_lang: Optional[str]) -> str:
+        """
+        TUNING (accuracy): picks the style-guidance prompt actually
+        appropriate for this turn instead of always using the
+        Hindi/Hinglish-styled _STATIC_TRANSCRIBE_PROMPT. That prompt
+        measurably steers Whisper's vocabulary/style, so unconditionally
+        using it on a pure-English configuration was quietly biasing
+        transcription toward Hindi words a user in English-only mode
+        never wanted. Hindi/Hinglish styling is used only when it's
+        actually relevant: forced_lang == "hi" (explicit forced-Hindi
+        turn), or Config.SARA_LANGUAGE is "hindi"/"hinglish" (the
+        project's default) with no more specific override in play.
+        """
+        sara_lang = getattr(Config, "SARA_LANGUAGE", "hinglish")
+        if forced_lang == "hi" or (forced_lang is None and sara_lang in ("hindi", "hinglish")):
+            return self._STATIC_TRANSCRIBE_PROMPT
+        return _STATIC_TRANSCRIBE_PROMPT_EN
+
     def _transcribe(
         self,
         audio_bytes: bytes,
@@ -857,7 +906,7 @@ class SpeechToText:
                 temperature=temperature,
                 language=forced_lang,
                 task="transcribe",
-                initial_prompt=self._STATIC_TRANSCRIBE_PROMPT,
+                initial_prompt=self._get_transcribe_prompt(forced_lang),
                 condition_on_previous_text=False,
                 vad_filter=False,  # Handled upstream by WebRTC
                 no_speech_threshold=no_speech_thr,
@@ -1046,6 +1095,20 @@ class SpeechToText:
         except Exception:
             return False
 
+    # TUNING (robustness): validated against a fixed allow-list before
+    # touching Config, instead of accepting any string unconditionally.
+    # Previously any value (e.g. "hinglish", which sara/gui/app/settings.py
+    # never actually sends today, but a future caller could) would be
+    # written straight into Config.STT_LANGUAGE and handed to
+    # faster-whisper's model.transcribe(language=...) as-is via
+    # _resolve_forced_language() -- "hinglish" is not a valid Whisper
+    # ISO-639-1 language code, so that call would misbehave/error instead
+    # of transcribing anything. "en"/"hi"/"auto" (the only values this
+    # project's GUI currently sends) are completely unaffected by this
+    # change; an unrecognized value is now safely ignored (with a printed
+    # warning) instead of being written through blindly.
+    _VALID_STT_LANGS = frozenset({"en", "hi"})
+
     def set_language(self, lang: str) -> None:
         # BUGFIX: _resolve_forced_language() only honors Config.STT_LANGUAGE
         # when Config.LANG_DETECTION_MODE == "manual" — this flag was never
@@ -1056,9 +1119,16 @@ class SpeechToText:
         if lang == "auto":
             Config.LANG_DETECTION_MODE = "auto"
             Config.STT_LANGUAGE = None
-        else:
+        elif lang in self._VALID_STT_LANGS:
             Config.STT_LANGUAGE = lang
             Config.LANG_DETECTION_MODE = "manual"
+        else:
+            print(
+                f"[STT] set_language('{lang}') ignored -- not a recognized "
+                f"Whisper language code (expected one of {sorted(self._VALID_STT_LANGS)} "
+                f"or 'auto'). Forced language, if any, is unchanged."
+            )
+            return
         print(f"[STT] Language set to '{lang}'.")
 
     def close(self) -> None:
