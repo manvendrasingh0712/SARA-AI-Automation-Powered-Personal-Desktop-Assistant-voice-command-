@@ -158,6 +158,15 @@ _STATIC_TRANSCRIBE_PROMPT_EN = (
     "keep proper names exactly as spoken, do not invent words."
 )
 
+# TUNING (accuracy): matches core_wiring.py's run_sara_logic() own
+# post_tts_settle_s value (0.3s when AEC is active, else the flat
+# STT_SETTLE_MIN_GAP_S) -- used only as wait_settle()'s fallback when a
+# caller omits min_gap explicitly. core_wiring.py always passes min_gap
+# explicitly today, so this was previously dead-code-in-practice; kept
+# consistent here so any other/future caller gets the same AEC-aware
+# behavior instead of silently over- or under-settling.
+_POST_TTS_SETTLE_WITH_AEC_S = 0.3
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Main STT Engine
@@ -333,32 +342,17 @@ class SpeechToText:
         try:
             model = WhisperModel(
                 model_size_or_path=model_size,
-                device="cuda",
-                compute_type="float16",
+                device="cpu",
+                compute_type="int8",
                 cpu_threads=cpu_threads,
             )
 
-            print("[STT] ✅ Faster Whisper loaded on CUDA.")
+            print("[STT] ✅ Faster Whisper loaded on CPU.")
             return model
 
-        except Exception as cuda_error:
-            print(f"[STT Warning] CUDA initialization failed:\n{cuda_error}")
-            print("[STT] Falling back to CPU...")
-
-            try:
-                model = WhisperModel(
-                    model_size_or_path=model_size,
-                    device="cpu",
-                    compute_type="int8",
-                    cpu_threads=cpu_threads,
-                )
-
-                print("[STT] ✅ Faster Whisper loaded on CPU.")
-                return model
-
-            except Exception as cpu_error:
-                print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
-                return None
+        except Exception as cpu_error:
+            print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
+            return None
 
     def _load_fast_wake_whisper(self) -> Optional[object]:
         """
@@ -376,28 +370,18 @@ class SpeechToText:
         try:
             model = WhisperModel(
                 model_size_or_path=model_size,
-                device="cuda",
-                compute_type="float16",
+                device="cpu",
+                compute_type="int8",
                 cpu_threads=cpu_threads,
             )
-            print("[STT] ✅ Wake-word Whisper loaded on CUDA.")
+            print("[STT] ✅ Wake-word Whisper loaded on CPU.")
             return model
-        except Exception:
-            try:
-                model = WhisperModel(
-                    model_size_or_path=model_size,
-                    device="cpu",
-                    compute_type="int8",
-                    cpu_threads=cpu_threads,
-                )
-                print("[STT] ✅ Wake-word Whisper loaded on CPU.")
-                return model
-            except Exception as e:
-                print(
-                    f"[STT Warning] Dedicated wake-word model load failed "
-                    f"({e}) -- wake checks will use the main model instead."
-                )
-                return None
+        except Exception as e:
+            print(
+                f"[STT Warning] Dedicated wake-word model load failed "
+                f"({e}) -- wake checks will use the main model instead."
+            )
+            return None
 
     def _load_wakeword(self) -> Optional["_OWWModel"]:
         if not _HAS_WAKEWORD or not _OWWModel:
@@ -456,7 +440,17 @@ class SpeechToText:
 
     def wait_settle(self, min_gap: Optional[float] = None) -> None:
         if min_gap is None:
-            min_gap = float(getattr(Config, "STT_SETTLE_MIN_GAP_S", 1.3))
+            # TUNING: AEC-aware fallback (see _POST_TTS_SETTLE_WITH_AEC_S
+            # module-level comment) instead of always using the flat
+            # STT_SETTLE_MIN_GAP_S regardless of whether AEC is active.
+            aec_active = self._aec is not None and getattr(
+                self._aec, "enabled", False
+            )
+            min_gap = (
+                _POST_TTS_SETTLE_WITH_AEC_S
+                if aec_active
+                else float(getattr(Config, "STT_SETTLE_MIN_GAP_S", 1.3))
+            )
         with self._tts_state_lock:
             stopped_at = self._tts_stopped_at
         if stopped_at <= 0:
@@ -528,8 +522,48 @@ class SpeechToText:
         except Exception:
             return chunk
 
+    def _passes_barge_in_gate(self, chunk: bytes) -> bool:
+        """Elevated energy+VAD check used to decide whether a single mic
+        chunk arriving while TTS is speaking is allowed into the ring
+        buffer at all (see Config.STT_HARD_MUTE_DURING_TTS and
+        _ingest_processed_chunk below). Deliberately reuses the SAME
+        TTS_BLEED_GUARD_MULTIPLIER that is_user_speaking() already uses
+        for its own (multi-chunk, majority-vote) barge-in check below —
+        one config value controls "how loud/confident does an
+        interruption need to be" everywhere, whether checked per-chunk
+        at ingestion (here) or over a rolling window (is_user_speaking).
+        This is a per-chunk gate, not a substitute for is_user_speaking's
+        sustained-speech check — a single loud transient chunk passing
+        this gate just means it's ALLOWED to be stored; it still takes
+        is_user_speaking's majority-vote over several chunks to actually
+        trigger a barge-in stop.
+        """
+        bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
+        effective_thr = self.energy_threshold * bleed_multiplier
+        if _rms(chunk) <= effective_thr:
+            return False
+        return self._vad.is_speech(chunk)
+
     def _ingest_processed_chunk(self, chunk: bytes) -> None:
         if self._tts_active.is_set():
+            # BUGFIX/hardening (mic-blocking during TTS): previously every
+            # chunk was written to self._ring during TTS regardless of
+            # loudness — barge-in detection relied entirely on
+            # is_user_speaking() filtering the ring AFTER the fact (a
+            # soft, read-time threshold), and nothing structurally
+            # prevented TTS/echo audio from sitting in the ring if some
+            # future/other caller ever read it mid-TTS. With
+            # STT_HARD_MUTE_DURING_TTS (default True), a chunk is now
+            # dropped BEFORE it ever reaches the ring unless it clears
+            # the same elevated barge-in bar. This changes nothing about
+            # today's barge-in behavior (is_user_speaking already
+            # effectively filtered out everything this drops) — it's a
+            # hardening of WHERE that filtering happens, not a behavior
+            # change.
+            if getattr(Config, "STT_HARD_MUTE_DURING_TTS", True):
+                if self._passes_barge_in_gate(chunk):
+                    self._ring.put(chunk)
+                return
             self._ring.put(chunk)
             return
         self._pre_buf.push(chunk)
@@ -937,6 +971,33 @@ class SpeechToText:
             else:
                 confidence = 0.0
 
+            # ── MINIMUM-CONFIDENCE REJECT GATE (NEW) ────────────────────
+            # Separate from Config.STT_CONFIDENCE_CONFIRM_THRESHOLD (which
+            # only gates the destructive-action spoken yes/no
+            # confirmation, downstream in intent_handlers.py). This gate
+            # discards the transcript outright, before it ever reaches
+            # the intent router, when confidence is low AND the
+            # transcript is short (<=3 words) — that combination is the
+            # "phantom single word from silence/noise" shape that
+            # neither _is_hallucinated_repetition() (needs repeats) nor
+            # _is_known_hallucination() (needs a known boilerplate
+            # phrase) can catch on their own. Deliberately NOT applied to
+            # longer transcripts — a real 10-word sentence with one
+            # muffled word shouldn't be thrown away over a mediocre
+            # aggregate confidence.
+            min_confidence_reject = float(
+                getattr(Config, "STT_MIN_CONFIDENCE_REJECT", 0.35)
+            )
+            word_count = len(text.split()) if text else 0
+            if text and confidence < min_confidence_reject and word_count <= 3:
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(
+                        f"[STT] Discarded low-confidence short transcript "
+                        f"(confidence={confidence:.2f}, words={word_count}): "
+                        f"{text[:80]!r}"
+                    )
+                return TranscriptionResult("", 0.0)
+
             min_repeats = int(getattr(Config, "STT_HALLUCINATION_MIN_REPEATS", 3))
             if _is_hallucinated_repetition(text, min_repeats=min_repeats):
                 if getattr(Config, "DEBUG_MODE", False):
@@ -1150,7 +1211,7 @@ class SpeechToText:
         wake_beam = int(getattr(Config, "WAKE_WORD_BEAM_SIZE", 1))
         print(
             f"[STT] Ready — "
-            f"FasterWhisper={'✓ (CUDA FP16)' if self._whisper_model else '✗'} | "
+            f"FasterWhisper={'✓ (CPU INT8)' if self._whisper_model else '✗'} | "
             f"VAD={'✓' if _HAS_VAD else '✗'} | "
             f"AEC={'✓ (worker thread)' if (self._aec is not None and getattr(self._aec, 'enabled', False)) else '✗'} | "
             f"WakeWord(model)={'✓' if self._wakeword_model else '✗ (using STT fallback)'} | "

@@ -293,6 +293,7 @@ class SaraLLM:
             client.chat(
                 model=self.model_name,
                 messages=[{"role": "user", "content": "hi"}],
+                think=False,
                 options={
                     "num_predict": 1,
                     "num_ctx": getattr(self._cfg, "OLLAMA_NUM_CTX", 4096),
@@ -557,6 +558,7 @@ class SaraLLM:
             model=self.model_name,
             messages=messages,
             stream=True,
+            think=False,
             options={
                 "num_predict": int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300)),
                 "num_ctx": int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096)),
@@ -736,6 +738,7 @@ class SaraLLM:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
                     ],
+                    think=False,
                     options={
                         "num_predict": 200,
                         "num_ctx": getattr(self._cfg, "OLLAMA_SUMMARY_NUM_CTX", 8192),
