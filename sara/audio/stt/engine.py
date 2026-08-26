@@ -15,7 +15,7 @@ import difflib
 import re
 import threading
 import time
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 
@@ -244,6 +244,13 @@ class SpeechToText:
         # v7: guards listen() so only one _collect_speech()/_transcribe()
         # session can ever be active at a time on this instance.
         self._listen_lock = threading.Lock()
+
+        # Guards the best-effort "live caption" preview transcribe (see
+        # _spawn_preview_transcribe()/_collect_speech() below) so only one
+        # preview transcribe is ever in flight at a time -- prevents CPU
+        # pile-up if previews start taking longer than the ~900ms cadence
+        # between them.
+        self._preview_busy = threading.Event()
 
         # v7: raw mic chunks awaiting AEC processing on a background
         # thread (only used when aec is not None — see _audio_callback).
@@ -753,7 +760,11 @@ class SpeechToText:
     # ── end v8.1 watchdog block ──────────────────────────────────────
 
     def _collect_speech(
-        self, timeout: float, max_duration: float, silence_limit: float
+        self,
+        timeout: float,
+        max_duration: float,
+        silence_limit: float,
+        on_partial_transcript: Optional[Callable[[str], None]] = None,
     ) -> bytes:
         thr = self.energy_threshold
         silence_limit_n = max(
@@ -763,6 +774,7 @@ class SpeechToText:
         speech_chunks: List[bytes] = []
         silence_count, trailing_silence_chunks = 0, 0
         speech_start = 0.0
+        last_preview_time = 0.0
         start_time = time.monotonic()
         energy_window = collections.deque(maxlen=3)
 
@@ -788,6 +800,7 @@ class SpeechToText:
                             speech_chunks = [pre, chunk] if pre else [chunk]
                             silence_count = 0
                             speech_start = time.monotonic()
+                            last_preview_time = speech_start
                             state = _CollectState.SPEAKING
                             break
                     pending_chunks = (
@@ -799,6 +812,27 @@ class SpeechToText:
                 elif state is _CollectState.SPEAKING:
                     if now - speech_start > max_duration:
                         state = _CollectState.DONE
+
+                    # LIVE CAPTION PREVIEW (best-effort, non-blocking): every
+                    # ~900ms while still actively collecting speech, kick off
+                    # a background best-effort transcribe of what's been
+                    # captured SO FAR using the fast/small wake-word model,
+                    # so the caller (see on_partial_transcript) can show a
+                    # provisional dim/italic caption before the real,
+                    # accurate transcript is ready. Gated on self._preview_busy
+                    # so at most one preview transcribe runs at a time -- if
+                    # the previous one hasn't finished yet, this cycle is
+                    # just skipped rather than piling up more threads.
+                    if (
+                        state is _CollectState.SPEAKING
+                        and on_partial_transcript is not None
+                        and now - last_preview_time >= 0.9
+                        and not self._preview_busy.is_set()
+                    ):
+                        last_preview_time = now
+                        self._spawn_preview_transcribe(
+                            b"".join(speech_chunks), on_partial_transcript
+                        )
 
                     if state is _CollectState.SPEAKING:
                         if not pending_chunks:
@@ -836,6 +870,46 @@ class SpeechToText:
             return b""
         finally:
             self._is_listening.clear()
+
+    def _spawn_preview_transcribe(
+        self, snapshot: bytes, on_partial_transcript: Callable[[str], None]
+    ) -> None:
+        """
+        Best-effort, fire-and-forget "live caption" preview: transcribes
+        the speech collected SO FAR (using the same small/fast model as
+        the STT-fallback wake-word check, NOT the slower main model) on a
+        background thread, so the caller can show a provisional caption
+        while the user is still talking. Deliberately never touches the
+        real/accurate transcription path in listen()/_transcribe() -- any
+        exception here (model missing, transcribe error, callback
+        raising) is swallowed so a preview glitch can never crash or
+        stall the main _collect_speech() loop. self._preview_busy is set
+        here (before the thread starts) and cleared in the thread's
+        finally block, so _collect_speech() can tell a preview is still
+        in flight and skip spawning another one on top of it.
+        """
+        self._preview_busy.set()
+
+        def _run() -> None:
+            try:
+                result = self._transcribe(
+                    snapshot,
+                    beam_size_override=1,
+                    model_override=self._wake_whisper_model,
+                )
+                if result:
+                    try:
+                        on_partial_transcript(str(result))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            finally:
+                self._preview_busy.clear()
+
+        threading.Thread(
+            target=_run, daemon=True, name="stt-preview-transcribe"
+        ).start()
 
     @staticmethod
     def _normalize_audio_float32(
@@ -1027,7 +1101,10 @@ class SpeechToText:
             return TranscriptionResult("", 0.0)
 
     def listen(
-        self, mode: str = "command", model_override: Optional[object] = None
+        self,
+        mode: str = "command",
+        model_override: Optional[object] = None,
+        on_partial_transcript: Optional[Callable[[str], None]] = None,
     ) -> "TranscriptionResult":
         if self._closed:
             return TranscriptionResult("", 0.0)
@@ -1066,6 +1143,12 @@ class SpeechToText:
                 timeout=cfg["timeout"],
                 max_duration=cfg["max_duration"],
                 silence_limit=self._silence_gate.silence_limit,
+                # NEW: only "command"/"dictate" callers pass this (see
+                # core_wiring.py's ears.listen(mode="command", ...) call) --
+                # "wake" mode never does, so the live-caption preview
+                # mechanism above is naturally inert during wake-word
+                # detection without needing an explicit mode check here.
+                on_partial_transcript=on_partial_transcript,
             )
             if not audio:
                 return TranscriptionResult("", 0.0)

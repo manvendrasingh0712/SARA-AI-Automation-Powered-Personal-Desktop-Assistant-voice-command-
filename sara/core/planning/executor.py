@@ -136,7 +136,7 @@ def _request_step_correction(
         model=model_name,
         messages=[{"role": "user", "content": prompt}],
         tools=_CORRECTION_TOOL_SCHEMA,
-        options={"num_predict": 150},
+        options={"num_predict": 150, "temperature": 0.2},
         keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "30m"),
     )
     try:
