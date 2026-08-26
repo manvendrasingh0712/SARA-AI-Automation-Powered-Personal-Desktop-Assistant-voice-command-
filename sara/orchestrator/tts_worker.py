@@ -266,11 +266,11 @@ class TTSWorker:
                     continue
                 if job is None:
                     continue
-                text, fast, gen, on_first_chunk, done_event, sentences_out = job
+                text, fast, gen, on_first_chunk, on_chunk, done_event, sentences_out = job
                 try:
                     if gen is not None:
                         sentences_out.extend(
-                            self._speak_stream_blocking(gen, on_first_chunk)
+                            self._speak_stream_blocking(gen, on_first_chunk, on_chunk)
                         )
                     else:
                         self._speak_blocking(text, fast)
@@ -307,7 +307,7 @@ class TTSWorker:
             ears.set_tts_active(False)
             ears.mark_tts_stopped()
 
-    def _speak_stream_blocking(self, gen, on_first_chunk=None) -> list:
+    def _speak_stream_blocking(self, gen, on_first_chunk=None, on_chunk=None) -> list:
         voice, ears = self._voice, self._ears
         sentences = []
         first_seen = False
@@ -325,6 +325,13 @@ class TTSWorker:
                         except Exception as e:
                             print(f"[TTSWorker] on_first_chunk callback failed: {e}")
                 sentences.append(s)
+                if _DEBUG or True:
+                    print(f"[LIVE-CAPTION-DEBUG] chunk fired @ {time.time():.3f}: {s[:30]}")
+                if on_chunk is not None:
+                    try:
+                        on_chunk(s)
+                    except Exception as e:
+                        print(f"[TTSWorker] on_chunk callback failed: {e}")
                 if _DEBUG:
                     print(f"[Streaming to Audio]: {s}")
                 yield s
@@ -347,14 +354,14 @@ class TTSWorker:
 
     def speak(self, text: str, fast: bool = False, block: bool = True) -> None:
         done_event = threading.Event() if block else None
-        self._q.put((text, fast, None, None, done_event, None))
+        self._q.put((text, fast, None, None, None, done_event, None))
         if block and done_event is not None:
             done_event.wait()
 
-    def speak_stream(self, gen, block: bool = True, on_first_chunk=None) -> list:
+    def speak_stream(self, gen, block: bool = True, on_first_chunk=None, on_chunk=None) -> list:
         done_event = threading.Event()
         sentences_out: list = []
-        self._q.put((None, False, gen, on_first_chunk, done_event, sentences_out))
+        self._q.put((None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out))
         if block:
             done_event.wait()
             return sentences_out

@@ -1891,7 +1891,9 @@ def _handle_command(
     try:
         stream = brain.generate_response_stream(user_input)
         sentences = tts.speak_stream(
-            stream, on_first_chunk=lambda: ui_update("status", "speaking")
+            stream,
+            on_first_chunk=lambda: ui_update("status", "speaking"),
+            on_chunk=lambda s: ui_update("transcript_chunk", "sara", s),
         )
         return " ".join(sentences)
     except Exception as e:

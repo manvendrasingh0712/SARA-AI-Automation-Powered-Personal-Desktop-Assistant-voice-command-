@@ -286,6 +286,15 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
             f" User ka naam {user_name} hai. "
             "Kabhi kabhi use naam se pukaro — itna bhi nahi ki creepy lage yaar."
         )
+    # Repeated deliberately as the LAST instruction: smaller/quantized models
+    # weight recent instructions more heavily than ones buried earlier in a
+    # long system prompt, and this is the single most-violated rule at low
+    # parameter counts — full drift into pure English or pure Hindi.
+    base += (
+        " Reminder, ye sabse important rule hai: hamesha Hindi-English mix "
+        "(Hinglish) mein hi jawab de, chahe user pura English mein bole ya "
+        "pura Hindi mein — kabhi bhi 100% ek hi language mein reply mat kar."
+    )
     return base
 
 

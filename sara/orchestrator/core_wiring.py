@@ -612,7 +612,12 @@ def run_sara_logic(
                 ui_update("status", "listening")
                 ui_update("footer", "Listening...")
                 ears.wait_settle(min_gap=post_tts_settle_s)
-                user_input = ears.listen(mode="command")
+                user_input = ears.listen(
+                    mode="command",
+                    on_partial_transcript=lambda t: ui_update(
+                        "transcript_partial", "user", t
+                    ),
+                )
                 # NEW: confidence signal riding along on the
                 # TranscriptionResult (str subclass) returned by
                 # ears.listen() -- see engine.py's TranscriptionResult.

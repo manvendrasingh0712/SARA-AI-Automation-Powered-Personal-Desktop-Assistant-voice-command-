@@ -11,6 +11,58 @@ const TOAST_ICON_COLOR = {
   'ti-check': { emoji: '✅', color: '#34d399' },
 };
 
+// Live-caption streaming state (LLM chat replies only) — see
+// window.saraEvent's 'transcript_chunk' / 'transcript' handling below.
+let _streamingSaraBubble = null;
+let _streamingSaraText = "";
+
+// Voice input "preview" caption state — a dim/italic, live-updating
+// caption of what the user is saying WHILE they're still speaking (see
+// window.saraEvent's 'transcript_partial' handling below). Replaced by
+// the real/accurate transcript the moment it arrives.
+let _previewBubble = null;
+
+// Appends one streamed sentence as a "live caption" — creates the
+// bubble on the first chunk of a turn, appends text on every chunk
+// after that. Mirrors appendChatMessage()'s DOM pattern (writes into
+// both #chatLog and #voiceTranscript, when the latter exists).
+function appendSaraStreamChunk(role, sentence) {
+  if (!sentence) return;
+  if (!_streamingSaraBubble) {
+    const log = document.getElementById('chatLog');
+    const div = document.createElement('div');
+    div.className = 'msg ' + (role === 'user' ? 'user' : 'sara');
+    div.textContent = sentence;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+
+    const vt = document.getElementById('voiceTranscript');
+    let vdiv = null;
+    if (vt) {
+      vdiv = document.createElement('div');
+      vdiv.className = 'msg ' + (role === 'user' ? 'user' : 'sara');
+      vdiv.textContent = sentence;
+      vt.appendChild(vdiv);
+      vt.scrollTop = vt.scrollHeight;
+      while (vt.children.length > 20) vt.removeChild(vt.firstChild);
+    }
+
+    _streamingSaraBubble = { chat: div, voice: vdiv };
+    _streamingSaraText = sentence;
+  } else {
+    _streamingSaraText += ' ' + sentence;
+    _streamingSaraBubble.chat.textContent = _streamingSaraText;
+    const log = document.getElementById('chatLog');
+    log.scrollTop = log.scrollHeight;
+
+    if (_streamingSaraBubble.voice) {
+      _streamingSaraBubble.voice.textContent = _streamingSaraText;
+      const vt = document.getElementById('voiceTranscript');
+      if (vt) vt.scrollTop = vt.scrollHeight;
+    }
+  }
+}
+
 // ── mock backend (only used when window.pywebview is absent) ───────
 const _mockState = {
   reminders: [
@@ -273,7 +325,78 @@ async function callApi(name, ...args) {
 window.saraEvent = function (payload) {
   try {
     const kind = payload.kind, args = payload.args || [];
-    if (kind === 'transcript') { appendChatMessage(args[0], args[1]); playTone(args[0] === 'user' ? 520 : 400, .05, 'sine', .03); }
+    if (kind === 'transcript') {
+      const role = args[0], text = args[1];
+      if (role === 'user') {
+        // Naya user turn shuru hua — pichli turn ka streaming state
+        // carry na ho.
+        _streamingSaraBubble = null;
+        _streamingSaraText = "";
+        // The final/accurate transcript has arrived — drop the dim
+        // "preview" caption (if any) so it doesn't sit duplicated
+        // alongside the real message.
+        if (_previewBubble) {
+          if (_previewBubble.chat && _previewBubble.chat.parentNode) _previewBubble.chat.remove();
+          if (_previewBubble.voice && _previewBubble.voice.parentNode) _previewBubble.voice.remove();
+          _previewBubble = null;
+        }
+        appendChatMessage(role, text);
+      } else if (role === 'sara' && _streamingSaraBubble) {
+        // Ye final/full text is turn ke liye already live-caption ke
+        // through stream ho chuki thi — duplicate bubble create mat
+        // karo, bas streaming state finalize/reset karo.
+        _streamingSaraBubble = null;
+        _streamingSaraText = "";
+      } else {
+        // Static/non-streamed reply (koi aur intent) — purana behavior.
+        appendChatMessage(role, text);
+      }
+      playTone(role === 'user' ? 520 : 400, .05, 'sine', .03);
+    }
+    else if (kind === 'transcript_partial') {
+      // Live caption preview while the user is still speaking — see
+      // engine.py's _spawn_preview_transcribe()/_collect_speech() and
+      // core_wiring.py's ears.listen(on_partial_transcript=...). Always
+      // a full "so-far" transcript, not a chunk, so it REPLACES the
+      // bubble's text rather than appending to it.
+      const role = args[0], text = args[1];
+      if (!text) {
+        // nothing to show yet
+      } else if (!_previewBubble) {
+        const log = document.getElementById('chatLog');
+        const div = document.createElement('div');
+        div.className = 'msg ' + (role === 'user' ? 'user' : 'sara') + ' preview';
+        div.style.opacity = '0.6';
+        div.style.fontStyle = 'italic';
+        div.textContent = text;
+        log.appendChild(div);
+        log.scrollTop = log.scrollHeight;
+
+        const vt = document.getElementById('voiceTranscript');
+        let vdiv = null;
+        if (vt) {
+          vdiv = document.createElement('div');
+          vdiv.className = 'msg ' + (role === 'user' ? 'user' : 'sara') + ' preview';
+          vdiv.style.opacity = '0.6';
+          vdiv.style.fontStyle = 'italic';
+          vdiv.textContent = text;
+          vt.appendChild(vdiv);
+          vt.scrollTop = vt.scrollHeight;
+          while (vt.children.length > 20) vt.removeChild(vt.firstChild);
+        }
+        _previewBubble = { chat: div, voice: vdiv };
+      } else {
+        _previewBubble.chat.textContent = text;
+        const log = document.getElementById('chatLog');
+        log.scrollTop = log.scrollHeight;
+        if (_previewBubble.voice) {
+          _previewBubble.voice.textContent = text;
+          const vt = document.getElementById('voiceTranscript');
+          if (vt) vt.scrollTop = vt.scrollHeight;
+        }
+      }
+    }
+    else if (kind === 'transcript_chunk') { console.log('[LIVE-CAPTION-DEBUG-JS] chunk received @', performance.now(), args); appendSaraStreamChunk(args[0], args[1]); }
     else if (kind === 'status') applySaraStatus(args[0]);
     else if (kind === 'footer') applyFooterText(args[0]);
     else if (kind === 'notification') { showToast(args[0], args[1], args[2]); maybeShowProactiveHint(args[0]); }
