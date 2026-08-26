@@ -227,7 +227,7 @@ function mockApi(name, args) {
         data: {
           total_commands: 12,
           top_commands: [
-            { name: 'play latest music', count: 5 },
+            { name: 'play latest music music', count: 5 },
             { name: 'screen vision', count: 3 },
             { name: 'open chrome', count: 2 },
             { name: 'lock the pc', count: 1 },

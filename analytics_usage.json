@@ -1,5 +1,5 @@
 {
-  "total_commands": 327,
+  "total_commands": 335,
   "commands": {
     "how are you": 5,
     "i am also fine how about": 1,
@@ -92,7 +92,14 @@
     "byy": 1,
     "take a screenshot": 1,
     "open calendar": 1,
-    "open instagram": 1
+    "open instagram": 1,
+    "play latest music": 2,
+    "increase brightness": 1,
+    "open task manager": 1,
+    "max volume": 1,
+    "say me how are you": 1,
+    "tum bhot funny ho yaarrr": 1,
+    "ek dum pig ki tarah -": 1
   },
   "daily": {
     "2026-08-17": 34,
@@ -101,6 +108,6 @@
     "2026-08-23": 36,
     "2026-08-24": 75,
     "2026-08-25": 52,
-    "2026-08-26": 32
+    "2026-08-26": 40
   }
 }
