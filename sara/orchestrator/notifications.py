@@ -150,9 +150,10 @@ class NotificationWatcher:
     start() once, shutdown() during app teardown.
     """
 
-    def __init__(self, tts, ui_update: Callable[..., None]) -> None:
+    def __init__(self, tts, ui_update: Callable[..., None], db=None) -> None:
         self._tts = tts
         self._ui_update = ui_update
+        self._db = db
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -264,6 +265,12 @@ class NotificationWatcher:
         # watch state; turning it back on picks up right where it left off.
         if not getattr(Config, "NOTIFICATIONS_ENABLED", True):
             return
+
+        try:
+            if self._db is not None and self._db.get_preference("setting:show_notifications", "1") == "0":
+                return
+        except Exception as e:
+            print(f"[Notifications] show_notifications preference check failed (defaulting to enabled): {e}")
 
         with self._lock:
             if not self._active or not self._folder:
@@ -377,7 +384,7 @@ _watcher_instance: Optional[NotificationWatcher] = None
 _watcher_lock = threading.Lock()
 
 
-def init_watcher(tts, ui_update: Callable[..., None]) -> NotificationWatcher:
+def init_watcher(tts, ui_update: Callable[..., None], db=None) -> NotificationWatcher:
     """
     Creates (if not already created) and starts the process-wide
     NotificationWatcher singleton. Called once from
@@ -388,13 +395,13 @@ def init_watcher(tts, ui_update: Callable[..., None]) -> NotificationWatcher:
     global _watcher_instance
     with _watcher_lock:
         if _watcher_instance is None:
-            _watcher_instance = NotificationWatcher(tts, ui_update)
+            _watcher_instance = NotificationWatcher(tts, ui_update, db)
             _watcher_instance.start()
         return _watcher_instance
 
 
 def get_watcher(
-    tts=None, ui_update: Optional[Callable[..., None]] = None
+    tts=None, ui_update: Optional[Callable[..., None]] = None, db=None
 ) -> Optional[NotificationWatcher]:
     """
     Returns the process-wide NotificationWatcher singleton. If it was
@@ -408,7 +415,7 @@ def get_watcher(
     global _watcher_instance
     with _watcher_lock:
         if _watcher_instance is None and tts is not None and ui_update is not None:
-            _watcher_instance = NotificationWatcher(tts, ui_update)
+            _watcher_instance = NotificationWatcher(tts, ui_update, db)
             _watcher_instance.start()
         return _watcher_instance
 

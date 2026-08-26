@@ -34,7 +34,11 @@ class ApiModesMixin:
     def apply_mode(self, mode_name):
         """Applies one of _MODE_BUNDLES's mode bundles via db.set_preference()
         for each key -- exactly mirroring _h_switch_mode() in
-        sara/orchestrator/intent_handlers.py. Gaming Mode's mic_sensitivity
+        sara/orchestrator/intent_handlers.py. If the bundle includes
+        assistant_active, it is also applied live to self.assistant_state
+        (mirroring settings.py's set_assistant_active()) so switching mode
+        immediately pauses/resumes wake-word listening instead of only
+        taking effect after a restart. Gaming Mode's mic_sensitivity
         is also applied live via self.ears if that object is reachable on
         this mixin the same way it is in intent_handlers.py's ctx["ears"];
         if not, it falls back to "applies after a restart", same as the
@@ -51,9 +55,32 @@ class ApiModesMixin:
 
             for key, value in bundle.items():
                 self.db.set_preference(key, value)
+
+            if "assistant_active" in bundle:
+                active_flag = bundle["assistant_active"] == "1"
+                assistant_state = getattr(self, "assistant_state", None)
+                if assistant_state is not None:
+                    try:
+                        assistant_state.set_active(active_flag)
+                    except Exception as e:
+                        print(f"[apply_mode live assistant_active error] {e}")
+
             self.db.set_preference("active_mode", resolved_name)
 
             confirmation = _MODE_CONFIRMATIONS[resolved_name]
+
+            if "assistant_active" in bundle:
+                active_flag = bundle["assistant_active"] == "1"
+                assistant_state = getattr(self, "assistant_state", None)
+                applied_live = False
+                if assistant_state is not None:
+                    try:
+                        assistant_state.set_active(active_flag)
+                        applied_live = True
+                    except Exception as e:
+                        print(f"[apply_mode live assistant_active error] {e}")
+                if not applied_live:
+                    confirmation += " Assistant active/paused state will apply after a restart."
 
             if "mic_sensitivity" in bundle:
                 ears = getattr(self, "ears", None)
