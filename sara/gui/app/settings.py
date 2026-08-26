@@ -26,6 +26,36 @@ class ApiSettingsMixin:
             print(f"[set_focus_mode error] {e}")
             return {"ok": False}
 
+    # ── Home page: "What should Sara call you?" display-name field ─────
+    # Wires the GUI-only field (previously localStorage-only, disconnected
+    # from the real system) into the same user-name system the "call me X"
+    # voice command already uses: db.set_user_name() persists it, and
+    # brain.set_user_name() reflects it immediately in the LLM system
+    # prompt. get_display_name() is the authoritative read — the frontend
+    # calls it on boot to reconcile the field with whatever name is
+    # actually stored (including one set via voice on another session).
+    def set_display_name(self, name):
+        try:
+            cleaned = (name or "").strip()
+            if not cleaned:
+                return {"ok": False, "error": "Name can't be empty."}
+            if hasattr(self, "db") and hasattr(self.db, "set_user_name"):
+                self.db.set_user_name(cleaned)
+            if hasattr(self, "brain") and hasattr(self.brain, "set_user_name"):
+                self.brain.set_user_name(cleaned)
+            return {"ok": True, "name": cleaned}
+        except Exception as e:
+            print(f"[set_display_name error] {e}")
+            return {"ok": False, "error": "Could not save name."}
+
+    def get_display_name(self):
+        try:
+            if hasattr(self, "db") and hasattr(self.db, "get_user_name"):
+                return {"ok": True, "name": self.db.get_user_name() or ""}
+        except Exception as e:
+            print(f"[get_display_name error] {e}")
+        return {"ok": True, "name": ""}
+
     # ── System page / Voice page toggle switches ──────────────────────
     def update_setting(self, name, value):
         try:
