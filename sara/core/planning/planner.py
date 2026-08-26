@@ -224,7 +224,11 @@ def _call_planner_llm(
                 {"role": "user", "content": user_input},
             ],
             tools=_get_plan_tool_schema(),
-            options={"num_predict": 400},
+            # Low, fixed temperature (not OLLAMA_TEMPERATURE) on purpose: this
+            # call produces structured tool-call JSON, not conversational
+            # text, and needs to be as deterministic/correct as possible
+            # regardless of the chat-persona temperature setting.
+            options={"num_predict": 400, "temperature": 0.2},
             keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "30m"),
         )
     except Exception as exc:  # noqa: BLE001 -- any transport/client error

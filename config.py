@@ -272,6 +272,12 @@ class Config:
     )
     OLLAMA_NUM_PREDICT: int = _int(os.getenv("OLLAMA_NUM_PREDICT"), default=300)
     OLLAMA_KEEP_ALIVE: str = os.getenv("OLLAMA_KEEP_ALIVE", "30m")
+    # Lower than Ollama's ~0.8 default on purpose: small (4B) models drift off
+    # the requested output language / persona far more at high temperature.
+    # 0.4 keeps replies noticeably more consistent (language, tone, format)
+    # while still sounding natural — raise toward 0.7 only if replies start
+    # feeling too flat/repetitive.
+    OLLAMA_TEMPERATURE: float = _float(os.getenv("OLLAMA_TEMPERATURE"), default=0.4)
 
     # ── Gemini ────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
@@ -795,6 +801,7 @@ class Config:
 
         # ── Memory / context clamps ────────────────────────────────────────
         cls.MAX_MEMORY_EXCHANGES = max(1, min(20, cls.MAX_MEMORY_EXCHANGES))
+        cls.OLLAMA_TEMPERATURE = max(0.0, min(2.0, cls.OLLAMA_TEMPERATURE))
         cls.OLLAMA_NUM_CTX = max(256, cls.OLLAMA_NUM_CTX)
         if cls.OLLAMA_SUMMARY_NUM_CTX < cls.OLLAMA_NUM_CTX:
             cls.OLLAMA_SUMMARY_NUM_CTX = cls.OLLAMA_NUM_CTX

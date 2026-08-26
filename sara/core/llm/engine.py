@@ -562,6 +562,7 @@ class SaraLLM:
             options={
                 "num_predict": int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300)),
                 "num_ctx": int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096)),
+                "temperature": float(getattr(self._cfg, "OLLAMA_TEMPERATURE", 0.4)),
             },
             keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
         )
