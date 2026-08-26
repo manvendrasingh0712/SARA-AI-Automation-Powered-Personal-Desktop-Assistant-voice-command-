@@ -55,16 +55,6 @@ class ApiModesMixin:
 
             for key, value in bundle.items():
                 self.db.set_preference(key, value)
-
-            if "assistant_active" in bundle:
-                active_flag = bundle["assistant_active"] == "1"
-                assistant_state = getattr(self, "assistant_state", None)
-                if assistant_state is not None:
-                    try:
-                        assistant_state.set_active(active_flag)
-                    except Exception as e:
-                        print(f"[apply_mode live assistant_active error] {e}")
-
             self.db.set_preference("active_mode", resolved_name)
 
             confirmation = _MODE_CONFIRMATIONS[resolved_name]
