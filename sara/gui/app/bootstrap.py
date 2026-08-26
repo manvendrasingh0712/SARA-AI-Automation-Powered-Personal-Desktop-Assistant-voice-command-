@@ -36,6 +36,21 @@ def main():
         sara_main.build_core_objects(_push)
     )
 
+    # FIX 4 -- Startup sound: one-time Windows system "ding" on boot if
+    # "setting:startup_sound" is on (default off, so existing silence
+    # is preserved unless the user opts in). Runs on a background
+    # daemon thread so it never delays app startup, and is wrapped in
+    # try/except so any failure here can never block or crash boot.
+    try:
+        if db.get_preference("setting:startup_sound", "0") == "1":
+            import winsound
+            threading.Thread(
+                target=lambda: winsound.MessageBeep(),
+                daemon=True,
+            ).start()
+    except Exception as e:
+        print(f"[startup sound error] {e}")
+
     # NEW: file-notification watcher (sara/orchestrator/notifications.py).
     # Constructed and started right here, right after `tts` exists, same
     # "as soon as its dependencies are ready" spirit as everything else
@@ -44,7 +59,7 @@ def main():
     # thread unconditionally here is safe even if the feature is
     # disabled, since the thread's own tick() immediately no-ops when
     # the gate is off.
-    notifications.init_watcher(tts, _push)
+    notifications.init_watcher(tts, _push, db)
 
     api = Api(brain, tts, ears, db, vision, reminders, lang_state, assistant_state)
 

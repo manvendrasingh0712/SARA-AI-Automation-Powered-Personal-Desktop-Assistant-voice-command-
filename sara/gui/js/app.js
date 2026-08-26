@@ -228,7 +228,7 @@ function mockApi(name, args) {
           total_commands: 12,
           top_commands: [
             { name: 'play latest music', count: 5 },
-            { name: 'take a screenshot', count: 3 },
+            { name: 'screen vision', count: 3 },
             { name: 'open chrome', count: 2 },
             { name: 'lock the pc', count: 1 },
             { name: 'search the web for weather', count: 1 },
@@ -396,7 +396,7 @@ window.saraEvent = function (payload) {
         }
       }
     }
-    else if (kind === 'transcript_chunk') { console.log('[LIVE-CAPTION-DEBUG-JS] chunk received @', performance.now(), args); appendSaraStreamChunk(args[0], args[1]); }
+    else if (kind === 'transcript_chunk') { appendSaraStreamChunk(args[0], args[1]); }
     else if (kind === 'status') applySaraStatus(args[0]);
     else if (kind === 'footer') applyFooterText(args[0]);
     else if (kind === 'notification') { showToast(args[0], args[1], args[2]); maybeShowProactiveHint(args[0]); }
@@ -546,8 +546,26 @@ document.getElementById('displayNameInput').addEventListener('change', (e) => {
   if (v) { localStorage.setItem('sara_display_name', v); }
   else { localStorage.removeItem('sara_display_name'); }
   setGreeting();
+  // Persist to the real backend user-name system too (db.set_user_name +
+  // brain.set_user_name), not just localStorage — see loadDisplayName()
+  // below, which is what makes the DB authoritative on next load.
+  if (v) callApi('set_display_name', v);
 });
 setGreeting();
+
+// Reconciles the Home-page greeting/input with the real backend
+// user-name (authoritative — can also be set via voice, "call me X").
+// Runs after setGreeting()'s instant localStorage-based render above, so
+// a name set via voice (or on another session) still wins once this
+// resolves. Empty/missing DB name is left alone — localStorage/placeholder
+// stays as-is.
+async function loadDisplayName() {
+  const res = await callApi('get_display_name');
+  if (res && res.ok && res.name) {
+    localStorage.setItem('sara_display_name', res.name);
+    setGreeting();
+  }
+}
 
 // ── titlebar controls ────────────────────────────────────────────
 document.getElementById('btnMin').addEventListener('click', () => callApi('minimize_window'));
@@ -1965,6 +1983,7 @@ function boot() {
   console.log('[boot] pywebview:', !!window.pywebview, 'api:', !!(window.pywebview && window.pywebview.api), 'methods:', window.pywebview && window.pywebview.api ? Object.keys(window.pywebview.api) : []);
   loadAssistantState();
   loadUISettings();
+  loadDisplayName();
   loadReminders();
   loadNotes();
   loadRoutines();

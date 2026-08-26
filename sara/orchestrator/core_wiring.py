@@ -271,7 +271,7 @@ def build_core_objects(ui_update):
 
     ui_update("boot_progress", "Restoring preferences...", 58)
 
-    tts = TTSWorker(voice, ears)
+    tts = TTSWorker(voice, ears, db)
     db_writer = AsyncDBWriter(db)
 
     ui_update("boot_progress", "Starting core services...", 68)

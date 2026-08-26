@@ -218,9 +218,10 @@ class TTSWorker:
         "_speech_started_at",
         "_thread",
         "_watch_thread",
+        "_db",
     )
 
-    def __init__(self, voice: TextToSpeech, ears: SpeechToText):
+    def __init__(self, voice: TextToSpeech, ears: SpeechToText, db=None):
         self._voice = voice
         self._ears = ears
         self._q: "queue.SimpleQueue" = queue.SimpleQueue()
@@ -229,6 +230,7 @@ class TTSWorker:
         self._speaking = threading.Event()
         self._barge_stop = threading.Event()
         self._speech_started_at = 0.0
+        self._db = db
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -291,7 +293,25 @@ class TTSWorker:
     def _disarm_barge_in(self) -> None:
         self._speaking.clear()
 
+    def _should_speak(self) -> bool:
+        """Gate for actual audio synthesis/playback -- checks "muted"
+        and "setting:voice_replies". Safe by default: no db, or any
+        lookup error, => True (never block speech on an error)."""
+        if self._db is None:
+            return True
+        try:
+            if self._db.get_preference("muted", "0") == "1":
+                return False
+            if self._db.get_preference("setting:voice_replies", "1") == "0":
+                return False
+            return True
+        except Exception as e:
+            print(f"[TTSWorker] _should_speak preference check failed (defaulting to speak): {e}")
+            return True
+
     def _speak_blocking(self, text: str, fast: bool) -> None:
+        if not self._should_speak():
+            return
         voice, ears = self._voice, self._ears
         ears.set_tts_active(True)
         try:
@@ -335,6 +355,17 @@ class TTSWorker:
                 if _DEBUG:
                     print(f"[Streaming to Audio]: {s}")
                 yield s
+
+        if not self._should_speak():
+            # Muted / voice_replies off: generator still gets fully
+            # consumed so on_first_chunk/on_chunk fire and `sentences`
+            # comes back complete (live captions keep working) -- but
+            # voice.speak_stream() / ears.set_tts_active() /
+            # mark_tts_stopped() are never touched, since nothing is
+            # actually producing audio.
+            for _ in _collecting_gen():
+                pass
+            return sentences
 
         ears.set_tts_active(True)
         try:
