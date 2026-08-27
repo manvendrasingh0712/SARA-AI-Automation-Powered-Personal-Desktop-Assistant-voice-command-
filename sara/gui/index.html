@@ -85,6 +85,45 @@
          from { opacity: 0; transform: translateY(10px); }
          to { opacity: 1; transform: translateY(0); }
       }
+      .apps-grid .app-tile, .settings-row {
+         animation: sara-card-in 0.4s ease both;
+      }
+      .apps-grid .app-tile:nth-child(1) { animation-delay: 0.01s; }
+      .apps-grid .app-tile:nth-child(2) { animation-delay: 0.03s; }
+      .apps-grid .app-tile:nth-child(3) { animation-delay: 0.05s; }
+      .apps-grid .app-tile:nth-child(4) { animation-delay: 0.07s; }
+      .apps-grid .app-tile:nth-child(5) { animation-delay: 0.09s; }
+      .apps-grid .app-tile:nth-child(6) { animation-delay: 0.11s; }
+      .apps-grid .app-tile:nth-child(7) { animation-delay: 0.13s; }
+      .apps-grid .app-tile:nth-child(8) { animation-delay: 0.15s; }
+      .apps-grid .app-tile:nth-child(9) { animation-delay: 0.17s; }
+      .apps-grid .app-tile:nth-child(10) { animation-delay: 0.19s; }
+      .apps-grid .app-tile:nth-child(11) { animation-delay: 0.21s; }
+      .apps-grid .app-tile:nth-child(12) { animation-delay: 0.23s; }
+      .apps-grid .app-tile:nth-child(13) { animation-delay: 0.25s; }
+      .apps-grid .app-tile:nth-child(14) { animation-delay: 0.27s; }
+      .apps-grid .app-tile:nth-child(15) { animation-delay: 0.29s; }
+      .apps-grid .app-tile:nth-child(16) { animation-delay: 0.31s; }
+      .apps-grid .app-tile:nth-child(17) { animation-delay: 0.33s; }
+      .apps-grid .app-tile:nth-child(18) { animation-delay: 0.35s; }
+      .apps-grid .app-tile:nth-child(19) { animation-delay: 0.37s; }
+      .apps-grid .app-tile:nth-child(20) { animation-delay: 0.39s; }
+      .settings-row:nth-child(1) { animation-delay: 0.01s; }
+      .settings-row:nth-child(2) { animation-delay: 0.04s; }
+      .settings-row:nth-child(3) { animation-delay: 0.07s; }
+      .settings-row:nth-child(4) { animation-delay: 0.10s; }
+      .settings-row:nth-child(5) { animation-delay: 0.13s; }
+      .settings-row:nth-child(6) { animation-delay: 0.16s; }
+      .settings-row:nth-child(7) { animation-delay: 0.19s; }
+      .settings-row:nth-child(8) { animation-delay: 0.22s; }
+      .settings-row:nth-child(9) { animation-delay: 0.25s; }
+      .settings-row:nth-child(10) { animation-delay: 0.28s; }
+      .settings-row:nth-child(11) { animation-delay: 0.31s; }
+      .settings-row:nth-child(12) { animation-delay: 0.34s; }
+      .settings-row:nth-child(13) { animation-delay: 0.37s; }
+      @media (prefers-reduced-motion: reduce) {
+         .apps-grid .app-tile, .settings-row { animation: none !important; }
+      }
 
       /* ripple effect container (spans injected by the small script at the bottom) */
       .sara-ripple {
@@ -99,6 +138,364 @@
          to { transform: scale(2.6); opacity: 0; }
       }
 
+      /* ── Home orb: extra visual polish (additive only) ── */
+      .orb-universe {
+         position: relative;
+      }
+      .orb-universe::before {
+         content: '';
+         position: absolute;
+         inset: -14px;
+         z-index: -1;
+         border-radius: 50%;
+         background: conic-gradient(from 0deg, rgba(139, 92, 246, 0.55), rgba(59, 130, 246, 0.35), rgba(236, 72, 153, 0.45), rgba(139, 92, 246, 0.55));
+         filter: blur(18px);
+         opacity: 0.55;
+         animation: sara-orb-spin 9s linear infinite;
+         pointer-events: none;
+      }
+      @keyframes sara-orb-spin {
+         to { transform: rotate(360deg); }
+      }
+
+      .orb-core, .orb-glow {
+         animation: sara-orb-breathe 3.6s ease-in-out infinite;
+      }
+      .orb-universe.listening .orb-core,
+      .orb-universe.listening .orb-glow {
+         animation-duration: 1.4s;
+      }
+      .orb-universe.listening::after {
+         content: '';
+         position: absolute;
+         inset: -18px;
+         border-radius: 50%;
+         border: 2px solid rgba(139, 92, 246, 0.5);
+         animation: sara-sonar-ping 1.8s cubic-bezier(0,0,0.2,1) infinite;
+         pointer-events: none;
+      }
+      @keyframes sara-sonar-ping {
+         0%   { transform: scale(0.85); opacity: 0.9; }
+         100% { transform: scale(1.6); opacity: 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+         .orb-universe.listening::after { animation: none !important; }
+      }
+      @keyframes sara-orb-breathe {
+         0%, 100% { transform: scale(1); filter: brightness(1); }
+         50% { transform: scale(1.045); filter: brightness(1.12); }
+      }
+
+      #greetingName {
+         background: linear-gradient(90deg, #8b5cf6, #ec4899, #3b82f6, #8b5cf6);
+         background-size: 300% 100%;
+         -webkit-background-clip: text;
+         background-clip: text;
+         color: transparent;
+         animation: sara-gradient-flow 6s ease infinite;
+      }
+      @keyframes sara-gradient-flow {
+         0% { background-position: 0% 50%; }
+         50% { background-position: 100% 50%; }
+         100% { background-position: 0% 50%; }
+      }
+
+      .orb-stars i {
+         animation: sara-star-twinkle 2.4s ease-in-out infinite;
+      }
+      @keyframes sara-star-twinkle {
+         0%, 100% { opacity: 0.85; }
+         50% { opacity: 0.15; }
+      }
+
+      .ripple {
+         box-shadow: 0 0 24px 2px rgba(139, 92, 246, 0.35);
+      }
+
+      /* ── Sidebar: gradient edge, active-item pill + glowing indicator ── */
+      .sidebar {
+         position: relative;
+      }
+      .sidebar::after {
+         content: '';
+         position: absolute;
+         top: 0; right: 0;
+         width: 1px; height: 100%;
+         background: linear-gradient(180deg, transparent, rgba(139, 92, 246, 0.4), transparent);
+      }
+      .brand-mark {
+         position: relative;
+         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15), 0 4px 14px rgba(139, 92, 246, 0.35);
+      }
+      #navList li {
+         position: relative;
+         border-radius: 10px;
+         margin: 2px 8px;
+         transition: background 0.25s ease;
+      }
+      #navList li:hover {
+         background: rgba(139, 92, 246, 0.08);
+      }
+      #navList li.active {
+         background: linear-gradient(90deg, rgba(139, 92, 246, 0.22), rgba(139, 92, 246, 0.02)) !important;
+      }
+      #navList li.active::before {
+         content: '';
+         position: absolute;
+         left: 0;
+         top: 50%;
+         transform: translateY(-50%);
+         width: 3px;
+         height: 60%;
+         border-radius: 0 3px 3px 0;
+         background: linear-gradient(180deg, #8b5cf6, #ec4899);
+         box-shadow: 0 0 10px rgba(139, 92, 246, 0.7);
+      }
+      #navList li.active svg {
+         filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.6));
+      }
+      .nav-badge {
+         background: linear-gradient(135deg, #ec4899, #8b5cf6) !important;
+         display: inline-block;
+         animation: sara-badge-pulse 2s ease-in-out infinite;
+      }
+      @keyframes sara-badge-pulse {
+         0%, 100% { transform: scale(1); }
+         50% { transform: scale(1.12); }
+      }
+      #navList li button svg {
+         transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
+      }
+      #navList li:hover button svg {
+         transform: scale(1.15) rotate(-6deg);
+      }
+      #navList li button span {
+         position: relative;
+      }
+      #navList li button span::after {
+         content: '';
+         position: absolute;
+         left: 0; bottom: -3px;
+         width: 0%;
+         height: 1.5px;
+         background: linear-gradient(90deg, #8b5cf6, #ec4899);
+         transition: width 0.3s ease;
+      }
+      #navList li:hover button span::after {
+         width: 100%;
+      }
+
+      /* ── Card system: gradient border glow + icon accents ── */
+      .qa-card, .app-tile {
+         position: relative;
+         overflow: hidden;
+      }
+      .qa-card::before, .app-tile::before {
+         content: '';
+         position: absolute;
+         inset: 0;
+         padding: 1px;
+         border-radius: inherit;
+         background: linear-gradient(135deg, rgba(139, 92, 246, 0.55), rgba(236, 72, 153, 0.18), transparent 65%);
+         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+         -webkit-mask-composite: xor;
+         mask-composite: exclude;
+         opacity: 0;
+         transition: opacity 0.25s ease;
+         pointer-events: none;
+      }
+      .qa-card:hover::before, .app-tile:hover::before {
+         opacity: 1;
+      }
+      .qa-card .qa-icon, .app-tile .qa-icon {
+         background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(236, 72, 153, 0.15));
+         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+         transition: transform 0.25s ease, background 0.25s ease;
+      }
+      .qa-card:hover .qa-icon, .app-tile:hover .qa-icon {
+         transform: scale(1.08) rotate(-4deg);
+         background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(236, 72, 153, 0.28));
+      }
+      .qa-card::after, .app-tile::after {
+         content: '';
+         position: absolute;
+         inset: 0;
+         border-radius: inherit;
+         background: radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(139, 92, 246, 0.18), transparent 70%);
+         opacity: 0;
+         transition: opacity 0.25s ease;
+         pointer-events: none;
+      }
+      .qa-card:hover::after, .app-tile:hover::after {
+         opacity: 1;
+      }
+      .card.stat-card {
+         background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+         border: 1px solid rgba(255,255,255,0.06);
+      }
+      .card.stat-card .bar-fill {
+         background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899) !important;
+         box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+         position: relative;
+         overflow: hidden;
+      }
+      .card.stat-card .bar-fill::after {
+         content: '';
+         position: absolute;
+         inset: 0;
+         background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
+         transform: translateX(-100%);
+         animation: sara-bar-shimmer 2.2s ease-in-out infinite;
+      }
+      @keyframes sara-bar-shimmer {
+         100% { transform: translateX(100%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+         .card.stat-card .bar-fill::after { animation: none !important; }
+      }
+      .card.side-card h3 {
+         position: relative;
+         padding-left: 12px;
+      }
+      .card.side-card h3::before {
+         content: '';
+         position: absolute;
+         left: 0;
+         top: 50%;
+         transform: translateY(-50%);
+         width: 4px;
+         height: 14px;
+         border-radius: 2px;
+         background: linear-gradient(180deg, #8b5cf6, #ec4899);
+      }
+
+      /* ── Chat bubbles: avatars, tails, timestamps ── */
+      .msg {
+         position: relative;
+         padding: 10px 14px 10px 40px !important;
+         margin-bottom: 4px;
+      }
+      .msg.user {
+         padding: 10px 40px 10px 14px !important;
+         background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+         color: #fff !important;
+         border-radius: 16px 16px 4px 16px !important;
+         box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+      }
+      .msg.sara {
+         background: rgba(255, 255, 255, 0.05) !important;
+         border: 1px solid rgba(255, 255, 255, 0.08);
+         border-radius: 16px 16px 16px 4px !important;
+         backdrop-filter: blur(6px);
+      }
+      .msg::before {
+         content: 'S';
+         position: absolute;
+         left: 8px;
+         top: 8px;
+         width: 24px;
+         height: 24px;
+         border-radius: 50%;
+         display: flex;
+         align-items: center;
+         justify-content: center;
+         font-size: 11px;
+         font-weight: 700;
+         font-family: 'Space Grotesk', sans-serif;
+         background: linear-gradient(135deg, #ec4899, #8b5cf6);
+         color: #fff;
+      }
+      .msg.user::before {
+         content: 'U';
+         left: auto;
+         right: 8px;
+         background: linear-gradient(135deg, #3b82f6, #06b6d4);
+      }
+      .msg-text {
+         display: block;
+         line-height: 1.5;
+      }
+      .msg-time {
+         display: block;
+         font-size: 10px;
+         opacity: 0.55;
+         margin-top: 4px;
+         text-align: right;
+      }
+      .msg {
+         animation: sara-msg-in 0.35s cubic-bezier(.2,.9,.3,1.1) both;
+      }
+      .msg.user {
+         animation-name: sara-msg-in-right;
+      }
+      @keyframes sara-msg-in {
+         from { opacity: 0; transform: translateY(8px) scale(0.98); }
+         to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @keyframes sara-msg-in-right {
+         from { opacity: 0; transform: translateX(10px) scale(0.98); }
+         to   { opacity: 1; transform: translateX(0) scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+         .msg { animation: none !important; }
+      }
+
+      /* ── Modals: glass effect + entrance animation ── */
+      .modal-backdrop {
+         transition: backdrop-filter 0.3s ease;
+      }
+      .modal-backdrop.open {
+         backdrop-filter: blur(6px);
+      }
+      .modal-backdrop .modal {
+         transform: translateY(24px) scale(0.96);
+         opacity: 0;
+         transition: transform 0.32s cubic-bezier(.2,.9,.3,1.3), opacity 0.28s ease;
+      }
+      .modal-backdrop.open .modal {
+         transform: translateY(0) scale(1);
+         opacity: 1;
+      }
+      .modal {
+         position: relative;
+         border: 1px solid rgba(255,255,255,0.08);
+         box-shadow: 0 20px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(139,92,246,0.08);
+      }
+      .modal::before {
+         content: '';
+         position: absolute;
+         top: 0; left: 0; right: 0;
+         height: 3px;
+         border-radius: inherit;
+         background: linear-gradient(90deg, #8b5cf6, #ec4899, #3b82f6);
+      }
+      .modal h3 {
+         position: relative;
+         padding-bottom: 10px;
+      }
+      .modal h3::after {
+         content: '';
+         position: absolute;
+         left: 0; bottom: 0;
+         width: 36px; height: 2px;
+         border-radius: 2px;
+         background: linear-gradient(90deg, #8b5cf6, #ec4899);
+      }
+      .modal input[type="text"]:focus,
+      .modal input[type="date"]:focus,
+      .modal input[type="time"]:focus {
+         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25) !important;
+      }
+      #memRingFill {
+         transition: stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1);
+      }
+      .card.stat-card .bar-fill {
+         transition: width 0.7s cubic-bezier(.4,0,.2,1);
+      }
+      @media (prefers-reduced-motion: reduce) {
+         #memRingFill, .card.stat-card .bar-fill { transition: none !important; }
+      }
+
       /* respect users who prefer reduced motion */
       @media (prefers-reduced-motion: reduce) {
          html { scroll-behavior: auto; }
@@ -108,6 +505,138 @@
          .qa-card, .app-tile, .qt-btn, button.icon-btn {
             transition: none !important;
          }
+         .orb-universe::before, .orb-core, .orb-glow, #greetingName, .orb-stars i {
+            animation: none !important;
+         }
+         .nav-badge {
+            animation: none !important;
+         }
+         .qa-card .qa-icon, .app-tile .qa-icon, .qa-card::before, .app-tile::before {
+            transition: none !important;
+         }
+         .modal-backdrop, .modal-backdrop .modal {
+            transition: none !important;
+         }
+      }
+
+      /* ── Buttons: premium gradient + hover lift ── */
+      .btn-primary {
+         background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
+         border: none !important;
+         box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
+         transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+      }
+      .btn-primary:hover {
+         transform: translateY(-2px);
+         box-shadow: 0 8px 22px rgba(139, 92, 246, 0.5);
+         filter: brightness(1.08);
+      }
+      .btn-primary:active {
+         transform: translateY(0);
+      }
+      .btn-ghost {
+         border: 1px solid rgba(139, 92, 246, 0.3) !important;
+         transition: background 0.2s ease, border-color 0.2s ease;
+      }
+      .btn-ghost:hover {
+         background: rgba(139, 92, 246, 0.1) !important;
+         border-color: rgba(139, 92, 246, 0.55) !important;
+      }
+
+      /* ── Toggles: gradient + glow when on (existing knob/shape untouched) ── */
+      .toggle {
+         transition: background 0.25s ease, box-shadow 0.25s ease;
+      }
+      .toggle.on {
+         background: linear-gradient(90deg, #8b5cf6, #ec4899) !important;
+         box-shadow: 0 0 8px rgba(139, 92, 246, 0.45);
+      }
+
+      /* ── Music player: vinyl-style art + gradient seek bar ── */
+      .pp-art {
+         border-radius: 50% !important;
+         box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+         transition: box-shadow 0.3s ease;
+      }
+      .pp-art.spinning {
+         box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.25), 0 8px 28px rgba(139, 92, 246, 0.35);
+      }
+      .pp-art { position: relative; }
+      .eq-bars {
+         position: absolute;
+         inset: 0;
+         display: none;
+         align-items: flex-end;
+         justify-content: center;
+         gap: 3px;
+         padding-bottom: 14px;
+         background: rgba(0,0,0,0.35);
+         border-radius: 50%;
+      }
+      .pp-art.spinning .eq-bars {
+         display: flex;
+      }
+      .eq-bars span {
+         width: 3px;
+         background: linear-gradient(180deg, #ec4899, #8b5cf6);
+         border-radius: 2px;
+         animation: sara-eq-bounce 0.9s ease-in-out infinite;
+      }
+      .eq-bars span:nth-child(1) { height: 30%; animation-delay: 0s; }
+      .eq-bars span:nth-child(2) { height: 60%; animation-delay: 0.15s; }
+      .eq-bars span:nth-child(3) { height: 40%; animation-delay: 0.3s; }
+      .eq-bars span:nth-child(4) { height: 70%; animation-delay: 0.45s; }
+      @keyframes sara-eq-bounce {
+         0%, 100% { transform: scaleY(0.4); }
+         50% { transform: scaleY(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+         .eq-bars span { animation: none !important; }
+      }
+      #ppSeek {
+         accent-color: #8b5cf6;
+      }
+      .pp-play {
+         background: linear-gradient(135deg, #8b5cf6, #ec4899) !important;
+         box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+      }
+
+      /* ── Toasts: glass effect + slide-in ── */
+      .toast {
+         backdrop-filter: blur(8px);
+         border: 1px solid rgba(255, 255, 255, 0.08);
+         animation: sara-toast-in 0.3s ease both;
+      }
+      @keyframes sara-toast-in {
+         from { transform: translateX(30px); opacity: 0; }
+         to { transform: translateX(0); opacity: 1; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+         .toast { animation: none !important; }
+      }
+
+      /* ── Ambient aurora backdrop — soft moving glow behind the whole app ── */
+      body::before {
+         content: '';
+         position: fixed;
+         inset: -10%;
+         z-index: -2;
+         background:
+            radial-gradient(38% 30% at 15% 20%, rgba(139, 92, 246, 0.22), transparent 60%),
+            radial-gradient(32% 28% at 85% 15%, rgba(236, 72, 153, 0.16), transparent 60%),
+            radial-gradient(40% 34% at 50% 90%, rgba(59, 130, 246, 0.18), transparent 60%);
+         filter: blur(60px);
+         animation: sara-aurora-drift 22s ease-in-out infinite alternate;
+         pointer-events: none;
+      }
+      @keyframes sara-aurora-drift {
+         0%   { transform: translate(0, 0) scale(1); }
+         50%  { transform: translate(2%, -3%) scale(1.08); }
+         100% { transform: translate(-3%, 2%) scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+         body::before { animation: none !important; }
       }
    </style>
 </head>
@@ -462,7 +991,11 @@
                         </div>
                         <div class="pp-body">
                            <div class="pp-art-wrap">
-                              <div class="pp-art" id="ppArt"></div>
+                              <div class="pp-art" id="ppArt">
+                                 <div class="eq-bars" aria-hidden="true">
+                                    <span></span><span></span><span></span><span></span>
+                                 </div>
+                              </div>
                            </div>
                            <div class="pp-info">
                               <div class="pp-title-wrap" id="ppTitleWrap"><b id="ppTitle">Nothing playing</b></div>
@@ -846,6 +1379,73 @@
                            <path d="M18.5 5.5a9 9 0 0 1 0 13" />
                         </svg></div><b>Volume</b><span>Control sound</span>
                   </button>
+                  <button class="card app-tile" data-cmd="restart the pc">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                           <path d="M3 3v5h5" />
+                        </svg></div><b>Restart PC</b><span>Reboot the system</span>
+                  </button>
+                  <button class="card app-tile" data-cmd="system status">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <circle cx="12" cy="12" r="9" />
+                           <path d="M12 16v-4M12 8h.01" />
+                        </svg></div><b>System Info</b><span>CPU / RAM / battery</span>
+                  </button>
+                  <button class="card app-tile" data-cmd="system uptime">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <circle cx="12" cy="12" r="9" />
+                           <path d="M12 7v5l4 2" />
+                        </svg></div><b>Uptime</b><span>How long PC's been on</span>
+                  </button>
+                  <button class="card app-tile" data-cmd="what's my ip address">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <circle cx="12" cy="12" r="9" />
+                           <path d="M3 12h18" />
+                           <path d="M12 3a13 13 0 0 1 0 18" />
+                           <path d="M12 3a13 13 0 0 0 0 18" />
+                        </svg></div><b>IP Address</b><span>Your network address</span>
+                  </button>
+                  <button class="card app-tile" data-cmd="turn on airplane mode">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="m3 11 18-8-8 18-2-8-8-2Z" />
+                        </svg></div><b>Airplane Mode</b><span>Toggle flight mode</span>
+                  </button>
+                  <button class="card app-tile" data-cmd-template="search for {value}" data-prompt-title="Web Search" data-prompt-label="What do you want to search?" data-prompt-placeholder="e.g. best pizza near me">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <circle cx="11" cy="11" r="7" />
+                           <path d="m21 21-4.3-4.3" />
+                        </svg></div><b>Web Search</b><span>Search anything</span>
+                  </button>
+                  <button class="card app-tile" data-cmd-template="calculate {value}" data-prompt-title="Quick Calculation" data-prompt-label="What should I calculate?" data-prompt-placeholder="e.g. 45 * 12 + 8">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <rect x="4" y="2" width="16" height="20" rx="2" />
+                           <path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01" />
+                        </svg></div><b>Calculator</b><span>Quick calculation</span>
+                  </button>
+                  <button class="card app-tile" data-cmd-template="open {value}" data-prompt-title="Open Website" data-prompt-label="Which website? (full domain)" data-prompt-placeholder="e.g. google.com">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <rect x="3" y="4" width="18" height="16" rx="2" />
+                           <path d="M3 8h18" />
+                           <circle cx="6" cy="6" r="1" />
+                           <circle cx="9" cy="6" r="1" />
+                           <circle cx="12" cy="6" r="1" />
+                        </svg></div><b>Open Website</b><span>Go to any site</span>
+                  </button>
+                  <button class="card app-tile" data-cmd-template="what's the weather in {value}" data-prompt-title="Check Weather" data-prompt-label="Which city?" data-prompt-placeholder="e.g. Mumbai">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="M6 16a4 4 0 0 1 .5-7.96A5.5 5.5 0 0 1 17 10a3.5 3.5 0 0 1-.5 6.9" /><path d="M9 19h.01M13 19h.01M17 19h.01" />
+                        </svg></div><b>Weather</b><span>Check any city</span>
+                  </button>
+                  <button class="card app-tile" data-cmd-template="play {value} on youtube" data-prompt-title="Play on YouTube" data-prompt-label="Song or video name?" data-prompt-placeholder="e.g. Arijit Singh songs">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <rect x="3" y="5" width="18" height="14" rx="3" /><path d="M10 9.5 15 12l-5 2.5v-5Z" />
+                        </svg></div><b>YouTube</b><span>Play a video</span>
+                  </button>
+                  <button class="card app-tile" data-cmd-template="take a note: {value}" data-prompt-title="Take a Note" data-prompt-label="What should I write down?" data-prompt-placeholder="e.g. Buy milk tomorrow">
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                           <path d="M17 3a2.8 2.8 0 0 1 4 4L7 21l-4 1 1-4Z" />
+                        </svg></div><b>Quick Note</b><span>Jot something down</span>
+                  </button>
                </div>
             </section>
 
@@ -1092,6 +1692,14 @@
                      <div><b>&nbsp;&nbsp;↳ Streak milestones</b><span>Mention it when your daily talk streak hits a milestone</span></div>
                      <div class="toggle on" data-setting="proactive_streak" id="settingProactiveStreak"></div>
                   </div>
+                  <div class="settings-row">
+                     <div><b>&nbsp;&nbsp;↳ Meeting reminders</b><span>Heads-up shortly before an upcoming calendar meeting</span></div>
+                     <div class="toggle on" data-setting="proactive_meetings" id="settingProactiveMeetings"></div>
+                  </div>
+                  <div class="settings-row">
+                     <div><b>&nbsp;&nbsp;↳ Scheduled routines</b><span>Announce when a scheduled routine runs automatically</span></div>
+                     <div class="toggle on" data-setting="proactive_routines" id="settingProactiveRoutines"></div>
+                  </div>
                </div>
                <div class="card section-gap" style="margin-top:16px;">
                   <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Proactive Insights</h3>
@@ -1127,7 +1735,7 @@
                   <p style="font-size:11.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">
                      Ollama, models, aur voice files dobara check karo — Ollama update/reinstall ke baad useful.
                   </p>
-                  <button class="btn btn-primary" id="rerunSetupBtn">Re-run Setup Check</button>
+                  <button class="btn btn-primary" id="rerunSetupBtnSettings">Re-run Setup Check</button>
                </div>
                <div class="card section-gap" style="margin-top:16px;">
                   <div class="field" style="margin-bottom:0;">
@@ -1183,6 +1791,21 @@
          <div class="modal-actions">
             <button class="btn btn-ghost" id="remCancel">Cancel</button>
             <button class="btn btn-primary" id="remSave">Save Reminder</button>
+         </div>
+      </div>
+   </div>
+
+   <!-- ══════════════════════ QUICK INPUT MODAL (NEW) ══════════════════════ -->
+   <div class="modal-backdrop" id="quickInputModal">
+      <div class="modal">
+         <h3 id="quickInputTitle">Quick Action</h3>
+         <div class="field">
+            <label for="quickInputField" id="quickInputLabel">Enter value</label>
+            <input type="text" id="quickInputField" placeholder="">
+         </div>
+         <div class="modal-actions">
+            <button class="btn btn-ghost" id="quickInputCancel">Cancel</button>
+            <button class="btn btn-primary" id="quickInputSubmit">Go</button>
          </div>
       </div>
    </div>
@@ -1274,7 +1897,7 @@
    </div>
 
    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-   <script src="js/app.js?v=4"></script>
+   <script src="js/app.js?v=5"></script>
    <script>
       // ── Additive polish script — safe layer, does not remove/replace any existing app.js logic ──
       (function () {
@@ -1309,6 +1932,39 @@
          rippleTargets.forEach(function (el) {
             el.addEventListener('click', addRipple);
          });
+
+         // ── Subtle 3D tilt-on-hover for cards — additive, purely cosmetic ──
+         if (!prefersReducedMotion && window.matchMedia && window.matchMedia('(pointer: fine)').matches) {
+            var tiltTargets = document.querySelectorAll('.qa-card, .app-tile');
+            tiltTargets.forEach(function (el) {
+               el.style.willChange = 'transform';
+               el.addEventListener('mousemove', function (e) {
+                  var rect = el.getBoundingClientRect();
+                  var px = (e.clientX - rect.left) / rect.width - 0.5;
+                  var py = (e.clientY - rect.top) / rect.height - 0.5;
+                  el.style.transform = 'perspective(600px) rotateX(' + (py * -6) + 'deg) rotateY(' + (px * 6) + 'deg) translateY(-3px)';
+               });
+               el.addEventListener('mouseleave', function () {
+                  el.style.transform = '';
+               });
+            });
+         }
+      })();
+   </script>
+   <script>
+      // ── Independent layer: cursor spotlight + scroll progress bar ──
+      (function () {
+         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+         if (!prefersReducedMotion) {
+            document.addEventListener('mousemove', function (e) {
+               var el = e.target.closest && e.target.closest('.qa-card, .app-tile');
+               if (!el) return;
+               var rect = el.getBoundingClientRect();
+               el.style.setProperty('--mx', ((e.clientX - rect.left) / rect.width * 100) + '%');
+               el.style.setProperty('--my', ((e.clientY - rect.top) / rect.height * 100) + '%');
+            });
+         }
       })();
    </script>
 </body>
