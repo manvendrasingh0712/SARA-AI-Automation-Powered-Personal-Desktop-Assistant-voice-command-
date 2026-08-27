@@ -619,6 +619,9 @@ function buildStarfield(container, count) {
     s.style.left = (Math.random() * 100).toFixed(1) + '%';
     s.style.top = (Math.random() * 100).toFixed(1) + '%';
     s.style.opacity = (Math.random() * 0.7 + 0.2).toFixed(2);
+    // Random twinkle phase so all stars don't pulse in sync (see the
+    // .orb-stars i keyframe animation added in index.html's polish layer).
+    s.style.animationDelay = (Math.random() * 2.4).toFixed(2) + 's';
     container.appendChild(s);
   }
 }
@@ -760,6 +763,43 @@ document.querySelectorAll('[data-cmd]').forEach(el => {
     callApi('record_command_usage', el.dataset.cmd);
   });
 });
+
+// ── Quick Input modal (Weather / YouTube / Quick Note) ────────────
+// Shared, reusable modal for [data-cmd-template] tiles that need a
+// user-typed value before dispatching — same 3-call dispatch pattern
+// as the [data-cmd] handler above (gotoPage + send_text_command +
+// record_command_usage), just with {value} substituted in first.
+let _quickInputTemplate = null;
+document.querySelectorAll('[data-cmd-template]').forEach(el => {
+  el.addEventListener('click', () => {
+    _quickInputTemplate = el.dataset.cmdTemplate;
+    document.getElementById('quickInputTitle').textContent = el.dataset.promptTitle || 'Quick Action';
+    document.getElementById('quickInputLabel').textContent = el.dataset.promptLabel || 'Enter value';
+    const field = document.getElementById('quickInputField');
+    field.placeholder = el.dataset.promptPlaceholder || '';
+    field.value = '';
+    document.getElementById('quickInputModal').classList.add('open');
+    setTimeout(() => field.focus(), 50);
+  });
+});
+document.getElementById('quickInputCancel').addEventListener('click', () => {
+  document.getElementById('quickInputModal').classList.remove('open');
+});
+function submitQuickInput() {
+  const field = document.getElementById('quickInputField');
+  const value = field.value.trim();
+  if (!value || !_quickInputTemplate) return;
+  const finalCommand = _quickInputTemplate.replace('{value}', value);
+  document.getElementById('quickInputModal').classList.remove('open');
+  gotoPage('chat');
+  callApi('send_text_command', finalCommand);
+  callApi('record_command_usage', finalCommand);
+}
+document.getElementById('quickInputSubmit').addEventListener('click', submitQuickInput);
+document.getElementById('quickInputField').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitQuickInput(); }
+});
+
 async function doWifiToggle() {
   const res = await callApi('toggle_wifi');
   showToast(res && res.ok ? 'ti-check' : 'ti-alert-triangle', res && res.ok ? '#34d399' : '#f87171', (res && res.message) || 'Wi-Fi toggle attempted');
@@ -769,11 +809,24 @@ document.getElementById('qtWifiBtn').addEventListener('click', doWifiToggle);
 document.getElementById('wifiToggleBtn').addEventListener('click', doWifiToggle);
 
 // ── chat ─────────────────────────────────────────────────────────
+// Shared HH:MM label for the new .msg-time element (see index.html's
+// polish-layer CSS). Avatars need no JS — they're pure CSS via
+// .msg::before, driven off the 'user'/'sara' class already set below.
+function _msgTimeLabel() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 function appendChatMessage(role, text) {
   const log = document.getElementById('chatLog');
   const div = document.createElement('div');
   div.className = 'msg ' + (role === 'user' ? 'user' : 'sara');
-  div.textContent = text;
+  const textSpan = document.createElement('span');
+  textSpan.className = 'msg-text';
+  textSpan.textContent = text;
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'msg-time';
+  timeSpan.textContent = _msgTimeLabel();
+  div.appendChild(textSpan);
+  div.appendChild(timeSpan);
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
 
@@ -783,7 +836,14 @@ function appendChatMessage(role, text) {
   if (vt) {
     const vdiv = document.createElement('div');
     vdiv.className = 'msg ' + (role === 'user' ? 'user' : 'sara');
-    vdiv.textContent = text;
+    const vTextSpan = document.createElement('span');
+    vTextSpan.className = 'msg-text';
+    vTextSpan.textContent = text;
+    const vTimeSpan = document.createElement('span');
+    vTimeSpan.className = 'msg-time';
+    vTimeSpan.textContent = _msgTimeLabel();
+    vdiv.appendChild(vTextSpan);
+    vdiv.appendChild(vTimeSpan);
     vt.appendChild(vdiv);
     vt.scrollTop = vt.scrollHeight;
     while (vt.children.length > 20) vt.removeChild(vt.firstChild);

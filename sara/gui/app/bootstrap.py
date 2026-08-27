@@ -102,6 +102,7 @@ def main():
         min_size=(1000, 640),
         background_color="#070912",
     )
+    
     # Any _push() call made before this fires (boot greeting, ollama
     # warm-up footer text, early wake-word status) is buffered and
     # flushed here instead of being silently dropped — see the
