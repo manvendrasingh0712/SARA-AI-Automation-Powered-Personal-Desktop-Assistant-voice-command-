@@ -322,6 +322,60 @@ class LongTermMemory:
             timestamps.append(timestamp)
             vecs.append(vec)
 
+        # Guard against mixed embedding dimensions -- some rows may have
+        # been saved under an older EMBEDDING_MODEL before it was changed.
+        # np.vstack() below requires every row to be the same width, so any
+        # row that doesn't match the CURRENT model's dimension has to be
+        # dropped from the in-memory index before the matrix is built. The
+        # DB row itself is left untouched (still there for a future
+        # re-embedding pass) -- only the in-RAM index skips it.
+        if vecs:
+            try:
+                # Most recently inserted row (list is chronological, oldest
+                # first) reflects whatever EMBEDDING_MODEL is actually
+                # configured right now.
+                expected_dim = vecs[-1].shape[0]
+                filtered_ids, filtered_texts, filtered_sources = [], [], []
+                filtered_timestamps, filtered_vecs = [], []
+                skipped = 0
+                for i, vec in enumerate(vecs):
+                    if vec.shape[0] == expected_dim:
+                        filtered_ids.append(ids[i])
+                        filtered_texts.append(texts[i])
+                        filtered_sources.append(sources[i])
+                        filtered_timestamps.append(timestamps[i])
+                        filtered_vecs.append(vec)
+                    else:
+                        skipped += 1
+                if skipped:
+                    msg = (
+                        f"[RAG] Skipped {skipped} stored memories with a "
+                        f"mismatched embedding dimension while loading "
+                        f"(expected {expected_dim}, based on the most "
+                        f"recently stored row) -- likely saved under a "
+                        f"previous EMBEDDING_MODEL. They remain in the "
+                        f"database untouched but won't be searchable until "
+                        f"re-embedded."
+                    )
+                    logger.warning(msg)
+                    print(msg)
+                ids, texts, sources, timestamps, vecs = (
+                    filtered_ids,
+                    filtered_texts,
+                    filtered_sources,
+                    filtered_timestamps,
+                    filtered_vecs,
+                )
+            except Exception as e:
+                # Filtering itself must never take down startup -- fall
+                # back to the raw (possibly mixed-dimension) lists; the
+                # np.vstack() below will surface the same error it always
+                # did if that happens, which is no worse than before this
+                # fix existed.
+                logger.error(f"[RAG] dimension-filter step failed: {e}")
+                if self._debug:
+                    print(f"[RAG] dimension-filter step failed: {e}")
+
         with self._matrix_lock:
             self._ids = ids
             self._texts = texts
