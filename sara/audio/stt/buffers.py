@@ -14,17 +14,6 @@ from typing import Deque, List, Optional
 from config import Config
 
 
-if os.name == "nt":
-    cuda_path = os.environ.get("CUDA_PATH")
-    if cuda_path:
-        bin_path = os.path.join(cuda_path, "bin")
-        if os.path.isdir(bin_path):
-            try:
-                os.add_dll_directory(bin_path)
-                print(f"[STT] CUDA DLL Path Added: {bin_path}")
-            except (AttributeError, FileNotFoundError):
-                pass
-
 def _optional_import_failed(dep_name: str, exc: Exception) -> None:
     """Log a soft-disabled optional dependency without crashing this module.
 
