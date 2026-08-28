@@ -120,7 +120,21 @@ _PHRASE_CACHE_MAXLEN = int(getattr(Config, "TTS_PHRASE_CACHE_MAXLEN", 40))
 #  TEXT CLEANER
 # ══════════════════════════════════════════════════════════════════════════════
 
-_EMOJI_RE = re.compile(r"[\U0001F300-\U0001F9FF\U00002702-\U000027B0]+", re.UNICODE)
+_EMOJI_RE = re.compile(
+    r"[\U0001F1E6-\U0001F1FF"   # regional indicators (flags)
+    r"\U0001F300-\U0001F5FF"    # misc symbols & pictographs
+    r"\U0001F600-\U0001F64F"    # emoticons
+    r"\U0001F680-\U0001F6FF"    # transport & map
+    r"\U0001F700-\U0001F9FF"    # alchemical .. supplemental symbols/pictographs
+    r"\U0001FA00-\U0001FAFF"    # chess symbols .. symbols & pictographs extended-A
+    r"\U00002600-\U000026FF"    # misc symbols
+    r"\U00002700-\U000027BF"    # dingbats (full block)
+    r"\U00002B00-\U00002BFF"    # misc symbols & arrows
+    r"\U0000FE0F"               # variation selector-16 (emoji presentation)
+    r"\U0000200D"               # zero-width joiner (emoji sequences)
+    r"]+",
+    re.UNICODE,
+)
 _URL_RE = re.compile(r"https?://\S+|www\.\S+")
 _MD_RE = re.compile(r"(\*{1,3}|#{1,6}|`{1,3}|_{1,2})(.*?)\1", re.DOTALL)
 _MULTI_SP = re.compile(r"\s+")
@@ -434,19 +448,41 @@ _SENT_END = re.compile(r"(?<![A-Z])(?<!\d)[.!?।\u0964]\s+|;\s+")
 _CLAUSE_SPLT = re.compile(r"[,:\u2014\u2013]\s+")
 
 
+def _split_keep_delim(pattern: "re.Pattern", text: str) -> list[str]:
+    """Split at every match of `pattern`, but keep the matched
+    delimiter attached to the chunk it ends (a bare pattern.split()
+    without a capturing group silently discards it)."""
+    boundaries = [m.end() for m in pattern.finditer(text)]
+    if not boundaries:
+        return [text] if text else []
+    parts: list[str] = []
+    prev = 0
+    for b in boundaries:
+        chunk = text[prev:b].rstrip()
+        if chunk:
+            parts.append(chunk)
+        prev = b
+    tail = text[prev:].strip()
+    if tail:
+        parts.append(tail)
+    return parts or [text]
+
+
 def _split_adaptive(text: str) -> list[str]:
-    parts = _SENT_END.split(text.strip())
+    parts = _split_keep_delim(_SENT_END, text.strip())
     sentences: list[str] = []
     for p in parts:
         p = p.strip()
         if not p:
             continue
         if len(p) > _MAX_CHUNK:
-            clauses = _CLAUSE_SPLT.split(p)
+            clauses = _split_keep_delim(_CLAUSE_SPLT, p)
             buf = ""
             for c in clauses:
                 c = c.strip()
-                candidate = (buf + ", " + c).strip() if buf else c
+                # `c` already carries its own trailing comma/colon/dash
+                # (preserved by _split_keep_delim), so plain space-join.
+                candidate = (buf + " " + c).strip() if buf else c
                 if len(candidate) >= _MIN_CHUNK:
                     sentences.append(candidate)
                     buf = ""

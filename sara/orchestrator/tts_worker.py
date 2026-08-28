@@ -345,7 +345,7 @@ class TTSWorker:
                         except Exception as e:
                             print(f"[TTSWorker] on_first_chunk callback failed: {e}")
                 sentences.append(s)
-                if _DEBUG or True:
+                if _DEBUG:
                     print(f"[LIVE-CAPTION-DEBUG] chunk fired @ {time.time():.3f}: {s[:30]}")
                 if on_chunk is not None:
                     try:
