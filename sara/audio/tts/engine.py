@@ -70,9 +70,16 @@ _CHANNELS = 1
 _POLL_S = 0.008
 _MIN_CHUNK = 8
 _MAX_CHUNK = 180
-_FIRST_TRIGGER = 5  # lowered from 8 — flush first micro-chunk sooner
+_FIRST_TRIGGER = int(getattr(Config, "TTS_FIRST_CHUNK_MIN_CHARS", 12))
+_FIRST_TRIGGER_SOFT_MIN = int(
+    getattr(Config, "TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS", 35)
+)
+_FIRST_FLUSH_STRONG_RE = re.compile(r"[.!?।॥]")
+_FIRST_FLUSH_SOFT_RE = re.compile(r"[,;:\n]")
+_FIRST_FLUSH_ABBREV = frozenset(
+    {"mr", "mrs", "ms", "dr", "prof", "st", "sr", "jr", "vs", "etc", "no", "approx"}
+)
 _QUEUE_TIMEOUT = 15.0
-
 _PLAY_BUFFER_MS = int(getattr(Config, "TTS_PLAYBACK_BUFFER_MS", 40))
 _PLAY_LATENCY = getattr(Config, "TTS_SD_LATENCY", "low")
 _BLOCK_SIZE = max(256, int(_SAMPLE_RATE * _PLAY_BUFFER_MS / 1000))
@@ -647,6 +654,20 @@ class TextToSpeech:
 
     # ── Pipeline workers ─────────────────────────────────────────────────────
 
+   def _first_flush_match(self, buf: str) -> "re.Match | None":
+        """Safe boundary for the very first TTS chunk. Prefers a strong
+        sentence-ender; only falls back to a soft comma/colon/newline
+        boundary once the buffer already holds a real clause's worth of
+        text, and refuses an abbreviation cut ("Mr." etc)."""
+        m = _FIRST_FLUSH_STRONG_RE.search(buf)
+        if m:
+            word_before = buf[: m.start()].strip().split(" ")[-1].lower().rstrip(".")
+            if word_before in _FIRST_FLUSH_ABBREV:
+                m = None
+        if not m and len(buf.strip()) >= _FIRST_TRIGGER_SOFT_MIN:
+            m = _FIRST_FLUSH_SOFT_RE.search(buf)
+        return m
+
     def _chunker_worker(self, chunks: Iterator[str], synth_q: queue.Queue) -> None:
         buf = ""
         first_pushed = False
@@ -657,16 +678,18 @@ class TextToSpeech:
                 buf += raw + " "
 
                 if not first_pushed and len(buf.strip()) >= _FIRST_TRIGGER:
-                    m = re.search(r"[,.!?;:\n।\u0964]", buf)
+                    m = self._first_flush_match(buf)
                     if m:
                         part = buf[: m.end()].strip()
-                        if part:
+                        # Never flush a fragment shorter than _MIN_CHUNK
+                        # -- that's the actual glitch/pause trigger.
+                        if part and len(part) >= _MIN_CHUNK:
                             synth_q.put(part)
                             first_pushed = True
                             buf = buf[m.end() :]
-                        continue
+                            continue
 
-                segs = _split_adaptive(buf)
+                segs = _split_adaptive(buf)                
                 if len(segs) > 1:
                     for s in segs[:-1]:
                         s = s.strip()

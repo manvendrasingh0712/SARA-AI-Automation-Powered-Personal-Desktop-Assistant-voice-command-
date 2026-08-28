@@ -197,6 +197,21 @@ _MAX_STT_CONFIDENCE_CONFIRM_THRESHOLD = 1.0
 _MIN_TTS_BLEED_MULTIPLIER = 1.0
 _MAX_TTS_BLEED_MULTIPLIER = 5.0
 
+_MIN_OLLAMA_TOP_K = 1
+_MAX_OLLAMA_TOP_K = 200
+
+_MIN_OLLAMA_TOP_P = 0.0
+_MAX_OLLAMA_TOP_P = 1.0
+
+_MIN_OLLAMA_REPEAT_PENALTY = 1.0
+_MAX_OLLAMA_REPEAT_PENALTY = 2.0
+
+_MIN_TTS_FIRST_CHUNK_CHARS = 1
+_MAX_TTS_FIRST_CHUNK_CHARS = 100
+
+_MIN_TTS_FIRST_CHUNK_SOFT_CHARS = 1
+_MAX_TTS_FIRST_CHUNK_SOFT_CHARS = 300
+
 _MIN_LLM_RETRIES = 0
 _MAX_LLM_RETRIES = 10
 
@@ -278,6 +293,11 @@ class Config:
     # while still sounding natural — raise toward 0.7 only if replies start
     # feeling too flat/repetitive.
     OLLAMA_TEMPERATURE: float = _float(os.getenv("OLLAMA_TEMPERATURE"), default=0.4)
+    OLLAMA_TOP_K: int = _int(os.getenv("OLLAMA_TOP_K"), default=40)
+    OLLAMA_TOP_P: float = _float(os.getenv("OLLAMA_TOP_P"), default=0.9)
+    OLLAMA_REPEAT_PENALTY: float = _float(
+        os.getenv("OLLAMA_REPEAT_PENALTY"), default=1.15
+    )
 
     # ── Gemini ────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
@@ -343,7 +363,12 @@ class Config:
     TTS_BLEED_GUARD_MULTIPLIER: float = _float(
         os.getenv("TTS_BLEED_GUARD_MULTIPLIER"), default=1.6
     )
-
+    TTS_FIRST_CHUNK_MIN_CHARS: int = _int(
+        os.getenv("TTS_FIRST_CHUNK_MIN_CHARS"), default=12
+    )
+    TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS: int = _int(
+        os.getenv("TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS"), default=35
+    )
     # ── Core ──────────────────────────────────────────────────────────────
     DEBUG_MODE: bool = _bool(os.getenv("DEBUG_MODE", "False"), default=False)
     WAKE_WORD: str = os.getenv("WAKE_WORD", "sara , sarah").lower().strip()
@@ -702,6 +727,17 @@ class Config:
             _MIN_TTS_BLEED_MULTIPLIER,
             min(_MAX_TTS_BLEED_MULTIPLIER, cls.TTS_BLEED_GUARD_MULTIPLIER),
         )
+        cls.TTS_FIRST_CHUNK_MIN_CHARS = max(
+            _MIN_TTS_FIRST_CHUNK_CHARS,
+            min(_MAX_TTS_FIRST_CHUNK_CHARS, cls.TTS_FIRST_CHUNK_MIN_CHARS),
+        )
+        cls.TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS = max(
+            cls.TTS_FIRST_CHUNK_MIN_CHARS,
+            min(
+                _MAX_TTS_FIRST_CHUNK_SOFT_CHARS,
+                cls.TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS,
+            ),
+        )
 
         # ── Whisper transcription clamps ──────────────────────────────────
         cls.WHISPER_BEAM_SIZE = max(
@@ -805,6 +841,12 @@ class Config:
         cls.OLLAMA_NUM_CTX = max(256, cls.OLLAMA_NUM_CTX)
         if cls.OLLAMA_SUMMARY_NUM_CTX < cls.OLLAMA_NUM_CTX:
             cls.OLLAMA_SUMMARY_NUM_CTX = cls.OLLAMA_NUM_CTX
+        cls.OLLAMA_TOP_K = max(_MIN_OLLAMA_TOP_K, min(_MAX_OLLAMA_TOP_K, cls.OLLAMA_TOP_K))
+        cls.OLLAMA_TOP_P = max(_MIN_OLLAMA_TOP_P, min(_MAX_OLLAMA_TOP_P, cls.OLLAMA_TOP_P))
+        cls.OLLAMA_REPEAT_PENALTY = max(
+            _MIN_OLLAMA_REPEAT_PENALTY,
+            min(_MAX_OLLAMA_REPEAT_PENALTY, cls.OLLAMA_REPEAT_PENALTY),
+        )
 
         # ── RAG / long-term memory clamps ──────────────────────────────────
         cls.EMBEDDING_TIMEOUT_S = max(1.0, min(15.0, cls.EMBEDDING_TIMEOUT_S))
@@ -989,6 +1031,11 @@ class Config:
                 f"[Debug] TTS buffer   : {cls.TTS_PLAYBACK_BUFFER_MS}ms | warmup wait={cls.TTS_WARMUP_WAIT_S}s"
             )
             print(f"[Debug] TTS bleed x  : {cls.TTS_BLEED_GUARD_MULTIPLIER}")
+            
+            print(
+                f"[Debug] TTS 1st chunk: min={cls.TTS_FIRST_CHUNK_MIN_CHARS}chars "
+                f"soft_min={cls.TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS}chars"
+            )
             print(
                 f"[Debug] Phrase cache : size={cls.TTS_PHRASE_CACHE_SIZE} maxlen={cls.TTS_PHRASE_CACHE_MAXLEN}"
             )
@@ -1055,6 +1102,10 @@ class Config:
                     f"[Debug] Ollama ctx   : {cls.OLLAMA_NUM_CTX} tokens (summary: {cls.OLLAMA_SUMMARY_NUM_CTX})"
                 )
                 print(f"[Debug] Ollama keep  : {cls.OLLAMA_KEEP_ALIVE}")
-
+                print(
+                    f"[Debug] Ollama sample: top_k={cls.OLLAMA_TOP_K} "
+                    f"top_p={cls.OLLAMA_TOP_P} repeat_penalty={cls.OLLAMA_REPEAT_PENALTY} "
+                    f"temperature={cls.OLLAMA_TEMPERATURE}"
+                )
 
 Config.validate()

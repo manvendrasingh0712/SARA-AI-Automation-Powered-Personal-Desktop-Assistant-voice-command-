@@ -11,7 +11,6 @@ from .clients import _get_ollama_client, _get_gemini_client
 
 
 import logging
-import re
 import threading
 import time
 from collections import deque
@@ -24,77 +23,6 @@ from config import Config
 # ══════════════════════════════════════════════════════════════════════
 
 logger = logging.getLogger("sara.llm.engine")
-
-_SENT_END_RE = re.compile(r"([.!?।॥])\s+")
-_MD_STRIP_RE = re.compile(r"(\*{1,3}|#{1,6}|`{1,3}|_{1,2}|~~|\|\|)")
-_CLAUSE_RE = re.compile(r",\s+(?:and|but|so|yet|or|nor)\s+", re.IGNORECASE)
-_SEMI_RE = re.compile(r";\s+")
-
-_ABBREV_SET: frozenset[str] = frozenset(
-    {
-        "mr",
-        "mrs",
-        "ms",
-        "dr",
-        "prof",
-        "sr",
-        "jr",
-        "vs",
-        "rev",
-        "gen",
-        "sgt",
-        "cpl",
-        "pvt",
-        "lt",
-        "col",
-        "maj",
-        "capt",
-        "cmdr",
-        "etc",
-        "approx",
-        "dept",
-        "est",
-        "govt",
-        "inc",
-        "ltd",
-        "corp",
-        "fig",
-        "vol",
-        "pp",
-        "no",
-        "st",
-        "ave",
-        "blvd",
-        "rd",
-        "rs",
-        "usd",
-        "eur",
-        "gbp",
-        "kg",
-        "km",
-        "cm",
-        "mm",
-        "mg",
-        "lb",
-        "oz",
-        "ft",
-        "yd",
-        "mph",
-        "kmh",
-        "kph",
-        "jan",
-        "feb",
-        "mar",
-        "apr",
-        "jun",
-        "jul",
-        "aug",
-        "sep",
-        "oct",
-        "nov",
-        "dec",
-    }
-)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -563,6 +491,11 @@ class SaraLLM:
                 "num_predict": int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300)),
                 "num_ctx": int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096)),
                 "temperature": float(getattr(self._cfg, "OLLAMA_TEMPERATURE", 0.4)),
+                "top_k": int(getattr(self._cfg, "OLLAMA_TOP_K", 40)),
+                "top_p": float(getattr(self._cfg, "OLLAMA_TOP_P", 0.9)),
+                "repeat_penalty": float(
+                    getattr(self._cfg, "OLLAMA_REPEAT_PENALTY", 1.15)
+                ),
             },
             keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
         )
