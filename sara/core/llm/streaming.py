@@ -16,7 +16,7 @@ from typing import NamedTuple, Optional
 
 _SENT_END_RE = re.compile(r"([.!?।॥])\s+")
 _MD_STRIP_RE = re.compile(r"(\*{1,3}|#{1,6}|`{1,3}|_{1,2}|~~|\|\|)")
-_CLAUSE_RE = re.compile(r",\s+(?:and|but|so|yet|or|nor)\s+", re.IGNORECASE)
+_CLAUSE_RE = re.compile(r",\s+(and|but|so|yet|or|nor)\s+", re.IGNORECASE)
 _SEMI_RE = re.compile(r";\s+")
 
 _ABBREV_SET: frozenset[str] = frozenset(
@@ -84,31 +84,6 @@ _ABBREV_SET: frozenset[str] = frozenset(
         "dec",
     }
 )
-
-
-# ══════════════════════════════════════════════════════════════════════
-# Localized fallback messages (v7) — used instead of raw exception text
-# anywhere a reply could reach speak_stream()/speak() and be read aloud.
-# ══════════════════════════════════════════════════════════════════════
-
-_STREAM_FAIL_MESSAGES = {
-    "english": "Sorry, I'm having trouble reaching my brain right now — could you try that again in a moment?",
-    "hindi": "Maafi chahta hoon, abhi thodi dikkat aa rahi hai — thodi der baad phir try karo.",
-    "hinglish": "Sorry yaar, abhi thoda glitch ho raha hai — thodi der baad dobara try karna.",
-}
-
-_STREAM_INTERRUPTED_MESSAGES = {
-    "english": "Hmm, my connection glitched mid-thought — that's all I've got for now.",
-    "hindi": "Hmm, beech mein connection mein dikkat aa gayi — abhi itna hi keh sakta hoon.",
-    "hinglish": "Hmm, beech mein thoda glitch ho gaya — abhi bas itna hi.",
-}
-
-
-# ══════════════════════════════════════════════════════════════════════
-# Language-aware system prompt templates
-# ══════════════════════════════════════════════════════════════════════
-
-
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -191,12 +166,22 @@ def _clause_flush(buffer_str: str) -> tuple[list[str], str]:
     if len(buffer_str) < 120:
         return [], buffer_str
 
-    for pattern in (_SEMI_RE, _CLAUSE_RE):
-        parts = pattern.split(buffer_str, maxsplit=1)
-        if len(parts) == 2:
-            head, tail = parts[0].rstrip(), parts[1]
-            if head and " " in head:
-                return [head], tail
+    m = _SEMI_RE.search(buffer_str)
+    if m:
+        head, tail = buffer_str[: m.start()].rstrip(), buffer_str[m.end() :]
+        if head and " " in head:
+            return [head], tail
+
+    # Keep the conjunction instead of discarding it -- move it
+    # (capitalized) onto the front of the next chunk.
+    m = _CLAUSE_RE.search(buffer_str)
+    if m:
+        head = buffer_str[: m.start()].rstrip()
+        connector = m.group(1)
+        rest = buffer_str[m.end() :].lstrip()
+        tail = f"{connector[:1].upper()}{connector[1:].lower()} {rest}"
+        if head and " " in head:
+            return [head], tail
 
     return [], buffer_str
 
