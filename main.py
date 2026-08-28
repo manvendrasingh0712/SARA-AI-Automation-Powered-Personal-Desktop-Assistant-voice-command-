@@ -25,6 +25,7 @@ import os
 # before any sara.* import. Both os.add_dll_directory AND a manual PATH
 # prepend are needed: onnxruntime's CUDA provider only respects PATH (not
 # add_dll_directory) for some of its internal LoadLibrary calls.
+_cuda_dll_dir_handles = []  # kept alive deliberately -- see comment below
 try:
     import nvidia.cudnn
     _cudnn_bin = os.path.join(nvidia.cudnn.__path__[0], "bin")
@@ -32,7 +33,13 @@ try:
     _cublas_bin = os.path.join(nvidia.cublas.__path__[0], "bin")
     for _dll_dir in (_cudnn_bin, _cublas_bin):
         if os.path.isdir(_dll_dir):
-            os.add_dll_directory(_dll_dir)
+            # os.add_dll_directory()'s return value MUST be kept alive
+            # for the directory to remain part of the DLL search path --
+            # if it's garbage-collected (which happens almost immediately
+            # if the return value isn't stored anywhere), the directory
+            # is silently removed again. Appending to this module-level
+            # list keeps a permanent reference for the process's lifetime.
+            _cuda_dll_dir_handles.append(os.add_dll_directory(_dll_dir))
             os.environ["PATH"] = _dll_dir + os.pathsep + os.environ.get("PATH", "")
 except ImportError:
     pass
