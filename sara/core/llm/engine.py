@@ -14,6 +14,7 @@ import logging
 import threading
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterator, List, Optional, Tuple
 
 from config import Config
@@ -23,6 +24,19 @@ from config import Config
 # ══════════════════════════════════════════════════════════════════════
 
 logger = logging.getLogger("sara.llm.engine")
+
+
+# PRIORITY-7 FIX: dedicated subclass (still a RuntimeError, so any
+# existing external `except RuntimeError` handling elsewhere keeps
+# working unchanged) used ONLY for the two deterministic "client isn't
+# available at all" cases below. This lets _stream_generic() fail-fast
+# on exactly that case instead of blanket-matching RuntimeError, which
+# would also swallow-and-not-retry genuinely transient RuntimeErrors
+# raised deeper inside the ollama/genai client libraries.
+class _ClientUnavailableError(RuntimeError):
+    """Raised when the Ollama/Gemini client itself failed to load or
+    initialize. Retrying this is pointless — the client won't spawn
+    into existence on attempt 2 — so it's treated as non-retryable."""
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -107,6 +121,19 @@ class SaraLLM:
 
     _VALID_LANGS = {"english", "hindi", "hinglish"}
 
+    # PRIORITY-2 FIX (revised): fixed whitelist instead of a word-count
+    # cutoff — a plain "<=2 words" rule wrongly caught short-but-real
+    # memory-dependent queries like "my name?" or "remember me". Only
+    # exact matches to obvious greetings/acknowledgements skip RAG.
+    _TRIVIAL_PROMPTS = {
+        "hi", "hello", "hey", "yo", "hii", "hiya",
+        "ok", "okay", "k", "kk", "fine",
+        "haan", "han", "ha", "haa", "nahi", "nahin", "no",
+        "hmm", "hm", "achha", "acha", "theek hai", "thik hai",
+        "thanks", "thank you", "thanks yaar", "thank you yaar", "ty",
+        "bye", "bye bye", "goodbye", "good bye", "namaste", "ok bye",
+    }
+
     def __init__(self, cfg=None, memory=None) -> None:
         self._cfg = cfg if cfg is not None else Config
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): optional
@@ -116,6 +143,18 @@ class SaraLLM:
         # guarded, so SaraLLM behaves EXACTLY as before this feature
         # existed if no memory store is provided (e.g. in tests).
         self._memory = memory
+        # PRIORITY-3 FIX: single bounded background worker (stdlib
+        # ThreadPoolExecutor, max_workers=1) reused across every call,
+        # instead of spawning a brand-new daemon thread per request for
+        # maybe_extract_fact(). Created lazily (see _fact_extract_pool
+        # property) only the first time it's actually needed, and only
+        # when a memory store is configured at all — no project-wide
+        # worker/queue mechanism was found in the files available to
+        # audit, so this is the smallest bounded stdlib option.
+        self._fact_executor: Optional[ThreadPoolExecutor] = None
+        # LIFECYCLE FIX: dedicated lock so _get_fact_extract_pool() can't
+        # race and create two executors if two requests hit it at once.
+        self._fact_executor_lock = threading.Lock()
 
         self.user_name: Optional[str] = None
         self._tz: str = getattr(self._cfg, "SARA_TIMEZONE", "local")
@@ -156,7 +195,15 @@ class SaraLLM:
         return self
 
     def __exit__(self, *_) -> None:
-        pass
+        self._shutdown_fact_executor()
+
+    def _shutdown_fact_executor(self) -> None:
+        # LIFECYCLE FIX: only tears down the pool if one was actually
+        # created (lazy init means many instances never need one).
+        # wait=True blocks until any in-flight fact-extraction finishes,
+        # but spawns no new thread and doesn't touch the LLM request path.
+        if self._fact_executor is not None:
+            self._fact_executor.shutdown(wait=True)
 
     # ── System prompt (Cached) ────────────────────────────────────────
 
@@ -243,7 +290,9 @@ class SaraLLM:
 
     # ── Token budget ───────────────────────────────────────────────────
 
-    def _trim_history_to_budget(self, prompt: str) -> List[Tuple[str, str]]:
+    def _trim_history_to_budget(
+        self, prompt: str, extra_tokens: int = 0
+    ) -> List[Tuple[str, str]]:
         if getattr(self._cfg, "LLM_BACKEND", "ollama") == "gemini":
             ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
             gen_tokens = 1000
@@ -251,8 +300,12 @@ class SaraLLM:
             ctx_tokens = int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096))
             gen_tokens = int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300))
 
-        # Utilize cached token count
-        fixed_cost = self._sys_prompt_tokens + _estimate_tokens(prompt)
+        # PRIORITY-1 FIX: extra_tokens reserves room for the RAG
+        # memory_context system message, which is injected into the
+        # prompt (_build_messages_ollama/_build_contents_gemini) but was
+        # never accounted for here before — on a small 4096-token ctx
+        # this could silently overflow the model's context window.
+        fixed_cost = self._sys_prompt_tokens + _estimate_tokens(prompt) + extra_tokens
         available = ctx_tokens - gen_tokens - fixed_cost
 
         if available <= 0:
@@ -314,13 +367,14 @@ class SaraLLM:
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
     ) -> list:
-        contents: list = [
-            {
-                "role": "user",
-                "parts": [{"text": f"[System] {self.system_instruction}"}],
-            },
-            {"role": "model", "parts": [{"text": "Understood."}]},
-        ]
+        # PRIORITY-4 FIX: system_instruction used to ALSO be injected here
+        # as a fake user/"Understood." turn, on top of being passed via
+        # GenerateContentConfig(system_instruction=...) in
+        # _open_gemini_stream(). That was pure duplication (same prompt
+        # sent twice, doubling its token cost every single call) — the
+        # config field is the correct/native way to send it, so it's the
+        # only place it's sent now.
+        contents: list = []
         if memory_context:
             contents.append(
                 {
@@ -443,7 +497,15 @@ class SaraLLM:
                     )
                     break
 
-                if attempt < max_retries:
+                # PRIORITY-7 FIX: a missing/uninitialized client is a
+                # deterministic config problem, not a transient blip —
+                # retrying it just burns the backoff delay (up to ~4.5s
+                # here) for zero chance of success. Fail fast instead.
+                # Any other exception (network hiccup, timeout, etc.)
+                # is retried exactly as before.
+                non_transient = isinstance(e, _ClientUnavailableError)
+
+                if attempt < max_retries and not non_transient:
                     delay = min(max_delay, base_delay * (2**attempt))
                     if is_debug:
                         print(
@@ -451,12 +513,15 @@ class SaraLLM:
                         )
                     time.sleep(delay)
                 else:
-                    # v7: retries exhausted with zero tokens ever received —
-                    # give a friendly localized message instead of raw
-                    # exception text (this used to be spoken verbatim by TTS).
+                    # v7: retries exhausted (or non-retryable) with zero
+                    # tokens ever received — give a friendly localized
+                    # message instead of raw exception text (this used
+                    # to be spoken verbatim by TTS).
                     yield _STREAM_FAIL_MESSAGES.get(
                         self._lang, _STREAM_FAIL_MESSAGES["english"]
                     )
+                    if non_transient:
+                        break
 
             finally:
                 if stream_iter is not None and hasattr(stream_iter, "close"):
@@ -466,8 +531,111 @@ class SaraLLM:
                         pass
 
         full_reply = "".join(reply_parts).strip()
-        if full_reply and (stream_ok or yielded_any):
+        # CRITICAL FIX: was `stream_ok or yielded_any` — a stream that
+        # yielded SOME tokens before failing (yielded_any=True) still
+        # got its incomplete text appended to history. Only a fully
+        # completed stream (stream_ok) should be persisted; a partial/
+        # interrupted reply is never appended, and the interrupted
+        # fallback message itself was never in reply_parts to begin
+        # with, so nothing further is needed to keep it out of history
+        # or (downstream) long-term memory.
+        if full_reply and stream_ok:
             self._append_history(prompt, full_reply)
+
+    # ── Hot-path helpers (PRIORITY 2/3/8/9) ─────────────────────────────
+
+    def _rag_context_budget(self) -> int:
+        # PRIORITY-2 FIX: hard cap on how many tokens the ENTIRE RAG
+        # memory block (wrapper text included) may consume, so a
+        # handful of long/highly-relevant hits can never crowd out the
+        # whole 4096-token Ollama context. Uses an explicit config value
+        # if the project defines one; otherwise falls back to a small,
+        # conservative fraction of whatever context size is already
+        # configured (does NOT touch OLLAMA_NUM_CTX itself).
+        configured = getattr(self._cfg, "RAG_MAX_CONTEXT_TOKENS", None)
+        if configured is not None:
+            return int(configured)
+        if getattr(self._cfg, "LLM_BACKEND", "ollama") == "gemini":
+            ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
+        else:
+            ctx_tokens = int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096))
+        return max(64, int(ctx_tokens * 0.15))
+
+    def _build_capped_memory_context(
+        self, hits: list
+    ) -> Tuple[Optional[str], int]:
+        # PRIORITY-2 FIX: greedily include hits (highest-relevance first,
+        # as returned by search()) only while the running token count —
+        # PLUS a fixed allowance for the surrounding instructional
+        # wrapper text added in _build_messages_ollama/
+        # _build_contents_gemini — stays under _rag_context_budget().
+        if not hits:
+            return None, 0
+        cap = self._rag_context_budget()
+        wrapper_overhead = 40  # short fixed wrapper sentence, both backends
+        available = max(0, cap - wrapper_overhead)
+
+        kept_lines: list[str] = []
+        used = 0
+        for h in hits:
+            line = f"- {h.text}"
+            cost = _estimate_tokens(line)
+            if used + cost > available:
+                break
+            kept_lines.append(line)
+            used += cost
+
+        if not kept_lines:
+            return None, 0
+        return "\n".join(kept_lines), used + wrapper_overhead
+
+    def _get_fact_extract_pool(self) -> ThreadPoolExecutor:
+        # LIFECYCLE FIX: double-checked locking — the fast path (executor
+        # already exists) stays lock-free, and the lock is only taken on
+        # the rare first-call race, so this doesn't add contention to
+        # the hot path on every normal request.
+        if self._fact_executor is None:
+            with self._fact_executor_lock:
+                if self._fact_executor is None:
+                    self._fact_executor = ThreadPoolExecutor(
+                        max_workers=1, thread_name_prefix="sara-fact-extract"
+                    )
+        return self._fact_executor
+
+    def _safe_extract_fact(self, prompt: str) -> None:
+        # Runs on the background pool thread, not the hot path. Wrapped
+        # in try/except here (rather than relying on callers to inspect
+        # the Future) so a failure never surfaces anywhere.
+        try:
+            self._memory.maybe_extract_fact(prompt)
+        except Exception as e:
+            if getattr(self._cfg, "DEBUG_MODE", False):
+                print(f"[LLM] Fact extraction failed (continuing): {e}")
+
+    @staticmethod
+    def _is_trivial_prompt(prompt: str) -> bool:
+        # See _TRIVIAL_PROMPTS above for rationale. Lightweight
+        # normalization only (lowercase + strip trailing punctuation) —
+        # no regex/classifier/new dependency.
+        normalized = prompt.strip().lower().strip(".,!?~ ")
+        return normalized in SaraLLM._TRIVIAL_PROMPTS
+
+    def _is_fallback_reply(self, reply: str) -> bool:
+        # PRIORITY-8 FIX: used to decide whether a reply is one of our
+        # own localized error/interrupted messages, so we don't pollute
+        # long-term memory with "sorry, I'm having trouble" exchanges.
+        reply = (reply or "").strip()
+        return reply in _STREAM_FAIL_MESSAGES.values() or reply in _STREAM_INTERRUPTED_MESSAGES.values()
+
+    def _filter_history_duplicates(self, hits: list, history: List[Tuple[str, str]]) -> list:
+        # PRIORITY-9 FIX: drop retrieved long-term-memory hits whose text
+        # is already present verbatim in the just-trimmed short-term
+        # history window, so the same exchange isn't sent to the model
+        # twice (once via history, once via the memory_context block).
+        if not hits or not history:
+            return hits
+        existing = {f"User said: {u}\nSara replied: {a}" for u, a in history}
+        return [h for h in hits if getattr(h, "text", None) not in existing]
 
     # ── Backend stream openers ─────────────────────────────────────────
 
@@ -479,7 +647,9 @@ class SaraLLM:
     ):
         client = _get_ollama_client(self._cfg)
         if not client:
-            raise RuntimeError("Ollama client not loaded.")
+            # PRIORITY-7 FIX: was a bare RuntimeError, indistinguishable
+            # from a transient one — see _ClientUnavailableError above.
+            raise _ClientUnavailableError("Ollama client not loaded.")
 
         messages = self._build_messages_ollama(prompt, history, memory_context)
         raw_stream = client.chat(
@@ -514,7 +684,8 @@ class SaraLLM:
     ):
         client = _get_gemini_client(self._cfg)
         if not client:
-            raise RuntimeError("Gemini client not initialized.")
+            # PRIORITY-7 FIX: was a bare RuntimeError — see _ClientUnavailableError above.
+            raise _ClientUnavailableError("Gemini client not initialized.")
 
         from google.genai import types
 
@@ -561,8 +732,20 @@ class SaraLLM:
                 f"first request may be slower than usual."
             )
 
-        history = self._trim_history_to_budget(prompt)
+        # PRIORITY-5 FIX: _tod previously only refreshed on set_language()/
+        # clear_memory(), so a long-running session could keep saying
+        # "good morning" into the evening. _time_of_day() is a cheap call
+        # (time-of-day bucket lookup) so it's fine to call every turn —
+        # the EXPENSIVE part (_build_and_cache_system_instruction, which
+        # re-renders the whole prompt and re-estimates its tokens) only
+        # runs when the bucket actually changed.
+        current_tod = _time_of_day(self._tz, self._lang)
+        if current_tod != self._tod:
+            self._tod = current_tod
+            self._build_and_cache_system_instruction()
+
         is_ollama = getattr(self._cfg, "LLM_BACKEND", "ollama") == "ollama"
+        trivial = self._is_trivial_prompt(prompt)
 
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieval happens on
         # the hot path right before the LLM call, so it must be bounded
@@ -571,33 +754,46 @@ class SaraLLM:
         # returns [] on any failure) so no extra try/except is needed
         # here, but it's added anyway as defense-in-depth since this is
         # a novel integration point.
+        #
+        # PRIORITY-1/2/4 FIX: history is trimmed FIRST, reserving the
+        # RAG hard-cap (_rag_context_budget()) up front rather than the
+        # exact-but-not-yet-known memory_context size. This sidesteps
+        # the chicken-and-egg problem (trimming needs the memory token
+        # cost; deduping the memory hits needs the trimmed history) with
+        # no extra pass: the reserved amount is always >= what RAG will
+        # actually use (memory_context is hard-capped to the same
+        # budget), so the context-budget math stays correct, and
+        # dedup below now runs against the REAL trimmed history.
+        rag_budget = self._rag_context_budget() if (self._memory is not None and not trivial) else 0
+        history = self._trim_history_to_budget(prompt, extra_tokens=rag_budget)
+
         memory_context = None
-        if self._memory is not None:
+        memory_context_tokens = 0
+        if self._memory is not None and not trivial:
             try:
                 hits = self._memory.search(prompt)
-                if hits:
-                    memory_context = "\n".join(f"- {h.text}" for h in hits)
-                    if getattr(self._cfg, "DEBUG_MODE", False):
-                        print(
-                            f"[LLM] RAG retrieved {len(hits)} memor{'y' if len(hits)==1 else 'ies'} "
-                            f"(top score={hits[0].score:.2f})"
-                        )
+                # PRIORITY-9 FIX (now against the actual trimmed history,
+                # not the full untrimmed deque — see PRIORITY-4 above):
+                # drop hits that duplicate what's already going into the
+                # history window being sent to the model.
+                hits = self._filter_history_duplicates(hits, history)
+                memory_context, memory_context_tokens = self._build_capped_memory_context(hits)
+                if memory_context and getattr(self._cfg, "DEBUG_MODE", False):
+                    print(
+                        f"[LLM] RAG retrieved {len(hits)} memor{'y' if len(hits)==1 else 'ies'} "
+                        f"(top score={hits[0].score:.2f})"
+                    )
             except Exception as e:
                 if getattr(self._cfg, "DEBUG_MODE", False):
                     print(f"[LLM] RAG retrieval failed (continuing without it): {e}")
 
-            # PRODUCTION-AUDIT ADDITION (Bug 2 fix, item 3): fire-and-forget
-            # regex-based fact extraction on the raw user prompt -- runs
-            # independent of and in addition to the retrieval above, and
-            # independent of the ordinary post-reply add_memory() call
-            # further down. Never raises into the response (maybe_extract_fact
-            # itself never raises, but wrapped anyway as defense-in-depth,
-            # same posture as the retrieval call right above it).
-            try:
-                self._memory.maybe_extract_fact(prompt)
-            except Exception as e:
-                if getattr(self._cfg, "DEBUG_MODE", False):
-                    print(f"[LLM] Fact extraction failed (continuing): {e}")
+            # PRIORITY-3 FIX: fact extraction submitted to the bounded
+            # background pool instead of running inline — keeps this a
+            # true fire-and-forget as the original comment intended,
+            # without blocking the hot path even briefly, and without
+            # spawning an unbounded thread per request.
+            self._get_fact_extract_pool().submit(self._safe_extract_fact, prompt)
+
         def _open(attempt: int):
             return (
                 self._open_ollama_stream(prompt, history, memory_context)
@@ -614,10 +810,14 @@ class SaraLLM:
         # most recently appended pair) rather than re-deriving the reply
         # text here, since _stream_generic() already appended it via
         # _append_history() as a side effect of the yield above.
-        if self._memory is not None:
+        if self._memory is not None and not trivial:
             with self._history_lock:
                 last_pair = self._history[-1] if self._history else None
-            if last_pair is not None and last_pair[0] == prompt:
+            if (
+                last_pair is not None
+                and last_pair[0] == prompt
+                and not self._is_fallback_reply(last_pair[1])
+            ):
                 exchange_text = (
                     f"User said: {last_pair[0]}\nSara replied: {last_pair[1]}"
                 )

@@ -376,6 +376,17 @@ class Config:
     SARA_TIMEZONE: str = os.getenv("SARA_TIMEZONE", "Asia/Kolkata")
     SARA_LANGUAGE: str = os.getenv("SARA_LANGUAGE", "hinglish").lower().strip()
 
+    # ── Wake acknowledgement phrase ──────────────────────────────────────
+    # Previously only defined as a MODULE-level variable (outside this
+    # class), so core_wiring.py's
+    # getattr(Config, "WAKE_ACK_PHRASE", "Yes?") always silently fell
+    # through to the "Yes?" default regardless of .env. Now a real Config
+    # class attribute, so it's actually configurable. The module-level
+    # WAKE_ACK_PHRASE constant elsewhere in this file is left untouched
+    # for backward compatibility with anything that might reference it
+    # directly.
+    WAKE_ACK_PHRASE: str = os.getenv("WAKE_ACK_PHRASE", "Yes?")
+
     # ── Wake word — fallback STT-based multi-variant matching (stt.py) ─────
     WAKE_WORDS: list = [
         w.strip().lower()
@@ -445,6 +456,19 @@ class Config:
     )
     STT_HALLUCINATION_MIN_REPEATS: int = _int(
         os.getenv("STT_HALLUCINATION_MIN_REPEATS"), default=3
+    )
+
+    # ── Low-confidence short-transcript reject gate + TTS hard-mute ──────
+    # These were previously read via getattr(Config, "X", default)
+    # without ever being defined on this class -- meaning they looked
+    # configurable via .env but silently were not. Defaults below match
+    # the getattr fallback values already in use elsewhere, so behavior
+    # is unchanged for anyone not explicitly setting these in .env.
+    STT_MIN_CONFIDENCE_REJECT: float = _float(
+        os.getenv("STT_MIN_CONFIDENCE_REJECT"), default=0.35
+    )
+    STT_HARD_MUTE_DURING_TTS: bool = _bool(
+        os.getenv("STT_HARD_MUTE_DURING_TTS", "True"), default=True
     )
 
     # ── Low-confidence destructive-action confirmation (NEW) ────────────
@@ -758,6 +782,9 @@ class Config:
         cls.STT_HALLUCINATION_MIN_REPEATS = max(
             _MIN_HALLUCINATION_MIN_REPEATS,
             min(_MAX_HALLUCINATION_MIN_REPEATS, cls.STT_HALLUCINATION_MIN_REPEATS),
+        )
+        cls.STT_MIN_CONFIDENCE_REJECT = max(
+            0.0, min(1.0, cls.STT_MIN_CONFIDENCE_REJECT)
         )
         cls.WAKE_WORD_BEAM_SIZE = max(
             _MIN_WHISPER_BEAM_SIZE, min(_MAX_WHISPER_BEAM_SIZE, cls.WAKE_WORD_BEAM_SIZE)

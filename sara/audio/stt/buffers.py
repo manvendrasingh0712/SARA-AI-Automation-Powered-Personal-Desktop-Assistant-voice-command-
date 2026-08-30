@@ -110,16 +110,29 @@ class _RingBuffer:
         self._event = threading.Event()
 
     def put(self, chunk: bytes) -> None:
+        # Change 4: buf mutation + event signaling now happen under the
+        # SAME lock as get_all()'s buf mutation + event clear below, so
+        # the two can never interleave. Previously put()'s event.set()
+        # happened outside the lock, so it could race with a concurrent
+        # get_all() that had already read+cleared the buffer but not yet
+        # cleared the event -- get_all() would then wipe the event that
+        # put() had just set for genuinely new data, delaying (not
+        # losing) that data until the next poll.
         with self._lock:
             self._buf.append(chunk)
-        self._event.set()
+            self._event.set()
 
     def get_all(self, clear: bool = True) -> List[bytes]:
         with self._lock:
             chunks = list(self._buf)
             if clear:
                 self._buf.clear()
-        self._event.clear()
+            # Only clear the event if the buffer is genuinely empty after
+            # this read -- if a put() landed between our read and here it
+            # already re-set the event under this same lock, and we must
+            # not wipe that signal.
+            if not self._buf:
+                self._event.clear()
         return chunks
 
     def peek_latest(self, n: int) -> List[bytes]:
