@@ -137,12 +137,10 @@ _AEC_QUEUE_IDLE_POLL_S = 0.5
 _MIN_GAIN_APPLY_PEAK = 0.02
 
 # TUNING (accuracy — avoids biasing pure-English transcription toward
-# Hindi words): the original static prompt below is Hindi/Hinglish-styled
-# unconditionally, even when Config.SARA_LANGUAGE is "english" and
-# forced_lang resolves to something other than Hindi. Whisper's
-# initial_prompt measurably steers transcription style/vocabulary, so an
-# English-only setup was silently nudged toward Hindi-flavored output it
-# never asked for. _get_transcribe_prompt() below picks the right one.
+# Hindi words): static, non-echoing style-guidance prompt used ONLY when
+# the turn is explicitly forced to English (manual STT_LANGUAGE == "en",
+# or SARA_LANGUAGE == "english" with no other override in play -- see
+# _get_transcribe_prompt() below).
 _STATIC_TRANSCRIBE_PROMPT_EN = (
     "Transcribe naturally in English without translating or paraphrasing, "
     "keep proper names exactly as spoken, do not invent words."
@@ -173,6 +171,17 @@ class SpeechToText:
     CHUNK_SIZE: int = 512
     SAMPLE_WIDTH: int = 2
     PRE_SPEECH_MS: int = 300
+
+    # Bounded rolling live-preview window (seconds). The provisional
+    # "live caption" preview transcribes only this many trailing seconds
+    # of the current utterance, maintained via a genuinely bounded
+    # rolling structure (see _collect_speech()'s preview_chunks deque)
+    # rather than by rebuilding/slicing the full accumulated buffer each
+    # cycle. Preview cost stays roughly constant as the utterance gets
+    # longer. The FINAL, accurate transcription (in listen()/
+    # _transcribe()) is completely unaffected and always uses the full
+    # captured audio (speech_chunks).
+    PREVIEW_WINDOW_S: float = 6.0
 
     # v8: first recalibration happens promptly (AEC/NS shifts the ambient
     # noise profile immediately at startup, so the energy threshold
@@ -242,6 +251,20 @@ class SpeechToText:
         # between them.
         self._preview_busy = threading.Event()
 
+        # Monotonically increasing generation counter, incremented once
+        # per _collect_speech() session (see _collect_speech() below). A
+        # preview transcription started during an OLDER session captures
+        # the generation value at spawn time; if a NEWER session has
+        # since started by the time that preview finishes, its result is
+        # discarded instead of being delivered to on_partial_transcript --
+        # this stops a stale preview from updating the UI for an
+        # already-finished utterance. Only ever mutated/read from the
+        # main STT thread (_collect_speech) and read from the daemon
+        # preview thread it spawns; a plain int is sufficient here since
+        # CPython attribute reads/increments of this kind don't need an
+        # extra lock for this single-writer usage pattern.
+        self._preview_generation = 0
+
         # v7: raw mic chunks awaiting AEC processing on a background
         # thread (only used when aec is not None — see _audio_callback).
         self._aec_raw_q: "queue.Queue[bytes]" = queue.Queue(maxsize=_AEC_QUEUE_MAXSIZE)
@@ -251,17 +274,42 @@ class SpeechToText:
         self._whisper_model = self._load_faster_whisper()
         self._wakeword_model: Optional["_OWWModel"] = self._load_wakeword()
 
-        # Dedicated small/fast Whisper model for the STT-fallback wake-word
-        # check in is_wake_word_detected() below -- only loaded when there's
-        # no dedicated openwakeword model, since that's the only code path
-        # that uses it. Using the same heavy WHISPER_MODEL_SIZE model just
-        # to check "did they say Sara?" was the main latency+accuracy
-        # bottleneck: every wake attempt paid the full large-model
-        # transcription cost, on top of a fixed 3-5s capture window sized
-        # for full commands, not a one-word wake phrase.
-        self._wake_whisper_model: Optional[object] = None
-        if self._wakeword_model is None:
-            self._wake_whisper_model = self._load_fast_wake_whisper()
+        # Dedicated small/fast Whisper model, used for BOTH:
+        #   1. the STT-fallback wake-word check in
+        #      is_wake_word_detected() when no custom OpenWakeWord model
+        #      is configured, and
+        #   2. the live-caption preview in _spawn_preview_transcribe()
+        #      below, ALWAYS -- regardless of whether a custom OWW model
+        #      is configured.
+        #
+        # FIX (confirmed bug, previously): this used to be loaded ONLY
+        # when self._wakeword_model was None, since it was originally
+        # added purely for the STT-fallback wake check. But
+        # _spawn_preview_transcribe() also uses this same model via
+        # model_override, and _transcribe() silently falls back to the
+        # large/slow self._whisper_model whenever model_override is None
+        # -- so whenever a custom OWW model WAS configured, live preview
+        # was silently running on the large model every ~900ms cycle
+        # instead of the intended small one. Now always loaded so preview
+        # never depends on which wake-detection path is active.
+        #
+        # RAM/CPU trade-off: this is the "tiny" faster-whisper model by
+        # default (WAKE_WORD_FAST_MODEL_SIZE), int8 on CPU, ~75MB on
+        # disk, using only a small CPU-thread share
+        # (max(2, cpu_count // 4)) -- not GPU, not competing with
+        # Kokoro's GPU usage. There is no other already-loaded
+        # lightweight model in this architecture that could be reused
+        # instead: self._wakeword_model (when present) is an OpenWakeWord
+        # ONNX classifier that only scores "is the wake word present" and
+        # cannot transcribe arbitrary speech, so it cannot serve this
+        # purpose.
+        #
+        # Failure here is non-fatal: is_wake_word_detected() falls back
+        # to the main (larger, slower) self._whisper_model if this is
+        # None for ITS OWN use, but _spawn_preview_transcribe() below
+        # explicitly SKIPS preview entirely (rather than falling back to
+        # the large model) when this is None -- see that method.
+        self._wake_whisper_model: Optional[object] = self._load_fast_wake_whisper()
 
         self._stream = None
         self._pa = None
@@ -353,11 +401,15 @@ class SpeechToText:
 
     def _load_fast_wake_whisper(self) -> Optional[object]:
         """
-        Small/fast dedicated Whisper model used ONLY for the STT-fallback
-        wake-word check (see is_wake_word_detected()). Failure here is
-        non-fatal -- is_wake_word_detected() falls back to the main
-        (larger, slower) self._whisper_model if this is None, so wake
-        detection still works either way, just without the latency win.
+        Small/fast dedicated Whisper model used for the STT-fallback
+        wake-word check (is_wake_word_detected()) AND the live-caption
+        preview (_spawn_preview_transcribe()). Failure here is non-fatal
+        for wake detection -- is_wake_word_detected() falls back to the
+        main (larger, slower) self._whisper_model if this is None, so
+        wake detection still works either way, just without the latency
+        win. For preview, failure here means preview is skipped entirely
+        rather than falling back to the large model (see
+        _spawn_preview_transcribe()).
         """
         if not _HAS_WHISPER:
             return None
@@ -376,7 +428,8 @@ class SpeechToText:
         except Exception as e:
             print(
                 f"[STT Warning] Dedicated wake-word model load failed "
-                f"({e}) -- wake checks will use the main model instead."
+                f"({e}) -- wake checks will use the main model instead, "
+                f"and live preview will be skipped."
             )
             return None
 
@@ -768,7 +821,39 @@ class SpeechToText:
         start_time = time.monotonic()
         energy_window = collections.deque(maxlen=3)
 
+        # BOUNDED ROLLING PREVIEW WINDOW: a separate, genuinely bounded
+        # structure maintained ALONGSIDE speech_chunks (which keeps
+        # growing and remains the untouched source for the FINAL
+        # transcription). preview_chunks holds only the trailing
+        # PREVIEW_WINDOW_S seconds of audio, tracked by total byte length
+        # rather than item count (chunk sizes are not all uniform --
+        # the initial pre-buffer blob is larger than a single mic
+        # chunk). Chunks are appended in O(1) and old chunks are evicted
+        # from the left in O(1) amortized as new ones arrive, so building
+        # the preview input never requires rebuilding or scanning the
+        # whole (potentially many-seconds-long) speech_chunks buffer --
+        # see _push_preview_chunk() below.
+        preview_window_bytes = int(
+            self.SAMPLE_RATE * self.SAMPLE_WIDTH * self.PREVIEW_WINDOW_S
+        )
+        preview_chunks: "collections.deque[bytes]" = collections.deque()
+        preview_bytes_total = 0
+
+        def _push_preview_chunk(c: bytes) -> None:
+            nonlocal preview_bytes_total
+            preview_chunks.append(c)
+            preview_bytes_total += len(c)
+            while preview_bytes_total > preview_window_bytes and len(preview_chunks) > 1:
+                removed = preview_chunks.popleft()
+                preview_bytes_total -= len(removed)
+
         self._is_listening.set()
+        # New session -> new generation. Any preview spawned by a
+        # previous session will see this advance and discard its result
+        # instead of delivering a stale caption (see
+        # _spawn_preview_transcribe()).
+        self._preview_generation += 1
+        my_generation = self._preview_generation
         backlog = self._ring.get_all(clear=True)
 
         try:
@@ -788,6 +873,8 @@ class SpeechToText:
                         if self._vad.is_speech(chunk) or _rms(chunk) > thr * 0.35:
                             pre = self._pre_buf.drain()
                             speech_chunks = [pre, chunk] if pre else [chunk]
+                            for _c in speech_chunks:
+                                _push_preview_chunk(_c)
                             silence_count = 0
                             speech_start = time.monotonic()
                             last_preview_time = speech_start
@@ -805,12 +892,14 @@ class SpeechToText:
 
                     # LIVE CAPTION PREVIEW (best-effort, non-blocking): every
                     # ~900ms while still actively collecting speech, kick off
-                    # a background best-effort transcribe of what's been
-                    # captured SO FAR using the fast/small wake-word model,
-                    # so the caller (see on_partial_transcript) can show a
-                    # provisional dim/italic caption before the real,
-                    # accurate transcript is ready. Gated on self._preview_busy
-                    # so at most one preview transcribe runs at a time -- if
+                    # a background best-effort transcribe of the BOUNDED
+                    # trailing preview_chunks window (NOT the whole
+                    # accumulated speech_chunks buffer) using the fast/small
+                    # wake-word model, so the caller (see
+                    # on_partial_transcript) can show a provisional
+                    # dim/italic caption before the real, accurate
+                    # transcript is ready. Gated on self._preview_busy so
+                    # at most one preview transcribe runs at a time -- if
                     # the previous one hasn't finished yet, this cycle is
                     # just skipped rather than piling up more threads.
                     if (
@@ -820,8 +909,9 @@ class SpeechToText:
                         and not self._preview_busy.is_set()
                     ):
                         last_preview_time = now
+                        preview_audio = b"".join(preview_chunks)
                         self._spawn_preview_transcribe(
-                            b"".join(speech_chunks), on_partial_transcript
+                            preview_audio, on_partial_transcript, my_generation
                         )
 
                     if state is _CollectState.SPEAKING:
@@ -837,6 +927,7 @@ class SpeechToText:
                             )
 
                             speech_chunks.append(chunk)
+                            _push_preview_chunk(chunk)
                             if is_voice:
                                 silence_count, trailing_silence_chunks = 0, 0
                             else:
@@ -862,22 +953,45 @@ class SpeechToText:
             self._is_listening.clear()
 
     def _spawn_preview_transcribe(
-        self, snapshot: bytes, on_partial_transcript: Callable[[str], None]
+        self,
+        snapshot: bytes,
+        on_partial_transcript: Callable[[str], None],
+        generation: int,
     ) -> None:
         """
         Best-effort, fire-and-forget "live caption" preview: transcribes
-        the speech collected SO FAR (using the same small/fast model as
-        the STT-fallback wake-word check, NOT the slower main model) on a
-        background thread, so the caller can show a provisional caption
+        `snapshot` -- a BOUNDED trailing window of the speech collected so
+        far (see _collect_speech()'s preview_chunks, NOT the whole
+        accumulated buffer) -- using the dedicated small/fast Whisper
+        model (self._wake_whisper_model), NEVER the slower main model, on
+        a background thread, so the caller can show a provisional caption
         while the user is still talking. Deliberately never touches the
         real/accurate transcription path in listen()/_transcribe() -- any
-        exception here (model missing, transcribe error, callback
-        raising) is swallowed so a preview glitch can never crash or
-        stall the main _collect_speech() loop. self._preview_busy is set
-        here (before the thread starts) and cleared in the thread's
-        finally block, so _collect_speech() can tell a preview is still
-        in flight and skip spawning another one on top of it.
+        exception here (transcribe error, callback raising) is swallowed
+        so a preview glitch can never crash or stall the main
+        _collect_speech() loop. self._preview_busy is set here (before
+        the thread starts) and cleared in the thread's finally block, so
+        _collect_speech() can tell a preview is still in flight and skip
+        spawning another one on top of it.
+
+        `generation` is the _preview_generation value captured by the
+        CALLING _collect_speech() session. If a newer session has started
+        (self._preview_generation has advanced) by the time this
+        background transcribe finishes, the result is discarded instead
+        of being delivered via on_partial_transcript -- this prevents a
+        stale preview from an already-finished utterance updating the UI
+        for a newer one.
+
+        SAFETY: if self._wake_whisper_model is unavailable (failed to
+        load), preview is skipped entirely rather than falling back to
+        the large main model -- see _transcribe()'s
+        `model_override is not None else self._whisper_model` fallback,
+        which would otherwise silently run preview on the slow/large
+        model.
         """
+        if self._wake_whisper_model is None:
+            return
+
         self._preview_busy.set()
 
         def _run() -> None:
@@ -887,7 +1001,7 @@ class SpeechToText:
                     beam_size_override=1,
                     model_override=self._wake_whisper_model,
                 )
-                if result:
+                if result and generation == self._preview_generation:
                     try:
                         on_partial_transcript(str(result))
                     except Exception:
@@ -933,40 +1047,82 @@ class SpeechToText:
         if lang_mode == "manual" and stt_lang:
             return stt_lang
 
-        force_for_hinglish = getattr(Config, "STT_FORCE_LANG_FOR_HINGLISH", True)
+        # POLICY: only force Hindi when the project is explicitly
+        # configured for Hindi (SARA_LANGUAGE == "hindi"). The default
+        # "hinglish" setting used to ALSO force language="hi" on every
+        # turn, biasing clearly-English and English-heavy mixed speech
+        # toward Hindi transcription. For "hinglish" (and "english")
+        # this now returns None, letting Whisper auto-detect per
+        # utterance from the audio itself -- this does NOT translate or
+        # alter transcript text, it only affects which language Whisper
+        # decodes toward. See _get_transcribe_prompt() below for the
+        # matching prompt-selection policy.
+        force_for_hindi = getattr(Config, "STT_FORCE_LANG_FOR_HINGLISH", True)
         sara_lang = getattr(Config, "SARA_LANGUAGE", "hinglish")
-        if force_for_hinglish and sara_lang in ("hindi", "hinglish"):
+        if force_for_hindi and sara_lang == "hindi":
             return "hi"
         return None
 
-    # v8: static, non-echoing style-guidance prompt. Deliberately contains
-    # NO dynamic/previous-turn content — see v8 changelog at the top of
-    # this file for why feeding the model its own prior output back as a
-    # prompt is a direct hallucination-repetition trigger.
-    _STATIC_TRANSCRIBE_PROMPT = (
+    # Style-guidance prompt used ONLY when the turn is explicitly forced
+    # to Hindi (forced_lang == "hi": either a manual STT_LANGUAGE == "hi"
+    # override, or SARA_LANGUAGE == "hindi"). Contains Devanagari +
+    # romanized Hindi/Hinglish style examples, which is appropriate here
+    # because the turn is *known* to be Hindi -- there is no English
+    # speech in this branch to accidentally bias.
+    _STATIC_TRANSCRIBE_PROMPT_HI = (
         "यह बातचीत हिंदी, इंग्लिश और हिंग्लिश में हो सकती है। "
         "Transcribe naturally without translating, keep proper names exactly as spoken, "
         "do not invent words. Example style: 'aaj mujhe office jana hai', "
         "'mera naam Sara hai', 'kya haal hai bhai'."
     )
 
+    # Style-guidance prompt used when NO language is explicitly forced
+    # (forced_lang is None) and the project default is "hinglish" (or any
+    # value other than "english"). Deliberately neutral: it acknowledges
+    # that the speech may be English, Hindi, or a code-switched mix,
+    # WITHOUT the Hindi/Hinglish-specific romanized vocabulary examples
+    # used in _STATIC_TRANSCRIBE_PROMPT_HI above -- those examples were
+    # found to measurably bias Whisper's vocabulary/style even for
+    # clearly-English or English-heavy input, which is exactly what this
+    # branch must avoid.
+    _STATIC_TRANSCRIBE_PROMPT_NEUTRAL = (
+        "This conversation may be in English, Hindi, or a natural code-switched "
+        "mix of both. Transcribe exactly what is spoken, in whichever language "
+        "or mix it was actually spoken in, without translating between "
+        "languages, without switching script, and without inventing words. "
+        "Keep proper names and technical terms exactly as spoken."
+    )
+
     def _get_transcribe_prompt(self, forced_lang: Optional[str]) -> str:
         """
-        TUNING (accuracy): picks the style-guidance prompt actually
-        appropriate for this turn instead of always using the
-        Hindi/Hinglish-styled _STATIC_TRANSCRIBE_PROMPT. That prompt
-        measurably steers Whisper's vocabulary/style, so unconditionally
-        using it on a pure-English configuration was quietly biasing
-        transcription toward Hindi words a user in English-only mode
-        never wanted. Hindi/Hinglish styling is used only when it's
-        actually relevant: forced_lang == "hi" (explicit forced-Hindi
-        turn), or Config.SARA_LANGUAGE is "hindi"/"hinglish" (the
-        project's default) with no more specific override in play.
+        TUNING (accuracy): picks the style-guidance prompt appropriate
+        for this specific turn.
+
+        - forced_lang == "hi" (explicit Hindi, manual or
+          SARA_LANGUAGE == "hindi"): the speech is KNOWN to be Hindi, so
+          the Hindi/Hinglish-styled prompt is safe and helpful.
+        - forced_lang == "en" (explicit manual English): the speech is
+          KNOWN to be English, so the English-only prompt is used.
+        - forced_lang is None (auto -- the default "hinglish" mode, or
+          any unrecognized SARA_LANGUAGE): the language for THIS turn is
+          not yet known and may be English, Hindi, or a code-switched
+          mix. Using the Hindi/Hinglish-styled prompt here (as this
+          project used to do unconditionally) would bias English-heavy
+          or pure-English speech toward Hindi vocabulary/style. Instead
+          this branch uses the neutral, language-agnostic prompt, EXCEPT
+          when SARA_LANGUAGE == "english" (project explicitly configured
+          English-first with no other override in play), where the
+          English-only prompt is still the better default.
         """
         sara_lang = getattr(Config, "SARA_LANGUAGE", "hinglish")
-        if forced_lang == "hi" or (forced_lang is None and sara_lang in ("hindi", "hinglish")):
-            return self._STATIC_TRANSCRIBE_PROMPT
-        return _STATIC_TRANSCRIBE_PROMPT_EN
+
+        if forced_lang == "hi":
+            return self._STATIC_TRANSCRIBE_PROMPT_HI
+        if forced_lang == "en":
+            return _STATIC_TRANSCRIBE_PROMPT_EN
+        if sara_lang == "english":
+            return _STATIC_TRANSCRIBE_PROMPT_EN
+        return self._STATIC_TRANSCRIBE_PROMPT_NEUTRAL
 
     def _transcribe(
         self,
@@ -1022,45 +1178,28 @@ class SpeechToText:
             ]
             text = "".join(segment.text for segment in usable).strip()
 
-            # ── STT CONFIDENCE SIGNAL (NEW) ─────────────────────────────
+            # ── STT CONFIDENCE SIGNAL ────────────────────────────────────
             # Mean of (1 - no_speech_prob) across the SAME `usable`
             # segments already computed above -- free, no extra model
             # call. Restricted to `usable` so a segment thrown away by
             # the no_speech filter can't skew the confidence of the
-            # segments that actually made it into `text`.
+            # segments that actually made it into `text`. This value is
+            # part of the public TranscriptionResult API (`.confidence`,
+            # consumed downstream by core_wiring.py / intent_handlers.py
+            # for the destructive-action spoken confirmation gate) and is
+            # NOT used here to reject or discard any transcript --
+            # short-transcript rejection based on this signal was
+            # evaluated and intentionally NOT implemented, pending
+            # runtime evidence (see project notes) that it can reliably
+            # distinguish genuine short commands ("yes", "haan", "stop",
+            # "open chrome", "call mom", "what now?") from noise/silence
+            # hallucinations across English/Hindi/Hinglish conditions.
             if usable:
                 confidence = sum(
                     1.0 - getattr(s, "no_speech_prob", 0.0) for s in usable
                 ) / len(usable)
             else:
                 confidence = 0.0
-
-            # ── MINIMUM-CONFIDENCE REJECT GATE (NEW) ────────────────────
-            # Separate from Config.STT_CONFIDENCE_CONFIRM_THRESHOLD (which
-            # only gates the destructive-action spoken yes/no
-            # confirmation, downstream in intent_handlers.py). This gate
-            # discards the transcript outright, before it ever reaches
-            # the intent router, when confidence is low AND the
-            # transcript is short (<=3 words) — that combination is the
-            # "phantom single word from silence/noise" shape that
-            # neither _is_hallucinated_repetition() (needs repeats) nor
-            # _is_known_hallucination() (needs a known boilerplate
-            # phrase) can catch on their own. Deliberately NOT applied to
-            # longer transcripts — a real 10-word sentence with one
-            # muffled word shouldn't be thrown away over a mediocre
-            # aggregate confidence.
-            min_confidence_reject = float(
-                getattr(Config, "STT_MIN_CONFIDENCE_REJECT", 0.35)
-            )
-            word_count = len(text.split()) if text else 0
-            if text and confidence < min_confidence_reject and word_count <= 3:
-                if getattr(Config, "DEBUG_MODE", False):
-                    print(
-                        f"[STT] Discarded low-confidence short transcript "
-                        f"(confidence={confidence:.2f}, words={word_count}): "
-                        f"{text[:80]!r}"
-                    )
-                return TranscriptionResult("", 0.0)
 
             min_repeats = int(getattr(Config, "STT_HALLUCINATION_MIN_REPEATS", 3))
             if _is_hallucinated_repetition(text, min_repeats=min_repeats):

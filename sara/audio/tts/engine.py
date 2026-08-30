@@ -654,7 +654,7 @@ class TextToSpeech:
 
     # ── Pipeline workers ─────────────────────────────────────────────────────
 
-   def _first_flush_match(self, buf: str) -> "re.Match | None":
+    def _first_flush_match(self, buf: str) -> "re.Match | None":
         """Safe boundary for the very first TTS chunk. Prefers a strong
         sentence-ender; only falls back to a soft comma/colon/newline
         boundary once the buffer already holds a real clause's worth of
