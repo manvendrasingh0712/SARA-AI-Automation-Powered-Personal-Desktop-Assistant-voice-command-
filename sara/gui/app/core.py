@@ -427,15 +427,15 @@ class ApiCoreMixin:
     def run_action(self, action_key):
 
         if action_key == "play_music":
-
-            if self.music_index >= len(self.music_queries):
-                random.shuffle(self.music_queries)
-                self.music_index = 0
-
-            query = self.music_queries[self.music_index]
-            self.music_index += 1
-
-            return self.send_text_command(f"play {query}")
+            # FIX: this used to build a search-style query from
+            # INDIAN_MUSIC_SEARCHES (e.g. "latest Bollywood songs") and
+            # send it through send_text_command(), which the orchestrator
+            # resolves as a web/YouTube search -- not an actual "resume
+            # my media" action. Route to the already-verified OS media
+            # session instead (the same call the mini player's own
+            # play/pause button makes) so Play Music actually resumes
+            # whatever's loaded in Spotify/Chrome/VLC/etc. via SMTC.
+            return self.toggle_music_playback(True)
 
         phrase_map = {
             "open_chrome": "open chrome",

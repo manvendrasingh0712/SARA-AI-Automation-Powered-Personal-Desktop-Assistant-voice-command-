@@ -44,7 +44,7 @@ class ApiModesMixin:
         if not, it falls back to "applies after a restart", same as the
         voice version does when ctx has no "ears" object."""
         try:
-            if not hasattr(self, "db") or not hasattr(self.db, "set_preference"):
+            if not hasattr(self, "_pref_writer"):
                 return {"ok": False, "error": "Preferences aren't available right now.", "active_mode": None}
 
             requested = (mode_name or "").strip().lower()
@@ -54,8 +54,8 @@ class ApiModesMixin:
                 return {"ok": False, "error": "I don't recognize that mode.", "active_mode": None}
 
             for key, value in bundle.items():
-                self.db.set_preference(key, value)
-            self.db.set_preference("active_mode", resolved_name)
+                self._pref_writer.enqueue(key, value)
+            self._pref_writer.enqueue("active_mode", resolved_name)
 
             confirmation = _MODE_CONFIRMATIONS[resolved_name]
 

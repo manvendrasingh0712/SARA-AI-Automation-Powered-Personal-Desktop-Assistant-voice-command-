@@ -3,6 +3,21 @@ sara.gui.app.media
 ApiMediaMixin -- media-player status/controls surfaced to the GUI's media widget.
 """
 import base64
+import time
+
+
+# ── module-level session identity cache: keeps the media widget's
+#    transport commands (play/pause/next/prev/seek/shuffle/repeat/stop)
+#    operating on the SAME Windows media session across calls instead of
+#    re-picking (and potentially landing on a different app) every time.
+#    Keyed by source_app_user_model_id, the safest stable identifier the
+#    WinRT session object exposes. ─────────────────────────────────────
+_session_cache = {"session": None, "app_id": None}
+
+# ── album art cache: avoids re-reading + re-base64-encoding identical
+#    artwork on every ~2s poll tick. Keyed by track identity; only
+#    cleared when the identity actually changes. ────────────────────────
+_art_cache = {"key": None, "data": None}
 
 
 # ── module-level helpers (no winsdk import at module scope so this file
@@ -44,30 +59,67 @@ async def _pick_active_session(mgr):
     playback_status is literally "Playing" (4) fixes this regardless of
     which app it is or whether its window has focus -- this is exactly
     how Spotify Connect / OS "Now Playing" widgets do it.
+
+    SESSION STABILITY: once a session is picked, its
+    source_app_user_model_id is cached and reused as long as that same
+    app still has a live, queryable session -- so a run of related
+    commands (play/pause, next, prev, seek, shuffle, repeat, stop) all
+    land on the same app instead of silently jumping to a different one
+    that happens to report "Playing" on a later call. The cache is only
+    dropped once the cached app's session actually disappears, at which
+    point discovery runs fresh and the cache is repopulated.
     """
     try:
         sessions = _sessions_list(mgr)
     except Exception:
         sessions = []
 
+    cached_id = _session_cache.get("app_id")
+    if cached_id:
+        for s in sessions:
+            try:
+                if (getattr(s, "source_app_user_model_id", None) or "") == cached_id:
+                    s.get_playback_info()  # confirm it's still alive/queryable
+                    _session_cache["session"] = s
+                    return s
+            except Exception:
+                continue
+        # Cached app's session is gone -- invalidate and fall through to
+        # a fresh discovery below.
+        _session_cache["session"] = None
+        _session_cache["app_id"] = None
+
+    picked = None
     for s in sessions:
         try:
             pb = s.get_playback_info()
             if pb and int(pb.playback_status) == 4:  # Playing
-                return s
+                picked = s
+                break
         except Exception:
             continue
 
-    # Nothing is actively playing -- fall back to Windows' notion of
-    # "current" (covers the paused-but-selected case), else just the
-    # first session so the card still shows something instead of nothing.
-    try:
-        current = mgr.get_current_session()
-        if current is not None:
-            return current
-    except Exception:
-        pass
-    return sessions[0] if sessions else None
+    if picked is None:
+        # Nothing is actively playing -- fall back to Windows' notion of
+        # "current" (covers the paused-but-selected case), else just the
+        # first session so the card still shows something instead of
+        # nothing.
+        try:
+            current = mgr.get_current_session()
+            if current is not None:
+                picked = current
+        except Exception:
+            pass
+        if picked is None and sessions:
+            picked = sessions[0]
+
+    if picked is not None:
+        try:
+            _session_cache["app_id"] = getattr(picked, "source_app_user_model_id", None) or None
+        except Exception:
+            _session_cache["app_id"] = None
+        _session_cache["session"] = picked
+    return picked
 
 
 async def _extract_album_art(props):
@@ -149,8 +201,41 @@ class ApiMediaMixin:
                 status_map = {0: "closed", 1: "opened", 2: "changing", 3: "stopped", 4: "playing", 5: "paused"}
                 controls = getattr(pb, "controls", None)
                 shuffle_active = getattr(pb, "is_shuffle_active", None)
-                art = await _extract_album_art(props)
                 source_app = getattr(session, "source_app_user_model_id", "") or ""
+
+                def _safe_seconds(val, fallback=0.0):
+                    try:
+                        secs = val.total_seconds() if val else fallback
+                    except Exception:
+                        return fallback
+                    if secs != secs or secs in (float("inf"), float("-inf")):  # NaN/Infinity
+                        return fallback
+                    return max(0.0, secs)
+
+                position_sec = _safe_seconds(getattr(tl, "position", None))
+                duration_sec = _safe_seconds(getattr(tl, "end_time", None))
+                if duration_sec > 0 and position_sec > duration_sec:
+                    position_sec = duration_sec
+                min_seek_sec = _safe_seconds(getattr(tl, "min_seek_time", None))
+                max_seek_sec = _safe_seconds(getattr(tl, "max_seek_time", None), duration_sec)
+                if max_seek_sec <= 0:
+                    max_seek_sec = duration_sec
+
+                rate = getattr(tl, "playback_rate", None)
+                try:
+                    playback_rate = float(rate) if rate is not None else 1.0
+                    if playback_rate != playback_rate or playback_rate <= 0:  # NaN or invalid
+                        playback_rate = 1.0
+                except (TypeError, ValueError):
+                    playback_rate = 1.0
+
+                art_key = (props.title or "", props.artist or "", props.album_title or "", source_app)
+                if _art_cache.get("key") == art_key:
+                    art = _art_cache.get("data")
+                else:
+                    art = await _extract_album_art(props)
+                    _art_cache["key"] = art_key
+                    _art_cache["data"] = art
 
                 return {
                     "ok": True,
@@ -161,8 +246,12 @@ class ApiMediaMixin:
                     "art": art,
                     "app": _friendly_app_name(source_app),
                     "status": status_map.get(int(pb.playback_status), "unknown"),
-                    "position_sec": tl.position.total_seconds() if tl.position else 0,
-                    "duration_sec": tl.end_time.total_seconds() if tl.end_time else 0,
+                    "position_sec": position_sec,
+                    "duration_sec": duration_sec,
+                    "min_seek_sec": min_seek_sec,
+                    "max_seek_sec": max_seek_sec,
+                    "playback_rate": playback_rate,
+                    "timeline_updated_at": time.time(),
                     "shuffle": bool(shuffle_active) if shuffle_active is not None else False,
                     "shuffle_supported": shuffle_active is not None,
                     "repeat": _repeat_mode_to_str(getattr(pb, "auto_repeat_mode", None)),
@@ -173,6 +262,7 @@ class ApiMediaMixin:
                         "can_shuffle": bool(getattr(controls, "is_shuffle_enabled", False)) if controls else False,
                         "can_repeat": bool(getattr(controls, "is_repeat_enabled", False)) if controls else False,
                     },
+                    "track_id": "|".join(art_key),
                 }
 
             return asyncio.run(_fetch())
@@ -186,7 +276,6 @@ class ApiMediaMixin:
             return {"ok": False, "error": str(e)}
 
     def toggle_music_playback(self, playing):
-        self._pref_writer.enqueue("music_playing", "1" if playing else "0")
         try:
             import asyncio
             from winsdk.windows.media.control import (
@@ -203,12 +292,15 @@ class ApiMediaMixin:
                 return await session.try_pause_async()
 
             ok = asyncio.run(_do())
+            if ok:
+                self._pref_writer.enqueue("music_playing", "1" if playing else "0")
             return {"ok": bool(ok)}
         except Exception as e:
             print(f"[toggle_music_playback error] {e}")
             return {"ok": False}
 
     def stop_music(self):
+        smtc_stopped = False
         try:
             import asyncio
             from winsdk.windows.media.control import (
@@ -219,15 +311,22 @@ class ApiMediaMixin:
                 mgr = await MediaManager.request_async()
                 session = await _pick_active_session(mgr)
                 if session is not None:
-                    await session.try_stop_async()
+                    return bool(await session.try_stop_async())
+                return False
 
-            asyncio.run(_do())
+            smtc_stopped = asyncio.run(_do())
         except Exception as e:
             print(f"[stop_music SMTC error] {e}")
         try:
-            message = (
+            # Only fall back to the broader system_tools stop (which is not
+            # scoped to a single session) when the targeted SMTC stop above
+            # didn't succeed -- avoids stopping unrelated media whenever the
+            # intended session's own stop already worked.
+            message = "Stopped." if smtc_stopped else (
                 self.system_tools.stop_media() if self.system_tools else "Stopped."
             )
+            _session_cache["session"] = None
+            _session_cache["app_id"] = None
             self._pref_writer.enqueue("music_playing", "0")
             return {"ok": True, "message": message}
         except Exception as e:
@@ -339,11 +438,24 @@ class ApiMediaMixin:
                 mgr = await MediaManager.request_async()
                 session = await _pick_active_session(mgr)
                 if session is None:
-                    return False
-                return await session.try_change_shuffle_active_async(bool(enable))
+                    return False, None, False
+                pb_before = session.get_playback_info()
+                shuffle_supported = getattr(pb_before, "is_shuffle_active", None) is not None
+                ok = await session.try_change_shuffle_active_async(bool(enable))
+                # Re-query so the returned state is the CONFIRMED value from
+                # the session, never an assumption of what we asked for --
+                # some apps silently ignore the request or report a
+                # different value than requested.
+                pb_after = session.get_playback_info()
+                confirmed = getattr(pb_after, "is_shuffle_active", None)
+                return ok, confirmed, shuffle_supported
 
-            ok = asyncio.run(_do())
-            return {"ok": bool(ok), "shuffle": bool(enable) if ok else None}
+            ok, confirmed, shuffle_supported = asyncio.run(_do())
+            return {
+                "ok": bool(ok),
+                "shuffle": bool(confirmed) if confirmed is not None else None,
+                "shuffle_supported": shuffle_supported,
+            }
         except ImportError:
             return {
                 "ok": False,
