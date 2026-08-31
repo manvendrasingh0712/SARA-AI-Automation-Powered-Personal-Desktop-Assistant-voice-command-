@@ -175,9 +175,22 @@ class TextToSpeech:
       (wake ack, sleep/goodbye lines, etc.) skip Kokoro synthesis
       entirely on a cache hit, and also skip waiting on the warm-up
       thread since a cache hit implies warm-up already ran.
+    - v16 (LATENCY/LIFECYCLE): `_playback_worker` hands segments to the
+      persistent player back-to-back with no wait between them (see
+      player.py's `_SegmentEnd` completion marker), eliminating the
+      inter-segment gap that used to come from blocking on one segment's
+      full playback drain before the next segment's audio was ever
+      enqueued. `shutdown()` is now idempotent and is actually reached
+      from TTSWorker.shutdown() (see tts_worker.py).
     """
 
     def __init__(self, aec=None) -> None:
+        # v16: idempotency guard for shutdown() — must be set up before
+        # ANY early return below (including the disabled-TTS branches),
+        # since __del__ -> shutdown() can run on a disabled instance too.
+        self._shutdown_lock = threading.Lock()
+        self._shutdown_done = False
+
         self._stop = threading.Event()
         self._speaking = threading.Event()
         self._lock = threading.Lock()
@@ -237,7 +250,6 @@ class TextToSpeech:
             self._player = None
             self._chunker_pool = None
             self._synth_pool = None
-            self._play_pool = None
             self._volume = float(getattr(Config, "TTS_VOLUME", 1.0))
             return
 
@@ -255,7 +267,6 @@ class TextToSpeech:
             self._player = None
             self._chunker_pool = None
             self._synth_pool = None
-            self._play_pool = None
             self._volume = float(getattr(Config, "TTS_VOLUME", 1.0))
             return
 
@@ -333,7 +344,6 @@ class TextToSpeech:
             self._player = None
             self._chunker_pool = None
             self._synth_pool = None
-            self._play_pool = None
             self._volume = float(getattr(Config, "TTS_VOLUME", 1.0))
             return
 
@@ -354,13 +364,13 @@ class TextToSpeech:
         self._synth_pool = ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="TTS-Synth"
         )
-        self._play_pool = ThreadPoolExecutor(
-            max_workers=2, thread_name_prefix="TTS-Play"
-        )
 
         # Single persistent output stream instead of open/close per
         # segment — also the real-time AEC far-end feed source (v11:
-        # feed itself is off-thread, see _PersistentPlayer).
+        # feed itself is off-thread, see _PersistentPlayer). v16: playback
+        # no longer needs its own thread pool — segments are handed to
+        # the player's single ordered queue directly from
+        # _playback_worker (see enqueue()'s docstring in player.py).
         self._player = _PersistentPlayer(aec=self._aec)
 
         if _PG_OK and pygame is not None:
@@ -634,11 +644,24 @@ class TextToSpeech:
         return self._speaking.is_set()
 
     def shutdown(self) -> None:
+        """v16 (LIFECYCLE): idempotent — safe to call more than once (the
+        previous version had no guard; calling it twice would re-invoke
+        stop()/pool.shutdown()/player.close() redundantly, which happened
+        to be harmless by luck rather than by design). This is now also
+        actually REACHED from the orchestrator: TTSWorker.shutdown()
+        (tts_worker.py) calls this directly instead of only setting its
+        own internal stop Event, so the persistent output stream and the
+        AEC far-end thread are deterministically closed on app shutdown
+        instead of depending on __del__/GC timing."""
+        with self._shutdown_lock:
+            if self._shutdown_done:
+                return
+            self._shutdown_done = True
+
         self.stop()
         for pool in (
             getattr(self, "_chunker_pool", None),
             getattr(self, "_synth_pool", None),
-            getattr(self, "_play_pool", None),
         ):
             if pool is not None:
                 pool.shutdown(wait=False, cancel_futures=True)
@@ -668,6 +691,21 @@ class TextToSpeech:
             m = _FIRST_FLUSH_SOFT_RE.search(buf)
         return m
 
+    def _stop_aware_put(self, q: queue.Queue, item) -> bool:
+        """Put `item` onto `q`, retrying on Full with a short timeout so a
+        stop() call is noticed promptly instead of blocking indefinitely
+        while the queue has no room. Mirrors the pattern already used by
+        `_synth_worker`'s inner `_put_seg()`. Returns True once the item
+        was actually enqueued, False if aborted because self._stop got
+        set while waiting for room."""
+        while True:
+            try:
+                q.put(item, timeout=0.1)
+                return True
+            except queue.Full:
+                if self._stop.is_set():
+                    return False
+
     def _chunker_worker(self, chunks: Iterator[str], synth_q: queue.Queue) -> None:
         buf = ""
         first_pushed = False
@@ -684,23 +722,34 @@ class TextToSpeech:
                         # Never flush a fragment shorter than _MIN_CHUNK
                         # -- that's the actual glitch/pause trigger.
                         if part and len(part) >= _MIN_CHUNK:
-                            synth_q.put(part)
+                            if self._stop.is_set() or not self._stop_aware_put(
+                                synth_q, part
+                            ):
+                                break
                             first_pushed = True
                             buf = buf[m.end() :]
                             continue
 
-                segs = _split_adaptive(buf)                
+                segs = _split_adaptive(buf)
                 if len(segs) > 1:
+                    aborted = False
                     for s in segs[:-1]:
                         s = s.strip()
-                        if s and not self._stop.is_set():
-                            synth_q.put(s)
-                            first_pushed = True
+                        if not s:
+                            continue
+                        if self._stop.is_set() or not self._stop_aware_put(
+                            synth_q, s
+                        ):
+                            aborted = True
+                            break
+                        first_pushed = True
+                    if aborted:
+                        break
                     buf = segs[-1]
 
             tail = buf.strip()
             if tail and not self._stop.is_set():
-                synth_q.put(tail)
+                self._stop_aware_put(synth_q, tail)
         except Exception as e:
             if getattr(Config, "DEBUG_MODE", False):
                 print(f"[TTS Chunker] {e}")
@@ -776,9 +825,24 @@ class TextToSpeech:
             play_q.put(None)
 
     def _playback_worker(self, play_q: queue.Queue) -> bool:
+        """v16 (LATENCY): segments are handed to the persistent player
+        (`self._player.enqueue()`) back-to-back, as soon as each one is
+        ready — NOT gated on the previous segment finishing playback.
+        All segments still land in the SAME ordered player queue in the
+        SAME order they're produced here, so playback stays strictly
+        sequential with no reordering, no overlap, and no duplication;
+        only the artificial wait between segments is removed. The
+        one-segment-ahead SYNTHESIS lookahead (`next_seg`/`have_next`)
+        is unchanged from before. `last_done_event` is only waited on
+        once, after the stream ends, so a caller blocked on
+        speak_stream() still only returns once the LAST segment has
+        actually finished playing — the completion signal callers relied
+        on hasn't changed, only the gap between segments has been
+        removed."""
         interrupted = False
         next_seg: _Seg | None = None
         have_next = False
+        last_done_event: threading.Event | None = None
 
         while True:
             if have_next:
@@ -808,16 +872,9 @@ class TextToSpeech:
                 interrupted = True
                 break
 
-            play_done = threading.Event()
-            play_interrupted = [False]
-
-            def _play_bg(pcm_data: np.ndarray) -> None:
-                play_interrupted[0] = self._player.play_and_wait(
-                    pcm_data, self._stop, self._volume
-                )
-                play_done.set()
-
-            play_future = self._play_pool.submit(_play_bg, seg.pcm)
+            done_event = threading.Event()
+            self._player.enqueue(seg.pcm, self._volume, on_complete=done_event)
+            last_done_event = done_event
 
             if not have_next:
                 try:
@@ -828,15 +885,10 @@ class TextToSpeech:
                 except queue.Empty:
                     pass
 
-            play_done.wait()
-
-            try:
-                play_future.result(timeout=30)
-            except Exception:
-                pass
-
-            if play_interrupted[0] or self._stop.is_set():
-                interrupted = True
-                break
+        if last_done_event is not None and not interrupted:
+            while not last_done_event.wait(timeout=_POLL_S):
+                if self._stop.is_set():
+                    interrupted = True
+                    break
 
         return interrupted

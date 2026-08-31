@@ -113,8 +113,36 @@ _PHRASE_CACHE_MAXLEN = int(getattr(Config, "TTS_PHRASE_CACHE_MAXLEN", 40))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  SEGMENT-COMPLETION SENTINEL
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class _SegmentEnd:
+    """Zero-audio marker pushed into the persistent player's `_chunk_q`
+    right after one segment's PCM sub-chunks (see `enqueue()`). This is
+    what lets a caller enqueue segment N+1 *while segment N is still
+    playing* (no gap) and still learn precisely when segment N's audio
+    is done: when the real-time callback pops this marker off the same
+    ordered queue (meaning every sample before it has already been
+    written to the device), it sets `event`. If the segment's audio is
+    instead dropped before the callback gets to it (stop()/clear()
+    during playback), `clear()` fires `event` itself so a waiter never
+    blocks forever on a marker that will now never reach the callback.
+    Carries no audio and costs the callback nothing beyond a cheap,
+    non-blocking `Event.set()`."""
+
+    __slots__ = ("event",)
+
+    def __init__(self, event: threading.Event) -> None:
+        self.event = event
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  PERSISTENT PLAYER  (v11 — single long-lived OutputStream, non-blocking
-#  real-time callback, AEC far-end feed on a dedicated background thread)
+#  real-time callback, AEC far-end feed on a dedicated background thread.
+#  v16 — segments hand off to the SAME ordered queue with no inter-segment
+#  wait, and the callback reuses a persistent scratch buffer instead of
+#  allocating one every call.)
 # ══════════════════════════════════════════════════════════════════════════════
 
 
@@ -131,6 +159,15 @@ class _PersistentPlayer:
     (resample + WebRTC APM call), completely off the real-time audio
     path. This is what "output underflow" in earlier logs was actually
     caused by — that work running directly inside the callback.
+
+    v16 (LATENCY): `enqueue()` can be called for segment N+1 while
+    segment N's audio is still draining from `_chunk_q` — both segments'
+    sub-chunks land in the SAME FIFO queue, so the callback just keeps
+    consuming continuously with no gap between segments, no reordering,
+    and no overlap (only one `_current` chunk is ever being read from at
+    a time). `play_and_wait()` and `_playback_worker` (engine.py) use the
+    optional `_SegmentEnd` completion marker instead of blocking until
+    the queue looks empty from another thread.
     """
 
     def __init__(self, aec=None) -> None:
@@ -141,6 +178,16 @@ class _PersistentPlayer:
         self._clear_flag = threading.Event()
         self._stream = None
         self._closed = False
+
+        # v16 (PERF): persistent, grow-only scratch buffer for the
+        # real-time callback's output block — avoids allocating a fresh
+        # np.zeros(...) array on every callback invocation (every
+        # _PLAY_BUFFER_MS). Sized for the configured blocksize up front;
+        # sounddevice with a fixed `blocksize=` always requests exactly
+        # that many frames, so this is expected to never need to grow in
+        # practice — the shape check below just makes a different
+        # `frames` value safe instead of assumed.
+        self._scratch_block = np.zeros(_BLOCK_SIZE, dtype=np.int16)
 
         self._far_end_q: "queue.Queue[np.ndarray]" = queue.Queue(
             maxsize=_FAR_END_QUEUE_MAXSIZE
@@ -200,15 +247,34 @@ class _PersistentPlayer:
             self._current_pos = 0
             self._clear_flag.clear()
 
-        block = np.zeros(frames, dtype=np.int16)
+        scratch = self._scratch_block
+        if scratch.shape[0] < frames:
+            # Only happens if sounddevice ever calls back with more
+            # frames than the configured blocksize — grow once and keep
+            # the larger buffer rather than reallocating every call.
+            scratch = np.zeros(frames, dtype=np.int16)
+            self._scratch_block = scratch
+        block = scratch[:frames]
+        block.fill(0)
+
         filled = 0
         while filled < frames:
             if self._current is None or self._current_pos >= len(self._current):
                 try:
-                    self._current = self._chunk_q.get_nowait()
-                    self._current_pos = 0
+                    item = self._chunk_q.get_nowait()
                 except queue.Empty:
                     break
+                if isinstance(item, _SegmentEnd):
+                    # Zero-audio marker — fire its completion event and
+                    # keep draining the queue for this same block; costs
+                    # nothing toward `filled`.
+                    try:
+                        item.event.set()
+                    except Exception:
+                        pass
+                    continue
+                self._current = item
+                self._current_pos = 0
             remaining = len(self._current) - self._current_pos
             take = min(frames - filled, remaining)
             block[filled : filled + take] = self._current[
@@ -222,22 +288,59 @@ class _PersistentPlayer:
         # v11: hand off to the background thread instead of processing
         # here — this line must stay a cheap, non-blocking, lock-free
         # enqueue, since it runs on the real-time audio thread.
+        #
+        # v16: `block` is now a VIEW into the persistent, REUSED
+        # `self._scratch_block` — the NEXT callback will `fill(0)` (or
+        # overwrite) that same memory before the far-end worker thread
+        # necessarily gets to read it. A previous version of this could
+        # skip the copy because `block` used to be a fresh allocation
+        # every call; now it must be copied explicitly for the
+        # cross-thread hand-off, or AEC could end up fed stale/corrupted
+        # reference audio. Only costs an allocation when AEC is active.
         if self._aec is not None:
             try:
-                self._far_end_q.put_nowait(block)
+                self._far_end_q.put_nowait(block.copy())
             except queue.Full:
                 pass  # dropping one far-end block is harmless; blocking here is not
 
-    def enqueue(self, pcm: np.ndarray) -> None:
-        for i in range(0, len(pcm), _ENQUEUE_CHUNK_SAMPLES):
-            self._chunk_q.put(pcm[i : i + _ENQUEUE_CHUNK_SAMPLES])
+    def enqueue(
+        self,
+        pcm: np.ndarray,
+        volume: float = 1.0,
+        on_complete: Optional[threading.Event] = None,
+    ) -> None:
+        """Queue `pcm` (raw int16 audio) onto the single ordered playback
+        queue. If `on_complete` is given, it is set exactly once — either
+        when this segment's audio has actually finished playing (the
+        real-time callback reached the marker placed after it) or when
+        it gets dropped by `clear()` (stop/barge-in) before that happens.
+        Safe to call again for the NEXT segment before this one has
+        finished playing — both segments' sub-chunks land in the same
+        FIFO queue in call order, so playback stays gap-free and strictly
+        sequential with no overlap."""
+        if pcm is not None and len(pcm) > 0:
+            pcm = _apply_volume(pcm, volume)
+            for i in range(0, len(pcm), _ENQUEUE_CHUNK_SAMPLES):
+                self._chunk_q.put(pcm[i : i + _ENQUEUE_CHUNK_SAMPLES])
+        if on_complete is not None:
+            self._chunk_q.put(_SegmentEnd(on_complete))
 
     def clear(self) -> None:
         while True:
             try:
-                self._chunk_q.get_nowait()
+                item = self._chunk_q.get_nowait()
             except queue.Empty:
                 break
+            if isinstance(item, _SegmentEnd):
+                # This segment's audio is being dropped before the
+                # real-time callback ever reached it — fire its
+                # completion event now so anything waiting on it (e.g.
+                # play_and_wait()) doesn't block forever on a marker
+                # that will never reach the callback.
+                try:
+                    item.event.set()
+                except Exception:
+                    pass
         self._clear_flag.set()
 
     def _pygame_play_and_wait(
@@ -272,28 +375,27 @@ class _PersistentPlayer:
         CALLING thread until it finishes or `stop_event` is set. Returns
         True if interrupted. The actual audio hardware I/O happens on the
         persistent stream's own callback thread — this call just enqueues
-        and polls, so it's safe to run this from a worker thread while
-        other work (e.g. synthesizing the next segment) proceeds
-        concurrently on the caller side."""
+        and waits on a completion Event, so it's safe to run this from a
+        worker thread while other work (e.g. synthesizing the next
+        segment) proceeds concurrently on the caller side."""
         if pcm is None or len(pcm) == 0:
             return False
-        pcm = _apply_volume(pcm, volume)
 
         if self._stream is None:
-            return self._pygame_play_and_wait(pcm, stop_event)
+            return self._pygame_play_and_wait(_apply_volume(pcm, volume), stop_event)
 
-        self.enqueue(pcm)
+        done = threading.Event()
+        self.enqueue(pcm, volume, on_complete=done)
         while True:
             if stop_event.is_set():
                 self.clear()
                 return True
-            if self._chunk_q.empty() and (
-                self._current is None or self._current_pos >= len(self._current)
-            ):
+            if done.wait(timeout=_POLL_S):
                 return False
-            time.sleep(_POLL_S)
 
     def close(self) -> None:
+        if self._closed:
+            return
         self._closed = True
         self._far_end_stop.set()
         try:
@@ -302,6 +404,7 @@ class _PersistentPlayer:
                 self._stream.close()
         except Exception:
             pass
+        self._stream = None
 
 
 def _drain(q: queue.Queue) -> None:

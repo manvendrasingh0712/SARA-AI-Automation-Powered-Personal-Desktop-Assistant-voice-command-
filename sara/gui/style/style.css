@@ -617,6 +617,50 @@ input[type=range]:active::-webkit-slider-thumb {
   transform: scale(1.25);
 }
 
+/* ── seek bar hover/focus feedback, scoped to the player so unrelated
+   sliders (mic sensitivity, speech speed) are untouched ── */
+#ppSeek {
+  cursor: pointer;
+  height: 4px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--violet, #8b5cf6) 0%, var(--cyan, #22d3ee) var(--pp-fill, 0%), rgba(255, 255, 255, 0.12) var(--pp-fill, 0%), rgba(255, 255, 255, 0.12) 100%);
+  transition: height .12s ease;
+}
+
+#ppSeek::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  transition: opacity .12s ease, transform .15s var(--ease), box-shadow .15s ease;
+}
+
+#ppSeek:hover,
+#ppSeek:focus-visible {
+  height: 6px;
+}
+
+#ppSeek:hover::-webkit-slider-thumb,
+#ppSeek:focus-visible::-webkit-slider-thumb,
+#ppSeek:active::-webkit-slider-thumb {
+  opacity: 1;
+}
+
+#ppSeek:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.8);
+  outline-offset: 3px;
+}
+
+#ppSeek:disabled {
+  cursor: default;
+  opacity: 0.4;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+#ppSeek:disabled::-webkit-slider-thumb {
+  box-shadow: none;
+  opacity: 0;
+}
+
 .empty {
   display: flex;
   flex-direction: column;
@@ -1085,6 +1129,46 @@ input[type=range]:active::-webkit-slider-thumb {
    ══════════════════════════════════════════════════════════════════ */
 .player-pro {
   position: relative;
+  background: linear-gradient(160deg, rgba(139, 92, 246, 0.07), rgba(34, 211, 238, 0.03) 55%, transparent);
+  border: 1px solid var(--border-soft);
+  transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.player-pro:hover {
+  border-color: rgba(139, 92, 246, 0.28);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+
+/* ── player states: no flicker between states, just a class swap on the
+   card + a subtle cross-fade on the changing bits ── */
+.player-pro .pp-info b,
+.player-pro .pp-info span,
+.player-pro .pp-app {
+  transition: opacity .18s ease;
+}
+
+.player-pro.pp-state-loading .pp-info b,
+.player-pro.pp-state-changing .pp-info b {
+  opacity: 0.55;
+}
+
+.player-pro.pp-state-nomedia .pp-art {
+  opacity: 0.5;
+  filter: grayscale(0.4);
+}
+
+.player-pro.pp-state-nomedia .pp-title-wrap b {
+  color: var(--text-lo);
+  font-weight: 500;
+}
+
+.player-pro.pp-state-unavailable .pp-info span {
+  color: #f87171;
+}
+
+.player-pro .pp-controls button.pp-cmd-pending {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
 .pp-head {
@@ -1120,14 +1204,14 @@ input[type=range]:active::-webkit-slider-thumb {
 
 .pp-body {
   display: flex;
-  gap: 13px;
+  gap: 14px;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 15px;
 }
 
 .pp-art-wrap {
-  width: 56px;
-  height: 56px;
+  width: 68px;
+  height: 68px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -1135,22 +1219,32 @@ input[type=range]:active::-webkit-slider-thumb {
 }
 
 .pp-art {
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.35), transparent 45%), var(--grad-2);
+  background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.4), transparent 48%), var(--grad-2);
   background-size: cover;
   background-position: center;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06), 0 0 22px rgba(34, 211, 238, 0.25);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.07), 0 6px 18px rgba(0, 0, 0, 0.35), 0 0 20px rgba(34, 211, 238, 0.18);
   position: relative;
+  transition: box-shadow .25s ease, transform .25s ease;
+}
+
+.player-pro.pp-state-playing .pp-art {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.09), 0 6px 20px rgba(0, 0, 0, 0.38), 0 0 26px rgba(34, 211, 238, 0.32);
+}
+
+.player-pro.pp-state-paused .pp-art {
+  filter: saturate(0.85);
 }
 
 .pp-art::after {
   content: '';
   position: absolute;
-  inset: 38%;
+  inset: 36%;
   border-radius: 50%;
   background: var(--bg-1);
+  display: flex;
 }
 
 .pp-art.has-art::after {
@@ -1158,7 +1252,22 @@ input[type=range]:active::-webkit-slider-thumb {
 }
 
 .pp-art.spinning:not(.has-art) {
-  animation: ppSpin 6s linear infinite;
+  animation: ppSpin 7s linear infinite;
+}
+
+.pp-art.has-art {
+  animation: ppArtIn .35s ease both;
+}
+
+@keyframes ppArtIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-art.has-art {
+    animation: none;
+  }
 }
 
 @keyframes ppSpin {
@@ -1182,13 +1291,24 @@ input[type=range]:active::-webkit-slider-thumb {
 }
 
 .pp-title-wrap b {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 14.5px;
+  font-weight: 700;
+  letter-spacing: -0.1px;
   display: inline-block;
 }
 
 .pp-title-wrap.scroll b {
   animation: ppMarquee 7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-title-wrap.scroll b {
+    animation: none;
+  }
+
+  .pp-art.spinning:not(.has-art) {
+    animation: none;
+  }
 }
 
 @keyframes ppMarquee {
@@ -1215,12 +1335,16 @@ input[type=range]:active::-webkit-slider-thumb {
 }
 
 .pp-app {
-  font-size: 9.5px !important;
+  font-size: 9px !important;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.5px;
   color: var(--cyan) !important;
-  opacity: 0.75;
-  margin-top: 1px !important;
+  opacity: 0.65;
+  margin-top: 2px !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pp-app:empty {
@@ -1228,38 +1352,44 @@ input[type=range]:active::-webkit-slider-thumb {
 }
 
 .pp-progress {
-  margin-bottom: 12px;
+  margin-bottom: 13px;
 }
 
 .pp-times {
   display: flex;
   justify-content: space-between;
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--text-lo);
   font-family: var(--font-mono);
-  margin-top: 5px;
+  margin-top: 6px;
+  letter-spacing: 0.2px;
 }
 
 .pp-controls {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pp-controls button {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   background: var(--surface-2);
   color: var(--text-hi);
+  transition: background .15s ease, transform .1s ease, color .15s ease;
 }
 
-.pp-controls button:hover {
+.pp-controls button:hover:not(:disabled) {
   background: var(--surface-hover);
+}
+
+.pp-controls button:active:not(:disabled) {
+  transform: scale(0.92);
 }
 
 .pp-controls button svg {
@@ -1268,24 +1398,39 @@ input[type=range]:active::-webkit-slider-thumb {
 }
 
 .pp-controls .pp-play {
-  width: 48px;
-  height: 48px;
+  width: 50px;
+  height: 50px;
   background: var(--grad-1);
   color: #fff;
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.4);
+  box-shadow: 0 4px 18px rgba(139, 92, 246, 0.45);
+}
+
+.pp-controls .pp-play:hover:not(:disabled) {
+  box-shadow: 0 4px 22px rgba(139, 92, 246, 0.6);
+  background: var(--grad-1);
+}
+
+.pp-controls .pp-play:active:not(:disabled) {
+  transform: scale(0.94);
 }
 
 .pp-controls .pp-play svg {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
 }
 
 .pp-controls .pp-toggle {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   background: none;
   color: var(--text-lo);
   position: relative;
+  transition: color .15s ease;
+}
+
+.pp-controls .pp-toggle:hover:not(:disabled) {
+  color: var(--text-hi);
+  background: none;
 }
 
 .pp-controls .pp-toggle svg {
@@ -1332,6 +1477,16 @@ input[type=range]:active::-webkit-slider-thumb {
   pointer-events: none;
 }
 
+.pp-controls button:focus-visible,
+.pp-sleep:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.8);
+  outline-offset: 2px;
+}
+
+.pp-controls .pp-toggle[aria-pressed="true"] {
+  color: var(--cyan);
+}
+
 .pp-sleep-menu {
   position: absolute;
   top: 44px;
@@ -1345,10 +1500,21 @@ input[type=range]:active::-webkit-slider-thumb {
   flex-direction: column;
   z-index: 10;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .12s ease, transform .12s ease;
 }
 
 .pp-sleep-menu.open {
   display: flex;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-sleep-menu {
+    transition: none;
+  }
 }
 
 .pp-sleep-menu button {
@@ -1356,6 +1522,7 @@ input[type=range]:active::-webkit-slider-thumb {
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 12px;
+  transition: background .12s ease, color .12s ease;
 }
 
 .pp-sleep-menu button:hover {
@@ -1364,6 +1531,7 @@ input[type=range]:active::-webkit-slider-thumb {
 
 .pp-sleep-menu button.active {
   color: var(--cyan);
+  font-weight: 600;
 }
 
 /* ══════════════════════════════════════════════════════════════════

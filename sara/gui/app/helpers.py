@@ -10,6 +10,8 @@ import threading
 import urllib.request
 import urllib.parse
 
+from .events import _push
+
 # ── Weather integration (OpenWeatherMap free tier) ──────────────────────────
 # The API key is loaded from the WEATHER_API_KEY environment variable so the
 # real key never lives in source control. Set it before launching the app, e.g.
@@ -223,6 +225,20 @@ class _PrefWriter:
                         print(f"[decision log error] {key}={value}: {e}")
             except Exception as e:
                 print(f"[pref write error] {key}={value}: {e}")
+                # Genuine background persistence failures must not vanish into
+                # only a console print -- surface them to the frontend via the
+                # existing push/notification channel (same 'notification' event
+                # shape used by export_memory / update_setting elsewhere), so a
+                # user who thinks a setting saved actually finds out it didn't.
+                try:
+                    _push(
+                        "notification",
+                        "ti-alert-triangle",
+                        "#f87171",
+                        f"Failed to save setting: {key}",
+                    )
+                except Exception as e2:
+                    print(f"[pref write error] failed to notify frontend for {key}: {e2}")
             finally:
                 self._q.task_done()
 

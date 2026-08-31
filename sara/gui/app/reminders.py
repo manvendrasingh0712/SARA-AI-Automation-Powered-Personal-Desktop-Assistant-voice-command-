@@ -22,7 +22,17 @@ class ApiRemindersMixin:
     def delete_reminder(self, reminder_id):
         try:
             if hasattr(self.reminders, "delete"):
-                self.reminders.delete(reminder_id)
+                result = self.reminders.delete(reminder_id)
+                # ReminderManager.delete()'s return contract isn't defined in
+                # this codebase (sara/tools/reminders.py is external), so we
+                # can't assume it returns a bool at all -- a plain None return
+                # is the normal Python convention for "ran with no explicit
+                # result" and must NOT be read as failure. The one thing we can
+                # safely act on is an explicit False, which is the one signal
+                # a caller-side contract would use to mean "did not happen"
+                # (e.g. reminder_id not found) without guessing anything else.
+                if result is False:
+                    return {"ok": False}
                 return {"ok": True}
         except Exception as e:
             print(f"[delete_reminder error] {e}")
@@ -31,7 +41,12 @@ class ApiRemindersMixin:
     def toggle_reminder(self, reminder_id):
         try:
             if hasattr(self.reminders, "toggle"):
-                self.reminders.toggle(reminder_id)
+                result = self.reminders.toggle(reminder_id)
+                # Same reasoning as delete_reminder above: only an explicit
+                # False is treated as failure; a None return (the common
+                # "no explicit result" convention) still reports ok.
+                if result is False:
+                    return {"ok": False}
                 return {"ok": True}
         except Exception as e:
             print(f"[toggle_reminder error] {e}")
