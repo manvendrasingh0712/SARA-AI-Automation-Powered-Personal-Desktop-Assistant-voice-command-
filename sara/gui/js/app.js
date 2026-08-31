@@ -76,6 +76,7 @@ const _mockState = {
   // list_routines()/get_routine() return from the real PreferencesDB.
   routines: [],
   mediaActive: false, mediaPlaying: false, mediaPos: 0, mediaDur: 222,
+  mediaShuffle: false, mediaRepeat: 'none',
   // NEW: mock backing store for the Mode Switcher UI, only used in
   // preview mode (no window.pywebview) -- mirrors what modes.py's
   // ApiModesMixin returns from the real PreferencesDB.
@@ -181,7 +182,13 @@ function mockApi(name, args) {
       return {
         ok: true, active: true, title: 'Midnight City (preview)', artist: 'M83',
         status: _mockState.mediaPlaying ? 'playing' : 'paused',
-        position_sec: _mockState.mediaPos, duration_sec: _mockState.mediaDur
+        position_sec: _mockState.mediaPos, duration_sec: _mockState.mediaDur,
+        min_seek_sec: 0, max_seek_sec: _mockState.mediaDur,
+        playback_rate: 1.0, timeline_updated_at: Date.now() / 1000,
+        shuffle: _mockState.mediaShuffle, shuffle_supported: true,
+        repeat: _mockState.mediaRepeat,
+        caps: { can_next: true, can_prev: true, can_seek: true, can_shuffle: true, can_repeat: true },
+        track_id: 'Midnight City (preview)|M83'
       };
     case 'toggle_music_playback':
       _mockState.mediaActive = true; _mockState.mediaPlaying = !!args[0];
@@ -193,12 +200,16 @@ function mockApi(name, args) {
       _mockState.mediaPos = 0;
       return { ok: true };
     case 'seek_media':
-      _mockState.mediaPos = args[0];
+      _mockState.mediaPos = Math.max(0, Math.min(args[0], _mockState.mediaDur));
       return { ok: true };
     case 'toggle_shuffle':
-      return { ok: true, shuffle: !!args[0] };
-    case 'cycle_repeat_mode':
-      return { ok: true };
+      _mockState.mediaShuffle = !!args[0];
+      return { ok: true, shuffle: _mockState.mediaShuffle, shuffle_supported: true };
+    case 'cycle_repeat_mode': {
+      const _order = ['none', 'track', 'list'];
+      _mockState.mediaRepeat = _order[(_order.indexOf(_mockState.mediaRepeat) + 1) % _order.length];
+      return { ok: true, mode: _mockState.mediaRepeat };
+    }
     case 'send_text_command':
       // Mirrors the REAL backend's Api.send_text_command(), which pushes
       // the user's own transcript immediately, then the reply later —
@@ -486,11 +497,13 @@ document.getElementById('soundBtn').addEventListener('click', (e) => {
   localStorage.setItem('sara_ui_sounds', soundsOn ? 'on' : 'off');
   e.currentTarget.classList.toggle('active', soundsOn);
   document.getElementById('settingSounds').classList.toggle('on', soundsOn);
+  document.getElementById('settingSounds').setAttribute('aria-checked', soundsOn ? 'true' : 'false');
   callApi('update_setting', 'sound_effects', soundsOn);
   if (soundsOn) tapSound();
 });
 document.getElementById('soundBtn').classList.toggle('active', soundsOn);
 document.getElementById('settingSounds').classList.toggle('on', soundsOn);
+document.getElementById('settingSounds').setAttribute('aria-checked', soundsOn ? 'true' : 'false');
 
 // ── generic click-ripple + tap sound on interactive elements ───────
 function attachRipple(el) {
@@ -577,6 +590,7 @@ function setMuted(v) {
   muted = v;
   document.getElementById('muteBtn').classList.toggle('active', muted);
   document.getElementById('settingMute').classList.toggle('on', muted);
+  document.getElementById('settingMute').setAttribute('aria-checked', muted ? 'true' : 'false');
   callApi('set_mute', muted);
   toggleSound(muted);
 }
@@ -584,6 +598,7 @@ function setFocus(v) {
   focusOn = v;
   document.getElementById('focusBtn').classList.toggle('active', focusOn);
   document.getElementById('settingFocus').classList.toggle('on', focusOn);
+  document.getElementById('settingFocus').setAttribute('aria-checked', focusOn ? 'true' : 'false');
   document.getElementById('qaFocus').classList.toggle('active', focusOn);
   callApi('set_focus_mode', focusOn);
   toggleSound(focusOn);
@@ -751,7 +766,29 @@ async function loadAssistantState() {
 
 // quick action cards
 document.querySelectorAll('[data-action]').forEach(el => {
-  el.addEventListener('click', () => callApi('run_action', el.dataset.action));
+  el.addEventListener('click', async () => {
+    if (el.dataset.action === 'play_music') {
+      // Play Music must be the real SMTC resume path (run_action already
+      // routes this to toggle_music_playback(True) on the Python side) --
+      // here we just need to wait for the real result instead of assuming
+      // success, and tell the user plainly when there's nothing to play.
+      el.disabled = true;
+      const res = await callApi('run_action', 'play_music');
+      el.disabled = false;
+      if (res && res.ok) {
+        mediaPlaying = true;
+        const ppArt = document.getElementById('ppArt');
+        if (ppArt) ppArt.classList.add('spinning');
+        const ppPlayIcon = document.getElementById('ppPlayIcon');
+        if (ppPlayIcon) ppPlayIcon.innerHTML = '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>';
+        pollMedia();
+      } else {
+        showToast('ti-alert-triangle', '#f87171', 'Nothing to play. Start a media app or load a track first.');
+      }
+      return;
+    }
+    callApi('run_action', el.dataset.action);
+  });
 });
 document.querySelectorAll('[data-cmd]').forEach(el => {
   el.addEventListener('click', () => {
@@ -1680,7 +1717,7 @@ async function loadSkills() {
           <b>${escapeHtml(s.name)}${pill}</b>
           <span>${escapeHtml(desc)}${errDetail}</span>
         </div>
-        <div class="toggle ${s.enabled ? 'on' : ''}" data-skill-name="${escapeHtml(s.name)}"></div>
+        <div class="toggle ${s.enabled ? 'on' : ''}" data-skill-name="${escapeHtml(s.name)}" role="switch" tabindex="0" aria-checked="${s.enabled ? 'true' : 'false'}"></div>
       </div>`;
   }).join('');
 
@@ -1688,11 +1725,13 @@ async function loadSkills() {
     el.addEventListener('click', async () => {
       const on = !el.classList.contains('on');
       el.classList.toggle('on', on);
+      el.setAttribute('aria-checked', on ? 'true' : 'false');
       toggleSound(on);
       await callApi('set_skill_enabled', el.dataset.skillName, on);
       const note = document.getElementById('skillRestartNote');
       if (note) note.classList.add('show');
     });
+    addToggleKeyboardSupport(el);
   });
 }
 
@@ -1791,77 +1830,290 @@ let mediaPlaying = false;
 let seekDragging = false;
 let sleepTimerInterval = null;
 let sleepTimerEndsAt = null;
+let _pollMediaInFlight = false;
+let _ppPendingCmd = false;
+
+// ── unified player state (single source of truth for interpolation) ──
+const playerState = {
+  active: false, trackId: null, duration: 0,
+  basePos: 0, baseTs: 0, playbackRate: 1.0, playing: false,
+};
+let _ppRafId = null;
+
+function _ppClampPos(pos, dur) {
+  if (!isFinite(pos) || pos !== pos) pos = 0; // NaN guard
+  pos = Math.max(0, pos);
+  if (dur > 0 && pos > dur) pos = dur;
+  return pos;
+}
+
+function _ppLivePosition() {
+  if (!playerState.active) return 0;
+  if (!playerState.playing) return playerState.basePos;
+  const elapsed = (Date.now() / 1000) - playerState.baseTs;
+  return _ppClampPos(playerState.basePos + elapsed * (playerState.playbackRate || 1.0), playerState.duration);
+}
+
+function _ppSetFillVar(seekEl, value) {
+  const max = parseFloat(seekEl.max) || 1;
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  seekEl.style.setProperty('--pp-fill', pct + '%');
+}
+
+function _ppRenderTick() {
+  _ppRafId = requestAnimationFrame(_ppRenderTick);
+  if (!playerState.active || seekDragging) return;
+  const pos = _ppLivePosition();
+  const seekEl = document.getElementById('ppSeek');
+  seekEl.value = pos;
+  _ppSetFillVar(seekEl, pos);
+  document.getElementById('ppCurTime').textContent = fmtTime(pos);
+}
+_ppRafId = requestAnimationFrame(_ppRenderTick);
+
+// Applies a state class to the player card without flicker -- only
+// touches the DOM when the state actually changed.
+let _ppCardState = null;
+function _ppSetCardState(state) {
+  if (state === _ppCardState) return;
+  const card = document.getElementById('playerCard');
+  if (_ppCardState) card.classList.remove('pp-state-' + _ppCardState);
+  card.classList.add('pp-state-' + state);
+  _ppCardState = state;
+}
+
+const _PP_REPEAT_TITLE = { none: 'Repeat off', track: 'Repeat one', list: 'Repeat all' };
 
 async function pollMedia() {
+  // Guard against overlapping calls: get_media_status() runs a blocking
+  // asyncio.run() with WinRT/artwork work on the Python side, which can
+  // take longer than the 2s poll interval. Skip this tick if the
+  // previous one hasn't returned yet; the next interval tick retries.
+  if (_pollMediaInFlight) return;
+  _pollMediaInFlight = true;
+  try {
   const s = await callApi('get_media_status');
   const titleWrap = document.getElementById('ppTitleWrap');
   const ppArt = document.getElementById('ppArt');
-  if (!s || !s.ok || !s.active) {
-    document.getElementById('ppTitle').textContent = 'Nothing playing';
+  const ppSeekEl = document.getElementById('ppSeek');
+
+  if (!s || !s.ok) {
+    // Backend unavailable (winsdk missing, unexpected error) is a
+    // distinct state from "no media session found" -- don't call it
+    // "Nothing playing", which reads like the user just isn't playing
+    // anything.
+    _ppSetCardState('unavailable');
+    document.getElementById('ppTitle').textContent = 'Media controls unavailable';
+    document.getElementById('ppArtist').textContent = (s && s.error) || 'Could not reach the media backend.';
+    document.getElementById('ppApp').textContent = '';
+    ppArt.classList.remove('spinning', 'has-art');
+    ppArt.style.backgroundImage = '';
+    document.getElementById('ppPlayIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
+    if (!seekDragging) { ppSeekEl.value = 0; document.getElementById('ppCurTime').textContent = '0:00'; document.getElementById('ppDurTime').textContent = '0:00'; }
+    ppSeekEl.disabled = true;
+    mediaPlaying = false;
+    playerState.active = false; playerState.trackId = null; playerState.playing = false;
+    playerState.basePos = 0; playerState.duration = 0;
+    return;
+  }
+  if (!s.active) {
+    _ppSetCardState('nomedia');
+    document.getElementById('ppTitle').textContent = 'No media is currently playing';
     document.getElementById('ppArtist').textContent = 'Play something to control it here';
     document.getElementById('ppApp').textContent = '';
     ppArt.classList.remove('spinning', 'has-art');
     ppArt.style.backgroundImage = '';
     document.getElementById('ppPlayIcon').innerHTML = '<path d="M8 5v14l11-7z"/>';
-    if (!seekDragging) { document.getElementById('ppSeek').value = 0; document.getElementById('ppCurTime').textContent = '0:00'; document.getElementById('ppDurTime').textContent = '0:00'; }
+    if (!seekDragging) { ppSeekEl.value = 0; document.getElementById('ppCurTime').textContent = '0:00'; document.getElementById('ppDurTime').textContent = '0:00'; }
+    ppSeekEl.disabled = true;
     mediaPlaying = false;
+    playerState.active = false; playerState.trackId = null; playerState.playing = false;
+    playerState.basePos = 0; playerState.duration = 0;
     return;
   }
-  document.getElementById('ppTitle').textContent = s.title || 'Unknown track';
-  document.getElementById('ppArtist').textContent = s.artist + (s.album ? ` — ${s.album}` : '') || '';
-  document.getElementById('ppApp').textContent = s.app || '';
-  titleWrap.classList.toggle('scroll', (s.title || '').length > 26);
-  mediaPlaying = s.status === 'playing';
-  if (s.art) {
-    ppArt.style.backgroundImage = `url("${s.art}")`;
-    ppArt.classList.add('has-art');
+
+  const newTrackId = s.track_id || `${s.title || ''}|${s.artist || ''}`;
+  const trackChanged = newTrackId !== playerState.trackId;
+  const isChangingStatus = s.status === 'changing' || s.status === 'opened';
+
+  if (isChangingStatus) {
+    _ppSetCardState('changing');
   } else {
-    ppArt.style.backgroundImage = '';
-    ppArt.classList.remove('has-art');
+    _ppSetCardState(s.status === 'playing' ? 'playing' : 'paused');
   }
+
+  // Only rewrite the title/artist/album/app text when the track identity
+  // actually changed, or on first activation -- avoids re-triggering the
+  // marquee/opacity transition on every ~poll tick for an unchanged track.
+  if (trackChanged || !playerState.active) {
+    document.getElementById('ppTitle').textContent = s.title || 'Unknown track';
+    document.getElementById('ppArtist').textContent = s.artist + (s.album ? ` — ${s.album}` : '') || '';
+    document.getElementById('ppApp').textContent = s.app || '';
+    titleWrap.classList.toggle('scroll', (s.title || '').length > 26);
+    if (s.art) {
+      ppArt.style.backgroundImage = `url("${s.art}")`;
+      ppArt.classList.add('has-art');
+    } else {
+      ppArt.style.backgroundImage = '';
+      ppArt.classList.remove('has-art');
+    }
+  }
+
+  mediaPlaying = s.status === 'playing';
   ppArt.classList.toggle('spinning', mediaPlaying);
   document.getElementById('ppPlayIcon').innerHTML = mediaPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>';
+
   const ppShuffle = document.getElementById('ppShuffle');
   const ppRepeat = document.getElementById('ppRepeat');
   const caps = s.caps || {};
-  ppShuffle.classList.toggle('active', !!s.shuffle);
-  ppShuffle.disabled = s.shuffle_supported === false && !caps.can_shuffle;
-  ppRepeat.classList.toggle('active', s.repeat && s.repeat !== 'none');
+  const shuffleOn = !!s.shuffle;
+  ppShuffle.classList.toggle('active', shuffleOn);
+  ppShuffle.setAttribute('aria-pressed', shuffleOn ? 'true' : 'false');
+  ppShuffle.disabled = s.shuffle_supported === false || caps.can_shuffle === false;
+  ppShuffle.setAttribute('aria-disabled', ppShuffle.disabled ? 'true' : 'false');
+
+  const repeatOn = !!(s.repeat && s.repeat !== 'none');
+  ppRepeat.classList.toggle('active', repeatOn);
   ppRepeat.classList.toggle('repeat-track', s.repeat === 'track');
+  ppRepeat.setAttribute('aria-pressed', repeatOn ? 'true' : 'false');
+  ppRepeat.title = _PP_REPEAT_TITLE[s.repeat] || 'Repeat off';
+  ppRepeat.disabled = caps.can_repeat === false;
+  ppRepeat.setAttribute('aria-disabled', ppRepeat.disabled ? 'true' : 'false');
+
+  document.getElementById('ppNext').disabled = caps.can_next === false;
+  document.getElementById('ppPrev').disabled = caps.can_prev === false;
+  ppSeekEl.disabled = caps.can_seek === false;
+
+  const dur = _ppClampPos(s.duration_sec || 0, Infinity);
+  const pos = _ppClampPos(s.position_sec || 0, dur);
+  const rate = (typeof s.playback_rate === 'number' && isFinite(s.playback_rate) && s.playback_rate > 0) ? s.playback_rate : 1.0;
+
+  playerState.trackId = newTrackId;
+  playerState.active = true;
+  playerState.duration = dur;
+  playerState.basePos = pos;
+  playerState.baseTs = (typeof s.timeline_updated_at === 'number') ? s.timeline_updated_at : (Date.now() / 1000);
+  playerState.playbackRate = rate;
+  playerState.playing = mediaPlaying;
+
   if (!seekDragging) {
-    const dur = s.duration_sec || 0, pos = s.position_sec || 0;
-    document.getElementById('ppSeek').max = Math.max(dur, 1);
-    document.getElementById('ppSeek').value = pos;
+    ppSeekEl.max = Math.max(dur, 1);
+    ppSeekEl.value = pos;
+    _ppSetFillVar(ppSeekEl, pos);
     document.getElementById('ppCurTime').textContent = fmtTime(pos);
     document.getElementById('ppDurTime').textContent = fmtTime(dur);
   }
+  } finally {
+    _pollMediaInFlight = false;
+  }
 }
-document.getElementById('ppPlayPause').addEventListener('click', () => {
-  mediaPlaying = !mediaPlaying;
-  callApi('toggle_music_playback', mediaPlaying);
-  document.getElementById('ppArt').classList.toggle('spinning', mediaPlaying);
-  document.getElementById('ppPlayIcon').innerHTML = mediaPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>';
+document.getElementById('ppPlayPause').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (_ppPendingCmd) return; // prevent command spam while a toggle is in flight
+  _ppPendingCmd = true;
+  btn.classList.add('pp-cmd-pending');
+  const desired = !mediaPlaying;
+  btn.disabled = true;
+  const res = await callApi('toggle_music_playback', desired);
+  btn.disabled = false;
+  btn.classList.remove('pp-cmd-pending');
+  _ppPendingCmd = false;
+  if (res && res.ok) {
+    mediaPlaying = desired;
+    playerState.playing = desired;
+    playerState.basePos = _ppLivePosition();
+    playerState.baseTs = Date.now() / 1000;
+    document.getElementById('ppArt').classList.toggle('spinning', mediaPlaying);
+    document.getElementById('ppPlayIcon').innerHTML = mediaPlaying ? '<rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/>' : '<path d="M8 5v14l11-7z"/>';
+  } else {
+    showToast('ti-alert-triangle', '#f87171', 'Nothing to play. Start a media app or load a track first.');
+    pollMedia();
+  }
 });
-document.getElementById('ppStop').addEventListener('click', () => {
-  callApi('stop_music');
+document.getElementById('ppStop').addEventListener('click', async () => {
+  await callApi('stop_music');
   mediaPlaying = false;
+  playerState.playing = false;
   document.getElementById('ppArt').classList.remove('spinning');
+  pollMedia();
 });
-document.getElementById('ppNext').addEventListener('click', () => callApi('skip_next_track'));
-document.getElementById('ppPrev').addEventListener('click', () => callApi('skip_previous_track'));
-document.getElementById('ppShuffle').addEventListener('click', (e) => {
-  const nowOn = !e.currentTarget.classList.contains('active');
-  e.currentTarget.classList.toggle('active', nowOn);
-  callApi('toggle_shuffle', nowOn);
+document.getElementById('ppNext').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled || _ppPendingCmd) return;
+  _ppPendingCmd = true;
+  btn.disabled = true;
+  await callApi('skip_next_track');
+  btn.disabled = false;
+  _ppPendingCmd = false;
+  pollMedia();
 });
-document.getElementById('ppRepeat').addEventListener('click', async () => {
-  await callApi('cycle_repeat_mode');
+document.getElementById('ppPrev').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled || _ppPendingCmd) return;
+  _ppPendingCmd = true;
+  btn.disabled = true;
+  await callApi('skip_previous_track');
+  btn.disabled = false;
+  _ppPendingCmd = false;
+  pollMedia();
+});
+document.getElementById('ppShuffle').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled || _ppPendingCmd) return;
+  const prevOn = btn.classList.contains('active');
+  const requested = !prevOn;
+  _ppPendingCmd = true;
+  btn.disabled = true;
+  btn.classList.add('pp-cmd-pending');
+  const res = await callApi('toggle_shuffle', requested);
+  btn.disabled = false;
+  btn.classList.remove('pp-cmd-pending');
+  _ppPendingCmd = false;
+  // UI only ever reflects CONFIRMED backend state, never the optimistic
+  // click -- on failure the previous (actual) state is preserved.
+  let confirmed = prevOn;
+  if (res && res.ok && res.shuffle !== null && res.shuffle !== undefined) {
+    confirmed = !!res.shuffle;
+  } else {
+    showToast('ti-alert-triangle', '#f87171', 'Shuffle could not be changed.');
+  }
+  btn.classList.toggle('active', confirmed);
+  btn.setAttribute('aria-pressed', confirmed ? 'true' : 'false');
+});
+document.getElementById('ppRepeat').addEventListener('click', async (e) => {
+  const btn = e.currentTarget;
+  if (btn.disabled || _ppPendingCmd) return;
+  _ppPendingCmd = true;
+  btn.disabled = true;
+  btn.classList.add('pp-cmd-pending');
+  const res = await callApi('cycle_repeat_mode');
+  btn.disabled = false;
+  btn.classList.remove('pp-cmd-pending');
+  _ppPendingCmd = false;
+  if (!res || !res.ok) {
+    showToast('ti-alert-triangle', '#f87171', 'Repeat could not be changed.');
+  }
   pollMedia();
 });
 
 const ppSeek = document.getElementById('ppSeek');
-ppSeek.addEventListener('input', () => { seekDragging = true; document.getElementById('ppCurTime').textContent = fmtTime(ppSeek.value); });
-ppSeek.addEventListener('change', () => { callApi('seek_media', parseFloat(ppSeek.value)); setTimeout(() => seekDragging = false, 400); });
+let _ppSeekPreview = 0;
+ppSeek.addEventListener('input', () => {
+  seekDragging = true;
+  _ppSeekPreview = parseFloat(ppSeek.value) || 0;
+  _ppSetFillVar(ppSeek, _ppSeekPreview);
+  document.getElementById('ppCurTime').textContent = fmtTime(_ppSeekPreview);
+});
+ppSeek.addEventListener('change', async () => {
+  const target = Math.max(0, Math.min(_ppSeekPreview, playerState.duration || parseFloat(ppSeek.max) || 0));
+  const res = await callApi('seek_media', target);
+  if (res && res.ok) {
+    playerState.basePos = target;
+    playerState.baseTs = Date.now() / 1000;
+  }
+  seekDragging = false;
+  pollMedia(); // resynchronize against real backend state after the seek
+});
 
 // ── sleep timer (fully client-side countdown, calls the real stop_music()) ──
 const sleepBtn = document.getElementById('sleepTimerBtn');
@@ -1889,15 +2141,21 @@ sleepMenu.querySelectorAll('button').forEach(btn => {
     showToast('ti-check', '#22d3ee', `Sleep timer set for ${minutes} minutes`);
   });
 });
-function updateSleepLabel() {
+async function updateSleepLabel() {
   const remaining = Math.max(0, Math.round((sleepTimerEndsAt - Date.now()) / 1000));
   if (remaining <= 0) {
     clearInterval(sleepTimerInterval); sleepTimerInterval = null;
     sleepBtn.classList.remove('active');
     document.getElementById('sleepLabel').textContent = 'Sleep Timer';
     sleepMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    callApi('stop_music');
+    await callApi('stop_music');
+    // Resync from the confirmed backend state rather than assuming stop
+    // succeeded -- the card should never claim playback stopped ahead of
+    // the actual result.
+    mediaPlaying = false;
+    playerState.playing = false;
     document.getElementById('ppArt').classList.remove('spinning');
+    await pollMedia();
     showToast('ti-check', '#8b5cf6', 'Sleep timer ended — playback stopped');
     return;
   }
@@ -1938,10 +2196,28 @@ document.querySelectorAll('[data-setting]').forEach(el => {
   el.addEventListener('click', () => {
     const on = !el.classList.contains('on');
     el.classList.toggle('on', on);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
     callApi('update_setting', el.dataset.setting, on);
     toggleSound(on);
   });
 });
+
+// -- keyboard accessibility for every settings toggle (role=switch) --
+// Reuses the existing click handlers via el.click() instead of duplicating
+// the toggle logic, so there is exactly one source of truth for what a
+// toggle click/activation actually does. Safe to call on the static
+// toggles once at startup, and again on any dynamically re-rendered
+// (freshly created) toggle elements -- it never runs twice on the same
+// DOM node.
+function addToggleKeyboardSupport(el) {
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      el.click();
+    }
+  });
+}
+document.querySelectorAll('.toggle').forEach(addToggleKeyboardSupport);
 
 // ── restore UI state saved by a previous session ─────────────────
 // The backend (Api.set_mute/set_focus_mode/update_setting/set_language/
@@ -1961,11 +2237,13 @@ function applyUISettings(data) {
     muted = true;
     document.getElementById('muteBtn').classList.add('active');
     document.getElementById('settingMute').classList.add('on');
+    document.getElementById('settingMute').setAttribute('aria-checked', 'true');
   }
   if (data.focus_mode === '1') {
     focusOn = true;
     document.getElementById('focusBtn').classList.add('active');
     document.getElementById('settingFocus').classList.add('on');
+    document.getElementById('settingFocus').setAttribute('aria-checked', 'true');
     document.getElementById('qaFocus').classList.add('active');
   }
   if (data.language_mode === 'en' || data.language_mode === 'hi') {
@@ -1992,6 +2270,7 @@ function applyUISettings(data) {
     localStorage.setItem('sara_ui_sounds', soundsOn ? 'on' : 'off');
     document.getElementById('soundBtn').classList.toggle('active', soundsOn);
     document.getElementById('settingSounds').classList.toggle('on', soundsOn);
+    document.getElementById('settingSounds').setAttribute('aria-checked', soundsOn ? 'true' : 'false');
   }
   // NOTE (this revision): added 'setting:proactive_mode' plus the 4 new
   // per-trigger keys. The master key was already listed in app.js's
@@ -2010,12 +2289,18 @@ function applyUISettings(data) {
     'setting:proactive_battery': 'settingProactiveBattery',
     'setting:proactive_reminders': 'settingProactiveReminders',
     'setting:proactive_idle': 'settingProactiveIdle',
-    'setting:proactive_streak': 'settingProactiveStreak'
+    'setting:proactive_streak': 'settingProactiveStreak',
+    'setting:proactive_meetings': 'settingProactiveMeetings',
+    'setting:proactive_routines': 'settingProactiveRoutines'
   };
   Object.entries(toggleMap).forEach(([key, id]) => {
     if (data[key] != null) {
       const el = document.getElementById(id);
-      if (el) el.classList.toggle('on', data[key] === '1');
+      if (el) {
+        const on = data[key] === '1';
+        el.classList.toggle('on', on);
+        el.setAttribute('aria-checked', on ? 'true' : 'false');
+      }
     }
   });
 }
@@ -2037,9 +2322,17 @@ async function loadUISettings() {
 // against running the body more than once no matter how many times or
 // from how many places boot() itself gets called.
 let _booted = false;
+let _bootedWithRealBridge = false;
 function boot() {
-  if (_booted) return;
+  const bridgeReady = !!(window.pywebview && window.pywebview.api);
+  // Once we've booted with the real bridge, nothing more to do.
+  if (_bootedWithRealBridge) return;
+  // Already booted via the mock/fallback path and the real bridge still
+  // isn't here -- nothing changed, don't re-run yet.
+  if (_booted && !bridgeReady) return;
+  const firstBoot = !_booted;
   _booted = true;
+  if (bridgeReady) _bootedWithRealBridge = true;
   console.log('[boot] pywebview:', !!window.pywebview, 'api:', !!(window.pywebview && window.pywebview.api), 'methods:', window.pywebview && window.pywebview.api ? Object.keys(window.pywebview.api) : []);
   loadAssistantState();
   loadUISettings();
@@ -2055,18 +2348,40 @@ function boot() {
   loadCalendarStatus();
   loadSkills();
   loadAnalytics();
-  initSetupWizard();
   pollStats();
   pollMedia();
   refreshStatusBar();
-  setInterval(refreshStatusBar, 2000);
-  setInterval(pollStats, 3500);
-  setInterval(pollMedia, 2000);
-  setInterval(loadWeather, 15 * 60 * 1000);
-  setInterval(loadProactiveStats, 60 * 1000);
-  setInterval(loadNotesStatus, 60 * 1000);
-  setInterval(loadCalendarStatus, 5 * 60 * 1000);
-  setInterval(loadAnalytics, 60 * 1000);
+  if (firstBoot) {
+    initSetupWizard();
+    // H4 fix: these intervals used to do their full work even while the
+    // window was minimized/hidden, wasting WinRT/psutil/network calls for
+    // no visible benefit. Each callback is now gated on document.hidden
+    // instead -- same 8 intervals, same frequencies while visible, no new
+    // timers, and pollMedia's existing _pollMediaInFlight overlap guard is
+    // untouched (it still runs inside pollMedia() itself).
+    setInterval(() => { if (!document.hidden) refreshStatusBar(); }, 2000);
+    setInterval(() => { if (!document.hidden) pollStats(); }, 3500);
+    setInterval(() => { if (!document.hidden) pollMedia(); }, 3000);
+    setInterval(() => { if (!document.hidden) loadWeather(); }, 15 * 60 * 1000);
+    setInterval(() => { if (!document.hidden) loadProactiveStats(); }, 60 * 1000);
+    setInterval(() => { if (!document.hidden) loadNotesStatus(); }, 60 * 1000);
+    setInterval(() => { if (!document.hidden) loadCalendarStatus(); }, 5 * 60 * 1000);
+    setInterval(() => { if (!document.hidden) loadAnalytics(); }, 60 * 1000);
+    // Refresh once, immediately, when the window/tab becomes visible again
+    // instead of waiting for the next long interval to roll around --
+    // registered once here (firstBoot-guarded, same as the intervals above)
+    // so this never double-attaches.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) return;
+      refreshStatusBar();
+      pollStats();
+      pollMedia();
+      loadProactiveStats();
+      loadNotesStatus();
+      loadCalendarStatus();
+      loadAnalytics();
+    });
+  }
 }
 // FIX (root cause of "preview mode, no backend connected"): pywebview
 // injects window.pywebview ASYNCHRONOUSLY relative to this script running

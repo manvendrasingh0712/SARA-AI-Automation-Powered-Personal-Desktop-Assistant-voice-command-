@@ -422,4 +422,15 @@ class TTSWorker:
         return False
 
     def shutdown(self) -> None:
+        """v16 (LIFECYCLE): previously only set `self._stop` on the
+        worker's own dispatch/watch threads -- the underlying
+        TextToSpeech instance (persistent OutputStream, AEC far-end
+        thread, chunker/synth thread pools) was never explicitly torn
+        down here, so real cleanup depended entirely on
+        TextToSpeech.__del__ firing at some GC-determined time. This now
+        deterministically reaches TextToSpeech.shutdown(), which is
+        idempotent (see engine.py), so calling this more than once
+        remains safe."""
         self._stop.set()
+        if hasattr(self._voice, "shutdown"):
+            self._voice.shutdown()
