@@ -16,15 +16,6 @@ CHANGELOG.md.
 
 import os
 
-# cuDNN/cuBLAS DLL loading (Windows) — onnxruntime-gpu's CUDA execution
-# provider can't find cudnn_graph64_9.dll etc. at runtime otherwise, since
-# nvidia-cudnn-cu12/nvidia-cublas-cu12 install their DLLs under the venv's
-# site-packages rather than anywhere on the default search path. This MUST
-# run before onnxruntime, kokoro-onnx, or faster-whisper get imported
-# anywhere in the import chain below — hence right at the top of this file,
-# before any sara.* import. Both os.add_dll_directory AND a manual PATH
-# prepend are needed: onnxruntime's CUDA provider only respects PATH (not
-# add_dll_directory) for some of its internal LoadLibrary calls.
 _cuda_dll_dir_handles = []  # kept alive deliberately -- see comment below
 try:
     import nvidia.cudnn
@@ -33,12 +24,7 @@ try:
     _cublas_bin = os.path.join(nvidia.cublas.__path__[0], "bin")
     for _dll_dir in (_cudnn_bin, _cublas_bin):
         if os.path.isdir(_dll_dir):
-            # os.add_dll_directory()'s return value MUST be kept alive
-            # for the directory to remain part of the DLL search path --
-            # if it's garbage-collected (which happens almost immediately
-            # if the return value isn't stored anywhere), the directory
-            # is silently removed again. Appending to this module-level
-            # list keeps a permanent reference for the process's lifetime.
+        
             _cuda_dll_dir_handles.append(os.add_dll_directory(_dll_dir))
             os.environ["PATH"] = _dll_dir + os.pathsep + os.environ.get("PATH", "")
 except ImportError:
@@ -52,11 +38,7 @@ from logging_config import setup_logging
 from config import Config
 
 
-# PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the
-# LLM tool-calling fallback are both optional, additive features — if
-# either module fails to import for any reason (e.g. numpy missing),
-# the whole app must still start exactly as before, just without that
-# one feature. Both are re-checked as None/False below wherever used.
+
 try:
     from sara.core.rag import LongTermMemory
 
@@ -212,7 +194,7 @@ _CALC_MAX_EXPONENT_VALUE = 1000
 _CALC_EXPONENT_RE = re.compile(r"\*\*\s*([+-]?\d+)")
 
 _OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
-_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen2.5")
+_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
 _OLLAMA_READY_TIMEOUT_S = 60
 _OLLAMA_POLL_INTERVAL_S = 0.25
 

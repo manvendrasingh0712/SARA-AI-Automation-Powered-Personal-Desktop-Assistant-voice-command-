@@ -71,7 +71,7 @@ class SaraSmokeTests(unittest.TestCase):
         from sara.core.tool_router import TOOL_NAME_TO_INTENT, resolve_tool_call, build_fake_match
 
         self.assertIn("weather", TOOL_NAME_TO_INTENT)
-        resolved = resolve_tool_call("what's the weather in Mumbai", "qwen2.5")
+        resolved = resolve_tool_call("what's the weather in Mumbai", "qwen3:4b-instruct-2507-q4_K_M")
         self.assertEqual(resolved["name"], "weather")
         self.assertTrue(resolved["arguments"]["location"].lower().startswith("mumbai"))
 

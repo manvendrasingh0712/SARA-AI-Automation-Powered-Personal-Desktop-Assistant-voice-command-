@@ -113,7 +113,7 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
             if not client:
                 return None
             resp = client.chat(
-                model=getattr(Config, "OLLAMA_MODEL", "qwen2.5"),
+                model=getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": template},

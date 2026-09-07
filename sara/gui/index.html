@@ -10,1108 +10,105 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet">
    <link rel="stylesheet" href="style/style.css">
-   <style>
-      /* ── Additive polish layer — safe, purely visual, does not touch existing selectors' logic ── */
-      html { scroll-behavior: smooth; }
-
-      *:focus-visible {
-         outline: 2px solid rgba(139, 92, 246, 0.8);
-         outline-offset: 2px;
-         border-radius: 4px;
-      }
-
-      .content::-webkit-scrollbar,
-      .chat-window::-webkit-scrollbar,
-      .apps-grid::-webkit-scrollbar,
-      .rlist::-webkit-scrollbar,
-      #notesList::-webkit-scrollbar,
-      #reminderList::-webkit-scrollbar {
-         width: 8px;
-         height: 8px;
-      }
-      .content::-webkit-scrollbar-track,
-      .chat-window::-webkit-scrollbar-track {
-         background: transparent;
-      }
-      .content::-webkit-scrollbar-thumb,
-      .chat-window::-webkit-scrollbar-thumb,
-      .apps-grid::-webkit-scrollbar-thumb,
-      .rlist::-webkit-scrollbar-thumb,
-      #notesList::-webkit-scrollbar-thumb,
-      #reminderList::-webkit-scrollbar-thumb {
-         background: rgba(139, 92, 246, 0.35);
-         border-radius: 10px;
-      }
-      .content::-webkit-scrollbar-thumb:hover,
-      .chat-window::-webkit-scrollbar-thumb:hover {
-         background: rgba(139, 92, 246, 0.6);
-      }
-
-      .qa-card, .app-tile, .qt-btn, .card.side-card, button.icon-btn {
-         transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
-      }
-      .qa-card:hover, .app-tile:hover {
-         transform: translateY(-3px);
-         box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(139, 92, 246, 0.18) inset;
-      }
-      .qt-btn:hover { transform: translateY(-1px); filter: brightness(1.08); }
-      button.icon-btn:active, .qa-card:active, .qt-btn:active, .app-tile:active {
-         transform: scale(0.97);
-      }
-
-      #app { animation: sara-app-in 0.5s ease both; }
-      @keyframes sara-app-in {
-         from { opacity: 0; transform: translateY(6px); }
-         to { opacity: 1; transform: translateY(0); }
-      }
-
-      .quick-grid .qa-card {
-         animation: sara-card-in 0.45s ease both;
-      }
-      .quick-grid .qa-card:nth-child(1) { animation-delay: 0.02s; }
-      .quick-grid .qa-card:nth-child(2) { animation-delay: 0.06s; }
-      .quick-grid .qa-card:nth-child(3) { animation-delay: 0.10s; }
-      .quick-grid .qa-card:nth-child(4) { animation-delay: 0.14s; }
-      .quick-grid .qa-card:nth-child(5) { animation-delay: 0.18s; }
-      .quick-grid .qa-card:nth-child(6) { animation-delay: 0.22s; }
-      .quick-grid .qa-card:nth-child(7) { animation-delay: 0.26s; }
-      .quick-grid .qa-card:nth-child(8) { animation-delay: 0.30s; }
-      .quick-grid .qa-card:nth-child(9) { animation-delay: 0.34s; }
-      @keyframes sara-card-in {
-         from { opacity: 0; transform: translateY(10px); }
-         to { opacity: 1; transform: translateY(0); }
-      }
-      .apps-grid .app-tile, .settings-row {
-         animation: sara-card-in 0.4s ease both;
-      }
-      .apps-grid .app-tile:nth-child(1) { animation-delay: 0.01s; }
-      .apps-grid .app-tile:nth-child(2) { animation-delay: 0.03s; }
-      .apps-grid .app-tile:nth-child(3) { animation-delay: 0.05s; }
-      .apps-grid .app-tile:nth-child(4) { animation-delay: 0.07s; }
-      .apps-grid .app-tile:nth-child(5) { animation-delay: 0.09s; }
-      .apps-grid .app-tile:nth-child(6) { animation-delay: 0.11s; }
-      .apps-grid .app-tile:nth-child(7) { animation-delay: 0.13s; }
-      .apps-grid .app-tile:nth-child(8) { animation-delay: 0.15s; }
-      .apps-grid .app-tile:nth-child(9) { animation-delay: 0.17s; }
-      .apps-grid .app-tile:nth-child(10) { animation-delay: 0.19s; }
-      .apps-grid .app-tile:nth-child(11) { animation-delay: 0.21s; }
-      .apps-grid .app-tile:nth-child(12) { animation-delay: 0.23s; }
-      .apps-grid .app-tile:nth-child(13) { animation-delay: 0.25s; }
-      .apps-grid .app-tile:nth-child(14) { animation-delay: 0.27s; }
-      .apps-grid .app-tile:nth-child(15) { animation-delay: 0.29s; }
-      .apps-grid .app-tile:nth-child(16) { animation-delay: 0.31s; }
-      .apps-grid .app-tile:nth-child(17) { animation-delay: 0.33s; }
-      .apps-grid .app-tile:nth-child(18) { animation-delay: 0.35s; }
-      .apps-grid .app-tile:nth-child(19) { animation-delay: 0.37s; }
-      .apps-grid .app-tile:nth-child(20) { animation-delay: 0.39s; }
-      .settings-row:nth-child(1) { animation-delay: 0.01s; }
-      .settings-row:nth-child(2) { animation-delay: 0.04s; }
-      .settings-row:nth-child(3) { animation-delay: 0.07s; }
-      .settings-row:nth-child(4) { animation-delay: 0.10s; }
-      .settings-row:nth-child(5) { animation-delay: 0.13s; }
-      .settings-row:nth-child(6) { animation-delay: 0.16s; }
-      .settings-row:nth-child(7) { animation-delay: 0.19s; }
-      .settings-row:nth-child(8) { animation-delay: 0.22s; }
-      .settings-row:nth-child(9) { animation-delay: 0.25s; }
-      .settings-row:nth-child(10) { animation-delay: 0.28s; }
-      .settings-row:nth-child(11) { animation-delay: 0.31s; }
-      .settings-row:nth-child(12) { animation-delay: 0.34s; }
-      .settings-row:nth-child(13) { animation-delay: 0.37s; }
-      @media (prefers-reduced-motion: reduce) {
-         .apps-grid .app-tile, .settings-row { animation: none !important; }
-      }
-
-      .sara-ripple {
-         position: absolute;
-         border-radius: 50%;
-         background: rgba(255, 255, 255, 0.35);
-         transform: scale(0);
-         animation: sara-ripple-anim 0.55s ease-out;
-         pointer-events: none;
-      }
-      @keyframes sara-ripple-anim {
-         to { transform: scale(2.6); opacity: 0; }
-      }
-
-      .orb-universe {
-         position: relative;
-      }
-      .orb-universe::before {
-         content: '';
-         position: absolute;
-         inset: -14px;
-         z-index: -1;
-         border-radius: 50%;
-         background: conic-gradient(from 0deg, rgba(139, 92, 246, 0.55), rgba(59, 130, 246, 0.35), rgba(236, 72, 153, 0.45), rgba(139, 92, 246, 0.55));
-         filter: blur(18px);
-         opacity: 0.55;
-         animation: sara-orb-spin 9s linear infinite;
-         pointer-events: none;
-      }
-      @keyframes sara-orb-spin {
-         to { transform: rotate(360deg); }
-      }
-
-      .orb-core, .orb-glow {
-         animation: sara-orb-breathe 3.6s ease-in-out infinite;
-         filter: brightness(calc(1 + var(--sara-audio, 0) * 0.4));
-      }
-      .orb-universe.listening .orb-core,
-      .orb-universe.listening .orb-glow {
-         animation-duration: 1.4s;
-      }
-      .orb-universe.listening::after {
-         content: '';
-         position: absolute;
-         inset: -18px;
-         border-radius: 50%;
-         border: 2px solid rgba(139, 92, 246, 0.5);
-         animation: sara-sonar-ping 1.8s cubic-bezier(0,0,0.2,1) infinite;
-         pointer-events: none;
-      }
-      @keyframes sara-sonar-ping {
-         0%   { transform: scale(0.85); opacity: 0.9; }
-         100% { transform: scale(1.6); opacity: 0; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .orb-universe.listening::after { animation: none !important; }
-      }
-      .orb-universe.thinking::before { animation-duration: 3s; }
-      .orb-universe.thinking .orb-core,
-      .orb-universe.thinking .orb-glow { animation-duration: 0.85s; }
-      .orb-universe.speaking .orb-core,
-      .orb-universe.speaking .orb-glow { animation-duration: 1.4s; }
-      .orb-universe.success::after,
-      .orb-universe.error::after,
-      .orb-universe.tap::after {
-         content: '';
-         position: absolute;
-         inset: -18px;
-         border-radius: 50%;
-         animation: sara-sonar-ping 0.6s cubic-bezier(0,0,0.2,1) 1;
-         pointer-events: none;
-      }
-      .orb-universe.success::after { border: 2px solid rgba(52,211,153,0.7); }
-      .orb-universe.error::after { border: 2px solid rgba(239,68,68,0.7); }
-      .orb-universe.tap::after { border: 2px solid rgba(139,92,246,0.8); }
-      @media (prefers-reduced-motion: reduce) {
-         .orb-universe.thinking::before,
-         .orb-universe.thinking .orb-core, .orb-universe.thinking .orb-glow,
-         .orb-universe.success::after, .orb-universe.error::after, .orb-universe.tap::after { animation: none !important; }
-      }
-      @keyframes sara-orb-breathe {
-         0%, 100% { transform: scale(1); filter: brightness(1); }
-         50% { transform: scale(1.045); filter: brightness(1.12); }
-      }
-
-      #greetingName {
-         background: linear-gradient(90deg, #8b5cf6, #ec4899, #3b82f6, #8b5cf6);
-         background-size: 300% 100%;
-         -webkit-background-clip: text;
-         background-clip: text;
-         color: transparent;
-         animation: sara-gradient-flow 6s ease infinite;
-      }
-      @keyframes sara-gradient-flow {
-         0% { background-position: 0% 50%; }
-         50% { background-position: 100% 50%; }
-         100% { background-position: 0% 50%; }
-      }
-
-      .orb-stars i {
-         animation: sara-star-twinkle 2.4s ease-in-out infinite;
-      }
-      @keyframes sara-star-twinkle {
-         0%, 100% { opacity: 0.85; }
-         50% { opacity: 0.15; }
-      }
-
-      .ripple {
-         box-shadow: 0 0 24px 2px rgba(139, 92, 246, 0.35);
-      }
-
-      .sidebar {
-         position: relative;
-      }
-      .sidebar::after {
-         content: '';
-         position: absolute;
-         top: 0; right: 0;
-         width: 1px; height: 100%;
-         background: linear-gradient(180deg, transparent, rgba(139, 92, 246, 0.4), transparent);
-      }
-      .brand-mark {
-         position: relative;
-         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15), 0 4px 14px rgba(139, 92, 246, 0.35);
-      }
-      #navList li {
-         position: relative;
-         border-radius: 10px;
-         margin: 2px 8px;
-         transition: background 0.25s ease;
-      }
-      #navList li:hover {
-         background: rgba(139, 92, 246, 0.08);
-      }
-      #navList li.active {
-         background: linear-gradient(90deg, rgba(139, 92, 246, 0.22), rgba(139, 92, 246, 0.02)) !important;
-      }
-      #navList li.active::before {
-         content: '';
-         position: absolute;
-         left: 0;
-         top: 50%;
-         transform: translateY(-50%);
-         width: 3px;
-         height: 60%;
-         border-radius: 0 3px 3px 0;
-         background: linear-gradient(180deg, #8b5cf6, #ec4899);
-         box-shadow: 0 0 10px rgba(139, 92, 246, 0.7);
-      }
-      #navList li.active svg {
-         filter: drop-shadow(0 0 4px rgba(139, 92, 246, 0.6));
-      }
-      .nav-badge {
-         background: linear-gradient(135deg, #ec4899, #8b5cf6) !important;
-         display: inline-block;
-         animation: sara-badge-pulse 2s ease-in-out infinite;
-      }
-      @keyframes sara-badge-pulse {
-         0%, 100% { transform: scale(1); }
-         50% { transform: scale(1.12); }
-      }
-      #navList li button svg {
-         transition: transform 0.3s cubic-bezier(.34,1.56,.64,1);
-      }
-      #navList li:hover button svg {
-         transform: scale(1.15) rotate(-6deg);
-      }
-      #navList li button span {
-         position: relative;
-      }
-      #navList li button span::after {
-         content: '';
-         position: absolute;
-         left: 0; bottom: -3px;
-         width: 0%;
-         height: 1.5px;
-         background: linear-gradient(90deg, #8b5cf6, #ec4899);
-         transition: width 0.3s ease;
-      }
-      #navList li:hover button span::after {
-         width: 100%;
-      }
-
-      .qa-card, .app-tile {
-         position: relative;
-         overflow: hidden;
-      }
-      .qa-card::before, .app-tile::before {
-         content: '';
-         position: absolute;
-         inset: 0;
-         padding: 1px;
-         border-radius: inherit;
-         background: linear-gradient(135deg, rgba(139, 92, 246, 0.55), rgba(236, 72, 153, 0.18), transparent 65%);
-         -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-         mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-         -webkit-mask-composite: xor;
-         mask-composite: exclude;
-         opacity: 0;
-         transition: opacity 0.25s ease;
-         pointer-events: none;
-      }
-      .qa-card:hover::before, .app-tile:hover::before {
-         opacity: 1;
-      }
-      .qa-card .qa-icon, .app-tile .qa-icon {
-         background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(236, 72, 153, 0.15));
-         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-         transition: transform 0.25s ease, background 0.25s ease;
-      }
-      .qa-card:hover .qa-icon, .app-tile:hover .qa-icon {
-         transform: scale(1.08) rotate(-4deg);
-         background: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(236, 72, 153, 0.28));
-      }
-      .apps-grid .app-tile {
-         padding: 16px 14px;
-         gap: 10px;
-      }
-      .apps-grid .app-tile .qa-icon {
-         width: 32px;
-         height: 32px;
-         border-radius: 9px;
-      }
-      .apps-grid .app-tile .qa-icon svg {
-         width: 15px;
-         height: 15px;
-      }
-      .apps-grid .app-tile:nth-child(4n+1) .qa-icon {
-         background: linear-gradient(135deg, rgba(139, 92, 246, 0.28), rgba(236, 72, 153, 0.16));
-         color: var(--violet);
-      }
-      .apps-grid .app-tile:nth-child(4n+2) .qa-icon {
-         background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(34, 211, 238, 0.16));
-         color: var(--blue);
-      }
-      .apps-grid .app-tile:nth-child(4n+3) .qa-icon {
-         background: linear-gradient(135deg, rgba(52, 211, 153, 0.28), rgba(34, 211, 238, 0.16));
-         color: var(--green);
-      }
-      .apps-grid .app-tile:nth-child(4n) .qa-icon {
-         background: linear-gradient(135deg, rgba(251, 191, 36, 0.28), rgba(236, 72, 153, 0.16));
-         color: var(--amber);
-      }
-      .apps-grid .app-tile:hover .qa-icon {
-         filter: brightness(1.15);
-      }
-      /* ── Diagonal shine sweep (new) — combined with the existing radial hover spotlight on
-           the same ::after layer, so no extra DOM elements are needed. Two backgrounds:
-           [1] the original radial spotlight tied to --mx/--my, [2] a diagonal shine band that
-           slides across on hover via background-position. ── */
-      .qa-card::after, .app-tile::after {
-         content: '';
-         position: absolute;
-         inset: 0;
-         border-radius: inherit;
-         background:
-            radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(139, 92, 246, 0.18), transparent 70%),
-            linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.35) 50%, transparent 60%);
-         background-size: 100% 100%, 250% 250%;
-         background-position: 0 0, -120% -120%;
-         opacity: 0;
-         transition: opacity 0.25s ease, background-position 0.7s ease;
-         pointer-events: none;
-      }
-      .qa-card:hover::after, .app-tile:hover::after {
-         opacity: 1;
-         background-position: 0 0, 120% 120%;
-      }
-      .card.stat-card {
-         background: linear-gradient(160deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
-         border: 1px solid rgba(255,255,255,0.06);
-      }
-      .card.stat-card .bar-fill {
-         background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899) !important;
-         box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
-         position: relative;
-         overflow: hidden;
-      }
-      .card.stat-card .bar-fill::after {
-         content: '';
-         position: absolute;
-         inset: 0;
-         background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
-         transform: translateX(-100%);
-         animation: sara-bar-shimmer 2.2s ease-in-out infinite;
-      }
-      @keyframes sara-bar-shimmer {
-         100% { transform: translateX(100%); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .card.stat-card .bar-fill::after { animation: none !important; }
-      }
-      .card.side-card h3 {
-         position: relative;
-         padding-left: 12px;
-      }
-      .card.side-card h3::before {
-         content: '';
-         position: absolute;
-         left: 0;
-         top: 50%;
-         transform: translateY(-50%);
-         width: 4px;
-         height: 14px;
-         border-radius: 2px;
-         background: linear-gradient(180deg, #8b5cf6, #ec4899);
-      }
-
-      .msg {
-         position: relative;
-         padding: 10px 14px 10px 40px !important;
-         margin-bottom: 4px;
-      }
-      .msg.user {
-         padding: 10px 40px 10px 14px !important;
-         background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
-         color: #fff !important;
-         border-radius: 16px 16px 4px 16px !important;
-         box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
-      }
-      .msg.sara {
-         background: rgba(255, 255, 255, 0.05) !important;
-         border: 1px solid rgba(255, 255, 255, 0.08);
-         border-radius: 16px 16px 16px 4px !important;
-         backdrop-filter: blur(6px);
-      }
-      .msg::before {
-         content: 'S';
-         position: absolute;
-         left: 8px;
-         top: 8px;
-         width: 24px;
-         height: 24px;
-         border-radius: 50%;
-         display: flex;
-         align-items: center;
-         justify-content: center;
-         font-size: 11px;
-         font-weight: 700;
-         font-family: 'Space Grotesk', sans-serif;
-         background: linear-gradient(135deg, #ec4899, #8b5cf6);
-         color: #fff;
-      }
-      .msg.user::before {
-         content: 'U';
-         left: auto;
-         right: 8px;
-         background: linear-gradient(135deg, #3b82f6, #06b6d4);
-      }
-      .msg-text {
-         display: block;
-         line-height: 1.5;
-      }
-      .sara-stream-tick { animation: sara-stream-fade 0.25s ease; }
-      @keyframes sara-stream-fade { from { opacity: .5; } to { opacity: 1; } }
-      @media (prefers-reduced-motion: reduce) {
-         .sara-stream-tick { animation: none !important; }
-      }
-      .msg-time {
-         display: block;
-         font-size: 10px;
-         opacity: 0.55;
-         margin-top: 4px;
-         text-align: right;
-      }
-      .msg {
-         animation: sara-msg-in 0.35s cubic-bezier(.2,.9,.3,1.1) both;
-      }
-      .msg.user {
-         animation-name: sara-msg-in-right;
-      }
-      @keyframes sara-msg-in {
-         from { opacity: 0; transform: translateY(8px) scale(0.98); }
-         to   { opacity: 1; transform: translateY(0) scale(1); }
-      }
-      @keyframes sara-msg-in-right {
-         from { opacity: 0; transform: translateX(10px) scale(0.98); }
-         to   { opacity: 1; transform: translateX(0) scale(1); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .msg { animation: none !important; }
-      }
-
-      .msg.typing .msg-text {
-         display: inline-flex;
-         align-items: center;
-         gap: 4px;
-         min-height: 14px;
-      }
-      .msg.typing .dot {
-         width: 6px;
-         height: 6px;
-         border-radius: 50%;
-         background: rgba(238, 240, 248, 0.55);
-         animation: sara-typing-bounce 1.1s ease-in-out infinite;
-      }
-      .msg.typing .dot:nth-child(2) { animation-delay: 0.15s; }
-      .msg.typing .dot:nth-child(3) { animation-delay: 0.3s; }
-      @keyframes sara-typing-bounce {
-         0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
-         30% { transform: translateY(-4px); opacity: 1; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .msg.typing .dot { animation: none !important; }
-      }
-
-      .modal-backdrop {
-         transition: backdrop-filter 0.3s ease;
-      }
-      .modal-backdrop.open {
-         backdrop-filter: blur(6px);
-      }
-      .modal-backdrop .modal {
-         transform: translateY(24px) scale(0.96);
-         opacity: 0;
-         transition: transform 0.32s cubic-bezier(.2,.9,.3,1.3), opacity 0.28s ease;
-      }
-      .modal-backdrop.open .modal {
-         transform: translateY(0) scale(1);
-         opacity: 1;
-      }
-      .modal {
-         position: relative;
-         border: 1px solid rgba(255,255,255,0.08);
-         box-shadow: 0 20px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(139,92,246,0.08);
-      }
-      .modal::before {
-         content: '';
-         position: absolute;
-         top: 0; left: 0; right: 0;
-         height: 3px;
-         border-radius: inherit;
-         background: linear-gradient(90deg, #8b5cf6, #ec4899, #3b82f6);
-      }
-      .modal h3 {
-         position: relative;
-         padding-bottom: 10px;
-      }
-      .modal h3::after {
-         content: '';
-         position: absolute;
-         left: 0; bottom: 0;
-         width: 36px; height: 2px;
-         border-radius: 2px;
-         background: linear-gradient(90deg, #8b5cf6, #ec4899);
-      }
-      .modal input[type="text"]:focus,
-      .modal input[type="date"]:focus,
-      .modal input[type="time"]:focus {
-         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25) !important;
-      }
-      #memRingFill {
-         transition: stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1);
-      }
-      .card.stat-card .bar-fill {
-         transition: width 0.7s cubic-bezier(.4,0,.2,1);
-      }
-      .mem-ring.sara-ring-glow { animation: sara-ring-glow 0.9s ease; }
-      @keyframes sara-ring-glow {
-         0% { filter: drop-shadow(0 0 0 rgba(139,92,246,0)); }
-         40% { filter: drop-shadow(0 0 10px rgba(139,92,246,0.8)); }
-         100% { filter: drop-shadow(0 0 0 rgba(139,92,246,0)); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         #memRingFill, .card.stat-card .bar-fill { transition: none !important; }
-         .mem-ring.sara-ring-glow { animation: none !important; }
-      }
-
-      .page {
-         opacity: 0;
-         transform: translateY(6px) scale(0.985);
-         filter: blur(2px);
-         transition: opacity 0.28s ease, transform 0.28s ease, filter 0.28s ease;
-      }
-      .page.active {
-         opacity: 1;
-         transform: translateY(0) scale(1);
-         filter: blur(0);
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .page { transition: none !important; filter: none !important; }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-         html { scroll-behavior: auto; }
-         #app, .quick-grid .qa-card, .sara-ripple {
-            animation: none !important;
-         }
-         .qa-card, .app-tile, .qt-btn, button.icon-btn {
-            transition: none !important;
-         }
-         .orb-universe::before, .orb-core, .orb-glow, #greetingName, .orb-stars i {
-            animation: none !important;
-         }
-         .nav-badge {
-            animation: none !important;
-         }
-         .qa-card .qa-icon, .app-tile .qa-icon, .qa-card::before, .app-tile::before {
-            transition: none !important;
-         }
-         .modal-backdrop, .modal-backdrop .modal {
-            transition: none !important;
-         }
-      }
-
-      .btn-primary {
-         background: linear-gradient(135deg, #8b5cf6, #6366f1) !important;
-         border: none !important;
-         box-shadow: 0 4px 14px rgba(139, 92, 246, 0.35);
-         transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
-      }
-      .sara-btn-processing { opacity: 0.65; pointer-events: none; }
-      .btn-primary:hover {
-         transform: translateY(-2px);
-         box-shadow: 0 8px 22px rgba(139, 92, 246, 0.5);
-         filter: brightness(1.08);
-      }
-      .btn-primary:active {
-         transform: translateY(0);
-      }
-      .btn-ghost {
-         border: 1px solid rgba(139, 92, 246, 0.3) !important;
-         transition: background 0.2s ease, border-color 0.2s ease;
-      }
-      .btn-ghost:hover {
-         background: rgba(139, 92, 246, 0.1) !important;
-         border-color: rgba(139, 92, 246, 0.55) !important;
-      }
-
-      .toggle {
-         transition: background 0.25s ease, box-shadow 0.25s ease;
-      }
-      .toggle.on {
-         background: linear-gradient(90deg, #8b5cf6, #ec4899) !important;
-         box-shadow: 0 0 8px rgba(139, 92, 246, 0.45);
-      }
-
-      .pp-art {
-         border-radius: 50% !important;
-         box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
-         transition: box-shadow 0.3s ease;
-      }
-      .pp-art.spinning {
-         box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.25), 0 8px 28px rgba(139, 92, 246, 0.35);
-         animation: sara-vinyl-spin 9s linear infinite;
-      }
-      @keyframes sara-vinyl-spin { to { transform: rotate(360deg); } }
-      .pp-art { position: relative; }
-      .eq-bars {
-         position: absolute;
-         inset: 0;
-         display: none;
-         align-items: flex-end;
-         justify-content: center;
-         gap: 3px;
-         padding-bottom: 14px;
-         background: rgba(0,0,0,0.35);
-         border-radius: 50%;
-      }
-      .pp-art.spinning .eq-bars {
-         display: flex;
-      }
-      .eq-bars span {
-         width: 3px;
-         background: linear-gradient(180deg, #ec4899, #8b5cf6);
-         border-radius: 2px;
-         animation: sara-eq-bounce 0.9s ease-in-out infinite;
-      }
-      .eq-bars span:nth-child(1) { height: 30%; animation-delay: 0s; }
-      .eq-bars span:nth-child(2) { height: 60%; animation-delay: 0.15s; }
-      .eq-bars span:nth-child(3) { height: 40%; animation-delay: 0.3s; }
-      .eq-bars span:nth-child(4) { height: 70%; animation-delay: 0.45s; }
-      @keyframes sara-eq-bounce {
-         0%, 100% { transform: scaleY(0.4); }
-         50% { transform: scaleY(1); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .eq-bars span, .pp-art.spinning { animation: none !important; }
-      }
-      #ppSeek {
-         accent-color: #8b5cf6;
-      }
-      .pp-play {
-         background: linear-gradient(135deg, #8b5cf6, #ec4899) !important;
-         box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
-      }
-
-      /* ── Toasts: glass effect + slide-in + icon pop-bounce (new) ── */
-      .toast {
-         backdrop-filter: blur(8px);
-         border: 1px solid rgba(255, 255, 255, 0.08);
-         animation: sara-toast-in 0.3s ease both;
-      }
-      @keyframes sara-toast-in {
-         from { transform: translateX(30px); opacity: 0; }
-         to { transform: translateX(0); opacity: 1; }
-      }
-      .toast .dot {
-         animation: sara-toast-dot-pop 0.5s cubic-bezier(.34,1.56,.64,1) both;
-      }
-      @keyframes sara-toast-dot-pop {
-         0% { transform: scale(0); }
-         60% { transform: scale(1.35); }
-         100% { transform: scale(1); }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-         .toast, .toast .dot { animation: none !important; }
-      }
-
-      body::before {
-         content: '';
-         position: fixed;
-         inset: -10%;
-         z-index: -2;
-         background:
-            radial-gradient(38% 30% at 15% 20%, rgba(139, 92, 246, 0.22), transparent 60%),
-            radial-gradient(32% 28% at 85% 15%, rgba(236, 72, 153, 0.16), transparent 60%),
-            radial-gradient(40% 34% at 50% 90%, rgba(59, 130, 246, 0.18), transparent 60%);
-         filter: blur(60px);
-         animation: sara-aurora-drift 22s ease-in-out infinite alternate;
-         pointer-events: none;
-      }
-      @keyframes sara-aurora-drift {
-         0%   { transform: translate(0, 0) scale(1); }
-         50%  { transform: translate(2%, -3%) scale(1.08); }
-         100% { transform: translate(-3%, 2%) scale(1); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         body::before { animation: none !important; }
-      }
-
-      #saraParticles {
-         position: fixed;
-         inset: 0;
-         z-index: -1;
-         pointer-events: none;
-      }
-
-      /* ── Floating gradient blobs (new) — a slow "lava lamp" ambient layer, further back than
-           the aurora and particles so it reads as atmosphere, not foreground decoration. ── */
-      #saraBlobs {
-         position: fixed;
-         inset: 0;
-         z-index: -3;
-         overflow: hidden;
-         pointer-events: none;
-      }
-      .sara-blob {
-         position: absolute;
-         border-radius: 50%;
-         filter: blur(50px);
-         opacity: 0.35;
-         will-change: transform;
-         animation: sara-blob-float linear infinite;
-      }
-      @keyframes sara-blob-float {
-         0%   { transform: translate(0, 0) scale(1); }
-         25%  { transform: translate(6vw, -4vh) scale(1.12); }
-         50%  { transform: translate(-3vw, 5vh) scale(0.94); }
-         75%  { transform: translate(-6vw, -3vh) scale(1.06); }
-         100% { transform: translate(0, 0) scale(1); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         #saraBlobs { display: none; }
-      }
-
-      .status-dot {
-         position: relative;
-      }
-      .status-dot::after {
-         content: '';
-         position: absolute;
-         inset: -3px;
-         border-radius: 50%;
-         border: 1.5px solid currentColor;
-         opacity: 0.6;
-         animation: sara-status-pulse 2s ease-out infinite;
-      }
-      #onlineStatus[data-orb-state="listening"] .status-dot::after { animation-duration: 1.1s; border-color: #8b5cf6; }
-      #onlineStatus[data-orb-state="thinking"] .status-dot::after { animation-duration: 0.8s; border-color: #3b82f6; }
-      #onlineStatus[data-orb-state="speaking"] .status-dot::after { animation-duration: 0.9s; border-color: #ec4899; }
-      #onlineStatus[data-orb-state="error"] .status-dot::after { animation-duration: 0.6s; border-color: #ef4444; }
-      @keyframes sara-status-pulse {
-         0% { transform: scale(0.7); opacity: 0.7; }
-         100% { transform: scale(1.9); opacity: 0; }
-      }
-      @media (prefers-reduced-motion: reduce) {
-         .status-dot::after { animation: none !important; }
-      }
-
-      .sara-burst-particle {
-         position: fixed;
-         width: 5px; height: 5px;
-         border-radius: 50%;
-         pointer-events: none;
-         z-index: 999;
-         will-change: transform, opacity;
-         animation: sara-burst-fly 0.6s cubic-bezier(.2,.7,.3,1) forwards;
-      }
-      @keyframes sara-burst-fly {
-         to { transform: translate(var(--bx), var(--by)) scale(0); opacity: 0; }
-      }
-
-      .sara-value-tick {
-         animation: sara-value-flash 0.5s ease;
-      }
-      @keyframes sara-value-flash {
-         0% { color: #ec4899; text-shadow: 0 0 10px rgba(236,72,153,0.7); }
-         100% { color: inherit; text-shadow: none; }
-      }
-      .sara-value-roll { display: inline-block; animation: sara-value-roll-in 0.4s cubic-bezier(.2,.8,.3,1); }
-      @keyframes sara-value-roll-in {
-         0% { transform: translateY(-60%); opacity: 0; }
-         100% { transform: translateY(0); opacity: 1; }
-      }
-
-      .sara-skel {
-         position: relative;
-         overflow: hidden;
-         background: rgba(255,255,255,0.06);
-         border-radius: 8px;
-      }
-      .sara-skel::after {
-         content: '';
-         position: absolute;
-         inset: 0;
-         background: linear-gradient(90deg, transparent, rgba(255,255,255,0.14), transparent);
-         transform: translateX(-100%);
-         animation: sara-skel-shimmer 1.4s ease-in-out infinite;
-      }
-      @keyframes sara-skel-shimmer {
-         100% { transform: translateX(100%); }
-      }
-
-      @keyframes sara-icon-pop {
-         0% { transform: scale(1); }
-         40% { transform: scale(1.28) rotate(-8deg); }
-         100% { transform: scale(1) rotate(0deg); }
-      }
-      #navList li.active svg.sara-pop {
-         animation: sara-icon-pop 0.45s cubic-bezier(.34,1.56,.64,1);
-      }
-
-      /* ── List stagger cascade (new) — items in dynamically-rendered lists (reminders,
-           notes, routines, etc.) fade/rise in one after another instead of popping in as a
-           block. JS assigns .sara-list-stagger-item + an incremental animation-delay. ── */
-      .sara-list-stagger-item {
-         animation: sara-list-stagger-in 0.4s ease both;
-      }
-      @keyframes sara-list-stagger-in {
-         from { opacity: 0; transform: translateY(10px); }
-         to   { opacity: 1; transform: translateY(0); }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-         .sara-burst-particle, .sara-value-tick, .sara-value-roll,
-         .sara-skel::after, #navList li.active svg.sara-pop, .sara-list-stagger-item {
-            animation: none !important;
-            display: initial;
-         }
-      }
-
-      .brand-mark {
-         overflow: hidden;
-      }
-      .brand-mark::after {
-         content: '';
-         position: absolute;
-         inset: -40%;
-         background: conic-gradient(from 0deg, transparent, rgba(255,255,255,0.35), transparent 40%);
-         animation: sara-brand-sheen 4.5s linear infinite;
-      }
-      @keyframes sara-brand-sheen {
-         to { transform: rotate(360deg); }
-      }
-
-      .waveform {
-         display: flex;
-         align-items: center;
-         gap: 3px;
-      }
-      .waveform span.sara-wave-bar {
-         display: inline-block;
-         width: 3px;
-         height: 6px;
-         border-radius: 2px;
-         background: currentColor;
-         opacity: 0.5;
-      }
-      .waveform.active span.sara-wave-bar {
-         animation: sara-wave-bounce 0.8s ease-in-out infinite;
-         opacity: 1;
-         transform: scaleY(calc(1 + var(--sara-audio, 0) * 0.6));
-      }
-      .waveform.active span.sara-wave-bar:nth-child(1) { animation-delay: 0s; }
-      .waveform.active span.sara-wave-bar:nth-child(2) { animation-delay: 0.12s; }
-      .waveform.active span.sara-wave-bar:nth-child(3) { animation-delay: 0.24s; }
-      .waveform.active span.sara-wave-bar:nth-child(4) { animation-delay: 0.36s; }
-      .waveform.active span.sara-wave-bar:nth-child(5) { animation-delay: 0.48s; }
-      @keyframes sara-wave-bounce {
-         0%, 100% { height: 6px; }
-         50% { height: 18px; }
-      }
-
-      @keyframes sara-send-fly {
-         0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
-         100% { transform: translate(18px, -14px) rotate(20deg); opacity: 0; }
-      }
-      .send-btn.sara-sending svg {
-         animation: sara-send-fly 0.4s ease forwards;
-      }
-      .chat-input-bar input:focus {
-         box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-      }
-
-      #btnClose:hover svg, #remCancel:hover, #quickInputCancel:hover, #rtCancel:hover, #momentsClose:hover {
-         filter: brightness(1.15);
-      }
-      #btnClose:hover svg {
-         transform: rotate(90deg);
-         transition: transform 0.25s ease;
-      }
-
-      .sara-check-pop {
-         display: inline-flex;
-         animation: sara-check-in 0.4s cubic-bezier(.34,1.56,.64,1) both;
-      }
-      @keyframes sara-check-in {
-         0% { transform: scale(0) rotate(-20deg); opacity: 0; }
-         100% { transform: scale(1) rotate(0deg); opacity: 1; }
-      }
-
-      .sara-confetti {
-         position: fixed;
-         top: -10px;
-         width: 8px;
-         height: 8px;
-         pointer-events: none;
-         z-index: 9999;
-         animation: sara-confetti-fall linear forwards;
-      }
-      @keyframes sara-confetti-fall {
-         to { transform: translateY(110vh) rotate(var(--rot)); opacity: 0.2; }
-      }
-
-      .sara-type-caret::after {
-         content: '|';
-         margin-left: 2px;
-         animation: sara-caret-blink 0.9s steps(1) infinite;
-      }
-      @keyframes sara-caret-blink {
-         50% { opacity: 0; }
-      }
-
-      .page.active .card {
-         animation: sara-card-rise 0.45s ease both;
-      }
-      @keyframes sara-card-rise {
-         from { opacity: 0; transform: translateY(8px); }
-         to { opacity: 1; transform: translateY(0); }
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-         .brand-mark::after, .waveform.active span.sara-wave-bar, .send-btn.sara-sending svg,
-         .sara-confetti, .sara-type-caret::after, .page.active .card {
-            animation: none !important;
-         }
-         #btnClose:hover svg { transition: none !important; }
-      }
-
-      /* ══════════════════ 8 major animations (previous round) ══════════════════ */
-
-      #navList { position: relative; }
-      .sara-nav-pill {
-         position: absolute; left: 8px; right: 8px; height: 0; top: 0;
-         border-radius: 10px;
-         background: linear-gradient(90deg, rgba(139,92,246,0.24), rgba(139,92,246,0.02));
-         box-shadow: 0 0 16px rgba(139,92,246,0.25) inset;
-         transition: transform 0.38s cubic-bezier(.22,1,.36,1), height 0.25s ease;
-         pointer-events: none; z-index: 0;
-      }
-      #navList li { z-index: 1; }
-      #navList li.active { background: none !important; }
-
-      #greetingName.sara-scrambling { -webkit-text-fill-color: transparent; }
-
-      body::after {
-         content: ''; position: fixed; inset: 0; z-index: -2;
-         background: radial-gradient(420px circle at var(--sara-mx, 50%) var(--sara-my, 50%), rgba(139,92,246,0.10), transparent 65%);
-         pointer-events: none;
-      }
-
-      .orb-universe.listening .orb-rim { animation: sara-orb-rim-pulse 1.1s ease-in-out infinite; }
-      @keyframes sara-orb-rim-pulse {
-         0%, 100% { transform: scale(1); opacity: 0.85; }
-         50% { transform: scale(1.06); opacity: 1; }
-      }
-      .sara-audio-ring {
-         position: absolute; inset: -10px; border-radius: 50%;
-         border: 1.5px solid rgba(236,72,153,0.45); pointer-events: none;
-         animation: sara-audio-ring-pulse 1.6s ease-out infinite;
-      }
-      @keyframes sara-audio-ring-pulse {
-         0% { transform: scale(0.9); opacity: 0.8; }
-         100% { transform: scale(1.5); opacity: 0; }
-      }
-
-      .modal.sara-wobble { animation: sara-modal-wobble 0.5s ease 0.28s both; }
-      @keyframes sara-modal-wobble {
-         0% { transform: scale(1); }
-         30% { transform: scale(1.015) rotate(0.3deg); }
-         60% { transform: scale(0.995) rotate(-0.2deg); }
-         100% { transform: scale(1) rotate(0deg); }
-      }
-
-      .orb-hit, .btn-primary { transition: transform 0.15s ease-out, box-shadow 0.2s ease, filter 0.2s ease; }
-
-      @media (prefers-reduced-motion: reduce) {
-         .sara-nav-pill, body::after, .orb-universe.listening .orb-rim, .sara-audio-ring,
-         .modal.sara-wobble {
-            animation: none !important;
-            transition: none !important;
-         }
-      }
-
-      /* ══════════════════ New polish pass ══════════════════
-         Replaces the removed animated gradient underline on section titles with a quiet,
-         static accent (no loop) — and adds a few new, restrained touches: a light-sweep on
-         primary/ghost buttons, a snappy toggle bounce, and a confetti hookup for Sara
-         Moments (the saraCelebrate() helper already existed but was never wired up). */
-
-      .page-head h2 {
-         position: relative;
-         padding-left: 14px;
-      }
-      .page-head h2::before {
-         content: '';
-         position: absolute;
-         left: 0;
-         top: 50%;
-         transform: translateY(-50%);
-         width: 4px;
-         height: 0.8em;
-         border-radius: 3px;
-         background: linear-gradient(180deg, #8b5cf6, #ec4899);
-         box-shadow: 0 0 8px rgba(139, 92, 246, 0.45);
-      }
-
-      /* Diagonal light sweep on primary/ghost buttons — same language as the card shine,
-         quiet until hovered. */
-      .btn-primary, .btn-ghost {
-         position: relative;
-         overflow: hidden;
-      }
-      .btn-primary::after, .btn-ghost::after {
-         content: '';
-         position: absolute;
-         inset: 0;
-         border-radius: inherit;
-         background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.35) 50%, transparent 60%);
-         background-size: 250% 250%;
-         background-position: -120% -120%;
-         opacity: 0;
-         transition: opacity 0.25s ease, background-position 0.7s ease;
-         pointer-events: none;
-      }
-      .btn-primary:hover::after, .btn-ghost:hover::after {
-         opacity: 1;
-         background-position: 120% 120%;
-      }
-
-      /* Snappy elastic bounce on any toggle switch, fired once per click via JS. */
-      @keyframes sara-toggle-bounce {
-         0% { transform: scale(1); }
-         45% { transform: scale(1.16); }
-         100% { transform: scale(1); }
-      }
-      .toggle.sara-bounce {
-         animation: sara-toggle-bounce 0.32s cubic-bezier(.34, 1.56, .64, 1);
-      }
-
-      @media (prefers-reduced-motion: reduce) {
-         .btn-primary::after, .btn-ghost::after { transition: none !important; opacity: 0 !important; }
-         .toggle.sara-bounce { animation: none !important; }
-      }
-   </style>
+    <link rel="stylesheet" href="style/background.css">
 </head>
-
 <body>
-   <div id="saraBlobs" aria-hidden="true"></div>
-   <canvas id="saraParticles" aria-hidden="true"></canvas>
-   <div id="app">
+<div id="saraBgLayer" aria-hidden="true">
+   <div id="bgStars" class="bg-canvas-layer"><canvas id="bgStarsCanvas"></canvas></div>
+   <div id="bgSolarSystem">
+      <div id="bgSun"></div>
+
+      <div class="orbit-ring" id="orbitMercury"></div>
+      <div class="orbit-ring" id="orbitVenus"></div>
+      <div class="orbit-ring" id="orbitEarth"></div>
+      <div class="orbit-ring" id="orbitMars"></div>
+      <div class="orbit-ring orbit-ring-belt" id="orbitAsteroidBelt"></div>
+      <div class="orbit-ring" id="orbitJupiter"></div>
+      <div class="orbit-ring" id="orbitSaturn"></div>
+      <div class="orbit-ring" id="orbitUranus"></div>
+      <div class="orbit-ring" id="orbitNeptune"></div>
+
+      <div class="orbit-spin spin-mercury" id="spinMercury">
+        <div class="orbit-face face-mercury">
+          <div class="planet planet-mercury"><div class="planet-surface"></div></div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-venus" id="spinVenus">
+        <div class="orbit-face face-venus">
+          <div class="planet planet-venus"><div class="planet-surface"></div></div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-earth" id="spinEarth">
+        <div class="orbit-face face-earth">
+          <div class="planet planet-earth">
+            <div class="planet-surface"></div>
+            <div class="planet-clouds"></div>
+          </div>
+          <div class="moon-orbit moon-orbit-earth">
+            <div class="moon moon-earth"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-mars" id="spinMars">
+        <div class="orbit-face face-mars">
+          <div class="planet planet-mars"><div class="planet-surface"></div></div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-jupiter" id="spinJupiter">
+        <div class="orbit-face face-jupiter">
+          <div class="planet planet-jupiter"><div class="planet-surface"></div></div>
+          <div class="moon-orbit moon-orbit-io"><div class="moon moon-jupiter"></div></div>
+          <div class="moon-orbit moon-orbit-europa"><div class="moon moon-jupiter"></div></div>
+          <div class="moon-orbit moon-orbit-ganymede"><div class="moon moon-jupiter"></div></div>
+          <div class="moon-orbit moon-orbit-callisto"><div class="moon moon-jupiter"></div></div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-saturn" id="spinSaturn">
+        <div class="orbit-face face-saturn">
+          <div class="saturn-ring saturn-ring-back"></div>
+          <div class="planet planet-saturn"><div class="planet-surface"></div></div>
+          <div class="saturn-ring saturn-ring-front"></div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-uranus" id="spinUranus">
+        <div class="orbit-face face-uranus">
+          <div class="uranus-ring"></div>
+          <div class="planet planet-uranus"><div class="planet-surface"></div></div>
+        </div>
+      </div>
+
+      <div class="orbit-spin spin-neptune" id="spinNeptune">
+        <div class="orbit-face face-neptune">
+          <div class="planet planet-neptune"><div class="planet-surface"></div></div>
+        </div>
+      </div>
+   </div>
+   <div id="bgParticles" class="bg-canvas-layer"><canvas id="bgParticlesCanvas"></canvas></div>
+   <div id="bgVignette"></div>
+   <div id="bgGrain"></div>
+</div>
+<svg style="display:none">
+   <symbol id="icon-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H2v6h4l5 4V5Z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /></symbol>
+   <symbol id="icon-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="4" /></symbol>
+   <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" /></symbol>
+   <symbol id="icon-apps-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></symbol>
+   <symbol id="icon-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" /></symbol>
+   <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></symbol>
+   <symbol id="icon-notepad" viewBox="0 0 24 24"><path d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" /></symbol>
+   <symbol id="icon-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></symbol>
+   <symbol id="icon-calculator" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01" /></symbol>
+   <symbol id="icon-file-explorer" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" /></symbol>
+   <symbol id="icon-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-8-8-2Z" /></symbol>
+   <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+   <symbol id="icon-check" viewBox="0 0 24 24"><path d="M4 12l5 5L20 6" /></symbol>
+</svg>
+ <div id="app">
 
       <div id="backendBanner">
          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1130,10 +127,7 @@
          <div class="waveform idle" id="waveform" aria-hidden="true"></div>
          <div class="titlebar-actions">
             <button class="icon-btn" id="soundBtn" title="UI sound effects" aria-label="Toggle UI sound effects">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <path d="M11 5 6 9H2v6h4l5 4V5Z" />
-                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-               </svg>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-sound"></use></svg>
             </button>
             <button class="icon-btn" id="muteBtn" title="Mute Sara's voice" aria-label="Mute Sara's voice">
                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1142,10 +136,7 @@
                </svg>
             </button>
             <button class="icon-btn" id="focusBtn" title="Focus mode" aria-label="Toggle focus mode">
-               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <circle cx="12" cy="12" r="9" />
-                  <circle cx="12" cy="12" r="4" />
-               </svg>
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-focus"></use></svg>
             </button>
             <button class="icon-btn stop-ic" id="stopSaraBtn" title="Stop Sara (interrupt speech)" aria-label="Stop Sara speaking">
                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1189,89 +180,25 @@
                      <span>Home</span>
                   </button></li>
                <li data-page="chat"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" />
-                     </svg>
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-chat"></use></svg>
                      <span>Chat</span>
-                  </button></li>
-               <li data-page="voice"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <rect x="9" y="2" width="6" height="12" rx="3" />
-                        <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
-                     </svg>
-                     <span>Voice Command</span>
                   </button></li>
                <li data-page="reminders"><button>
                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
                         <path d="M13.7 21a2 2 0 0 1-3.4 0" />
                      </svg>
-                     <span>Reminders</span>
-                  </button></li>
-               <li data-page="notes"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path
-                           d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
-                        <path d="M14 3v4.5c0 .8.7 1.5 1.5 1.5H20" />
-                     </svg>
-                     <span>Notes</span><span class="nav-badge">New</span>
-                  </button></li>
-               <li data-page="websearch"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <circle cx="11" cy="11" r="7" />
-                        <path d="m21 21-4.3-4.3" />
-                     </svg>
-                     <span>Web Search</span>
-                  </button></li>
-               <li data-page="system"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M4 21v-7M4 10V3M12 21v-11M12 6V3M20 21v-5M20 12V3" />
-                        <path d="M2 14h4M8 6h8M18 16h4" />
-                     </svg>
-                     <span>System Control</span>
+                     <span>Reminders &amp; Notes</span>
                   </button></li>
                <li data-page="apps"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                        <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                        <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                        <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                     </svg>
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-apps-grid"></use></svg>
                      <span>Apps &amp; Tools</span>
-                  </button></li>
-               <li data-page="brain"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path
-                           d="M12 3a4 4 0 0 0-4 4v1a3 3 0 0 0-2 5 3 3 0 0 0 1 5.5A4 4 0 0 0 11 21h1a4 4 0 0 0 4-3.5 3 3 0 0 0 1-5.5 3 3 0 0 0-2-5V7a4 4 0 0 0-4-4Z" />
-                        <path d="M9 8h6M8 13h8M9 17h6" />
-                     </svg>
-                     <span>AI Brain</span>
-                  </button></li>
-               <li data-page="memory"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <ellipse cx="12" cy="5" rx="8" ry="3" />
-                        <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
-                        <path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
-                     </svg>
-                     <span>Memory</span>
                   </button></li>
                <li data-page="automation"><button>
                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
                      </svg>
                      <span>Automation</span>
-                  </button></li>
-               <li data-page="analytics"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M4 20V10M12 20V4M20 20v-7" />
-                     </svg>
-                     <span>Analytics</span>
-                  </button></li>
-               <li data-page="diagnostics"><button>
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                     </svg>
-                     <span>Diagnostics</span>
                   </button></li>
                <li data-page="settings"><button>
                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1291,7 +218,7 @@
                <div class="home-layout">
                   <div class="home-main">
                      <div class="hero">
-                        <h1 id="greetingText">Good evening, <span id="greetingName">friend</span> 👋</h1>
+                        <h1 id="greetingText"><span id="greetingWord">Good evening</span>, <span id="greetingName">friend</span> <span id="greetingEmoji">🌙</span></h1>
                         <p>Wake her up, or let her rest — she's listening whenever you need her.</p>
                      </div>
 
@@ -1305,20 +232,14 @@
                               <div class="orb-rim"></div>
                               <div class="orb-ripples" id="orbRipples"></div>
                               <button class="orb-hit" id="orbBtn" title="Tap to wake Sara" aria-label="Tap to wake Sara">
-                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <rect x="9" y="2" width="6" height="12" rx="3" />
-                                    <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
-                                 </svg>
+                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-mic"></use></svg>
                               </button>
                            </div>
                            <div class="orb-status" id="orbStatus" aria-live="polite">Listening for the wake word</div>
                            <div class="orb-hint" id="orbHint">Say "Sara", tap the orb, or press Wake below.</div>
                            <div class="orb-actions">
                               <button class="btn btn-primary" id="wakeBtn">
-                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <rect x="9" y="2" width="6" height="12" rx="3" />
-                                    <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
-                                 </svg>
+                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-mic"></use></svg>
                                  Wake Sara
                               </button>
                               <button class="btn btn-ghost" id="pauseBtn">
@@ -1335,10 +256,7 @@
                      <div class="quick-grid" id="quickActions">
                         <button class="qa-card" data-action="search_web">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" aria-hidden="true">
-                                 <circle cx="11" cy="11" r="7" />
-                                 <path d="m21 21-4.3-4.3" />
-                              </svg></div>
+                                 stroke-width="2" aria-hidden="true"><use href="#icon-search"></use></svg></div>
                            <b>Web Search</b><span>Search anything on the web</span>
                         </button>
                         <button class="qa-card" data-goto="reminders">
@@ -1350,12 +268,7 @@
                         </button>
                         <button class="qa-card" data-action="open_chrome">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" aria-hidden="true">
-                                 <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                                 <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                                 <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                                 <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                              </svg></div>
+                                 stroke-width="2" aria-hidden="true"><use href="#icon-apps-grid"></use></svg></div>
                            <b>Open App</b><span>Launch any app or tool</span>
                         </button>
                         <button class="qa-card" data-action="system_info">
@@ -1367,10 +280,7 @@
                         </button>
                         <button class="qa-card" data-goto="notes">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" aria-hidden="true">
-                                 <path
-                                    d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
-                              </svg></div>
+                                 stroke-width="2" aria-hidden="true"><use href="#icon-notepad"></use></svg></div>
                            <b>Quick Note</b><span>Write down your thoughts</span>
                         </button>
                         <button class="qa-card" data-cmd="take a screenshot">
@@ -1392,11 +302,7 @@
                         </button>
                         <button class="qa-card" data-action="play_music">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" aria-hidden="true">
-                                 <path d="M9 18V5l12-2v13" />
-                                 <circle cx="6" cy="18" r="3" />
-                                 <circle cx="18" cy="16" r="3" />
-                              </svg></div>
+                                 stroke-width="2" aria-hidden="true"><use href="#icon-music"></use></svg></div>
                            <b>Play Music</b><span>Start something to listen to</span>
                         </button>
                         <button class="qa-card" data-cmd="lock the pc">
@@ -1409,10 +315,7 @@
                         </button>
                         <button class="qa-card" id="qaFocus" aria-label="Toggle Focus mode">
                            <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                                 stroke-width="2" aria-hidden="true">
-                                 <circle cx="12" cy="12" r="9" />
-                                 <circle cx="12" cy="12" r="4" />
-                              </svg></div>
+                                 stroke-width="2" aria-hidden="true"><use href="#icon-focus"></use></svg></div>
                            <b>Focus Mode</b><span>Quiet non-essential alerts</span>
                         </button>
                      </div>
@@ -1436,6 +339,17 @@
                         </div>
                      </div>
 
+                     <div class="card side-card" id="networkCard">
+                        <h3>Network</h3>
+                        <div class="weather-row">
+                           <div class="weather-temp mono" id="statNetDown" style="font-size:22px;">-- Mbps</div>
+                           <div class="weather-meta">
+                              <b>Download</b>
+                              <span id="statNetUp">↑ -- Mbps</span>
+                           </div>
+                        </div>
+                     </div>
+
                      <div class="card side-card player-pro" id="playerCard">
                         <div class="pp-head">
                            <h3 style="margin-bottom:0;">Now Playing</h3>
@@ -1456,11 +370,13 @@
                         </div>
                         <div class="pp-body" id="ppBody">
                            <div class="pp-art-wrap">
+                              <canvas class="sara-player-spectrum" id="ppSpectrum" aria-hidden="true"></canvas>
                               <div class="pp-art" id="ppArt">
                                  <div class="eq-bars" aria-hidden="true">
                                     <span></span><span></span><span></span><span></span>
                                  </div>
                               </div>
+                              <div class="pp-art-beat-glow" id="ppArtGlow" aria-hidden="true"></div>
                            </div>
                            <div class="pp-info">
                               <div class="pp-title-wrap" id="ppTitleWrap"><b id="ppTitle">No media is currently playing</b></div>
@@ -1469,8 +385,20 @@
                            </div>
                         </div>
                         <div class="pp-progress">
-                           <input type="range" id="ppSeek" min="0" max="100" value="0" step="1" aria-label="Seek position" disabled>
+                           <div class="pp-seek-wrap" id="ppSeekWrap">
+                              <div class="pp-seek-track"><div class="pp-seek-fill" id="ppSeekFill"></div></div>
+                              <input type="range" id="ppSeek" min="0" max="100" value="0" step="1" aria-label="Seek position" disabled>
+                              <div class="pp-seek-tooltip" id="ppSeekTooltip">0:00</div>
+                           </div>
                            <div class="pp-times"><span id="ppCurTime">0:00</span><span id="ppDurTime">0:00</span></div>
+                        </div>
+                        <div class="sara-player-volume-row">
+                           <svg class="sara-player-volume-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-sound"></use></svg>
+                           <div class="sara-player-volume-wrap" id="saraPlayerVolumeWrap">
+                              <div class="sara-player-volume-track"><div class="sara-player-volume-fill" id="saraPlayerVolumeFill"></div></div>
+                              <input type="range" id="ppVolume" min="0" max="100" value="70" step="1" aria-label="Volume">
+                              <div class="sara-player-volume-bubble" id="saraPlayerVolumeBubble">70%</div>
+                           </div>
                         </div>
                         <div class="pp-controls">
                            <button class="pp-toggle" id="ppShuffle" title="Shuffle" aria-label="Toggle shuffle" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1481,8 +409,8 @@
                               </svg></button>
                            <button class="pp-play" id="ppPlayPause" title="Play/Pause" aria-label="Play or pause"><svg viewBox="0 0 24 24"
                                  fill="currentColor" id="ppPlayIcon" aria-hidden="true">
-                                 <path d="M8 5v14l11-7z" />
-                              </svg></button>
+                                 <path id="ppPlayPath" d="M8 5v14l11-7z" />
+                              </svg><span class="pp-play-spark" id="ppPlaySpark" aria-hidden="true">✦</span></button>
                            <button id="ppNext" title="Next" aria-label="Next track"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                  <path d="M18 6h-2v12h2zM4 6v12l9-6z" />
                               </svg></button>
@@ -1492,6 +420,17 @@
                            <button id="ppStop" title="Stop" aria-label="Stop playback"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                                  <rect x="6" y="6" width="12" height="12" />
                               </svg></button>
+                        </div>
+                        <button class="sara-player-queue-handle" id="saraPlayerQueueHandle" aria-expanded="false" aria-controls="ppQueueList">
+                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                              <path d="m6 9 6 6 6-6" />
+                           </svg>
+                           <span>Up Next</span>
+                        </button>
+                        <div class="sara-player-queue-panel" id="ppQueueList">
+                           <div class="empty sara-player-queue-empty">
+                              <p>Nothing queued yet.</p>
+                           </div>
                         </div>
                      </div>
 
@@ -1508,25 +447,16 @@
                         <h3>Quick Tools <a id="viewAllTools">View All ›</a></h3>
                         <div class="qt-grid">
                            <button class="qt-btn" data-cmd="open calculator"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                 <rect x="4" y="2" width="16" height="20" rx="2" />
-                                 <path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01" />
-                              </svg>Calculator</button>
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-calculator"></use></svg>Calculator</button>
                            <button class="qt-btn" data-cmd="open notepad"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                 <path
-                                    d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
-                              </svg>Notepad</button>
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-notepad"></use></svg>Notepad</button>
                            <button class="qt-btn" data-cmd="open calendar"><svg viewBox="0 0 24 24" fill="none"
                                  stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <rect x="3" y="4" width="18" height="17" rx="2" />
                                  <path d="M3 9h18M8 2v4M16 2v4" />
                               </svg>Calendar</button>
                            <button class="qt-btn" data-cmd="open file explorer"><svg viewBox="0 0 24 24" fill="none"
-                                 stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                 <path
-                                    d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-                              </svg>File Explorer</button>
+                                 stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-file-explorer"></use></svg>File Explorer</button>
                            <button class="qt-btn" data-cmd="shutdown the pc"><svg viewBox="0 0 24 24" fill="none"
                                  stroke="currentColor" stroke-width="2" aria-hidden="true">
                                  <path d="M12 2v8" />
@@ -1559,174 +489,39 @@
                <div class="chat-input-bar">
                   <input type="text" id="chatInput" placeholder="Type a message or give a command…">
                   <button class="mic-btn" id="chatMicBtn" title="Tap to speak" aria-label="Tap to speak">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <rect x="9" y="2" width="6" height="12" rx="3" />
-                        <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
-                     </svg>
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-mic"></use></svg>
                   </button>
                   <button class="send-btn" id="chatSendBtn" title="Send" aria-label="Send message">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="m3 11 18-8-8 18-2-8-8-2Z" />
-                     </svg>
+                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-send"></use></svg>
                   </button>
-               </div>
-            </section>
-
-            <section class="page" id="page-voice">
-               <div class="page-head">
-                  <h2>Voice Command</h2>
-                  <p>Tap the orb or say the wake word to talk to Sara.</p>
-               </div>
-               <div class="voice-stage">
-                  <div class="orb-universe" id="orbWrap2" style="width:230px; height:230px;">
-                     <div class="orb-halo"></div>
-                     <div class="orb-core"></div>
-                     <div class="orb-stars" id="orbStars2"></div>
-                     <div class="orb-glow"></div>
-                     <div class="orb-rim"></div>
-                     <div class="orb-ripples" id="orbRipples2"></div>
-                     <button class="orb-hit" id="orbBtn2" title="Tap to speak" aria-label="Tap to speak">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <rect x="9" y="2" width="6" height="12" rx="3" />
-                           <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M9 22h6" />
-                        </svg>
-                     </button>
-                  </div>
-                  <div class="orb-status" id="voiceStatus" style="margin-top:6px;" aria-live="polite">Tap to speak</div>
-                  <div class="orb-hint" id="voiceHint">Sara will respond out loud once she hears you</div>
-                  <div class="voice-transcript" id="voiceTranscript"></div>
                </div>
             </section>
 
             <section class="page" id="page-reminders">
                <div class="page-head">
-                  <h2>Reminders</h2>
-                  <p>Everything Sara will remind you about, on time.</p>
+                  <h2>Reminders &amp; Notes</h2>
+                  <p>Everything Sara reminds you about, and your quick thoughts, in one place.</p>
                </div>
-               <div class="list-toolbar">
-                  <button class="btn btn-primary" id="addReminderBtn">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14M5 12h14" />
-                     </svg>
-                     Add Reminder
-                  </button>
-               </div>
-               <div id="reminderList"></div>
-            </section>
-
-            <section class="page" id="page-notes">
-               <div class="page-head">
-                  <h2>Notes</h2>
-                  <p>Quick thoughts, saved instantly.</p>
-               </div>
-               <div class="card section-gap">
-                  <div class="field" style="margin-bottom:12px;">
-                     <textarea id="noteInput" placeholder="Write down your thoughts…"></textarea>
-                  </div>
-                  <div style="display:flex; justify-content:flex-end;">
-                     <button class="btn btn-primary" id="saveNoteBtn">Save Note</button>
-                  </div>
-               </div>
-               <div id="notesList"></div>
-            </section>
-
-            <section class="page" id="page-websearch">
-               <div class="page-head">
-                  <h2>Web Search</h2>
-                  <p>Search anything — Sara opens it in your browser.</p>
-               </div>
-               <div class="search-bar">
-                  <input type="text" id="searchInput" placeholder="Search anything on the web…">
-                  <button class="btn btn-primary" id="searchBtn">
-                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <circle cx="11" cy="11" r="7" />
-                        <path d="m21 21-4.3-4.3" />
-                     </svg>
-                     Search
-                  </button>
-               </div>
-               <p class="search-hint">Sara routes this through her own web search tool, the same as saying it out loud.
-               </p>
-               <div class="chat-window" id="searchLog" style="max-height:340px; min-height:0;">
-                  <div class="msg sara">Ask me to search anything — try "search the web for today's weather in Ajmer".
-                  </div>
-               </div>
-            </section>
-
-            <section class="page" id="page-system">
-               <div class="page-head">
-                  <h2>System Control</h2>
-                  <p>Live machine stats and quick system actions.</p>
-               </div>
-               <div class="stat-grid">
-                  <div class="card stat-card">
-                     <div class="top"><span>CPU</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2" aria-hidden="true">
-                           <rect x="6" y="6" width="12" height="12" rx="2" />
-                           <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3" />
-                        </svg></div>
-                     <div class="stat-val mono" id="statCpu">--%</div>
-                     <div class="bar-track">
-                        <div class="bar-fill" id="statCpuBar" style="width:0%"></div>
+               <div class="two-col">
+                  <div>
+                     <div class="list-toolbar">
+                        <button class="btn btn-primary" id="addReminderBtn">
+                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                           Add Reminder
+                        </button>
                      </div>
+                     <div id="reminderList"></div>
                   </div>
-                  <div class="card stat-card">
-                     <div class="top"><span>Memory</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2" aria-hidden="true">
-                           <rect x="3" y="7" width="18" height="10" rx="2" />
-                           <path d="M7 7v10M11 7v10M15 7v10" />
-                        </svg></div>
-                     <div class="stat-val mono" id="statRam">--%</div>
-                     <div class="bar-track">
-                        <div class="bar-fill" id="statRamBar" style="width:0%"></div>
+                  <div>
+                     <div class="card section-gap">
+                        <div class="field" style="margin-bottom:12px;">
+                           <textarea id="noteInput" placeholder="Write down your thoughts…"></textarea>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end;">
+                           <button class="btn btn-primary" id="saveNoteBtn"><span class="sara-btn-label">Save Note</span><svg class="sara-btn-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><use href="#icon-check"></use></svg></button>
+                        </div>
                      </div>
-                  </div>
-                  <div class="card stat-card">
-                     <div class="top"><span>Storage</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2" aria-hidden="true">
-                           <ellipse cx="12" cy="5" rx="8" ry="3" />
-                           <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
-                        </svg></div>
-                     <div class="stat-val mono" id="statDisk">--%</div>
-                     <div class="stat-sub" id="statDiskSub">-- GB / -- GB</div>
-                     <div class="bar-track">
-                        <div class="bar-fill" id="statDiskBar" style="width:0%"></div>
-                     </div>
-                  </div>
-                  <div class="card stat-card">
-                     <div class="top"><span>Network</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                           stroke-width="2" aria-hidden="true">
-                           <path d="M5 12.5a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0" />
-                           <path d="M12 19.5v.01" />
-                        </svg></div>
-                     <div class="stat-val mono" id="statNetDown">-- Mbps</div>
-                     <div class="stat-sub" id="statNetUp">↑ -- Mbps</div>
-                  </div>
-               </div>
-               <div class="card section-gap">
-                  <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Quick Actions</h3>
-                  <div class="sys-actions-grid">
-                     <button class="qt-btn" id="wifiToggleBtn" style="justify-content:center; padding:13px;"><svg
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="M5 12.5a11 11 0 0 1 14 0M8.5 16a6 6 0 0 1 7 0" />
-                           <path d="M12 19.5v.01" />
-                        </svg>Toggle Wi-Fi</button>
-                     <button class="qt-btn" data-cmd="lock the pc" style="justify-content:center; padding:13px;"><svg
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <rect x="4" y="10" width="16" height="11" rx="2" />
-                           <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                        </svg>Lock PC</button>
-                     <button class="qt-btn" data-cmd="shutdown the pc"
-                        style="justify-content:center; padding:13px;"><svg viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="M12 2v8" />
-                           <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
-                        </svg>Shutdown</button>
-                     <button class="qt-btn" data-action="system_info" style="justify-content:center; padding:13px;"><svg
-                           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <circle cx="12" cy="12" r="9" />
-                           <path d="M12 16v-4M12 8h.01" />
-                        </svg>System Info</button>
+                     <div id="notesList"></div>
                   </div>
                </div>
             </section>
@@ -1735,6 +530,19 @@
                <div class="page-head">
                   <h2>Apps &amp; Tools</h2>
                   <p>One tap to launch anything on your machine.</p>
+               </div>
+               <div class="card side-card section-gap" id="webSearchMiniCard">
+                  <h3>Web Search</h3>
+                  <div class="search-bar">
+                     <input type="text" id="searchInput" placeholder="Search anything on the web…">
+                     <button class="btn btn-primary" id="searchBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-search"></use></svg>
+                        Search
+                     </button>
+                  </div>
+                  <div class="chat-window" id="searchLog" style="max-height:220px; min-height:0; margin-top:10px;">
+                     <div class="msg sara">Ask me to search anything — try "search the web for today's weather in Ajmer".</div>
+                  </div>
                </div>
                <div class="apps-grid">
                   <button class="card app-tile" data-cmd="open chrome">
@@ -1749,10 +557,7 @@
                         </svg></div><b>Calculator</b><span>Quick math</span>
                   </button>
                   <button class="card app-tile" data-cmd="open notepad">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path
-                              d="M4 19.5V4.8c0-1 .8-1.8 1.8-1.8h9.6L20 7.5v12c0 1-.8 1.8-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19.5Z" />
-                        </svg></div><b>Notepad</b><span>Plain text</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-notepad"></use></svg></div><b>Notepad</b><span>Plain text</span>
                   </button>
                   <button class="card app-tile" data-cmd="open calendar">
                      <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1760,22 +565,13 @@
                         </svg></div><b>Calendar</b><span>Your schedule</span>
                   </button>
                   <button class="card app-tile" data-cmd="open file explorer">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-                        </svg></div><b>File Explorer</b><span>Browse files</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-file-explorer"></use></svg></div><b>File Explorer</b><span>Browse files</span>
                   </button>
                   <button class="card app-tile" data-action="play_music">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="M9 18V5l12-2v13" />
-                           <circle cx="6" cy="18" r="3" />
-                           <circle cx="18" cy="16" r="3" />
-                        </svg></div><b>Music</b><span>Play something</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-music"></use></svg></div><b>Music</b><span>Play something</span>
                   </button>
                   <button class="card app-tile" data-cmd="open whatsapp">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path
-                              d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" />
-                        </svg></div><b>WhatsApp</b><span>Send a message</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-chat"></use></svg></div><b>WhatsApp</b><span>Send a message</span>
                   </button>
                   <button class="card app-tile" data-cmd="screen vision">
                      <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1864,21 +660,13 @@
                         </svg></div><b>IP Address</b><span>Your network address</span>
                   </button>
                   <button class="card app-tile" data-cmd="turn on airplane mode">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="m3 11 18-8-8 18-2-8-8-2Z" />
-                        </svg></div><b>Airplane Mode</b><span>Toggle flight mode</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-send"></use></svg></div><b>Airplane Mode</b><span>Toggle flight mode</span>
                   </button>
                   <button class="card app-tile" data-cmd-template="search for {value}" data-prompt-title="Web Search" data-prompt-label="What do you want to search?" data-prompt-placeholder="e.g. best pizza near me">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <circle cx="11" cy="11" r="7" />
-                           <path d="m21 21-4.3-4.3" />
-                        </svg></div><b>Web Search</b><span>Search anything</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-search"></use></svg></div><b>Web Search</b><span>Search anything</span>
                   </button>
                   <button class="card app-tile" data-cmd-template="calculate {value}" data-prompt-title="Quick Calculation" data-prompt-label="What should I calculate?" data-prompt-placeholder="e.g. 45 * 12 + 8">
-                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <rect x="4" y="2" width="16" height="20" rx="2" />
-                           <path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01" />
-                        </svg></div><b>Calculator</b><span>Quick calculation</span>
+                     <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-calculator"></use></svg></div><b>Calculator</b><span>Quick calculation</span>
                   </button>
                   <button class="card app-tile" data-cmd-template="open {value}" data-prompt-title="Open Website" data-prompt-label="Which website? (full domain)" data-prompt-placeholder="e.g. google.com">
                      <div class="qa-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1907,14 +695,35 @@
                </div>
             </section>
 
-            <section class="page" id="page-brain">
+            <section class="page" id="page-automation">
                <div class="page-head">
-                  <h2>AI Brain</h2>
-                  <p>Language, voice, and model behaviour.</p>
+                  <h2>Automation</h2>
+                  <p>Chain multiple actions together, then run them with one command — or on a schedule.</p>
                </div>
-               <div class="two-col">
+               <div class="card">
+                  <div class="list-toolbar" style="justify-content:space-between; margin-bottom:14px;">
+                     <h3 style="font-size:13px; color:var(--text-md);">Routines</h3>
+                     <button class="btn btn-primary" id="addRoutineBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                        Create Routine
+                     </button>
+                  </div>
+                  <div id="routinesList"></div>
+               </div>
+               <div class="card section-gap" style="margin-top:16px;">
+                  <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Scheduled reminders</h3>
+                  <div id="automationList"></div>
+               </div>
+            </section>
+
+            <section class="page" id="page-settings">
+               <div class="page-head">
+                  <h2>Settings</h2>
+                  <p>General preferences for Sara.</p>
+               </div>
+               <div class="two-col section-gap">
                   <div class="card">
-                     <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Reply Language</h3>
+                     <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Reply Language &amp; Voice</h3>
                      <div class="lang-pick" id="langPick">
                         <div class="lang-opt" data-lang="auto"><b>Auto</b><span>Detect per turn</span></div>
                         <div class="lang-opt" data-lang="en"><b>English</b><span>Manual</span></div>
@@ -1940,148 +749,6 @@
                         from this local model — nothing is sent anywhere else.
                      </p>
                   </div>
-               </div>
-            </section>
-
-            <section class="page" id="page-memory">
-               <div class="page-head">
-                  <h2>Memory</h2>
-                  <p>How much of Sara's short-term conversation memory is in use.</p>
-               </div>
-               <div class="card section-gap">
-                  <div class="mem-ring-wrap">
-                     <svg class="mem-ring" viewBox="0 0 120 120">
-                        <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="11" />
-                        <circle id="memRingFill" cx="60" cy="60" r="50" fill="none" stroke="url(#memGrad)"
-                           stroke-width="11" stroke-linecap="round" stroke-dasharray="314" stroke-dashoffset="314"
-                           transform="rotate(-90 60 60)" />
-                        <defs>
-                           <linearGradient id="memGrad" x1="0" y1="0" x2="1" y2="1">
-                              <stop offset="0%" stop-color="#3b82f6" />
-                              <stop offset="55%" stop-color="#8b5cf6" />
-                              <stop offset="100%" stop-color="#ec4899" />
-                           </linearGradient>
-                        </defs>
-                        <text x="60" y="66" text-anchor="middle" fill="#eef0f8" font-size="22" font-weight="700"
-                           font-family="Space Grotesk" id="memRingLabel">--%</text>
-                     </svg>
-                     <div class="mem-stats">
-                        <div class="mem-stat-row"><span>Exchanges stored</span><span id="memExchanges">-- / --</span>
-                        </div>
-                        <div class="mem-stat-row"><span>Approx. size</span><span id="memSize">-- MB</span></div>
-                        <div class="mem-stat-row"><span>Status</span><span id="memStatus">Loading…</span></div>
-                     </div>
-                  </div>
-               </div>
-               <div class="card">
-                  <h3 style="font-size:13px; margin-bottom:12px; color:var(--text-md);">Export</h3>
-                  <p style="font-size:12.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">Saves your
-                     recent conversation history to memory_export.json next to the app.</p>
-                  <button class="btn btn-primary" id="exportBtn">Export Memory</button>
-               </div>
-               <div class="card">
-                  <h3 style="font-size:13px; margin-bottom:12px; color:var(--text-md);">Sara Moments</h3>
-                  <p style="font-size:12.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">A shareable snapshot of your journey with Sara so far.</p>
-                  <button class="btn btn-primary" id="shareMomentsBtn">✨ View my Sara Moments</button>
-               </div>
-            </section>
-
-            <section class="page" id="page-automation">
-               <div class="page-head">
-                  <h2>Automation</h2>
-                  <p>Chain multiple actions together, then run them with one command — or on a schedule.</p>
-               </div>
-               <div class="card">
-                  <div class="list-toolbar" style="justify-content:space-between; margin-bottom:14px;">
-                     <h3 style="font-size:13px; color:var(--text-md);">Routines</h3>
-                     <button class="btn btn-primary" id="addRoutineBtn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="M12 5v14M5 12h14" />
-                        </svg>
-                        Create Routine
-                     </button>
-                  </div>
-                  <div id="routinesList"></div>
-               </div>
-               <div class="card section-gap" style="margin-top:16px;">
-                  <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Scheduled reminders</h3>
-                  <div id="automationList"></div>
-               </div>
-            </section>
-
-            <section class="page" id="page-analytics">
-               <div class="page-head">
-                  <h2>Analytics</h2>
-                  <p>How you've been using Sara — commands, trends, and conversations.</p>
-               </div>
-
-               <div class="stat-grid-3">
-                  <div class="card stat-card">
-                     <div class="top"><span>Total Commands</span><svg viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="M4 20V10M12 20V4M20 20v-7" />
-                        </svg></div>
-                     <div class="stat-val mono" id="anTotalCommands">--</div>
-                  </div>
-                  <div class="card stat-card">
-                     <div class="top"><span>Conversations</span><svg viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path
-                              d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-1L3 20l1-5.5A8.5 8.5 0 1 1 21 11.5Z" />
-                        </svg></div>
-                     <div class="stat-val mono" id="anTotalMessages">--</div>
-                  </div>
-                  <div class="card stat-card">
-                     <div class="top"><span>Proactive Nudges</span><svg viewBox="0 0 24 24" fill="none"
-                           stroke="currentColor" stroke-width="2" aria-hidden="true">
-                           <path d="m13 2-9 12h6l-1 8 9-12h-6l1-8Z" />
-                        </svg></div>
-                     <div class="stat-val mono" id="anTotalProactive">--</div>
-                  </div>
-               </div>
-
-               <div class="card section-gap">
-                  <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Most-Used Commands</h3>
-                  <div id="anTopCommands"></div>
-               </div>
-
-               <div class="card section-gap">
-                  <h3 style="font-size:13px; margin-bottom:6px; color:var(--text-md);">Activity — Last 14 Days</h3>
-                  <p style="font-size:11.5px; color:var(--text-lo); margin-bottom:10px;">Counts commands sent through
-                     chat, quick actions, and web search. Purely voice-triggered commands aren't included here.</p>
-                  <div class="an-trend-chart" id="anTrendChart"></div>
-               </div>
-
-               <div class="two-col section-gap">
-                  <div class="card">
-                     <h3 style="font-size:13px; margin-bottom:6px; color:var(--text-md);">Conversation Stats</h3>
-                     <div id="anConversationStats"></div>
-                  </div>
-                  <div class="card">
-                     <h3 style="font-size:13px; margin-bottom:6px; color:var(--text-md);">Proactive Stats</h3>
-                     <div id="anProactiveStats"></div>
-                  </div>
-               </div>
-            </section>
-
-            <section class="page" id="page-diagnostics">
-               <div class="page-head">
-                  <h2>Diagnostics</h2>
-                  <p>Ollama, models, aur voice files check karo — kabhi bhi manually.</p>
-               </div>
-               <div class="card">
-                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Setup Check</h3>
-                  <p style="font-size:12.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">
-                     Ollama update/reinstall karne ke baad, ya kabhi bhi confirm karna ho ki sab kuch (LLM backend, chat model, notes search model, voice files) sahi se kaam kar raha hai — ye check chala do.
-                  </p>
-                  <button class="btn btn-primary" id="rerunSetupBtn">Re-run Setup Check</button>
-               </div>
-            </section>
-
-            <section class="page" id="page-settings">
-               <div class="page-head">
-                  <h2>Settings</h2>
-                  <p>General preferences for Sara.</p>
                </div>
                <div class="card section-gap">
                   <h3 style="font-size:13px; margin-bottom:14px; color:var(--text-md);">Mode</h3>
@@ -2157,6 +824,8 @@
                   <div class="model-row"><span>Reminder heads-ups</span><span id="proactiveReminder">0</span></div>
                   <div class="model-row"><span>Break suggestions</span><span id="proactiveIdleBreak">0</span></div>
                   <div class="model-row"><span>Streak milestones</span><span id="proactiveStreak">0</span></div>
+                  <div class="model-row"><span>Meeting heads-ups</span><span id="proactiveMeeting">0</span></div>
+                  <div class="model-row"><span>Routine announcements</span><span id="proactiveRoutine">0</span></div>
                   <div id="proactiveRecentList" style="margin-top:14px; font-size:11.5px; color:var(--text-lo); line-height:1.6;">
                      No proactive activity yet.
                   </div>
@@ -2176,13 +845,6 @@
                      Checking calendar connection…
                   </p>
                   <div id="calendarEventsList" style="display:none; font-size:11.5px; color:var(--text-lo); line-height:1.6;"></div>
-               </div>
-               <div class="card section-gap" style="margin-top:16px;">
-                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Setup Diagnostics</h3>
-                  <p style="font-size:11.5px; color:var(--text-lo); margin-bottom:14px; line-height:1.5;">
-                     Ollama, models, aur voice files dobara check karo — Ollama update/reinstall ke baad useful.
-                  </p>
-                  <button class="btn btn-primary" id="rerunSetupBtnSettings">Re-run Setup Check</button>
                </div>
                <div class="card section-gap" style="margin-top:16px;">
                   <div class="field" style="margin-bottom:0;">
@@ -2211,6 +873,24 @@
         Restart Sara for skill changes to fully take effect.
     </p>
 </div>
+               <div class="card section-gap" style="margin-top:16px;">
+                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Memory &amp; Data</h3>
+                  <div class="model-row"><span>Conversation memory used</span><span id="memoryPct">—</span></div>
+                  <div class="model-row"><span>Exchanges stored</span><span id="memoryExchanges">—</span></div>
+                  <div class="model-row"><span>Approx. size</span><span id="memorySizeMb">—</span></div>
+                  <div class="model-row"><span>Day streak</span><span id="shareStreak">—</span></div>
+                  <div class="model-row"><span>Total messages</span><span id="shareTotalMessages">—</span></div>
+                  <div class="model-row"><span>Days using Sara</span><span id="shareDaysUsed">—</span></div>
+                  <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+                     <button class="btn btn-primary" id="exportMemoryBtn">Export Memory</button>
+                  </div>
+               </div>
+               <div class="card section-gap" style="margin-top:16px;">
+                  <h3 style="font-size:13px; margin-bottom:10px; color:var(--text-md);">Usage Analytics</h3>
+                  <div class="model-row"><span>Total commands</span><span id="analyticsTotal">0</span></div>
+                  <div class="model-row"><span>Busiest day (last 14d)</span><span id="analyticsBusiestDay">—</span></div>
+                  <div id="analyticsTopCommands" style="margin-top:10px; font-size:11.5px; color:var(--text-lo); line-height:1.8;"></div>
+               </div>
             </section>
 
          </main>
@@ -2236,7 +916,7 @@
          </div>
          <div class="modal-actions">
             <button class="btn btn-ghost" id="remCancel">Cancel</button>
-            <button class="btn btn-primary" id="remSave">Save Reminder</button>
+            <button class="btn btn-primary" id="remSave"><span class="sara-btn-label">Save Reminder</span><svg class="sara-btn-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><use href="#icon-check"></use></svg></button>
          </div>
       </div>
    </div>
@@ -2304,647 +984,8 @@
 
    <div class="toast-stack" id="toastStack"></div>
 
-   <div class="moments-overlay hidden" id="momentsOverlay">
-      <div class="moments-backdrop" id="momentsBackdrop"></div>
-      <div class="moments-modal">
-         <div class="moments-card" id="momentsCard">
-            <div class="moments-card-glow"></div>
-            <div class="moments-card-header">
-               <span class="moments-spark">✨</span>
-               <span class="moments-title">My Sara Moments</span>
-            </div>
-            <div class="moments-stat-hero">
-               <div class="moments-stat-num" id="momentsStreak">0</div>
-               <div class="moments-stat-label">day streak</div>
-            </div>
-            <div class="moments-grid">
-               <div class="moments-grid-item">
-                  <div class="moments-grid-num" id="momentsMessages">0</div>
-                  <div class="moments-grid-label">conversations</div>
-               </div>
-               <div class="moments-grid-item">
-                  <div class="moments-grid-num" id="momentsDays">0</div>
-                  <div class="moments-grid-label">days together</div>
-               </div>
-               <div class="moments-grid-item">
-                  <div class="moments-grid-num" id="momentsNudges">0</div>
-                  <div class="moments-grid-label">proactive nudges</div>
-               </div>
-            </div>
-            <div class="moments-card-footer">Sara AI · Personal Assistant</div>
-         </div>
-         <div class="moments-actions">
-            <button class="btn btn-ghost" id="momentsClose">Close</button>
-            <button class="btn btn-primary" id="momentsSave">📸 Save as Image</button>
-         </div>
-      </div>
-   </div>
-
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-   <script src="js/app.js?v=6"></script>
-   <script>
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-         function addRipple(e) {
-            if (prefersReducedMotion) return;
-            var el = e.currentTarget;
-            var rect = el.getBoundingClientRect();
-            var size = Math.max(rect.width, rect.height);
-            var ripple = document.createElement('span');
-            ripple.className = 'sara-ripple';
-            ripple.style.width = ripple.style.height = size + 'px';
-            var x = (e.clientX !== undefined ? e.clientX - rect.left : rect.width / 2) - size / 2;
-            var y = (e.clientY !== undefined ? e.clientY - rect.top : rect.height / 2) - size / 2;
-            ripple.style.left = x + 'px';
-            ripple.style.top = y + 'px';
-            var computedPosition = window.getComputedStyle(el).position;
-            if (computedPosition === 'static') {
-               el.style.position = 'relative';
-            }
-            el.style.overflow = el.style.overflow || 'hidden';
-            el.appendChild(ripple);
-            setTimeout(function () {
-               if (ripple.parentNode) ripple.parentNode.removeChild(ripple);
-            }, 600);
-         }
-
-         var rippleTargets = document.querySelectorAll(
-            '.qa-card, .app-tile, .qt-btn, .btn, button.icon-btn, .mode-opt'
-         );
-         rippleTargets.forEach(function (el) {
-            el.addEventListener('click', addRipple);
-         });
-
-         if (!prefersReducedMotion && window.matchMedia && window.matchMedia('(pointer: fine)').matches) {
-            var tiltTargets = document.querySelectorAll('.qa-card, .app-tile');
-            tiltTargets.forEach(function (el) {
-               el.style.willChange = 'transform';
-               el.addEventListener('mousemove', function (e) {
-                  var rect = el.getBoundingClientRect();
-                  var px = (e.clientX - rect.left) / rect.width - 0.5;
-                  var py = (e.clientY - rect.top) / rect.height - 0.5;
-                  el.style.transform = 'perspective(600px) rotateX(' + (py * -6) + 'deg) rotateY(' + (px * 6) + 'deg) translateY(-3px)';
-                  var icon = el.querySelector('.qa-icon');
-                  if (icon) icon.style.transform = 'translate(' + (px * 6) + 'px,' + (py * 6) + 'px)';
-               });
-               el.addEventListener('mouseleave', function () {
-                  el.style.transform = '';
-                  var icon = el.querySelector('.qa-icon');
-                  if (icon) icon.style.transform = '';
-               });
-            });
-         }
-      })();
-   </script>
-   <script>
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (!prefersReducedMotion) {
-            document.addEventListener('mousemove', function (e) {
-               var el = e.target.closest && e.target.closest('.qa-card, .app-tile');
-               if (!el) return;
-               var rect = el.getBoundingClientRect();
-               el.style.setProperty('--mx', ((e.clientX - rect.left) / rect.width * 100) + '%');
-               el.style.setProperty('--my', ((e.clientY - rect.top) / rect.height * 100) + '%');
-            });
-         }
-      })();
-   </script>
-   <script>
-      (function () {
-         var canvas = document.getElementById('saraParticles');
-         if (!canvas || !canvas.getContext) return;
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) { canvas.style.display = 'none'; return; }
-
-         var ctx = canvas.getContext('2d');
-         var dpr = Math.min(window.devicePixelRatio || 1, 2);
-         var particles = [];
-         var running = true;
-         var COLORS = ['rgba(139,92,246,', 'rgba(236,72,153,', 'rgba(59,130,246,'];
-
-         function resize() {
-            canvas.width = window.innerWidth * dpr;
-            canvas.height = window.innerHeight * dpr;
-            canvas.style.width = window.innerWidth + 'px';
-            canvas.style.height = window.innerHeight + 'px';
-            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            var target = Math.round((window.innerWidth * window.innerHeight) / 22000);
-            target = Math.max(18, Math.min(target, 60));
-            while (particles.length < target) particles.push(makeParticle());
-            particles.length = target;
-         }
-
-         function makeParticle() {
-            return {
-               x: Math.random() * window.innerWidth,
-               y: Math.random() * window.innerHeight,
-               r: Math.random() * 1.6 + 0.4,
-               vx: (Math.random() - 0.5) * 0.12,
-               vy: (Math.random() - 0.5) * 0.12,
-               a: Math.random() * 0.5 + 0.15,
-               tw: Math.random() * Math.PI * 2,
-               color: COLORS[(Math.random() * COLORS.length) | 0]
-            };
-         }
-
-         function step() {
-            if (!running) return;
-            ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-            for (var i = 0; i < particles.length; i++) {
-               var p = particles[i];
-               p.x += p.vx;
-               p.y += p.vy;
-               p.tw += 0.02;
-               if (p.x < -5) p.x = window.innerWidth + 5;
-               if (p.x > window.innerWidth + 5) p.x = -5;
-               if (p.y < -5) p.y = window.innerHeight + 5;
-               if (p.y > window.innerHeight + 5) p.y = -5;
-               var alpha = p.a * (0.6 + 0.4 * Math.sin(p.tw));
-               ctx.beginPath();
-               ctx.fillStyle = p.color + alpha.toFixed(3) + ')';
-               ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-               ctx.fill();
-            }
-            requestAnimationFrame(step);
-         }
-
-         document.addEventListener('visibilitychange', function () {
-            running = !document.hidden;
-            if (running) requestAnimationFrame(step);
-         });
-
-         window.addEventListener('resize', resize);
-         resize();
-         requestAnimationFrame(step);
-      })();
-   </script>
-   <script>
-      (function () {
-         var log = document.getElementById('chatLog');
-         var typingEl = null;
-
-         window.saraShowTyping = function () {
-            if (!log || typingEl) return;
-            typingEl = document.createElement('div');
-            typingEl.className = 'msg sara typing';
-            typingEl.innerHTML = '<span class="msg-text"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
-            log.appendChild(typingEl);
-            log.scrollTop = log.scrollHeight;
-         };
-
-         window.saraHideTyping = function () {
-            if (typingEl && typingEl.parentNode) {
-               typingEl.parentNode.removeChild(typingEl);
-            }
-            typingEl = null;
-         };
-      })();
-   </script>
-   <script>
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         var COLORS = ['#8b5cf6', '#ec4899', '#3b82f6'];
-
-         function burst(x, y) {
-            var count = 10;
-            for (var i = 0; i < count; i++) {
-               var p = document.createElement('span');
-               p.className = 'sara-burst-particle';
-               var angle = (Math.PI * 2 * i) / count + Math.random() * 0.3;
-               var dist = 30 + Math.random() * 30;
-               p.style.setProperty('--bx', Math.cos(angle) * dist + 'px');
-               p.style.setProperty('--by', Math.sin(angle) * dist + 'px');
-               p.style.left = x + 'px';
-               p.style.top = y + 'px';
-               p.style.background = COLORS[i % COLORS.length];
-               document.body.appendChild(p);
-               (function (el) {
-                  setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 650);
-               })(p);
-            }
-         }
-
-         document.addEventListener('click', function (e) {
-            var el = e.target.closest && e.target.closest('.btn-primary, #orbBtn, #orbBtn2');
-            if (!el) return;
-            burst(e.clientX, e.clientY);
-         });
-      })();
-   </script>
-   <script>
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         var ids = [
-            'statCpu', 'statRam', 'statDisk', 'statNetDown', 'statNetUp',
-            'anTotalCommands', 'anTotalMessages', 'anTotalProactive',
-            'memRingLabel', 'memExchanges', 'memSize',
-            'wTemp', 'proactiveTotal', 'proactiveBattery', 'proactiveReminder',
-            'proactiveIdleBreak', 'proactiveStreak'
-         ];
-         ids.forEach(function (id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            var lastText = el.textContent;
-            var ring = id === 'memRingLabel' ? document.querySelector('.mem-ring') : null;
-            var obs = new MutationObserver(function () {
-               if (el.textContent === lastText) return;
-               lastText = el.textContent;
-               el.classList.remove('sara-value-tick', 'sara-value-roll');
-               void el.offsetWidth;
-               el.classList.add('sara-value-tick', 'sara-value-roll');
-               if (ring) {
-                  ring.classList.remove('sara-ring-glow');
-                  void ring.offsetWidth;
-                  ring.classList.add('sara-ring-glow');
-               }
-            });
-            obs.observe(el, { childList: true, characterData: true, subtree: true });
-         });
-      })();
-   </script>
-   <script>
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         var navList = document.getElementById('navList');
-         if (navList && !prefersReducedMotion) {
-            var navObs = new MutationObserver(function (mutations) {
-               mutations.forEach(function (m) {
-                  if (m.type !== 'attributes' || m.attributeName !== 'class') return;
-                  var li = m.target;
-                  if (li.classList.contains('active')) {
-                     var svg = li.querySelector('svg');
-                     if (!svg) return;
-                     svg.classList.remove('sara-pop');
-                     void svg.getBBox && svg.getBBox();
-                     svg.classList.add('sara-pop');
-                  }
-               });
-            });
-            navList.querySelectorAll('li').forEach(function (li) {
-               navObs.observe(li, { attributes: true });
-            });
-         }
-
-         if (!prefersReducedMotion) {
-            document.querySelectorAll('.empty').forEach(function (el) {
-               el.classList.add('sara-skel');
-            });
-         }
-      })();
-   </script>
-   <script>
-      // 1) window.saraCelebrate() — a confetti burst, ready for future use.
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         var COLORS = ['#8b5cf6', '#ec4899', '#3b82f6', '#22d3ee', '#facc15'];
-         window.saraCelebrate = function (count) {
-            if (prefersReducedMotion) return;
-            count = count || 60;
-            for (var i = 0; i < count; i++) {
-               var el = document.createElement('span');
-               el.className = 'sara-confetti';
-               el.style.left = Math.random() * 100 + 'vw';
-               el.style.background = COLORS[(Math.random() * COLORS.length) | 0];
-               el.style.setProperty('--rot', (Math.random() * 360) + 'deg');
-               el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
-               el.style.animationDuration = (2.2 + Math.random() * 1.6) + 's';
-               el.style.animationDelay = (Math.random() * 0.4) + 's';
-               document.body.appendChild(el);
-               (function (node) {
-                  setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 4200);
-               })(el);
-            }
-         };
-      })();
-
-      // 2) Inject animated bars into the titlebar waveform element.
-      (function () {
-         var wf = document.getElementById('waveform');
-         if (!wf || wf.querySelector('.sara-wave-bar')) return;
-         for (var i = 0; i < 5; i++) {
-            var bar = document.createElement('span');
-            bar.className = 'sara-wave-bar';
-            wf.appendChild(bar);
-         }
-      })();
-
-      // 3) Send button: brief "paper plane fly" class toggle on click.
-      (function () {
-         var sendBtn = document.getElementById('chatSendBtn');
-         if (!sendBtn) return;
-         sendBtn.addEventListener('click', function () {
-            sendBtn.classList.remove('sara-sending');
-            void sendBtn.offsetWidth;
-            sendBtn.classList.add('sara-sending');
-            setTimeout(function () { sendBtn.classList.remove('sara-sending'); }, 420);
-         });
-      })();
-
-      // 4) Magnetic pull for the home/voice orb buttons.
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         var isFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
-         if (prefersReducedMotion || !isFinePointer) return;
-         ['orbBtn', 'orbBtn2'].forEach(function (id) {
-            var btn = document.getElementById(id);
-            if (!btn) return;
-            btn.addEventListener('mousemove', function (e) {
-               var rect = btn.getBoundingClientRect();
-               var mx = (e.clientX - rect.left - rect.width / 2) * 0.18;
-               var my = (e.clientY - rect.top - rect.height / 2) * 0.18;
-               btn.style.transform = 'translate(' + mx + 'px,' + my + 'px)';
-            });
-            btn.addEventListener('mouseleave', function () {
-               btn.style.transform = 'translate(0,0)';
-            });
-         });
-      })();
-
-      // 5) Typewriter caret on the hero subtitle line under the greeting.
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         var hero = document.querySelector('.hero p');
-         if (hero) hero.classList.add('sara-type-caret');
-      })();
-   </script>
-   <script>
-      // ── Batch 3: liquid nav pill, text-scramble greeting, aurora parallax, orb audio rings,
-      //    modal wobble-on-open, magnetic pull for every primary button ──
-
-      // 1) Liquid sliding pill behind the active sidebar item
-      (function () {
-         var navList = document.getElementById('navList');
-         if (!navList) return;
-         var pill = document.createElement('div');
-         pill.className = 'sara-nav-pill';
-         navList.insertBefore(pill, navList.firstChild);
-         function movePill() {
-            var activeLi = navList.querySelector('li.active');
-            if (!activeLi) { pill.style.height = '0'; return; }
-            pill.style.height = activeLi.offsetHeight + 'px';
-            pill.style.transform = 'translateY(' + activeLi.offsetTop + 'px)';
-         }
-         movePill();
-         window.addEventListener('resize', movePill);
-         var navObs = new MutationObserver(function (mutations) {
-            var changed = false;
-            mutations.forEach(function (m) { if (m.type === 'attributes' && m.attributeName === 'class') changed = true; });
-            if (changed) movePill();
-         });
-         navList.querySelectorAll('li').forEach(function (li) { navObs.observe(li, { attributes: true }); });
-      })();
-
-      // 2) Text-scramble reveal for the greeting name on load
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         var nameEl = document.getElementById('greetingName');
-         if (!nameEl || prefersReducedMotion) return;
-         var finalText = nameEl.textContent;
-         var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-         var frame = 0, totalFrames = 14;
-         nameEl.classList.add('sara-scrambling');
-         var timer = setInterval(function () {
-            frame++;
-            var revealCount = Math.floor((frame / totalFrames) * finalText.length);
-            var out = '';
-            for (var i = 0; i < finalText.length; i++) {
-               if (finalText[i] === ' ') { out += ' '; continue; }
-               out += i < revealCount ? finalText[i] : chars[(Math.random() * chars.length) | 0];
-            }
-            nameEl.textContent = out;
-            if (frame >= totalFrames) { clearInterval(timer); nameEl.textContent = finalText; nameEl.classList.remove('sara-scrambling'); }
-         }, 45);
-      })();
-
-      // 3) Aurora background: mouse-reactive parallax glow
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         var raf = null, mx = 50, my = 50;
-         document.addEventListener('mousemove', function (e) {
-            mx = (e.clientX / window.innerWidth) * 100;
-            my = (e.clientY / window.innerHeight) * 100;
-            if (raf) return;
-            raf = requestAnimationFrame(function () {
-               document.documentElement.style.setProperty('--sara-mx', mx + '%');
-               document.documentElement.style.setProperty('--sara-my', my + '%');
-               raf = null;
-            });
-         });
-      })();
-
-      // 4) Voice orb: inject an extra audio-reactive ring, active only while listening
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         ['orbWrap', 'orbWrap2'].forEach(function (id) {
-            var wrap = document.getElementById(id);
-            if (!wrap || wrap.querySelector('.sara-audio-ring')) return;
-            var ring = document.createElement('div');
-            ring.className = 'sara-audio-ring';
-            ring.style.animationDelay = '0.4s';
-            wrap.appendChild(ring);
-         });
-      })();
-
-      // 5) Modal: elastic wobble right after each open
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         document.querySelectorAll('.modal-backdrop').forEach(function (backdrop) {
-            var modal = backdrop.querySelector('.modal');
-            if (!modal) return;
-            var obs = new MutationObserver(function () {
-               if (backdrop.classList.contains('open')) {
-                  modal.classList.remove('sara-wobble');
-                  void modal.offsetWidth;
-                  modal.classList.add('sara-wobble');
-               }
-            });
-            obs.observe(backdrop, { attributes: true, attributeFilter: ['class'] });
-         });
-      })();
-
-      // 6) Magnetic pull for every primary button
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         var isFinePointer = window.matchMedia && window.matchMedia('(pointer: fine)').matches;
-         if (prefersReducedMotion || !isFinePointer) return;
-         document.querySelectorAll('.btn-primary').forEach(function (el) {
-            el.addEventListener('mousemove', function (e) {
-               var rect = el.getBoundingClientRect();
-               var mx = (e.clientX - rect.left - rect.width / 2) * 0.08;
-               var my = (e.clientY - rect.top - rect.height / 2) * 0.08;
-               el.style.transform = 'translate(' + mx + 'px,' + my + 'px)';
-            });
-            el.addEventListener('mouseleave', function () { el.style.transform = ''; });
-         });
-      })();
-   </script>
-   <script>
-      // ── Batch 4: 4 new animation types ──
-      // 1) Floating gradient "lava lamp" blobs — pure ambient atmosphere, sits behind the
-      //    aurora and particle layers.
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         var wrap = document.getElementById('saraBlobs');
-         if (!wrap || prefersReducedMotion) return;
-         var COLORS = ['#8b5cf6', '#ec4899', '#3b82f6', '#22d3ee'];
-         var COUNT = 5;
-         for (var i = 0; i < COUNT; i++) {
-            var blob = document.createElement('div');
-            blob.className = 'sara-blob';
-            var size = 220 + Math.random() * 220;
-            blob.style.width = size + 'px';
-            blob.style.height = size + 'px';
-            blob.style.left = (Math.random() * 90) + 'vw';
-            blob.style.top = (Math.random() * 90) + 'vh';
-            blob.style.background = COLORS[i % COLORS.length];
-            blob.style.animationDuration = (18 + Math.random() * 14) + 's';
-            blob.style.animationDelay = (Math.random() * -20) + 's';
-            wrap.appendChild(blob);
-         }
-      })();
-
-      // 2) List stagger cascade — dynamically-rendered list rows fade/rise in one after
-      //    another instead of popping in as a block. Watches the containers app.js rewrites
-      //    wholesale (innerHTML = ...) and re-applies a staggered delay to each direct child
-      //    every time the content changes.
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         var containers = [
-            'reminderList', 'notesList', 'routinesList', 'automationList',
-            'sideReminders', 'anTopCommands', 'anTrendChart'
-         ];
-         var SAVE_BTN = { reminderList: 'remSave', notesList: 'saveNoteBtn' };
-         containers.forEach(function (id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            var prevCount = el.children.length;
-            function applyStagger() {
-               var children = el.children;
-               for (var i = 0; i < children.length; i++) {
-                  var child = children[i];
-                  child.classList.remove('sara-list-stagger-item');
-                  void child.offsetWidth;
-                  child.style.animationDelay = (i * 0.05) + 's';
-                  child.classList.add('sara-list-stagger-item');
-               }
-               var btnId = SAVE_BTN[id];
-               if (btnId && children.length > prevCount) {
-                  var btn = document.getElementById(btnId);
-                  if (btn) {
-                     btn.classList.remove('sara-btn-processing', 'sara-check-pop');
-                     void btn.offsetWidth;
-                     btn.classList.add('sara-check-pop');
-                     setTimeout(function () { btn.classList.remove('sara-check-pop'); }, 450);
-                  }
-               }
-               prevCount = children.length;
-            }
-            applyStagger();
-            var obs = new MutationObserver(applyStagger);
-            obs.observe(el, { childList: true });
-         });
-         ['remSave', 'saveNoteBtn'].forEach(function (id) {
-            var btn = document.getElementById(id);
-            if (!btn) return;
-            btn.addEventListener('click', function () {
-               btn.classList.add('sara-btn-processing');
-               setTimeout(function () { btn.classList.remove('sara-btn-processing'); }, 4000);
-            });
-         });
-      })();
-   </script>
-   <script>
-      // ── Batch 5: toggle bounce + confetti hookup for Sara Moments ──
-
-      // 1) Any .toggle switch gets a quick elastic bounce on click.
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         document.addEventListener('click', function (e) {
-            var el = e.target.closest && e.target.closest('.toggle');
-            if (!el) return;
-            el.classList.remove('sara-bounce');
-            void el.offsetWidth;
-            el.classList.add('sara-bounce');
-         });
-      })();
-
-      // 2) Fire the existing (previously unused) saraCelebrate() confetti burst the moment
-      //    the Sara Moments card opens — one deliberate celebratory beat, not scattered.
-      (function () {
-         var overlay = document.getElementById('momentsOverlay');
-         if (!overlay) return;
-         var wasHidden = overlay.classList.contains('hidden');
-         var obs = new MutationObserver(function () {
-            var isHidden = overlay.classList.contains('hidden');
-            if (wasHidden && !isHidden && window.saraCelebrate) {
-               window.saraCelebrate(70);
-            }
-            wasHidden = isHidden;
-         });
-         obs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
-      })();
-   </script>
-   <script>
-      // ── Batch 6: orb state machine + audio hook + streaming smoothing ──
-      (function () {
-         var STATES = ['idle', 'listening', 'thinking', 'speaking', 'success', 'error'];
-         var STATUS_TEXT = {
-            idle: 'Listening for the wake word', listening: 'Listening…',
-            thinking: 'Thinking…', speaking: 'Speaking…',
-            success: 'Done', error: 'Something went wrong'
-         };
-         window.saraSetOrbState = function (state) {
-            if (STATES.indexOf(state) === -1) return;
-            document.querySelectorAll('.orb-universe').forEach(function (o) {
-               STATES.forEach(function (s) { o.classList.remove(s); });
-               if (state !== 'idle') o.classList.add(state);
-            });
-            var wf = document.getElementById('waveform');
-            if (wf) wf.classList.toggle('active', state === 'listening' || state === 'speaking');
-            ['orbStatus', 'voiceStatus'].forEach(function (id) {
-               var el = document.getElementById(id);
-               if (el) el.textContent = STATUS_TEXT[state];
-            });
-            if (state === 'success' || state === 'error') {
-               setTimeout(function () { window.saraSetOrbState('idle'); }, 900);
-            }
-         };
-         // Hook: call with a 0–1 amplitude value from your mic/TTS audio source.
-         window.saraSetAudioLevel = function (level) {
-            document.documentElement.style.setProperty('--sara-audio', Math.max(0, Math.min(1, level || 0)));
-         };
-      })();
-      (function () {
-         var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-         if (prefersReducedMotion) return;
-         ['chatLog', 'searchLog'].forEach(function (id) {
-            var log = document.getElementById(id);
-            if (!log) return;
-            var pending = null;
-            var obs = new MutationObserver(function () {
-               var last = log.lastElementChild;
-               if (!last) return;
-               clearTimeout(pending);
-               pending = setTimeout(function () {
-                  last.classList.remove('sara-stream-tick');
-                  void last.offsetWidth;
-                  last.classList.add('sara-stream-tick');
-               }, 30);
-            });
-            obs.observe(log, { childList: true, characterData: true, subtree: true });
-         });
-      })();
-   </script>
+   <script src="js/background.js?v=1"></script>
+   <script src="js/app.js?v=7"></script>
 </body>
 
 </html>

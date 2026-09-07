@@ -15,6 +15,7 @@ content = r"""# ==========================================
 credentials.json
 token.json
 secrets.json
+analytics_usage.json
 
 *.pem
 *.key

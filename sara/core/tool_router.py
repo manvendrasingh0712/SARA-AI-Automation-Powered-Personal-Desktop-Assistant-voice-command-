@@ -16,16 +16,6 @@ the old keyword heuristic if the LLM call is unavailable, times out, or
 fails for any reason -- same "never block, always degrade gracefully"
 shape used everywhere else in this codebase (RAG, proactive rephrasing,
 skills auto-discovery, etc).
-
-WHY THIS FILE CHANGED (v3 -- Bug 1 fix, "what is my girlfriend's name"
-getting routed to calculator):
-_TOOL_KEYWORD_GATE used to contain the BARE substrings "what is" and
-"what's". Any message containing them -- even purely personal/factual
-ones -- passed has_probable_tool_intent() and got sent to the small
-local model (qwen3:4b) for tool-call resolution, which then frequently
-hallucinated a `calculator` call because that tool's description is
-the closest semantic match to "what is ...?" phrasing. Three things
-changed to fix this, not just one, because the bug had two independent
 entry points:
   1. The gate itself (has_probable_tool_intent) -- "what is"/"what's"/
      "how much" now only count as a tool signal when the message ALSO
@@ -40,9 +30,28 @@ entry points:
   3. A defensive validation layer (_validate_tool_result) applied at
      the single return funnel in resolve_tool_call() -- rejects ANY
      resolved `calculator` call (from either the LLM path or the
-     heuristic path) whose `expr` has no digit/operator, downgrading it
-     to "unknown" (=no tool applies, fall back to normal chat) instead
-     of ever reaching the caller as a broken calculator call.
+     heuristic path) whose `expr` has no digit/operator, and ANY
+     resolved `open_url` call whose `url` isn't URL-shaped, downgrading
+     either to "unknown" (=no tool applies, fall back to normal chat)
+     instead of ever reaching the caller as a broken tool call.
+  4. All keyword/substring checks (gate + heuristic) now use \b
+     word-boundary regex matching instead of bare substring checks --
+     fixes false triggers like "training" matching "rain", "newsletter"
+     matching "news", "restart" matching "start", "visitor" matching
+     "visit".
+  5. A bounded-size thread pool + circuit breaker around the LLM
+     tool-call: if TOOL_CALLING_TIMEOUT_S is exceeded 3 turns in a row,
+     the LLM tool-call is skipped entirely (straight to heuristic) for a
+     cooldown window, so a hung/slow Ollama doesn't keep adding latency
+     turn after turn. NOTE: this does not cancel the already-hung
+     background request -- that will only clear once Ollama's own
+     client-side timeout (Config.OLLAMA_TIMEOUT) elapses. If chat itself
+     stops responding, check `ollama ps` / lower OLLAMA_TIMEOUT / set
+     TOOL_CALLING_MODE=heuristic temporarily to isolate the cause.
+  6. _extract_after_phrases()'s terminator regex no longer truncates on
+     a bare "." -- previously "3.5", "example.com" etc. were cut short
+     at the first period, silently breaking decimal calculator
+     expressions and open_url/web_search extraction.
 
 Toggle via Config.TOOL_CALLING_MODE:
     "llm"       (default) -- try the real LLM tool-call first, fall back
@@ -57,6 +66,8 @@ from __future__ import annotations
 
 import concurrent.futures
 import re
+import threading
+import time
 from typing import Any, Dict, Optional
 
 TOOL_NAME_TO_INTENT: Dict[str, str] = {
@@ -267,6 +278,17 @@ _TOOL_CALL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=2, thread_name_prefix="sara-tool-router"
 )
 
+# Circuit breaker: if the LLM tool-call times out this many turns IN A
+# ROW, skip the LLM entirely (go straight to heuristic) for a cooldown
+# window instead of paying the full timeout again on every subsequent
+# turn. Does NOT cancel an already-hung background request -- see the
+# module docstring (#5) for what that implies if Ollama is fully stuck.
+_CIRCUIT_BREAKER_THRESHOLD = 3
+_CIRCUIT_BREAKER_COOLDOWN_S = 30.0
+_circuit_breaker_lock = threading.Lock()
+_consecutive_timeouts = 0
+_circuit_open_until = 0.0
+
 
 class _FakeMatch:
     def __init__(self, groups: tuple[Any, ...]) -> None:
@@ -287,9 +309,26 @@ class _FakeMatch:
             return None
 
 
+def _kw_present(text: str, keywords) -> bool:
+    """
+    Word-boundary keyword check -- replaces bare `kw in text` substring
+    matching everywhere in this module. Fixes false triggers like
+    "training" matching "rain", "newsletter" matching "news", "restart"
+    matching "start", "visitor" matching "visit".
+    """
+    return any(re.search(rf"\b{re.escape(k.strip())}\b", text, re.IGNORECASE) for k in keywords)
+
+
 def _extract_after_phrases(text: str, phrases: tuple[str, ...]) -> str:
     for phrase in phrases:
-        match = re.search(rf"{re.escape(phrase)}\s+(.+?)(?:$|\?|\.|!|,)", text, re.IGNORECASE)
+        # BUGFIX: terminator used to include a bare "." which cut off any
+        # extracted value containing a period -- decimals ("3.5"),
+        # domains/URLs ("example.com"), versions ("3.11"), etc. A "."
+        # now only ends the capture when it's NOT immediately followed
+        # by a digit or another word character, so sentence-ending
+        # periods still work but "3.5" / "example.com" survive intact.
+        pattern = rf"\b{re.escape(phrase.strip())}\b\s+(.+?)(?:$|[?!,]|\.(?!\d)(?!\w))"
+        match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return match.group(1).strip()
     return ""
@@ -304,7 +343,7 @@ def _extract_after_phrases(text: str, phrases: tuple[str, ...]) -> str:
 
 _MATH_SIGNAL_RE = re.compile(
     r"\d"  # any digit
-    r"|[%+\-*/^]"  # arithmetic operator / percent symbol
+    r"|\d\s*[%+\-*/^]|[%+\-*/^]\s*\d"  # operator only counts if digit-adjacent
     r"|\b(plus|minus|times|divided|multiplied|"
     r"squared|cubed|square\s*root|cube\s*root|"
     r"percent|percentage|sum\s+of|product\s+of|"
@@ -315,12 +354,13 @@ _MATH_SIGNAL_RE = re.compile(
 
 def _has_math_signal(text: str) -> bool:
     """
-    True if `text` contains a digit, an arithmetic operator symbol, or a
-    spelled-out arithmetic keyword. Used both to gate the "what is"/
-    "what's"/"how much" phrases in has_probable_tool_intent() (does this
-    message even look like it MIGHT be a math question?) and to validate
-    a resolved calculator call's `expr` argument in _validate_tool_result
-    (is this actually something the calculator tool can evaluate?).
+    True if `text` contains a digit, an arithmetic operator symbol
+    adjacent to a digit, or a spelled-out arithmetic keyword. Used both
+    to gate the "what is"/"what's"/"how much" phrases in
+    has_probable_tool_intent() (does this message even look like it
+    MIGHT be a math question?) and to validate a resolved calculator
+    call's `expr` argument in _validate_tool_result (is this actually
+    something the calculator tool can evaluate?).
     """
     return bool(_MATH_SIGNAL_RE.search(text or ""))
 
@@ -375,18 +415,23 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
 # Flattened from every keyword/phrase trigger used in
 # _resolve_tool_call_heuristic() below -- kept as one frozenset (built
 # once at import time) purely so has_probable_tool_intent() is a single
-# fast "any of these substrings present?" scan, with zero I/O and no
-# model call. This is NOT a replacement for the heuristic's per-tool
-# logic (arguments still need the real function below, or the LLM path)
-# -- it only answers "does this message even mention anything
-# tool-shaped?", used by resolve_tool_call() to skip the LLM round-trip
-# entirely for ordinary conversation that obviously isn't asking for
+# fast "any of these keywords present?" scan, with zero I/O and no model
+# call. This is NOT a replacement for the heuristic's per-tool logic
+# (arguments still need the real function below, or the LLM path) -- it
+# only answers "does this message even mention anything tool-shaped?",
+# used by resolve_tool_call() to skip the LLM round-trip entirely for
+# ordinary conversation that obviously isn't asking for
 # weather/news/an app/a calculation/etc.
 #
 # NOTE (Bug 1 fix, v3): "what is"/"what's"/"how much" used to be bare
 # entries here -- REMOVED. They are now handled separately below via
 # _MATH_QUESTION_PHRASES + _has_math_signal(), so they only count as a
 # tool signal when actually paired with something math-shaped.
+#
+# NOTE (Bug 2 fix): trailing spaces ("open ", "launch ", "start ") are
+# gone -- _kw_present() below strips + word-boundary matches each entry,
+# so plain "open"/"launch"/"start"/etc. work correctly without relying
+# on substring adjacency tricks.
 _TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
     {
         "weather", "temperature", "rain", "forecast",
@@ -397,8 +442,8 @@ _TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
         "spotify",
         "screenshot", "describe",
         "clipboard",
-        "open ", "launch ", "start ",
-        "close ", "quit ", "exit ", "terminate ",
+        "open", "launch", "start",
+        "close", "quit", "exit", "terminate",
         "calculate",
     }
 )
@@ -418,13 +463,12 @@ def has_probable_tool_intent(user_input: str) -> bool:
     tools, not to replace the heuristic's real matching logic below.
     """
     lowered = (user_input or "").lower()
-    if any(kw in lowered for kw in _TOOL_KEYWORD_GATE):
+    if _kw_present(lowered, _TOOL_KEYWORD_GATE):
         return True
     # BUGFIX (Bug 1, fix #1): "what is"/"what's"/"how much" only count
     # as a tool signal when the message ALSO contains an actual
     # number/operator/math keyword -- e.g. "what is 5 + 3" or "what's
-    # 20% of 400" gate through, but "what is my girlfriend's name" does
-    # not. See module docstring for the full explanation.
+    # 20% of 400", not "what's my dog's name".
     if any(phrase in lowered for phrase in _MATH_QUESTION_PHRASES) and _has_math_signal(lowered):
         return True
     return False
@@ -441,49 +485,49 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
     text = (user_input or "").strip()
     lowered = text.lower()
 
-    if any(word in lowered for word in ("weather", "temperature", "rain", "forecast")):
-        location = _extract_after_phrases(lowered, ("weather in", "weather at", "in", "at"))
+    if _kw_present(lowered, ("weather", "temperature", "rain", "forecast")):
+        location = _extract_after_phrases(text, ("weather in", "weather at", "in", "at"))
         return {"name": "weather", "arguments": {"location": location}}
 
-    if any(word in lowered for word in ("news", "headlines", "latest news")):
-        topic = _extract_after_phrases(lowered, ("news about", "news on", "news for", "about"))
+    if _kw_present(lowered, ("news", "headlines", "latest news")):
+        topic = _extract_after_phrases(text, ("news about", "news on", "news for", "about"))
         return {"name": "news", "arguments": {"topic": topic}}
 
-    if any(phrase in lowered for phrase in ("search for", "look up", "google", "find out")):
-        query = _extract_after_phrases(lowered, ("search for", "look up", "find out", "google"))
+    if _kw_present(lowered, ("search for", "look up", "google", "find out")):
+        query = _extract_after_phrases(text, ("search for", "look up", "find out", "google"))
         return {"name": "web_search", "arguments": {"query": query or text}}
 
-    if "open url" in lowered or "visit" in lowered or re.search(r"https?://", lowered):
+    if _kw_present(lowered, ("open url", "visit")) or re.search(r"https?://", lowered):
         url = _extract_after_phrases(text, ("open url", "visit"))
         return {"name": "open_url", "arguments": {"url": url or text}}
 
-    if "youtube" in lowered and any(keyword in lowered for keyword in ("play", "show", "open")):
+    if _kw_present(lowered, ("youtube",)) and _kw_present(lowered, ("play", "show", "open")):
         query = _extract_after_phrases(text, ("play", "show", "open"))
         return {"name": "play_youtube", "arguments": {"query": query or text}}
 
-    if "spotify" in lowered and any(keyword in lowered for keyword in ("play", "listen to", "open")):
+    if _kw_present(lowered, ("spotify",)) and _kw_present(lowered, ("play", "listen to", "open")):
         query = _extract_after_phrases(text, ("play", "listen to", "open"))
         return {"name": "play_spotify", "arguments": {"query": query or text}}
 
-    if "screenshot" in lowered or ("screen" in lowered and "describe" in lowered):
+    if _kw_present(lowered, ("screenshot",)) or (_kw_present(lowered, ("screen",)) and _kw_present(lowered, ("describe",))):
         return {"name": "screenshot_describe", "arguments": {}}
 
-    if "clipboard" in lowered and any(keyword in lowered for keyword in ("read", "show", "what's on", "what is on")):
+    if _kw_present(lowered, ("clipboard",)) and _kw_present(lowered, ("read", "show", "what's on", "what is on")):
         return {"name": "clipboard_read", "arguments": {}}
 
-    if "clipboard" in lowered and any(keyword in lowered for keyword in ("copy", "write", "paste", "set")):
+    if _kw_present(lowered, ("clipboard",)) and _kw_present(lowered, ("copy", "write", "paste", "set")):
         snippet = _extract_after_phrases(text, ("copy", "write", "paste", "set"))
         return {"name": "clipboard_write", "arguments": {"text": snippet}}
 
-    if any(keyword in lowered for keyword in ("open ", "launch ", "start ")):
+    if _kw_present(lowered, ("open", "launch", "start")):
         app = _extract_after_phrases(text, ("open", "launch", "start"))
         return {"name": "open_app", "arguments": {"target": app}}
 
-    if any(keyword in lowered for keyword in ("close ", "quit ", "exit ", "terminate ")):
+    if _kw_present(lowered, ("close", "quit", "exit", "terminate")):
         app = _extract_after_phrases(text, ("close", "quit", "exit", "terminate"))
         return {"name": "close_app", "arguments": {"target": app}}
 
-    if any(keyword in lowered for keyword in ("calculate", "what is", "what's", "how much")):
+    if _kw_present(lowered, ("calculate", "what is", "what's", "how much")):
         expression = _extract_after_phrases(text, ("calculate", "what is", "what's", "how much is"))
         candidate_expr = expression or text
         # BUGFIX (Bug 1, fix #1 -- applied here too, not just the gate):
@@ -496,7 +540,7 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
         # still attempt the call even without a visible digit (e.g.
         # "calculate my BMI" needs a follow-up); _validate_tool_result()
         # in resolve_tool_call() is the final safety net either way.
-        if _has_math_signal(candidate_expr) or "calculate" in lowered:
+        if _has_math_signal(candidate_expr) or _kw_present(lowered, ("calculate",)):
             return {"name": "calculator", "arguments": {"expr": candidate_expr}}
         return {"name": "unknown", "arguments": {}}
 
@@ -504,24 +548,27 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Defensive validation layer (Bug 1, fix #2)
+# Defensive validation layer (Bug 1, fix #2 + Bug 3 fix)
 # ══════════════════════════════════════════════════════════════════════
+
+
+_URL_LIKE_RE = re.compile(r"^(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?$")
 
 
 def _validate_tool_result(result: Dict[str, Any], cfg=None) -> Dict[str, Any]:
     """
     Final safety net applied to EVERY resolved tool call, regardless of
     which path produced it (LLM tool-call or keyword heuristic). Rejects
-    a `calculator` call whose `expr` argument has no digit and no
-    arithmetic operator/keyword -- exactly the shape of a hallucinated
-    call (e.g. expr="the name of my girlfriend") -- and downgrades it to
-    {"name": "unknown", ...}. Callers already treat "unknown" as "no
-    tool applies, respond conversationally instead", so this never
-    surfaces a "can't calculate that" error to the user for what was
-    really just a normal question.
+    a `calculator` call whose `expr` has no digit/operator, and an
+    `open_url` call whose `url` isn't URL-shaped, downgrading either to
+    "unknown" (=no tool applies, fall back to normal chat) instead of
+    ever reaching the caller as a broken tool call.
     """
-    if result.get("name") == "calculator":
-        expr = str(result.get("arguments", {}).get("expr", ""))
+    name = result.get("name")
+    args = result.get("arguments", {})
+
+    if name == "calculator":
+        expr = str(args.get("expr", ""))
         if not _has_math_signal(expr):
             if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
                 print(
@@ -529,6 +576,17 @@ def _validate_tool_result(result: Dict[str, Any], cfg=None) -> Dict[str, Any]:
                     f"(no digits/operators in expr={expr!r}) -- falling back to chat."
                 )
             return {"name": "unknown", "arguments": {}}
+
+    if name == "open_url":
+        url = str(args.get("url", "")).strip()
+        if not _URL_LIKE_RE.match(url):
+            if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
+                print(
+                    f"[ToolRouter] Rejected non-URL-like open_url call "
+                    f"(url={url!r}) -- falling back to chat."
+                )
+            return {"name": "unknown", "arguments": {}}
+
     return result
 
 
@@ -542,8 +600,8 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
     """
     Return a resolved tool call candidate for an unmatched ("chat"
     intent) command. Every return path funnels through
-    _validate_tool_result() so the defensive calculator check (Bug 1,
-    fix #2) applies no matter which internal path resolved the call.
+    _validate_tool_result() so the defensive checks (Bug 1 fix #2, Bug 3
+    fix) apply no matter which internal path resolved the call.
     """
     if cfg is None:
         # Lazy import, mirroring the pattern used throughout this codebase
@@ -569,10 +627,20 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
         return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
 
     if mode == "llm":
+        global _consecutive_timeouts, _circuit_open_until
+
+        now = time.monotonic()
+        if now < _circuit_open_until:
+            if getattr(cfg, "DEBUG_MODE", False):
+                print("[ToolRouter] Circuit breaker open, skipping LLM call for this turn.")
+            return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
+
         timeout_s = float(getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 5.0))
         try:
             future = _TOOL_CALL_EXECUTOR.submit(_resolve_tool_call_llm, user_input, model_name, cfg)
             llm_result = future.result(timeout=timeout_s)
+            with _circuit_breaker_lock:
+                _consecutive_timeouts = 0
             if llm_result is not None:
                 # A calculator call the LLM hallucinated with no numeric
                 # content gets downgraded to "unknown" here -- that's a
@@ -582,6 +650,16 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
                 # same bad phrasing via its own "what is"/"what's" branch).
                 return _validate_tool_result(llm_result, cfg)
         except concurrent.futures.TimeoutError:
+            with _circuit_breaker_lock:
+                _consecutive_timeouts += 1
+                if _consecutive_timeouts >= _CIRCUIT_BREAKER_THRESHOLD:
+                    _circuit_open_until = time.monotonic() + _CIRCUIT_BREAKER_COOLDOWN_S
+                    _consecutive_timeouts = 0
+                    if getattr(cfg, "DEBUG_MODE", False):
+                        print(
+                            f"[ToolRouter] {_CIRCUIT_BREAKER_THRESHOLD} consecutive timeouts, "
+                            f"opening circuit breaker for {_CIRCUIT_BREAKER_COOLDOWN_S:.0f}s."
+                        )
             # BUGFIX: bare `TimeoutError` stringifies to an EMPTY string,
             # so the debug print below used to read
             # "...using heuristic fallback: " with nothing after the
@@ -594,7 +672,12 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
             # if the fallback firing often enough to be annoying: raise
             # Config.TOOL_CALLING_TIMEOUT_S in .env, or set
             # Config.TOOL_CALLING_MODE=heuristic to skip this LLM call
-            # entirely.
+            # entirely. NOTE: this does NOT cancel the background
+            # request already running against Ollama -- if Ollama itself
+            # is hung, that request keeps occupying its (usually serial)
+            # request queue until Config.OLLAMA_TIMEOUT elapses on the
+            # client side, which can make even normal chat responses
+            # stall in the meantime. Check `ollama ps` if this happens.
             if getattr(cfg, "DEBUG_MODE", False):
                 print(
                     f"[ToolRouter] LLM tool-call exceeded its "

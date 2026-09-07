@@ -1,98 +1,6 @@
 """
 sara/core/rag.py
 Long-term semantic memory (RAG) for Sara AI.
-
-WHY THIS FILE EXISTS
----------------------
-Before this module, Sara's ONLY memory was `SaraLLM._history` — a fixed
-deque of the last `Config.MAX_MEMORY_EXCHANGES` turns, wiped as soon as
-that window slides past. That means anything the user said more than a
-handful of turns ago (a preference mentioned once, a fact about
-themselves, something they asked to be remembered) was completely gone
-from the LLM's context — even though it was still sitting, unused, in
-`conversation_log` the whole time.
-
-This module gives Sara real long-term recall: every exchange is stored
-here AND semantically indexed, so a relevant memory from days ago can
-be pulled back into context on demand — "what's my dog's name again?"
-works even if that was mentioned three sessions ago.
-
-ARCHITECTURE
-------------
-  - One SQLite table `long_term_memory` (id, text, embedding BLOB,
-    source, timestamp), living in the SAME canonical DB file as
-    preferences/conversation_log/reminders (Config.DB_PATH) — this does
-    NOT create a new split-brain DB file (see database.py/reminders.py's
-    own DB_PATH fix for why that matters).
-  - Embeddings come from Ollama's own `/api/embeddings` endpoint (a
-    plain HTTP POST via urllib — no dependency on any particular
-    version of the `ollama` pip package, and no extra heavy ML library
-    like sentence-transformers). This reuses the Ollama server Sara
-    already depends on for chat; pull the embedding model once with:
-        ollama pull nomic-embed-text
-  - Embeddings are cached in RAM as one (N, D) numpy matrix, loaded once
-    at construction and appended to incrementally on writes. Cosine
-    similarity over an in-memory matrix is more than fast enough for a
-    single-user desktop assistant's memory size (thousands of rows) —
-    a real vector database would be overkill here.
-  - WRITES (add_memory) go through a background thread + queue, mirroring
-    gui_main.py's AsyncDBWriter pattern — a slow/unavailable embedding
-    call must never block the conversation loop. add_memory() enqueues
-    and returns immediately (fire-and-forget, matching log_message()'s
-    default elsewhere in this codebase).
-  - READS (search) run on the CALLING thread, since retrieval happens on
-    the hot path right before an LLM response — but the embedding call
-    itself is given a hard timeout (Config.EMBEDDING_TIMEOUT_S), and any
-    failure (Ollama down, model not pulled, timeout) makes search()
-    return an empty list rather than raising — a broken embedding
-    backend degrades Sara back to exactly her pre-RAG behavior, never a
-    crash or a hang.
-  - DELETES (delete_memory / clear_all) also go through the SAME
-    background writer thread/queue as add_memory(), tagged with a
-    leading string sentinel ("__DELETE__" / "__CLEAR__") so the writer
-    loop can tell an add-job from a delete-job apart without changing
-    the original (text, source, timestamp) job shape at all. Unlike
-    add_memory(), these support wait=True (default) via a
-    concurrent.futures.Future so a caller (the "forget that I like X"
-    / "forget everything" voice intents) can know for certain the
-    delete actually happened before telling the user it did.
-
-WHAT'S NEW IN THIS REVISION (Bug 2 fix -- "Sara doesn't remember facts")
--------------------------------------------------------------------------
-1. VISIBLE DIAGNOSTICS: every point where search()/add_memory() used to
-   fail silently (embedding call down, dimension mismatch, no rows
-   cleared the similarity threshold) now also prints a `[RAG] ...` line
-   whenever Config.DEBUG_MODE is True, in addition to the existing
-   logger calls -- so "why isn't Sara remembering this" is diagnosable
-   from the console instead of requiring log-level surgery.
-2. run_diagnostics(): a real, on-demand round-trip test -- confirms the
-   embedding model is actually reachable, then writes a throwaway probe
-   memory and confirms search() can find it back, cleaning up after
-   itself. Returns a structured result consumable by both console
-   output and the self_diagnostics voice skill.
-3. FACT EXTRACTION LAYER: maybe_extract_fact() -- a lightweight,
-   regex-based (NOT LLM-based, so it's instant and has zero extra
-   Ollama round-trips) detector for durable personal-fact statements
-   ("my girlfriend's name is Parul", "meri girlfriend ka naam Parul
-   hai", "I study at DPS Ajmer"). Matches are stored as their own
-   memory entry tagged source="fact", SEPARATE from the raw
-   "User said/Sara replied" exchange text that's already being
-   embedded -- so recall of a stated fact doesn't depend on lucky
-   semantic overlap with an entire Q&A pair. Fact-tagged rows use their
-   own, more permissive Config.RAG_FACT_MIN_SIMILARITY threshold in
-   search() (see the docstring on search() below for why).
-
-WHAT THIS IS NOT
------------------
-This is not a general-purpose document RAG system (no chunking
-strategy, no file ingestion pipeline) — it is specifically long-term
-CONVERSATIONAL memory. Feeding it documents/files is a reasonable
-future extension (the storage/retrieval core here would work
-unchanged) but is out of scope for this revision. The fact extractor
-above is also intentionally simple pattern-matching, not an LLM-based
-extractor -- it will miss facts phrased in ways the patterns don't
-cover. It's a floor, not a replacement for whatever your existing
-memory-consolidation pass (Config.MEMORY_CONSOLIDATION_*) does.
 """
 
 from __future__ import annotations
@@ -143,13 +51,6 @@ def _cosine_sim_batch(query_vec: np.ndarray, matrix: np.ndarray) -> np.ndarray:
 # Fact extraction (Bug 2 fix, item 3) -- pure regex, no model call.
 # ══════════════════════════════════════════════════════════════════════
 #
-# Each pattern maps to a normalized output sentence. Name-style facts
-# ("my girlfriend's name is Parul") are normalized as
-# "<Value> is the user's <label>." specifically because that phrasing
-# has strong lexical/semantic overlap with how the RECALL question will
-# actually be asked later ("who is Parul") -- maximizing the odds it
-# clears even the (already lowered) fact similarity threshold.
-
 _FACT_NAME_EN_RE = re.compile(
     r"\bmy\s+([a-zA-Z][a-zA-Z '\-]{1,40}?)'?s?\s+name\s+is\s+"
     r"([A-Za-z][A-Za-z '\-]{1,60})",
@@ -174,13 +75,7 @@ _FACT_GENERIC_STOPWORDS = frozenset({"bad", "pleasure", "fault", "point", "opini
 
 
 def _extract_fact_sentence(text: str) -> Optional[str]:
-    """
-    Returns a normalized fact sentence if `text` looks like the user
-    stating a durable personal fact, else None. Deliberately simple and
-    pattern-based (not LLM-based) -- see module docstring. Checked in
-    order from most to least specific so "my girlfriend's name is
-    Parul" hits the name pattern before the generic "my X is Y" one.
-    """
+   
     text = (text or "").strip()
     if not text:
         return None
@@ -581,17 +476,7 @@ class LongTermMemory:
                 print(f"[RAG] add_memory enqueue FAILED: {e}")
 
     def maybe_extract_fact(self, user_text: str) -> None:
-        """
-        Fire-and-forget: if `user_text` looks like the user stating a
-        durable personal fact ("my girlfriend's name is Parul", "meri
-        girlfriend ka naam Parul hai", "I study at DPS Ajmer"), stores a
-        distinct, normalized memory entry tagged source="fact" --
-        separate from the regular full-exchange embedding -- so recall
-        doesn't depend on lucky semantic overlap with an entire Q&A
-        exchange. Purely regex-based (see module docstring for why), so
-        this is effectively free to call on every user turn. Safe no-op
-        if nothing matches or RAG is disabled.
-        """
+        
         if not self.enabled:
             return
         fact_text = _extract_fact_sentence(user_text)
@@ -684,27 +569,7 @@ class LongTermMemory:
         top_k: Optional[int] = None,
         min_similarity: Optional[float] = None,
     ) -> List[MemoryHit]:
-        """
-        Returns up to `top_k` memories most semantically similar to
-        `query`, above a similarity threshold (cosine, 0-1). Returns an
-        empty list (never raises) if RAG is disabled, the query is
-        empty, the embedding backend is unavailable/times out, or
-        nothing clears the threshold.
-
-        PER-SOURCE THRESHOLD (Bug 2 fix, item 3): rows with
-        source="fact" (see maybe_extract_fact() above) are compared
-        against Config.RAG_FACT_MIN_SIMILARITY instead of the general
-        `min_similarity` -- a short, explicitly-stated fact like "Parul
-        is the user's girlfriend" against a query like "who is Parul"
-        genuinely tends to score lower on cosine similarity than a
-        topically-similar full conversational exchange would, simply
-        because there's so little text on either side to overlap. A
-        single lower threshold for ALL memories would either miss these
-        facts (threshold too high) or flood every search with loosely-
-        related conversational noise (threshold too low) -- splitting
-        it by source avoids that trade-off. `min_similarity` passed in
-        explicitly by a caller still overrides both defaults uniformly.
-        """
+    
         if not self.enabled or not query or not query.strip():
             return []
 
