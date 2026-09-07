@@ -134,17 +134,21 @@ for _name in _STUB_MODULES:
 # ---------------------------------------------------------------------------
 EXPECTED_METHODS = {
     "add_reminder",
+    "apply_mode",
     "check_setup_status",
     "close_window",
     "cycle_repeat_mode",
     "delete_reminder",
     "delete_routine",
+    "get_analytics_dashboard",
     "get_calendar_status",
     "get_today_calendar_events",
+    "get_display_name",
     "export_memory",
     "get_assistant_active",
     "get_media_status",
     "get_memory_stats",
+    "get_modes_status",
     "get_notes",
     "get_proactive_stats",
     "get_reminders",
@@ -159,6 +163,7 @@ EXPECTED_METHODS = {
     "list_routines",
     "mark_setup_wizard_seen",
     "minimize_window",
+    "record_command_usage",
     "run_action",
     "run_routine_now",
     "run_setup_fix",
@@ -167,6 +172,7 @@ EXPECTED_METHODS = {
     "seek_media",
     "send_text_command",
     "set_assistant_active",
+    "set_display_name",
     "set_focus_mode",
     "set_language",
     "set_mic_sensitivity",
@@ -186,8 +192,8 @@ EXPECTED_METHODS = {
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 51, (
-    "EXPECTED_METHODS must contain exactly 51 entries, found "
+assert len(EXPECTED_METHODS) == 57, (
+    "EXPECTED_METHODS must contain exactly 57 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

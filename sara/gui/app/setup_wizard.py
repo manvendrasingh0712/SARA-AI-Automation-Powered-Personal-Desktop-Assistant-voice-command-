@@ -135,7 +135,7 @@ class ApiSetupWizardMixin:
                 return {"ok": False, "error": str(e)}
 
         valid_pulls = {
-            "pull_llm_model": getattr(Config, "OLLAMA_MODEL", "qwen2.5"),
+            "pull_llm_model": getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
             "pull_embedding_model": getattr(Config, "EMBEDDING_MODEL", "nomic-embed-text"),
         }
         if action not in valid_pulls:

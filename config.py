@@ -278,7 +278,7 @@ class Config:
     LLM_BACKEND: str = os.getenv("LLM_BACKEND", "ollama").lower()
 
     # ── Ollama ────────────────────────────────────────────────────────────
-    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5")
+    OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
     OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_TIMEOUT: int = _int(os.getenv("OLLAMA_TIMEOUT"), default=30)
     OLLAMA_NUM_CTX: int = _int(os.getenv("OLLAMA_NUM_CTX"), default=2048)
@@ -572,11 +572,11 @@ class Config:
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
     RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=6)
     RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.40)
-    # NEW: durable, explicitly-stated facts ("my girlfriend's name is
-    # Parul") get their own lower threshold in rag.py's search() -- they
+    # NEW: durable, explicitly-stated facts ("my babe's name is
+    # babe") get their own lower threshold in rag.py's search() -- they
     # shouldn't depend on the same lucky semantic overlap a full
     # conversational exchange needs, since there's usually only ONE
-    # short sentence to match against a query like "who is Parul".
+    # short sentence to match against a query like "who is babe".
     RAG_FACT_MIN_SIMILARITY: float = _float(os.getenv("RAG_FACT_MIN_SIMILARITY"), default=0.30)
     RAG_MAX_IN_MEMORY: int = _int(os.getenv("RAG_MAX_IN_MEMORY"), default=5000)
 
