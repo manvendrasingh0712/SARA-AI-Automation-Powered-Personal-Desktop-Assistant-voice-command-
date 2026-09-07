@@ -5,6 +5,17 @@ active-state, mic sensitivity, speech speed, wifi toggle, language,
 notes-index status, and skills management.
 """
 from .events import _push
+from .helpers import mic_sensitivity_to_threshold
+
+
+def mic_sensitivity_to_threshold(value) -> int:
+    """0-100 slider position -> SpeechToText energy_threshold.
+    Shared by settings.py (set_mic_sensitivity) and modes.py
+    (apply_mode's live mic-sensitivity application) so the two never
+    drift out of sync."""
+    return max(100, 1000 - (int(value) * 9))
+
+# ── Weather integration (OpenWeatherMap free tier) ──────────────────────────
 
 
 class ApiSettingsMixin:
@@ -154,7 +165,7 @@ class ApiSettingsMixin:
             value = max(0, min(100, int(value)))
             self._pref_writer.enqueue("mic_sensitivity", str(value))
 
-            threshold = max(100, 1000 - (value * 9))
+            threshold = mic_sensitivity_to_threshold(value)
             if hasattr(self.ears, "set_manual_energy_threshold"):
                 self.ears.set_manual_energy_threshold(threshold)
             elif hasattr(self.ears, "energy_threshold"):

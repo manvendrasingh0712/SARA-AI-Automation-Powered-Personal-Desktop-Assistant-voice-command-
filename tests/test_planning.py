@@ -554,7 +554,7 @@ class PlannerTests(unittest.TestCase):
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             plan = propose_plan(
                 "remind me to call mom and check the weather",
-                "qwen2.5",
+                "qwen3:4b-instruct-2507-q4_K_M",
                 cfg,
                 max_steps=4,
                 timeout_s=2.0,
@@ -569,7 +569,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=None):
             with self.assertRaises(PlanningUnavailableError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_raises_planning_unavailable_on_client_error(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
@@ -579,7 +579,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             with self.assertRaises(PlanningUnavailableError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_raises_planning_unavailable_on_timeout(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
@@ -590,7 +590,7 @@ class PlannerTests(unittest.TestCase):
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             start = time.monotonic()
             with self.assertRaises(PlanningUnavailableError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=0.2)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=0.2)
             elapsed = time.monotonic() - start
         # Must return close to the timeout budget, NOT wait for the full
         # 5s sleep in the fake client -- proves future.result(timeout=...)
@@ -605,7 +605,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             with self.assertRaises(PlanningUnavailableError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_raises_validation_error_on_hallucinated_tool(self):
         from sara.core.planning.planner import propose_plan
@@ -616,7 +616,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             with self.assertRaises(PlanValidationError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_raises_planning_unavailable_on_no_tool_call(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
@@ -626,7 +626,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             with self.assertRaises(PlanningUnavailableError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_raises_validation_error_on_empty_steps(self):
         from sara.core.planning.planner import propose_plan
@@ -637,7 +637,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             with self.assertRaises(PlanValidationError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_raises_validation_error_on_malformed_json(self):
         from sara.core.planning.planner import propose_plan
@@ -648,7 +648,7 @@ class PlannerTests(unittest.TestCase):
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             with self.assertRaises(PlanValidationError):
-                propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=2.0)
+                propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=2.0)
 
     def test_propose_plan_rejects_invalid_max_steps(self):
         from sara.core.planning.planner import propose_plan
@@ -657,7 +657,7 @@ class PlannerTests(unittest.TestCase):
 
         cfg = FakeConfig()
         with self.assertRaises(PlanValidationError):
-            propose_plan("do two things", "qwen2.5", cfg, max_steps=0, timeout_s=2.0)
+            propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=0, timeout_s=2.0)
 
     def test_propose_plan_rejects_invalid_timeout(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
@@ -665,7 +665,7 @@ class PlannerTests(unittest.TestCase):
 
         cfg = FakeConfig()
         with self.assertRaises(PlanningUnavailableError):
-            propose_plan("do two things", "qwen2.5", cfg, max_steps=4, timeout_s=0.0)
+            propose_plan("do two things", "qwen3:4b-instruct-2507-q4_K_M", cfg, max_steps=4, timeout_s=0.0)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -705,7 +705,7 @@ class ExecutorTests(unittest.TestCase):
         outcome = execute_plan(
             plan,
             make_dispatch_success(),
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,
@@ -724,7 +724,7 @@ class ExecutorTests(unittest.TestCase):
         outcome = execute_plan(
             plan,
             make_dispatch_success(),
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,
@@ -750,7 +750,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_fails_then_succeeds(fail_tools=["weather"]),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -779,7 +779,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_always_fails(fail_tools=["weather"]),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -821,7 +821,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 dispatch,
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -854,7 +854,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_always_fails(fail_tools=["weather"]),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -886,7 +886,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_always_fails(fail_tools=["weather"]),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -910,7 +910,7 @@ class ExecutorTests(unittest.TestCase):
         outcome = execute_plan(
             plan,
             make_dispatch_success(),
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,
@@ -933,7 +933,7 @@ class ExecutorTests(unittest.TestCase):
         outcome = execute_plan(
             plan,
             make_dispatch_timeout(sleep_s=10.0),
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=0.3,
             total_timeout_s=0.5,
@@ -966,7 +966,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_timeout(sleep_s=5.0),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=0.3,
                 total_timeout_s=total_budget,
@@ -991,7 +991,7 @@ class ExecutorTests(unittest.TestCase):
         outcome = execute_plan(
             plan,
             make_dispatch_raises(),
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,
@@ -1021,7 +1021,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_raises(),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -1049,7 +1049,7 @@ class ExecutorTests(unittest.TestCase):
             outcome = execute_plan(
                 plan,
                 make_dispatch_raises(),
-                model_name="qwen2.5",
+                model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
                 step_timeout_s=2.0,
                 total_timeout_s=6.0,
@@ -1071,7 +1071,7 @@ class ExecutorTests(unittest.TestCase):
         outcome = execute_plan(
             empty_plan,
             make_dispatch_success(),
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,
@@ -1096,7 +1096,7 @@ class ExecutorTests(unittest.TestCase):
         execute_plan(
             plan,
             dispatch,
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,
@@ -1118,7 +1118,7 @@ class IntegrationTests(unittest.TestCase):
         cfg = FakeConfig(PLANNING_ENABLED=False)
         result = try_plan_and_execute(
             "remind me to call mom and check the weather",
-            "qwen2.5",
+            "qwen3:4b-instruct-2507-q4_K_M",
             make_dispatch_success(),
             cfg,
         )
@@ -1130,7 +1130,7 @@ class IntegrationTests(unittest.TestCase):
 
         cfg = FakeConfig()
         result = try_plan_and_execute(
-            "what's the weather in Jaipur", "qwen2.5", make_dispatch_success(), cfg
+            "what's the weather in Jaipur", "qwen3:4b-instruct-2507-q4_K_M", make_dispatch_success(), cfg
         )
         self.assertIsNone(result)
 
@@ -1139,8 +1139,8 @@ class IntegrationTests(unittest.TestCase):
         from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
 
         cfg = FakeConfig()
-        self.assertIsNone(try_plan_and_execute("", "qwen2.5", make_dispatch_success(), cfg))
-        self.assertIsNone(try_plan_and_execute("   ", "qwen2.5", make_dispatch_success(), cfg))
+        self.assertIsNone(try_plan_and_execute("", "qwen3:4b-instruct-2507-q4_K_M", make_dispatch_success(), cfg))
+        self.assertIsNone(try_plan_and_execute("   ", "qwen3:4b-instruct-2507-q4_K_M", make_dispatch_success(), cfg))
 
     def test_try_plan_and_execute_full_success(self):
         """
@@ -1172,7 +1172,7 @@ class IntegrationTests(unittest.TestCase):
         ):
             outcome = try_plan_and_execute(
                 "tell me the cricket news and then check the weather in Ajmer",
-                "qwen2.5",
+                "qwen3:4b-instruct-2507-q4_K_M",
                 make_dispatch_success(),
                 cfg,
             )
@@ -1191,7 +1191,7 @@ class IntegrationTests(unittest.TestCase):
         with patch("sara.core.planning.planner._get_ollama_client", return_value=fake_client):
             outcome = try_plan_and_execute(
                 "remind me to call mom and then check the weather in Ajmer",
-                "qwen2.5",
+                "qwen3:4b-instruct-2507-q4_K_M",
                 make_dispatch_success(),
                 cfg,
             )
@@ -1205,7 +1205,7 @@ class IntegrationTests(unittest.TestCase):
         with patch("sara.core.planning.planner._get_ollama_client", return_value=None):
             result = try_plan_and_execute(
                 "remind me to call mom and then check the weather",
-                "qwen2.5",
+                "qwen3:4b-instruct-2507-q4_K_M",
                 make_dispatch_success(),
                 cfg,
             )
@@ -1246,7 +1246,7 @@ class IntegrationTests(unittest.TestCase):
         ):
             result = try_plan_and_execute(
                 "remind me to call mom and then check the weather",
-                "qwen2.5",
+                "qwen3:4b-instruct-2507-q4_K_M",
                 lambda tool, args: "ok",
                 cfg,
             )
@@ -1276,7 +1276,7 @@ class IntegrationTests(unittest.TestCase):
             start = time.monotonic()
             try_plan_and_execute(
                 "remind me to call mom and then check the weather",
-                "qwen2.5",
+                "qwen3:4b-instruct-2507-q4_K_M",
                 make_dispatch_success(),
                 cfg,
             )
@@ -1310,7 +1310,7 @@ class ConcurrencyAndTimingTests(unittest.TestCase):
         execute_plan(
             plan,
             dispatch,
-            model_name="qwen2.5",
+            model_name="qwen3:4b-instruct-2507-q4_K_M",
             cfg=FakeConfig(),
             step_timeout_s=2.0,
             total_timeout_s=6.0,

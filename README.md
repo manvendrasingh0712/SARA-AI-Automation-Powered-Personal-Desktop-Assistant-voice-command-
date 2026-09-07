@@ -55,7 +55,7 @@ The codebase is organized as a `sara/` package (96 Python modules) split by conc
 |---|---|
 | **Wake-word voice control** | Always-listening loop with configurable wake words, VAD, and echo cancellation |
 | **Bilingual, code-switching** | English, Hindi, and Hinglish across STT, LLM prompting, and TTS, with automatic and manual language modes |
-| **Local-first LLM** | Ollama (default: `qwen2.5`) with streaming responses; Gemini as an explicit opt-in cloud backend |
+| **Local-first LLM** | Ollama (default: `qwen3:4b-instruct-2507-q4_K_M`) with streaming responses; Gemini as an explicit opt-in cloud backend |
 | **131 fast-path intents** | 380 regex patterns give instant (no-LLM) responses for common commands before ever reaching the model |
 | **Multi-step planning** | A bounded agentic planner chains multiple tool calls together for compound requests ("remind me to call mom, then check the weather") |
 | **Long-term semantic memory** | RAG-backed recall of facts from past conversations, plus a background consolidation daemon that periodically distills durable facts |
@@ -192,7 +192,7 @@ flowchart LR
 ## AI / LLM Architecture
 
 ### Local (default)
-- **Ollama**, default model `qwen2.5`, `OLLAMA_HOST` defaulting to `http://localhost:11434`.
+- **Ollama**, default model `qwen3:4b-instruct-2507-q4_K_M`, `OLLAMA_HOST` defaulting to `http://localhost:11434`.
 - A background warm-up thread (`_warm_up_model`) sends a 1-token priming request at startup so the first real reply isn't paying Ollama's cold-load latency.
 - Streaming responses are split into clause/sentence boundaries (`sara/core/llm/streaming.py`) so TTS can start speaking before the full reply has finished generating, with markdown stripped from the spoken text.
 
@@ -311,7 +311,7 @@ Frontend size: `index.html` (1,244 lines), `js/app.js` (1,830 lines), `style/sty
 | STT | faster-whisper 1.0.3 (`large-v3`), webrtcvad, openWakeWord |
 | TTS | Kokoro ONNX 0.5.0, ONNX Runtime (GPU + CPU), sounddevice, pygame |
 | Echo cancellation | `aec-audio-processing` (WebRTC APM binding) |
-| Local LLM | Ollama 0.6.2 (default model `qwen2.5`) |
+| Local LLM | Ollama 0.6.2 (default model `qwen3:4b-instruct-2507-q4_K_M`) |
 | Cloud LLM (optional) | Google Gemini via `google-genai` 1.23.0 |
 | Embeddings | Ollama `/api/embeddings` (`nomic-embed-text`) |
 | Storage | SQLite (WAL mode) |
@@ -386,7 +386,7 @@ pip install -r requirements.txt
 
 ```bash
 # Pull the default local chat model
-ollama pull qwen2.5
+ollama pull qwen3:4b-instruct-2507-q4_K_M
 
 # Pull the embedding model used by long-term memory / RAG
 ollama pull nomic-embed-text
@@ -407,7 +407,7 @@ SARA reads configuration from a `.env` file in the project root via `python-dote
 | Variable | Default | Purpose |
 |---|---|---|
 | `LLM_BACKEND` | `ollama` | `ollama` (local) or `gemini` (cloud) |
-| `OLLAMA_MODEL` | `qwen2.5` | Local chat model |
+| `OLLAMA_MODEL` | `qwen3:4b-instruct-2507-q4_K_M` | Local chat model |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server address |
 | `GEMINI_API_KEY` | *(empty)* | Required only if `LLM_BACKEND=gemini` |
 | `WAKE_WORDS` | `sara,sarah,hey sara,hey sarah` | Comma-separated wake phrases |

@@ -173,7 +173,7 @@ _CALC_MAX_EXPONENT_VALUE = 1000
 _CALC_EXPONENT_RE = re.compile(r"\*\*\s*([+-]?\d+)")
 
 _OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
-_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen2.5")
+_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
 _OLLAMA_READY_TIMEOUT_S = 60
 _OLLAMA_POLL_INTERVAL_S = 0.25
 

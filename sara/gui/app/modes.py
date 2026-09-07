@@ -15,6 +15,7 @@ from sara.orchestrator.intent_handlers import (
     _MODE_ALIASES,
     _MODE_CONFIRMATIONS,
 )
+from .helpers import mic_sensitivity_to_threshold
 
 
 class ApiModesMixin:
@@ -78,7 +79,7 @@ class ApiModesMixin:
                 if ears is not None:
                     try:
                         value = int(bundle["mic_sensitivity"])
-                        threshold = max(100, 1000 - (value * 9))
+                        threshold = mic_sensitivity_to_threshold(value)
                         if hasattr(ears, "set_manual_energy_threshold"):
                             ears.set_manual_energy_threshold(threshold)
                             applied_live = True
