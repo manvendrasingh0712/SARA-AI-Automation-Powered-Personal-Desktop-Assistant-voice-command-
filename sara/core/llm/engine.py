@@ -176,16 +176,51 @@ class SaraLLM:
         self._warm_event = threading.Event()
         self._warmup_error: Optional[str] = None
 
-        if getattr(self._cfg, "LLM_BACKEND", "ollama") == "ollama":
-            self.model_name = getattr(self._cfg, "OLLAMA_MODEL", "llama3")
+        # FALLBACK FIX: dedicated per-backend model-name attributes.
+        # self.model_name (used for display/debug) still reflects the
+        # PRIMARY backend, but _open_ollama_stream/_open_gemini_stream
+        # now always read their OWN backend's model name here, instead
+        # of the shared self.model_name — otherwise, once Gemini falls
+        # back to Ollama below, _open_ollama_stream would have sent the
+        # Gemini model string to the Ollama client.
+        self._ollama_model_name = getattr(self._cfg, "OLLAMA_MODEL", "llama3")
+        self._gemini_model_name = getattr(
+            self._cfg, "GEMINI_MODEL", "gemini-2.5-flash"
+        )
+
+        self._primary_backend = getattr(self._cfg, "LLM_BACKEND", "ollama")
+        # Gemini -> Ollama automatic fallback (see _stream_generic /
+        # generate_response_stream). Only meaningful when Gemini is the
+        # primary backend -- Ollama has nowhere further to fall back to.
+        self._fallback_enabled = self._primary_backend == "gemini" and getattr(
+            self._cfg, "LLM_FALLBACK_ENABLED", True
+        )
+
+        if self._primary_backend == "ollama":
+            self.model_name = self._ollama_model_name
             self._check_ollama()
         else:
-            self.model_name = getattr(self._cfg, "GEMINI_MODEL", "gemini-2.5-flash")
+            self.model_name = self._gemini_model_name
             # Pre-load Gemini imports in background to kill cold-start latency
             threading.Thread(
                 target=self._preload_gemini, daemon=True, name="gemini-preload"
             ).start()
             self._warm_event.set()
+            if self._fallback_enabled:
+                # Warm the Ollama fallback path quietly in the background
+                # too, so the FIRST time Gemini actually fails, the local
+                # model isn't also paying a cold-start penalty on top of
+                # the failed Gemini attempt(s). Failures here are fully
+                # non-fatal -- self._warm_event (which gates readiness)
+                # is untouched, and generate_response_stream() will just
+                # eat whatever extra latency remains if this hasn't
+                # finished yet by the time a fallback is actually needed.
+                threading.Thread(
+                    target=self._check_ollama,
+                    args=(False,),
+                    daemon=True,
+                    name="ollama-fallback-warmup",
+                ).start()
 
         self._log_init()
 
@@ -246,27 +281,37 @@ class SaraLLM:
         except Exception:
             pass  # Fail silently, real error will hit during generation
 
-    def _check_ollama(self) -> None:
+    def _check_ollama(self, report_event: bool = True) -> None:
+        # FALLBACK FIX: report_event=False is used for the background
+        # Ollama-fallback warm-up when Gemini is primary -- that path
+        # must NOT touch self._warm_event, since that event gates
+        # generate_response_stream()'s wait for the PRIMARY backend
+        # (Gemini) being ready, not the fallback.
         client = _get_ollama_client(self._cfg)
         if not client:
-            self._warmup_error = "Ollama client not loaded."
-            self._warm_event.set()
+            if report_event:
+                self._warmup_error = "Ollama client not loaded."
+                self._warm_event.set()
             return
         try:
             client.list()
         except Exception as e:
-            self._warmup_error = f"Ollama unreachable: {e}"
-            self._warm_event.set()
+            if report_event:
+                self._warmup_error = f"Ollama unreachable: {e}"
+                self._warm_event.set()
             return
         threading.Thread(
-            target=self._warm_up_model, daemon=True, name="llm-warmup"
+            target=self._warm_up_model,
+            args=(report_event,),
+            daemon=True,
+            name="llm-warmup" if report_event else "ollama-fallback-warmup-model",
         ).start()
 
-    def _warm_up_model(self) -> None:
+    def _warm_up_model(self, report_event: bool = True) -> None:
         client = _get_ollama_client(self._cfg)
         try:
             client.chat(
-                model=self.model_name,
+                model=self._ollama_model_name,
                 messages=[{"role": "user", "content": "hi"}],
                 think=False,
                 options={
@@ -276,9 +321,13 @@ class SaraLLM:
                 keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
             )
         except Exception as e:
-            self._warmup_error = str(e)
+            if report_event:
+                self._warmup_error = str(e)
+            elif getattr(self._cfg, "DEBUG_MODE", False):
+                print(f"[LLM] Ollama fallback warm-up failed (non-fatal): {e}")
         finally:
-            self._warm_event.set()
+            if report_event:
+                self._warm_event.set()
 
     def wait_until_warm(self, timeout: float = 30.0) -> WarmupResult:
         fired = self._warm_event.wait(timeout=timeout)
@@ -291,9 +340,16 @@ class SaraLLM:
     # ── Token budget ───────────────────────────────────────────────────
 
     def _trim_history_to_budget(
-        self, prompt: str, extra_tokens: int = 0
+        self, prompt: str, extra_tokens: int = 0, backend: Optional[str] = None
     ) -> List[Tuple[str, str]]:
-        if getattr(self._cfg, "LLM_BACKEND", "ollama") == "gemini":
+        # FALLBACK FIX: `backend` lets a caller ask for the trim sized to
+        # a SPECIFIC backend's context window, instead of always reading
+        # the configured LLM_BACKEND. This matters for the Gemini ->
+        # Ollama fallback path: history trimmed to Gemini's much larger
+        # GEMINI_MAX_HISTORY_TOKENS budget would silently overflow
+        # Ollama's typically much smaller OLLAMA_NUM_CTX if reused as-is.
+        active_backend = backend or getattr(self._cfg, "LLM_BACKEND", "ollama")
+        if active_backend == "gemini":
             ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
             gen_tokens = 1000
         else:
@@ -435,100 +491,149 @@ class SaraLLM:
     def _stream_generic(
         self,
         prompt: str,
-        open_stream,
+        stages,
         max_retries: Optional[int] = None,
     ) -> Iterator[str]:
+        # FALLBACK FIX: `stages` is an ordered list of (label, open_stream)
+        # pairs instead of a single open_stream callable. Stage 0 is
+        # always the primary backend and gets the normal LLM_MAX_RETRIES
+        # exponential-backoff treatment; any stage after that (currently:
+        # at most one -- the Ollama fallback when Gemini is primary) gets
+        # its own, smaller LLM_FALLBACK_MAX_RETRIES budget, since "local
+        # Ollama is also down" is usually a deterministic dead end, not
+        # something worth the same long backoff as a flaky cloud API.
+        #
+        # A stage is only abandoned in favor of the NEXT stage when it
+        # fails having yielded literally zero tokens back to the caller
+        # (e.g. Gemini refused the connection, hit a quota/rate-limit
+        # error, or DNS failed before the first chunk arrived). If a
+        # stage fails PARTWAY through a reply (some tokens already sent
+        # to the user), we do NOT silently splice in a second backend's
+        # continuation -- that would risk an incoherent, mixed-voice
+        # reply -- so the existing "interrupted" message behavior is
+        # kept as-is for that case.
         if max_retries is None:
             max_retries = int(getattr(self._cfg, "LLM_MAX_RETRIES", 2))
         base_delay = float(getattr(self._cfg, "LLM_RETRY_BASE_DELAY_S", 1.5))
         max_delay = float(getattr(self._cfg, "LLM_RETRY_MAX_DELAY_S", 8.0))
+        fallback_max_retries = int(
+            getattr(self._cfg, "LLM_FALLBACK_MAX_RETRIES", 1)
+        )
+        is_debug = getattr(self._cfg, "DEBUG_MODE", False)
 
         buffer_str: str = ""
         reply_parts: list[str] = []
-        is_debug = getattr(self._cfg, "DEBUG_MODE", False)
+        stream_ok = False
 
-        for attempt in range(max_retries + 1):
-            buffer_str = ""
-            reply_parts.clear()
+        for stage_idx, (stage_name, open_stream) in enumerate(stages):
+            is_last_stage = stage_idx == len(stages) - 1
+            stage_retries = max_retries if stage_idx == 0 else fallback_max_retries
             yielded_any = False
-            stream_ok = False
-            stream_iter = None
 
-            try:
-                stream_iter = open_stream(attempt)
+            for attempt in range(stage_retries + 1):
+                buffer_str = ""
+                reply_parts.clear()
+                yielded_any = False
+                stream_ok = False
+                stream_iter = None
 
-                for piece in stream_iter:
-                    if not piece:
-                        continue
+                try:
+                    stream_iter = open_stream(attempt)
 
-                    buffer_str += piece
-                    reply_parts.append(piece)
-                    yielded_any = True
+                    for piece in stream_iter:
+                        if not piece:
+                            continue
 
-                    # Fast-path heuristic: avoid regex processing unless a boundary
-                    # trigger (whitespace/newline) is present in the new chunk.
-                    if " " in piece or "\n" in piece:
-                        ready, buffer_str = self._flush_sentences(buffer_str)
-                        for s in ready:
-                            yield s
+                        buffer_str += piece
+                        reply_parts.append(piece)
+                        yielded_any = True
 
-                        ready, buffer_str = self._flush_clause(buffer_str)
-                        for s in ready:
-                            yield s
+                        # Fast-path heuristic: avoid regex processing unless a
+                        # boundary trigger (whitespace/newline) is present in
+                        # the new chunk.
+                        if " " in piece or "\n" in piece:
+                            ready, buffer_str = self._flush_sentences(buffer_str)
+                            for s in ready:
+                                yield s
 
-                # Yield final remainder
-                remainder = _clean_markdown(buffer_str)
-                if remainder:
-                    yield remainder
+                            ready, buffer_str = self._flush_clause(buffer_str)
+                            for s in ready:
+                                yield s
 
-                stream_ok = True
-                break
+                    # Yield final remainder
+                    remainder = _clean_markdown(buffer_str)
+                    if remainder:
+                        yield remainder
 
-            except Exception as e:
-                if is_debug:
-                    print(f"[LLM] stream error on attempt {attempt+1}: {e}")
-
-                if yielded_any:
-                    # v7: never speak the raw exception — the user already
-                    # heard/received a partial reply, so just add a short,
-                    # natural-language note instead of literal error text.
-                    yield _STREAM_INTERRUPTED_MESSAGES.get(
-                        self._lang, _STREAM_INTERRUPTED_MESSAGES["english"]
-                    )
+                    stream_ok = True
                     break
 
-                # PRIORITY-7 FIX: a missing/uninitialized client is a
-                # deterministic config problem, not a transient blip —
-                # retrying it just burns the backoff delay (up to ~4.5s
-                # here) for zero chance of success. Fail fast instead.
-                # Any other exception (network hiccup, timeout, etc.)
-                # is retried exactly as before.
-                non_transient = isinstance(e, _ClientUnavailableError)
-
-                if attempt < max_retries and not non_transient:
-                    delay = min(max_delay, base_delay * (2**attempt))
+                except Exception as e:
                     if is_debug:
                         print(
-                            f"[LLM] Retry {attempt+1}/{max_retries} in {delay:.1f}s: {e}"
+                            f"[LLM:{stage_name}] stream error on attempt {attempt+1}: {e}"
                         )
-                    time.sleep(delay)
-                else:
-                    # v7: retries exhausted (or non-retryable) with zero
-                    # tokens ever received — give a friendly localized
-                    # message instead of raw exception text (this used
-                    # to be spoken verbatim by TTS).
-                    yield _STREAM_FAIL_MESSAGES.get(
-                        self._lang, _STREAM_FAIL_MESSAGES["english"]
-                    )
-                    if non_transient:
+
+                    if yielded_any:
+                        # v7: never speak the raw exception — the user already
+                        # heard/received a partial reply, so just add a short,
+                        # natural-language note instead of literal error text.
+                        yield _STREAM_INTERRUPTED_MESSAGES.get(
+                            self._lang, _STREAM_INTERRUPTED_MESSAGES["english"]
+                        )
                         break
 
-            finally:
-                if stream_iter is not None and hasattr(stream_iter, "close"):
-                    try:
-                        stream_iter.close()
-                    except Exception:
-                        pass
+                    # PRIORITY-7 FIX: a missing/uninitialized client is a
+                    # deterministic config problem, not a transient blip —
+                    # retrying it just burns the backoff delay for zero
+                    # chance of success. Fail fast instead. Any other
+                    # exception (network hiccup, timeout, quota/rate-limit
+                    # error, etc.) is retried exactly as before.
+                    non_transient = isinstance(e, _ClientUnavailableError)
+
+                    if attempt < stage_retries and not non_transient:
+                        delay = min(max_delay, base_delay * (2**attempt))
+                        if is_debug:
+                            print(
+                                f"[LLM:{stage_name}] Retry {attempt+1}/{stage_retries} "
+                                f"in {delay:.1f}s: {e}"
+                            )
+                        time.sleep(delay)
+                    else:
+                        # This stage is exhausted (or non-retryable) having
+                        # yielded zero tokens. Break out of the attempt loop
+                        # -- whether we now fall back to the next stage or
+                        # give up for good is decided just below, once we're
+                        # back outside this loop.
+                        break
+
+                finally:
+                    if stream_iter is not None and hasattr(stream_iter, "close"):
+                        try:
+                            stream_iter.close()
+                        except Exception:
+                            pass
+
+            if stream_ok:
+                # This stage succeeded outright -- done.
+                break
+
+            if yielded_any:
+                # Partial reply, already communicated via the "interrupted"
+                # message above. Don't try a further backend mid-reply.
+                break
+
+            # This stage never yielded a single token. Move on to the next
+            # stage (e.g. Gemini -> Ollama) if there is one, otherwise this
+            # was the last chance and the user needs to be told.
+            if is_last_stage:
+                yield _STREAM_FAIL_MESSAGES.get(
+                    self._lang, _STREAM_FAIL_MESSAGES["english"]
+                )
+            elif is_debug:
+                print(
+                    f"[LLM] '{stage_name}' unavailable — falling back to next backend."
+                )
 
         full_reply = "".join(reply_parts).strip()
         # CRITICAL FIX: was `stream_ok or yielded_any` — a stream that
@@ -544,7 +649,7 @@ class SaraLLM:
 
     # ── Hot-path helpers (PRIORITY 2/3/8/9) ─────────────────────────────
 
-    def _rag_context_budget(self) -> int:
+    def _rag_context_budget(self, backend: Optional[str] = None) -> int:
         # PRIORITY-2 FIX: hard cap on how many tokens the ENTIRE RAG
         # memory block (wrapper text included) may consume, so a
         # handful of long/highly-relevant hits can never crowd out the
@@ -552,26 +657,33 @@ class SaraLLM:
         # if the project defines one; otherwise falls back to a small,
         # conservative fraction of whatever context size is already
         # configured (does NOT touch OLLAMA_NUM_CTX itself).
+        # FALLBACK FIX: optional `backend` override, same rationale as
+        # _trim_history_to_budget above.
         configured = getattr(self._cfg, "RAG_MAX_CONTEXT_TOKENS", None)
         if configured is not None:
             return int(configured)
-        if getattr(self._cfg, "LLM_BACKEND", "ollama") == "gemini":
+        active_backend = backend or getattr(self._cfg, "LLM_BACKEND", "ollama")
+        if active_backend == "gemini":
             ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
         else:
             ctx_tokens = int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096))
         return max(64, int(ctx_tokens * 0.15))
 
     def _build_capped_memory_context(
-        self, hits: list
+        self, hits: list, cap: Optional[int] = None
     ) -> Tuple[Optional[str], int]:
         # PRIORITY-2 FIX: greedily include hits (highest-relevance first,
         # as returned by search()) only while the running token count —
         # PLUS a fixed allowance for the surrounding instructional
         # wrapper text added in _build_messages_ollama/
         # _build_contents_gemini — stays under _rag_context_budget().
+        # FALLBACK FIX: optional explicit `cap` lets the Ollama-fallback
+        # path re-cap the SAME hits to Ollama's smaller budget instead
+        # of reusing whatever cap the primary (Gemini) backend used.
         if not hits:
             return None, 0
-        cap = self._rag_context_budget()
+        if cap is None:
+            cap = self._rag_context_budget()
         wrapper_overhead = 40  # short fixed wrapper sentence, both backends
         available = max(0, cap - wrapper_overhead)
 
@@ -653,7 +765,7 @@ class SaraLLM:
 
         messages = self._build_messages_ollama(prompt, history, memory_context)
         raw_stream = client.chat(
-            model=self.model_name,
+            model=self._ollama_model_name,
             messages=messages,
             stream=True,
             think=False,
@@ -692,7 +804,7 @@ class SaraLLM:
         contents = self._build_contents_gemini(prompt, history, memory_context)
 
         raw_stream = client.models.generate_content_stream(
-            model=self.model_name,
+            model=self._gemini_model_name,
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_instruction,
@@ -744,7 +856,6 @@ class SaraLLM:
             self._tod = current_tod
             self._build_and_cache_system_instruction()
 
-        is_ollama = getattr(self._cfg, "LLM_BACKEND", "ollama") == "ollama"
         trivial = self._is_trivial_prompt(prompt)
 
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieval happens on
@@ -769,6 +880,7 @@ class SaraLLM:
 
         memory_context = None
         memory_context_tokens = 0
+        hits: list = []
         if self._memory is not None and not trivial:
             try:
                 hits = self._memory.search(prompt)
@@ -794,14 +906,46 @@ class SaraLLM:
             # spawning an unbounded thread per request.
             self._get_fact_extract_pool().submit(self._safe_extract_fact, prompt)
 
-        def _open(attempt: int):
+        def _open_primary(attempt: int):
             return (
                 self._open_ollama_stream(prompt, history, memory_context)
-                if is_ollama
+                if self._primary_backend == "ollama"
                 else self._open_gemini_stream(prompt, history, memory_context)
             )
 
-        yield from self._stream_generic(prompt, _open)
+        # FALLBACK FIX: build an ordered list of (label, opener) stages.
+        # Stage 0 is always the configured primary backend. When Gemini
+        # is primary and LLM_FALLBACK_ENABLED is true, a second stage
+        # using the local Ollama model is appended -- _stream_generic
+        # only reaches it if Gemini fails to yield a single token (no
+        # network, quota/rate-limit exhausted, auth error, etc.).
+        stages = [(self._primary_backend, _open_primary)]
+        if self._fallback_enabled:
+
+            def _open_ollama_fallback(attempt: int):
+                # FALLBACK FIX: don't reuse `history`/`memory_context` as
+                # computed above -- those were sized for Gemini's much
+                # larger GEMINI_MAX_HISTORY_TOKENS budget and could
+                # silently overflow Ollama's typically much smaller
+                # OLLAMA_NUM_CTX. Recompute both, sized for Ollama, from
+                # the same underlying short-term history / RAG `hits`.
+                fb_rag_budget = (
+                    self._rag_context_budget(backend="ollama")
+                    if (self._memory is not None and not trivial)
+                    else 0
+                )
+                fb_history = self._trim_history_to_budget(
+                    prompt, extra_tokens=fb_rag_budget, backend="ollama"
+                )
+                fb_hits = self._filter_history_duplicates(hits, fb_history)
+                fb_memory_context, _ = self._build_capped_memory_context(
+                    fb_hits, cap=fb_rag_budget or None
+                )
+                return self._open_ollama_stream(prompt, fb_history, fb_memory_context)
+
+            stages.append(("ollama-fallback", _open_ollama_fallback))
+
+        yield from self._stream_generic(prompt, stages)
 
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): ingest this exchange
         # into long-term memory AFTER it completes, so future turns (even
@@ -953,9 +1097,14 @@ class SaraLLM:
     # ── Debug ─────────────────────────────────────────────────────────
 
     def _log_init(self) -> None:
+        fallback_note = (
+            f" | fallback=ollama({self._ollama_model_name})"
+            if self._fallback_enabled
+            else ""
+        )
         print(
-            f"[LLM] Ready — backend={getattr(self._cfg, 'LLM_BACKEND', 'ollama')} | "
-            f"model={self.model_name} | "
+            f"[LLM] Ready — backend={self._primary_backend} | "
+            f"model={self.model_name}{fallback_note} | "
             f"memory={self._cfg.MAX_MEMORY_EXCHANGES} exchanges | "
             f"lang={self._lang}"
         )

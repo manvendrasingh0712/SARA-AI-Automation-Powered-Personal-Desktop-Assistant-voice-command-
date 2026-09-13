@@ -16,78 +16,108 @@
 <div id="saraBgLayer" aria-hidden="true">
    <div id="bgStars" class="bg-canvas-layer"><canvas id="bgStarsCanvas"></canvas></div>
    <div id="bgSolarSystem">
-      <div id="bgSun"></div>
+      <div id="bgSolarSystemTilt">
+        <div class="billboard billboard-sun"><div id="bgSun"></div></div>
 
-      <div class="orbit-ring" id="orbitMercury"></div>
-      <div class="orbit-ring" id="orbitVenus"></div>
-      <div class="orbit-ring" id="orbitEarth"></div>
-      <div class="orbit-ring" id="orbitMars"></div>
-      <div class="orbit-ring orbit-ring-belt" id="orbitAsteroidBelt"></div>
-      <div class="orbit-ring" id="orbitJupiter"></div>
-      <div class="orbit-ring" id="orbitSaturn"></div>
-      <div class="orbit-ring" id="orbitUranus"></div>
-      <div class="orbit-ring" id="orbitNeptune"></div>
+        <div class="orbit-ring" id="orbitMercury"></div>
+        <div class="orbit-ring" id="orbitVenus"></div>
+        <div class="orbit-ring" id="orbitEarth"></div>
+        <div class="orbit-ring" id="orbitMars"></div>
+        <div class="orbit-ring orbit-ring-belt" id="orbitAsteroidBelt"></div>
+        <div class="orbit-ring" id="orbitJupiter"></div>
+        <div class="orbit-ring" id="orbitSaturn"></div>
+        <div class="orbit-ring" id="orbitUranus"></div>
+        <div class="orbit-ring" id="orbitNeptune"></div>
 
-      <div class="orbit-spin spin-mercury" id="spinMercury">
-        <div class="orbit-face face-mercury">
-          <div class="planet planet-mercury"><div class="planet-surface"></div></div>
-        </div>
-      </div>
+        <div id="asteroidField"></div>
 
-      <div class="orbit-spin spin-venus" id="spinVenus">
-        <div class="orbit-face face-venus">
-          <div class="planet planet-venus"><div class="planet-surface"></div></div>
-        </div>
-      </div>
-
-      <div class="orbit-spin spin-earth" id="spinEarth">
-        <div class="orbit-face face-earth">
-          <div class="planet planet-earth">
-            <div class="planet-surface"></div>
-            <div class="planet-clouds"></div>
-          </div>
-          <div class="moon-orbit moon-orbit-earth">
-            <div class="moon moon-earth"></div>
+        <div class="orbit-spin spin-mercury" id="spinMercury">
+          <div class="orbit-face face-mercury">
+            <div class="billboard">
+              <div class="planet planet-mercury"><div class="planet-surface"></div></div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="orbit-spin spin-mars" id="spinMars">
-        <div class="orbit-face face-mars">
-          <div class="planet planet-mars"><div class="planet-surface"></div></div>
+        <div class="orbit-spin spin-venus" id="spinVenus">
+          <div class="orbit-face face-venus">
+            <div class="billboard">
+              <div class="planet planet-venus"><div class="planet-surface"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orbit-spin spin-earth" id="spinEarth">
+          <div class="orbit-face face-earth">
+            <div class="billboard">
+              <div class="planet planet-earth">
+                <div class="planet-surface"></div>
+                <div class="planet-clouds"></div>
+              </div>
+              <div class="moon-orbit moon-orbit-earth">
+                <div class="moon moon-earth"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orbit-spin spin-mars" id="spinMars">
+          <div class="orbit-face face-mars">
+            <div class="billboard">
+              <div class="planet planet-mars"><div class="planet-surface"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orbit-spin spin-jupiter" id="spinJupiter">
+          <div class="orbit-face face-jupiter">
+            <div class="billboard">
+              <div class="planet planet-jupiter"><div class="planet-surface"></div></div>
+              <div class="moon-orbit moon-orbit-io"><div class="moon moon-jupiter"></div></div>
+              <div class="moon-orbit moon-orbit-europa"><div class="moon moon-jupiter"></div></div>
+              <div class="moon-orbit moon-orbit-ganymede"><div class="moon moon-jupiter"></div></div>
+              <div class="moon-orbit moon-orbit-callisto"><div class="moon moon-jupiter"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orbit-spin spin-saturn" id="spinSaturn">
+          <div class="orbit-face face-saturn">
+            <div class="billboard">
+              <div class="saturn-ring saturn-ring-back"></div>
+              <div class="planet planet-saturn"><div class="planet-surface"></div></div>
+              <div class="saturn-ring saturn-ring-front"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orbit-spin spin-uranus" id="spinUranus">
+          <div class="orbit-face face-uranus">
+            <div class="billboard">
+              <div class="uranus-ring"></div>
+              <div class="planet planet-uranus"><div class="planet-surface"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="orbit-spin spin-neptune" id="spinNeptune">
+          <div class="orbit-face face-neptune">
+            <div class="billboard">
+              <div class="planet planet-neptune"><div class="planet-surface"></div></div>
+              <div class="moon-orbit moon-orbit-triton"><div class="moon moon-jupiter"></div></div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="orbit-spin spin-jupiter" id="spinJupiter">
-        <div class="orbit-face face-jupiter">
-          <div class="planet planet-jupiter"><div class="planet-surface"></div></div>
-          <div class="moon-orbit moon-orbit-io"><div class="moon moon-jupiter"></div></div>
-          <div class="moon-orbit moon-orbit-europa"><div class="moon moon-jupiter"></div></div>
-          <div class="moon-orbit moon-orbit-ganymede"><div class="moon moon-jupiter"></div></div>
-          <div class="moon-orbit moon-orbit-callisto"><div class="moon moon-jupiter"></div></div>
-        </div>
-      </div>
+      <div class="bg-spiral-galaxy bg-spiral-galaxy-1"></div>
+      <div class="bg-spiral-galaxy bg-spiral-galaxy-2"></div>
 
-      <div class="orbit-spin spin-saturn" id="spinSaturn">
-        <div class="orbit-face face-saturn">
-          <div class="saturn-ring saturn-ring-back"></div>
-          <div class="planet planet-saturn"><div class="planet-surface"></div></div>
-          <div class="saturn-ring saturn-ring-front"></div>
-        </div>
-      </div>
+      <div class="comet comet-1"></div>
+      <div class="comet comet-2"></div>
 
-      <div class="orbit-spin spin-uranus" id="spinUranus">
-        <div class="orbit-face face-uranus">
-          <div class="uranus-ring"></div>
-          <div class="planet planet-uranus"><div class="planet-surface"></div></div>
-        </div>
-      </div>
-
-      <div class="orbit-spin spin-neptune" id="spinNeptune">
-        <div class="orbit-face face-neptune">
-          <div class="planet planet-neptune"><div class="planet-surface"></div></div>
-        </div>
-      </div>
+      <div class="fg-rock fg-rock-1"></div>
+      <div class="fg-rock fg-rock-2"></div>
    </div>
    <div id="bgParticles" class="bg-canvas-layer"><canvas id="bgParticlesCanvas"></canvas></div>
    <div id="bgVignette"></div>
