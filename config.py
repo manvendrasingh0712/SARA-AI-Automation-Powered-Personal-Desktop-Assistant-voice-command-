@@ -306,6 +306,24 @@ class Config:
         os.getenv("GEMINI_MAX_HISTORY_TOKENS"), default=30_000
     )
 
+    # ── Automatic fallback (Gemini -> Ollama) ────────────────────────────
+    # Only relevant when LLM_BACKEND=gemini. If Gemini can't be reached
+    # (no network), returns a quota/rate-limit error, or errors out in
+    # any other way before it has streamed back a single token, SARA
+    # automatically retries the same request against the local Ollama
+    # model instead of failing the turn. No effect when LLM_BACKEND is
+    # already "ollama" (there's nothing to fall back to).
+    LLM_FALLBACK_ENABLED: bool = _bool(
+        os.getenv("LLM_FALLBACK_ENABLED"), default=True
+    )
+    # Retries attempted against the fallback backend itself before giving
+    # up entirely. Kept low by default -- if local Ollama is also down,
+    # burning the same exponential backoff as the primary backend just
+    # delays the "sorry" message for no benefit.
+    LLM_FALLBACK_MAX_RETRIES: int = _int(
+        os.getenv("LLM_FALLBACK_MAX_RETRIES"), default=1
+    )
+
     # ── LLM retry / warm-up behavior ─────────────────────────────────────
     LLM_MAX_RETRIES: int = _int(os.getenv("LLM_MAX_RETRIES"), default=2)
     LLM_RETRY_BASE_DELAY_S: float = _float(
@@ -1006,6 +1024,12 @@ class Config:
             print(
                 f"[Debug] LLM backend  : {cls.LLM_BACKEND.upper()} ({backend_detail})"
             )
+            if cls.LLM_BACKEND == "gemini":
+                print(
+                    f"[Debug] LLM fallback : enabled={cls.LLM_FALLBACK_ENABLED} "
+                    f"-> ollama model='{cls.OLLAMA_MODEL}' "
+                    f"(fallback_retries={cls.LLM_FALLBACK_MAX_RETRIES})"
+                )
             print(
                 f"[Debug] LLM retries  : max={cls.LLM_MAX_RETRIES} base_delay={cls.LLM_RETRY_BASE_DELAY_S}s "
                 f"max_delay={cls.LLM_RETRY_MAX_DELAY_S}s warmup_wait={cls.LLM_WARMUP_WAIT_S}s"

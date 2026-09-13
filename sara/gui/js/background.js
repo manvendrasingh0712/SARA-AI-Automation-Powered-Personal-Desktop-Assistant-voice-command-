@@ -1,10 +1,17 @@
 /* ============================================================
-   SARA — Living Space Background v5: star/particle canvas engine
-   (unchanged from the v4 optimization pass) + a new lightweight
-   parallax hook that shifts the CSS-driven solar system slightly
-   opposite the cursor, for a sense of depth relative to the fixed
-   starfield behind it. Same public API (window.SaraBackground) —
-   no other files need changes.
+   SARA — Living Space Background v6: star/particle canvas engine
+   (unchanged from v4/v5) + solar-system parallax (unchanged from
+   v5) + NEW: procedural asteroid belt generation.
+
+   The belt itself rotates as one rigid disk via a single CSS
+   animation on #asteroidField (see background.css) — this script
+   only needs to run ONCE to scatter the individual rock divs
+   inside it with randomized angle/radius/size, then CSS/GPU does
+   all the actual motion from there. No per-frame JS cost at all
+   for the asteroids.
+
+   Same public API (window.SaraBackground) — no other files need
+   changes.
    ============================================================ */
 (() => {
   'use strict';
@@ -17,6 +24,7 @@
   const starsCtx = starsCanvas ? starsCanvas.getContext('2d') : null;
   const particlesCtx = particlesCanvas ? particlesCanvas.getContext('2d') : null;
   const solarSystem = document.getElementById('bgSolarSystem');
+  const asteroidField = document.getElementById('asteroidField');
 
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   const pointerFineQuery = window.matchMedia('(pointer: fine)');
@@ -29,7 +37,7 @@
   let stars = [];
   let particles = [];
   let streaks = [];
-  let streakCount = 0; // logical length into `streaks` (swap-pop pool)
+  let streakCount = 0;
   let rafId = null;
   let running = false;
   let lastTwinkle = 0;
@@ -37,7 +45,6 @@
   let nextShootAt = 0;
   let idleHandle = null;
 
-  // ---- brightness-bucket batching setup ----------------------------
   const STAR_BUCKETS = 16;
   const PARTICLE_BUCKETS = 8;
   const PARTICLE_ALPHA_MIN = 0.18;
@@ -55,7 +62,6 @@
   const starBuckets = Array.from({ length: STAR_BUCKETS }, () => []);
   const particleBuckets = Array.from({ length: PARTICLE_BUCKETS }, () => []);
 
-  // ---- adaptive frame budget -----------------------------------------
   let frameBudget = 50;
   let avgFrameMs = 16;
   let lastFrameTs = 0;
@@ -329,6 +335,31 @@
     rafId = null;
   }
 
+  // ---- asteroid belt: build once, CSS handles all motion after --------
+  function buildAsteroidField() {
+    if (!asteroidField) return;
+    asteroidField.textContent = ''; // clear any previous rocks
+    const count = lowPerf ? 0 : 55;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < count; i++) {
+      const angle = rand(0, 360);
+      const radius = rand(41, 50); // % of #asteroidField's own box (68vmin diameter)
+      const size = rand(3, 11);    // px
+      const rock = document.createElement('div');
+      rock.className = 'asteroid';
+      rock.style.width = size + 'px';
+      rock.style.height = (size * rand(0.75, 1.15)).toFixed(1) + 'px';
+      rock.style.marginLeft = (-size / 2) + 'px';
+      rock.style.marginTop = (-size / 2) + 'px';
+      rock.style.opacity = rand(0.45, 0.95).toFixed(2);
+      // Position via rotate+translate composed transform — cheaper than
+      // recomputing sin/cos in JS for a one-time static placement.
+      rock.style.transform = `rotate(${angle.toFixed(1)}deg) translate(${radius}%) rotate(${(-angle).toFixed(1)}deg)`;
+      frag.appendChild(rock);
+    }
+    asteroidField.appendChild(frag);
+  }
+
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => resize(true), 150);
@@ -347,6 +378,7 @@
 
   function init() {
     resize(false);
+    buildAsteroidField();
     start();
   }
 
@@ -356,14 +388,10 @@
     init();
   }
 
-  // ---- solar-system parallax (cheap: CSS transform on a DOM node,
-  // not the canvas, so there's no resolution/blur tradeoff) ----------
+  // ---- solar-system parallax -----------------------------------------
   let parallaxScheduled = false;
-  let parallaxX = 0, parallaxY = 0;
 
   function setParallax(x, y) {
-    parallaxX = x;
-    parallaxY = y;
     if (!solarSystem) return;
     solarSystem.style.setProperty('--sara-px', x.toFixed(1) + 'px');
     solarSystem.style.setProperty('--sara-py', y.toFixed(1) + 'px');
@@ -396,7 +424,6 @@
 
   const TINT_CLASSES = ['bg-tint-listening', 'bg-tint-thinking', 'bg-tint-speaking'];
   window.SaraBackground = {
-    // state: 'listening' | 'thinking' | 'speaking' | null
     setState(state) {
       TINT_CLASSES.forEach(c => layer.classList.remove(c));
       if (state) layer.classList.add(`bg-tint-${state}`);
@@ -404,15 +431,14 @@
     clearState() {
       TINT_CLASSES.forEach(c => layer.classList.remove(c));
     },
-    // isLow: true drops galaxy/grain/2nd nebula/particles for low-power machines
     setPerfMode(isLow) {
       lowPerf = !!isLow;
       layer.classList.toggle('bg-perf-low', lowPerf);
       buildStars();
       buildParticles();
       resetStreakPool();
+      buildAsteroidField();
     },
-    // period: 'day' | 'night'
     setTimeOfDay(period) {
       layer.classList.remove('bg-time-day', 'bg-time-night');
       if (period === 'day' || period === 'night') layer.classList.add(`bg-time-${period}`);
