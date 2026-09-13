@@ -1,44 +1,35 @@
 /* ============================================================
-   SARA — Living Space Background v5: full solar system
+   SARA — Living Space Background v6: cinematic perspective solar
+   system (matches a tilted "side view" reference photo)
    ============================================================
-   Design notes (why it looks the way it does):
+   The key technique here is REAL CSS 3D, not a fake squash:
 
-   - No photographic textures are used anywhere — everything is
-     built from layered CSS gradients (radial/linear/repeating).
-     This keeps the app fully self-contained with zero network
-     or asset-bundling dependencies.
+     #bgSolarSystem      → establishes `perspective` (the camera)
+     #bgSolarSystemTilt  → the one and only 3D tilt for the whole
+                            orbital plane: `rotateZ() rotateX()`.
+                            This alone turns every perfectly circular
+                            orbit-ring/orbit-spin underneath it into
+                            the flattened, receding ellipses you see
+                            in the reference image — for free, via
+                            real perspective projection, not manual
+                            ellipse math.
+     .billboard           → applied inside each planet's (and the
+                            Sun's) branch, with the EXACT inverse
+                            transform of the tilt above. This cancels
+                            the tilt just for that element, so the
+                            sphere itself always renders round and
+                            facing the camera — only its ORBIT is
+                            tilted, not its own shape. This is the
+                            standard "billboarding" trick from 3D
+                            graphics, done in pure CSS.
 
-   - Motion model: every planet uses a 3-level nested transform
-     trick so CSS (not JS) drives all motion, which means it's
-     fully GPU-composited and costs ~nothing on the main thread:
-       .orbit-spin  → rotates a box the size of the orbit diameter
-                       around the Sun anchor (this IS the orbit).
-       .orbit-face  → counter-rotates at the exact same speed, so
-                       the planet's box stays visually upright
-                       while still travelling around the circle.
-       .planet-surface → rotates independently inside the upright
-                       planet box — this is the planet's own SPIN
-                       (day/night cycle), decoupled from its orbit.
-     Moons use one extra .moon-orbit layer nested inside a planet's
-     .orbit-face, so they revolve around the *planet*, not the Sun.
+   Everything else (orbit-spin/orbit-face self-cancelling rotation
+   for revolution, planet-surface rotation for spin) is unchanged
+   from v5 — it now simply happens inside a tilted stage.
 
-   - Lighting is intentionally NOT physically accurate: every
-     planet keeps a fixed highlight/terminator angle (stylized
-     "studio light from the upper-left") regardless of where it
-     currently sits in its orbit. True Sun-relative lighting would
-     need per-frame angle math — an artistic simplification, not
-     an oversight.
-
-   - A couple of real astronomical quirks ARE kept for flavor:
-     Venus and Uranus spin in reverse (retrograde, like the real
-     planets), and the Moon's spin duration is deliberately NOT
-     decoupled from its orbit — like the real Moon, it's tidally
-     locked, so the same "face" always points inward.
-
-   - Orbit periods/sizes are dramatized for a "showpiece" feel,
-     not to scale and not to real relative speed — Neptune does
-     not really take ~15x longer than Mercury to orbit, but it
-     reads clearly as "the outer planets move slower."
+   No photographic textures are used anywhere; galaxies, comets and
+   the asteroid belt are all procedural gradients/shapes for the
+   same reason as the planets (self-contained, no asset bundling).
    ============================================================ */
 
 #saraBgLayer {
@@ -77,21 +68,21 @@
   background:
     radial-gradient(circle at 60% 65%, rgba(34,211,238,0.08), transparent 45%),
     linear-gradient(115deg,
-      transparent 28%,
-      rgba(160, 170, 255, 0.05) 42%,
-      rgba(210, 190, 255, 0.09) 50%,
-      rgba(160, 170, 255, 0.05) 58%,
-      transparent 72%);
-  filter: blur(30px);
-  transform: rotate(-10deg) translateZ(0);
+      transparent 22%,
+      rgba(160, 170, 255, 0.06) 38%,
+      rgba(210, 190, 255, 0.11) 48%,
+      rgba(160, 170, 255, 0.06) 58%,
+      transparent 76%);
+  filter: blur(28px);
+  transform: rotate(-8deg) translateZ(0);
   backface-visibility: hidden;
   pointer-events: none;
   will-change: transform;
   animation: sara-milkyway-drift 200s linear infinite alternate;
 }
 @keyframes sara-milkyway-drift {
-  0%   { transform: rotate(-10deg) translateX(0) translateZ(0); }
-  100% { transform: rotate(-10deg) translateX(4%) translateZ(0); }
+  0%   { transform: rotate(-8deg) translateX(0) translateZ(0); }
+  100% { transform: rotate(-8deg) translateX(4%) translateZ(0); }
 }
 
 .bg-canvas-layer, .bg-canvas-layer canvas {
@@ -102,46 +93,56 @@
   display: block;
 }
 
-/* ============================================================
-   Shared orbit keyframe — reused for every orbit, every
-   counter-rotation, and every self-spin. Direction/duration is
-   set per element via animation-direction / animation-duration,
-   so one keyframe covers the whole solar system.
-   ============================================================ */
 @keyframes sara-orbit {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
 
 /* ============================================================
-   Anchor point — everything is centered on this 0×0 point,
-   positioned near the top-right corner so orbits sweep in from
-   off-screen, giving a sense of scale bigger than the viewport.
+   Stage + camera tilt
    ============================================================ */
 #bgSolarSystem {
   position: absolute;
-  top: -8%;
-  right: -10%;
+  top: 50%;
+  left: -8%;
   width: 0;
   height: 0;
+  perspective: 1500px;
+  perspective-origin: 30% 50%;
   transform: translate(var(--sara-px, 0px), var(--sara-py, 0px));
   transition: transform 0.5s ease-out;
   will-change: transform;
 }
+#bgSolarSystemTilt {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-style: preserve-3d;
+  transform: rotateZ(-6deg) rotateX(70deg);
+}
 
-/* Faint static guide rings — one per orbit, purely decorative,
-   never animated (zero per-frame cost). */
+/* Exact inverse of #bgSolarSystemTilt's transform — cancels the
+   stage tilt so whatever is inside always faces the camera flat.
+   (rotateX(-70deg) rotateZ(6deg) is the true inverse of
+   rotateZ(-6deg) rotateX(70deg), not just visually close to it.) */
+.billboard {
+  transform-style: preserve-3d;
+  transform: rotateX(-70deg) rotateZ(6deg);
+}
+
+/* Faint static guide rings — projected into ellipses by the tilt
+   above automatically, zero extra math, zero per-frame cost. */
 .orbit-ring {
   position: absolute;
   top: 0;
   left: 0;
   border-radius: 50%;
-  border: 1px solid rgba(200, 210, 255, 0.07);
+  border: 1px solid rgba(210, 215, 255, 0.1);
   pointer-events: none;
 }
 .orbit-ring-belt {
   border-style: dashed;
-  border-color: rgba(210, 195, 160, 0.16);
+  border-color: rgba(210, 195, 160, 0.2);
 }
 
 #orbitMercury { width: 20vmin; height: 20vmin; margin: -10vmin 0 0 -10vmin; }
@@ -155,32 +156,58 @@
 #orbitNeptune { width: 138vmin; height: 138vmin; margin: -69vmin 0 0 -69vmin; }
 
 /* ============================================================
-   Sun
+   Sun — bigger, more dramatic corona/flares to match the
+   reference image's fiery look
    ============================================================ */
-#bgSun {
+.billboard-sun {
   position: absolute;
   top: 0;
   left: 0;
-  width: clamp(140px, 16vmin, 260px);
-  height: clamp(140px, 16vmin, 260px);
-  margin: calc(clamp(140px, 16vmin, 260px) / -2) 0 0 calc(clamp(140px, 16vmin, 260px) / -2);
+}
+#bgSun {
+  position: relative;
+  width: clamp(220px, 30vmin, 420px);
+  height: clamp(220px, 30vmin, 420px);
+  margin: calc(clamp(220px, 30vmin, 420px) / -2) 0 0 calc(clamp(220px, 30vmin, 420px) / -2);
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #fff8dc 0%, #ffd166 30%, #ff9f45 58%, #ff6b35 85%);
+  background: radial-gradient(circle at 42% 38%, #fffbe8 0%, #ffe28a 22%, #ffb347 45%, #ff8a3d 65%, #ff5b1f 85%);
   animation: sara-sun-pulse 6s ease-in-out infinite;
   will-change: box-shadow;
 }
+#bgSun::before {
+  /* Irregular flare halo — several overlapping soft blobs at
+     different angles, standing in for solar prominences. */
+  content: "";
+  position: absolute;
+  inset: -35%;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 15% 30%, rgba(255,150,60,0.35), transparent 30%),
+    radial-gradient(circle at 80% 20%, rgba(255,190,90,0.3), transparent 26%),
+    radial-gradient(circle at 70% 80%, rgba(255,120,40,0.32), transparent 32%),
+    radial-gradient(circle at 25% 78%, rgba(255,170,70,0.28), transparent 28%);
+  filter: blur(18px);
+  animation: sara-flare-flicker 5s ease-in-out infinite;
+  pointer-events: none;
+}
 @keyframes sara-sun-pulse {
-  0%, 100% { box-shadow: 0 0 50px 16px rgba(255,180,80,0.45), 0 0 120px 50px rgba(255,140,60,0.2); }
-  50%      { box-shadow: 0 0 70px 26px rgba(255,180,80,0.6), 0 0 160px 70px rgba(255,140,60,0.3); }
+  0%, 100% { box-shadow: 0 0 70px 24px rgba(255,170,70,0.5), 0 0 160px 70px rgba(255,120,50,0.22); }
+  50%      { box-shadow: 0 0 100px 36px rgba(255,170,70,0.65), 0 0 220px 100px rgba(255,120,50,0.32); }
+}
+@keyframes sara-flare-flicker {
+  0%, 100% { opacity: 0.8; transform: rotate(0deg) scale(1); }
+  50%      { opacity: 1; transform: rotate(6deg) scale(1.06); }
 }
 
 /* ============================================================
-   Orbit / counter-rotation scaffolding, shared shape
+   Orbit / counter-rotation scaffolding (unchanged mechanics
+   from v5 — see file header for how it composes with the tilt)
    ============================================================ */
 .orbit-spin {
   position: absolute;
   top: 0;
   left: 0;
+  transform-style: preserve-3d;
   transform-origin: center center;
   animation-name: sara-orbit;
   animation-timing-function: linear;
@@ -190,14 +217,13 @@
   position: absolute;
   top: 0;
   left: 50%;
+  transform-style: preserve-3d;
   animation-name: sara-orbit;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
   animation-direction: reverse;
 }
 
-/* Generic planet shell: fixed shading + shadow, non-rotating.
-   The rotating texture lives in the .planet-surface child. */
 .planet {
   position: absolute;
   inset: 0;
@@ -239,14 +265,12 @@
 /* ---- Mercury --------------------------------------------- */
 .spin-mercury { width: 20vmin; height: 20vmin; margin: -10vmin 0 0 -10vmin; animation-duration: 18s; }
 .face-mercury {
-  width: clamp(18px, 2.4vmin, 30px);
-  height: clamp(18px, 2.4vmin, 30px);
-  margin-left: calc(clamp(18px, 2.4vmin, 30px) / -2);
+  width: clamp(30px, 4vmin, 50px);
+  height: clamp(30px, 4vmin, 50px);
+  margin-left: calc(clamp(30px, 4vmin, 50px) / -2);
   animation-duration: 18s;
 }
-.planet-mercury {
-  box-shadow: -6px 4px 16px rgba(0,0,0,0.5), 0 0 20px rgba(200,190,180,0.12);
-}
+.planet-mercury { box-shadow: -6px 4px 16px rgba(0,0,0,0.5), 0 0 20px rgba(200,190,180,0.12); }
 .planet-mercury .planet-surface {
   animation-duration: 8s;
   background:
@@ -257,19 +281,15 @@
     linear-gradient(135deg, #b8b0a8, #8a8078 60%, #5c5650);
 }
 
-/* ---- Venus -------------------------------------------------
-   Real Venus rotates retrograde and very slowly — kept here as
-   `animation-direction: reverse` on its own spin. */
+/* ---- Venus (real retrograde spin kept as flavor) ---------- */
 .spin-venus { width: 30vmin; height: 30vmin; margin: -15vmin 0 0 -15vmin; animation-duration: 30s; }
 .face-venus {
-  width: clamp(30px, 4vmin, 50px);
-  height: clamp(30px, 4vmin, 50px);
-  margin-left: calc(clamp(30px, 4vmin, 50px) / -2);
+  width: clamp(50px, 6.6vmin, 84px);
+  height: clamp(50px, 6.6vmin, 84px);
+  margin-left: calc(clamp(50px, 6.6vmin, 84px) / -2);
   animation-duration: 30s;
 }
-.planet-venus {
-  box-shadow: -8px 5px 20px rgba(0,0,0,0.5), 0 0 26px rgba(230,200,140,0.14);
-}
+.planet-venus { box-shadow: -8px 5px 20px rgba(0,0,0,0.5), 0 0 26px rgba(230,200,140,0.14); }
 .planet-venus .planet-surface {
   animation-duration: 40s;
   animation-direction: reverse;
@@ -281,14 +301,12 @@
 /* ---- Earth + Moon ------------------------------------------ */
 .spin-earth { width: 42vmin; height: 42vmin; margin: -21vmin 0 0 -21vmin; animation-duration: 46s; }
 .face-earth {
-  width: clamp(34px, 4.6vmin, 56px);
-  height: clamp(34px, 4.6vmin, 56px);
-  margin-left: calc(clamp(34px, 4.6vmin, 56px) / -2);
+  width: clamp(58px, 7.8vmin, 96px);
+  height: clamp(58px, 7.8vmin, 96px);
+  margin-left: calc(clamp(58px, 7.8vmin, 96px) / -2);
   animation-duration: 46s;
 }
-.planet-earth {
-  box-shadow: -9px 6px 22px rgba(0,0,0,0.5), 0 0 30px rgba(70,140,255,0.18);
-}
+.planet-earth { box-shadow: -9px 6px 22px rgba(0,0,0,0.5), 0 0 30px rgba(70,140,255,0.18); }
 .planet-earth .planet-surface {
   animation-duration: 6s;
   background:
@@ -321,10 +339,7 @@
   left: 50%;
   border-radius: 50%;
 }
-.moon-orbit-earth {
-  width: 9vmin; height: 9vmin; margin: -4.5vmin 0 0 -4.5vmin;
-  animation-duration: 8s; /* tidally locked: same period as its own spin below */
-}
+.moon-orbit-earth { width: 9vmin; height: 9vmin; margin: -4.5vmin 0 0 -4.5vmin; animation-duration: 8s; }
 .moon-earth {
   width: clamp(9px, 1.2vmin, 15px);
   height: clamp(9px, 1.2vmin, 15px);
@@ -335,22 +350,18 @@
     radial-gradient(circle at 30% 28%, rgba(255,255,255,0.35), transparent 30%),
     linear-gradient(135deg, #d8d4cc, #a6a29a 60%, #6e6a64);
   box-shadow: -3px 2px 8px rgba(0,0,0,0.4);
-  /* No independent spin animation here on purpose — the Moon
-     rides the orbit rotation directly, which is what real tidal
-     locking looks like (the same face always points inward). */
+  /* Tidally locked on purpose — see v5 notes; no separate spin. */
 }
 
 /* ---- Mars ---------------------------------------------------- */
 .spin-mars { width: 55vmin; height: 55vmin; margin: -27.5vmin 0 0 -27.5vmin; animation-duration: 65s; }
 .face-mars {
-  width: clamp(26px, 3.4vmin, 42px);
-  height: clamp(26px, 3.4vmin, 42px);
-  margin-left: calc(clamp(26px, 3.4vmin, 42px) / -2);
+  width: clamp(44px, 5.8vmin, 72px);
+  height: clamp(44px, 5.8vmin, 72px);
+  margin-left: calc(clamp(44px, 5.8vmin, 72px) / -2);
   animation-duration: 65s;
 }
-.planet-mars {
-  box-shadow: -7px 5px 18px rgba(0,0,0,0.5), 0 0 22px rgba(210,100,60,0.16);
-}
+.planet-mars { box-shadow: -7px 5px 18px rgba(0,0,0,0.5), 0 0 22px rgba(210,100,60,0.16); }
 .planet-mars .planet-surface {
   animation-duration: 7s;
   background:
@@ -363,16 +374,14 @@
 /* ---- Jupiter + Galilean moons --------------------------------- */
 .spin-jupiter { width: 85vmin; height: 85vmin; margin: -42.5vmin 0 0 -42.5vmin; animation-duration: 100s; }
 .face-jupiter {
-  width: clamp(80px, 10vmin, 150px);
-  height: clamp(80px, 10vmin, 150px);
-  margin-left: calc(clamp(80px, 10vmin, 150px) / -2);
+  width: clamp(130px, 16vmin, 230px);
+  height: clamp(130px, 16vmin, 230px);
+  margin-left: calc(clamp(130px, 16vmin, 230px) / -2);
   animation-duration: 100s;
 }
-.planet-jupiter {
-  box-shadow: -14px 10px 36px rgba(0,0,0,0.55), 0 0 50px rgba(220,170,110,0.2);
-}
+.planet-jupiter { box-shadow: -14px 10px 36px rgba(0,0,0,0.55), 0 0 50px rgba(220,170,110,0.2); }
 .planet-jupiter .planet-surface {
-  animation-duration: 3s; /* gas giants really do spin fastest */
+  animation-duration: 3s;
   background:
     radial-gradient(ellipse 14% 8% at 68% 62%, #b5451f 0%, rgba(181,69,31,0.5) 60%, transparent 75%),
     repeating-linear-gradient(0deg, #d8a56b 0px, #c68f52 14px, #e8c193 28px, #b9783f 42px, #d8a56b 56px);
@@ -381,6 +390,7 @@
 .moon-orbit-europa   { width: 16vmin; height: 16vmin; margin: -8vmin 0 0 -8vmin; animation-duration: 9s; }
 .moon-orbit-ganymede { width: 20vmin; height: 20vmin; margin: -10vmin 0 0 -10vmin; animation-duration: 13s; }
 .moon-orbit-callisto { width: 25vmin; height: 25vmin; margin: -12.5vmin 0 0 -12.5vmin; animation-duration: 18s; }
+.moon-orbit-triton   { width: 10vmin; height: 10vmin; margin: -5vmin 0 0 -5vmin; animation-duration: 10s; }
 .moon-jupiter {
   width: clamp(4px, 0.6vmin, 8px);
   height: clamp(4px, 0.6vmin, 8px);
@@ -392,15 +402,12 @@
 /* ---- Saturn + rings -------------------------------------------- */
 .spin-saturn { width: 105vmin; height: 105vmin; margin: -52.5vmin 0 0 -52.5vmin; animation-duration: 150s; }
 .face-saturn {
-  width: clamp(70px, 9vmin, 130px);
-  height: clamp(70px, 9vmin, 130px);
-  margin-left: calc(clamp(70px, 9vmin, 130px) / -2);
+  width: clamp(115px, 14vmin, 200px);
+  height: clamp(115px, 14vmin, 200px);
+  margin-left: calc(clamp(115px, 14vmin, 200px) / -2);
   animation-duration: 150s;
 }
-.planet-saturn {
-  z-index: 2;
-  box-shadow: -12px 8px 30px rgba(0,0,0,0.55), 0 0 40px rgba(220,200,150,0.18);
-}
+.planet-saturn { z-index: 2; box-shadow: -12px 8px 30px rgba(0,0,0,0.55), 0 0 40px rgba(220,200,150,0.18); }
 .planet-saturn .planet-surface {
   animation-duration: 3.5s;
   background: repeating-linear-gradient(0deg, #e8d5a3 0px, #d9c186 12px, #f0e4bd 24px, #cdb478 36px);
@@ -423,21 +430,15 @@
 .saturn-ring-back  { z-index: 1; clip-path: inset(0 0 50% 0); }
 .saturn-ring-front { z-index: 3; clip-path: inset(50% 0 0 0); }
 
-/* ---- Uranus -------------------------------------------------
-   Uranus's real axial tilt (~98°) makes its rings look nearly
-   edge-on and its rotation reads as retrograde from Earth — both
-   kept here as flavor. */
+/* ---- Uranus ---------------------------------------------------- */
 .spin-uranus { width: 122vmin; height: 122vmin; margin: -61vmin 0 0 -61vmin; animation-duration: 210s; }
 .face-uranus {
-  width: clamp(50px, 6.4vmin, 90px);
-  height: clamp(50px, 6.4vmin, 90px);
-  margin-left: calc(clamp(50px, 6.4vmin, 90px) / -2);
+  width: clamp(84px, 10.5vmin, 145px);
+  height: clamp(84px, 10.5vmin, 145px);
+  margin-left: calc(clamp(84px, 10.5vmin, 145px) / -2);
   animation-duration: 210s;
 }
-.planet-uranus {
-  z-index: 2;
-  box-shadow: -8px 6px 22px rgba(0,0,0,0.5), 0 0 30px rgba(140,230,210,0.18);
-}
+.planet-uranus { z-index: 2; box-shadow: -8px 6px 22px rgba(0,0,0,0.5), 0 0 30px rgba(140,230,210,0.18); }
 .planet-uranus .planet-surface {
   animation-duration: 5s;
   animation-direction: reverse;
@@ -456,23 +457,167 @@
   box-shadow: 0 0 0 2px rgba(180,230,220,0.2), 0 0 0 5px rgba(140,200,190,0.12);
 }
 
-/* ---- Neptune --------------------------------------------------- */
+/* ---- Neptune + Triton ------------------------------------------- */
 .spin-neptune { width: 138vmin; height: 138vmin; margin: -69vmin 0 0 -69vmin; animation-duration: 280s; }
 .face-neptune {
-  width: clamp(48px, 6vmin, 86px);
-  height: clamp(48px, 6vmin, 86px);
-  margin-left: calc(clamp(48px, 6vmin, 86px) / -2);
+  width: clamp(80px, 10vmin, 140px);
+  height: clamp(80px, 10vmin, 140px);
+  margin-left: calc(clamp(80px, 10vmin, 140px) / -2);
   animation-duration: 280s;
 }
-.planet-neptune {
-  box-shadow: -8px 6px 22px rgba(0,0,0,0.5), 0 0 30px rgba(80,110,230,0.2);
-}
+.planet-neptune { box-shadow: -8px 6px 22px rgba(0,0,0,0.5), 0 0 30px rgba(80,110,230,0.2); }
 .planet-neptune .planet-surface {
   animation-duration: 5s;
   background:
     radial-gradient(circle at 35% 45%, rgba(20,40,90,0.5), transparent 15%),
     linear-gradient(135deg, #3b5fd9, #2643a8 55%, #14245c);
 }
+
+/* ============================================================
+   Asteroid belt — one rigid rotating disk (single CSS animation,
+   very cheap) whose children are plain small rocks placed by JS.
+   They intentionally do NOT get a .billboard counter-tilt: letting
+   them tumble with the belt's own rotation reads as natural debris
+   motion rather than a rendering glitch.
+   ============================================================ */
+#asteroidField {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 68vmin;
+  height: 68vmin;
+  margin: -34vmin 0 0 -34vmin;
+  transform-style: preserve-3d;
+  animation: sara-orbit 220s linear infinite;
+}
+.asteroid {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 42% 58% 55% 45% / 48% 44% 56% 52%;
+  background: linear-gradient(135deg, #a89a86, #6b5d4d 55%, #3a3128);
+  box-shadow: -1px 1px 2px rgba(0,0,0,0.5);
+}
+
+/* ============================================================
+   Spiral galaxies — flat 2D backdrop elements, NOT part of the
+   tilted orbital plane (they sit far behind everything).
+   ============================================================ */
+.bg-spiral-galaxy {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(0.4px);
+  animation: sara-galaxy-spin 300s linear infinite;
+}
+.bg-spiral-galaxy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    repeating-conic-gradient(from 0deg,
+      rgba(210,200,255,0.22) 0deg 6deg,
+      transparent 6deg 26deg,
+      rgba(180,190,255,0.14) 26deg 30deg,
+      transparent 30deg 50deg);
+  mix-blend-mode: screen;
+  opacity: 0.7;
+}
+.bg-spiral-galaxy::after {
+  content: "";
+  position: absolute;
+  inset: 32% 32%;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff4d6 0%, #ffdca0 35%, transparent 75%);
+  filter: blur(1px);
+}
+.bg-spiral-galaxy-1 {
+  top: 8%;
+  right: 6%;
+  width: 15vmin;
+  height: 15vmin;
+  transform: rotate(-18deg);
+  opacity: 0.85;
+}
+.bg-spiral-galaxy-2 {
+  bottom: 6%;
+  right: 16%;
+  width: 9vmin;
+  height: 9vmin;
+  transform: rotate(24deg);
+  opacity: 0.6;
+  animation-duration: 240s;
+  animation-direction: reverse;
+}
+@keyframes sara-galaxy-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ============================================================
+   Comets — CSS-only, no JS trigger needed. Each spends most of
+   its long cycle invisible/off-screen and streaks across briefly.
+   ============================================================ */
+.comet {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px 2px rgba(255,255,255,0.8);
+  opacity: 0;
+  pointer-events: none;
+}
+.comet::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 90px;
+  height: 2px;
+  transform: translateY(-50%);
+  background: linear-gradient(to left, rgba(255,255,255,0.8), transparent);
+}
+.comet-1 {
+  top: 14%;
+  left: 70%;
+  animation: sara-comet-1 26s linear infinite;
+}
+.comet-2 {
+  top: 62%;
+  left: 45%;
+  animation: sara-comet-2 34s linear infinite;
+  animation-delay: 9s;
+}
+@keyframes sara-comet-1 {
+  0%, 78% { opacity: 0; transform: translate(0, 0) rotate(200deg); }
+  80%     { opacity: 1; }
+  92%     { opacity: 1; transform: translate(-220px, 130px) rotate(200deg); }
+  94%, 100% { opacity: 0; transform: translate(-230px, 138px) rotate(200deg); }
+}
+@keyframes sara-comet-2 {
+  0%, 82% { opacity: 0; transform: translate(0, 0) rotate(160deg); }
+  84%     { opacity: 1; }
+  95%     { opacity: 1; transform: translate(-180px, -110px) rotate(160deg); }
+  97%, 100% { opacity: 0; transform: translate(-190px, -118px) rotate(160deg); }
+}
+
+/* ============================================================
+   Foreground rock chunks — a couple of large, mostly-off-screen
+   asteroids near the Sun corner for close-up depth, like the
+   bottom-left rocks in the reference image. Static, no motion
+   needed since they're meant to read as "very close to camera."
+   ============================================================ */
+.fg-rock {
+  position: absolute;
+  border-radius: 40% 60% 55% 45% / 50% 40% 60% 50%;
+  background: linear-gradient(135deg, #8f8172, #5a4f42 55%, #2c261f);
+  box-shadow: -6px 8px 20px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+.fg-rock-1 { width: 12vmin; height: 10vmin; bottom: -4%; left: -3%; transform: rotate(-12deg); }
+.fg-rock-2 { width: 7vmin; height: 6vmin; bottom: 2%; left: 6%; transform: rotate(18deg); }
 
 #bgParticles canvas { filter: blur(1.2px); opacity: 0.95; }
 
@@ -531,18 +676,13 @@
   0%, 100% { opacity: 0.6; }
   50% { opacity: 1; }
 }
-#saraBgLayer.bg-time-day {
-  filter: brightness(1.1) saturate(1.08);
-}
-#saraBgLayer.bg-time-night {
-  filter: brightness(0.9) saturate(1.02);
-}
+#saraBgLayer.bg-time-day { filter: brightness(1.1) saturate(1.08); }
+#saraBgLayer.bg-time-night { filter: brightness(0.9) saturate(1.02); }
 
 /* ============================================================
-   perf-low: drop the outer/least-visible planets, all moons
-   except Earth's, the asteroid belt, and Earth's cloud layer.
-   Sun, Mercury–Saturn keep orbiting — still reads as "a solar
-   system," just lighter to render.
+   perf-low: drop the outer planets, most moons, both galaxies,
+   comets, the asteroid field and foreground rocks. Sun through
+   Saturn keep orbiting.
    ============================================================ */
 #saraBgLayer.bg-perf-low #bgGrain,
 #saraBgLayer.bg-perf-low #bgParticles,
@@ -555,7 +695,12 @@
 #saraBgLayer.bg-perf-low .moon-orbit-europa,
 #saraBgLayer.bg-perf-low .moon-orbit-ganymede,
 #saraBgLayer.bg-perf-low .moon-orbit-callisto,
-#saraBgLayer.bg-perf-low .planet-clouds {
+#saraBgLayer.bg-perf-low .moon-orbit-triton,
+#saraBgLayer.bg-perf-low .planet-clouds,
+#saraBgLayer.bg-perf-low #asteroidField,
+#saraBgLayer.bg-perf-low .bg-spiral-galaxy,
+#saraBgLayer.bg-perf-low .comet,
+#saraBgLayer.bg-perf-low .fg-rock {
   display: none;
   will-change: auto;
 }
@@ -570,9 +715,11 @@
 }
 
 @media (max-width: 720px) {
-  #bgSolarSystem { top: -6%; right: -8%; }
-  .face-jupiter { width: clamp(56px, 8vmin, 100px); height: clamp(56px, 8vmin, 100px); margin-left: calc(clamp(56px, 8vmin, 100px) / -2); }
-  .face-saturn  { width: clamp(48px, 7vmin, 90px); height: clamp(48px, 7vmin, 90px); margin-left: calc(clamp(48px, 7vmin, 90px) / -2); }
+  #bgSolarSystem { perspective: 900px; perspective-origin: 25% 50%; }
+  .bg-spiral-galaxy-1 { width: 20vmin; height: 20vmin; }
+  .bg-spiral-galaxy-2 { width: 13vmin; height: 13vmin; }
+  .face-jupiter { width: clamp(92px, 13vmin, 160px); height: clamp(92px, 13vmin, 160px); margin-left: calc(clamp(92px, 13vmin, 160px) / -2); }
+  .face-saturn  { width: clamp(80px, 11.5vmin, 145px); height: clamp(80px, 11.5vmin, 145px); margin-left: calc(clamp(80px, 11.5vmin, 145px) / -2); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -580,6 +727,10 @@
   #saraBgLayer::before,
   #bgGrain,
   #bgSun,
+  #bgSun::before,
+  #asteroidField,
+  .bg-spiral-galaxy,
+  .comet,
   .orbit-spin,
   .orbit-face,
   .planet-surface,
@@ -588,11 +739,7 @@
   #saraBgLayer.bg-tint-thinking::after {
     animation: none !important;
   }
-  #saraBgLayer {
-    transition: none;
-  }
-  #bgSolarSystem {
-    transition: none;
-    transform: none !important;
-  }
+  .comet { opacity: 0 !important; }
+  #saraBgLayer { transition: none; }
+  #bgSolarSystem { transition: none; transform: none !important; }
 }
