@@ -51,10 +51,10 @@ from __future__ import annotations
 import logging
 import re
 import threading
-import urllib.request
 from typing import List, Optional
 
 from config import Config
+from sara.core.llm.clients import _get_gemini_client
 
 logger = logging.getLogger(__name__)
 
@@ -75,17 +75,9 @@ _EXTRACTION_PROMPT_TEMPLATE = (
 _BULLET_PREFIX_RE = re.compile(r"^[\-\*\d\.\)\s]+")
 
 
-def _is_ollama_reachable() -> bool:
-    """
-    Cheap reachability probe against Config.OLLAMA_HOST -- reuses the
-    same host Sara's chat LLM already depends on, no new dependency.
-    Failing this must never crash, only cause this tick to be skipped
-    (see module docstring: "must never run if Ollama is unreachable").
-    """
+def _is_gemini_reachable() -> bool:
     try:
-        req = urllib.request.Request(f"{Config.OLLAMA_HOST}/api/tags", method="GET")
-        with urllib.request.urlopen(req, timeout=2.0):
-            return True
+        return _get_gemini_client(Config) is not None
     except Exception:
         return False
 
@@ -156,10 +148,10 @@ def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> N
             if rag_memory is None or not getattr(rag_memory, "enabled", False):
                 stop_event.wait(_STOP_POLL_S)
                 continue
-            if not _is_ollama_reachable():
+            if not _is_gemini_reachable():
                 logger.debug(
-                    "[MemoryConsolidation] Ollama unreachable this cycle -- skipping "
-                    "(per spec: never runs while Ollama is down)."
+                    "[MemoryConsolidation] Gemini unreachable this cycle -- skipping "
+                    "(per spec: never runs while Gemini is down)."
                 )
                 stop_event.wait(interval_s)
                 continue

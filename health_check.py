@@ -119,44 +119,28 @@ def _check_config(ui_update) -> list:
         return [{"name": "config", "friendly_name": "your configuration", "ok": False, "detail": msg}]
 
 
-def _check_ollama_reachable(ui_update) -> list:
-    """Non-blocking, short-timeout ping of the Ollama server. Ollama is
-    started/warmed up properly later in build_core_objects() — this is
-    only an early heads-up if it looks like it will need a cold start
-    (e.g. 'ollama' isn't even on PATH), not a hard requirement here."""
+def _check_gemini_configured(ui_update) -> list:
+    """Fast, local, no-network check that a usable Gemini API key is
+    configured. Deliberately does not ping the Gemini API itself — this
+    runs on every startup and must not burn API quota just to report
+    status on the diagnostics screen."""
     try:
         from config import Config
 
-        host = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
+        key = getattr(Config, "GEMINI_API_KEY", None)
     except Exception:
-        host = "http://localhost:11434"
+        key = None
 
-    try:
-        with urllib.request.urlopen(f"{host}/api/tags", timeout=1.5) as resp:
-            if resp.status == 200:
-                _ok("Ollama server already running.")
-                return [{"name": "ollama", "friendly_name": "Ollama", "ok": True, "detail": "Ollama server already running."}]
-    except Exception:
-        pass
-
-    if shutil.which("ollama") is None:
+    if key and key != "your_api_key_here":
+        _ok("Gemini API key configured.")
+        return [{"name": "gemini", "friendly_name": "Gemini", "ok": True, "detail": "Gemini API key configured."}]
+    else:
         msg = (
-            "Ollama not found on PATH — the AI brain will not be able to start. "
-            "Install Ollama from https://ollama.com and make sure it's on PATH."
+            "GEMINI_API_KEY is not set — the AI brain will not be able to "
+            "start. Add it to your .env file."
         )
         _fail(ui_update, msg)
-        return [{"name": "ollama", "friendly_name": "Ollama", "ok": False, "detail": msg}]
-    else:
-        logger.info(
-            "[HealthCheck] Ollama server not running yet — it will be auto-started "
-            "in the background during boot."
-        )
-        return [{
-            "name": "ollama",
-            "friendly_name": "Ollama",
-            "ok": True,
-            "detail": "Ollama isn't running yet, but it will auto-start in the background.",
-        }]
+        return [{"name": "gemini", "friendly_name": "Gemini", "ok": False, "detail": msg}]
 
 
 def _check_model_files(ui_update) -> list:
@@ -218,7 +202,7 @@ def run_startup_diagnostics(ui_update=None) -> list:
     for check in (
         _check_config,
         _check_audio_devices,
-        _check_ollama_reachable,
+        _check_gemini_configured,
         _check_model_files,
     ):
         try:

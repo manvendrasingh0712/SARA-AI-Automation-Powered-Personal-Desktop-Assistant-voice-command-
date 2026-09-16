@@ -46,8 +46,6 @@ import logging
 import time
 from typing import Any, Callable, Dict, FrozenSet, List, Optional
 
-from sara.core.llm.clients import _get_ollama_client
-
 from .schema import (
     Plan,
     PlanStep,
@@ -85,6 +83,35 @@ _CORRECTION_TOOL_SCHEMA: List[Dict[str, Any]] = [
     }
 ]
 
+_GEMINI_CORRECTION_TOOLS_CACHE = None
+
+
+def _get_gemini_correction_tools():
+    """
+    Converts _CORRECTION_TOOL_SCHEMA (OpenAI-style dicts) into Gemini's
+    Tool/FunctionDeclaration format, once, and caches the result at
+    module level so it isn't rebuilt on every call -- same pattern as
+    tool_router.py's _get_gemini_tools().
+    """
+    global _GEMINI_CORRECTION_TOOLS_CACHE
+    if _GEMINI_CORRECTION_TOOLS_CACHE is not None:
+        return _GEMINI_CORRECTION_TOOLS_CACHE
+    from google.genai import types as _gtypes
+
+    declarations = []
+    for entry in _CORRECTION_TOOL_SCHEMA:
+        fn = entry["function"]
+        declarations.append(
+            _gtypes.FunctionDeclaration(
+                name=fn["name"],
+                description=fn.get("description", ""),
+                parameters_json_schema=fn.get("parameters"),
+            )
+        )
+    _GEMINI_CORRECTION_TOOLS_CACHE = [_gtypes.Tool(function_declarations=declarations)]
+    return _GEMINI_CORRECTION_TOOLS_CACHE
+
+
 # Correction calls get their own small bounded pool, separate from both
 # the planner's executor and the per-plan step executor created inside
 # execute_plan() below -- keeps the three concurrency domains (propose,
@@ -120,7 +147,10 @@ def _request_step_correction(
     if timeout_s <= 0:
         return None
 
-    client = _get_ollama_client(cfg)
+    from google.genai import types as _gtypes
+    from sara.core.llm.clients import _get_gemini_client
+
+    client = _get_gemini_client(cfg)
     if not client:
         return None
 
@@ -132,12 +162,14 @@ def _request_step_correction(
     )
 
     future = _CORRECTION_EXECUTOR.submit(
-        client.chat,
+        client.models.generate_content,
         model=model_name,
-        messages=[{"role": "user", "content": prompt}],
-        tools=_CORRECTION_TOOL_SCHEMA,
-        options={"num_predict": 150, "temperature": 0.2},
-        keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "30m"),
+        contents=prompt,
+        config=_gtypes.GenerateContentConfig(
+            tools=_get_gemini_correction_tools(),
+            max_output_tokens=150,
+            temperature=0.2,
+        ),
     )
     try:
         resp = future.result(timeout=timeout_s)
@@ -158,22 +190,15 @@ def _request_step_correction(
         )
         return None
 
-    message = getattr(resp, "message", None)
-    tool_calls = getattr(message, "tool_calls", None) if message is not None else None
-    if not tool_calls:
+    calls = resp.function_calls
+    if not calls:
         return None
 
-    call = tool_calls[0]
-    function = getattr(call, "function", None)
-    function_name = getattr(function, "name", None) if function is not None else None
-    if function_name != "corrected_step":
+    call = calls[0]
+    if call.name != "corrected_step":
         return None
 
-    raw_arguments = getattr(function, "arguments", None)
-    if raw_arguments is None:
-        return None
-
-    arguments = dict(raw_arguments)
+    arguments = dict(call.args or {})
     corrected = arguments.get("arguments")
     return corrected if isinstance(corrected, dict) else None
 

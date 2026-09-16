@@ -99,7 +99,7 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
     rest of the app (same client helpers, same config knobs).
     """
     try:
-        from sara.core.llm.clients import _get_gemini_client, _get_ollama_client
+        from sara.core.llm.clients import _get_gemini_client
 
         system_prompt = (
             "You are Sara, a voice assistant. Rephrase the following short "
@@ -108,34 +108,19 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
             f"Respond only in {lang}, no markdown, no quotes."
         )
 
-        if getattr(Config, "LLM_BACKEND", "ollama") == "ollama":
-            client = _get_ollama_client(Config)
-            if not client:
-                return None
-            resp = client.chat(
-                model=getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": template},
-                ],
-                options={"num_predict": 60},
-                keep_alive=getattr(Config, "OLLAMA_KEEP_ALIVE", "5m"),
-            )
-            text = (resp.message.content or "").strip()
-        else:
-            client = _get_gemini_client(Config)
-            if not client:
-                return None
-            from google.genai import types
+        client = _get_gemini_client(Config)
+        if not client:
+            return None
+        from google.genai import types
 
-            resp = client.models.generate_content(
-                model=getattr(Config, "GEMINI_MODEL", "gemini-2.5-flash"),
-                contents=[{"role": "user", "parts": [{"text": template}]}],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt, temperature=0.6
-                ),
-            )
-            text = (resp.text or "").strip()
+        resp = client.models.generate_content(
+            model=getattr(Config, "GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=[{"role": "user", "parts": [{"text": template}]}],
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt, temperature=0.6
+            ),
+        )
+        text = (resp.text or "").strip()
 
         return text or None
     except Exception as e:  # noqa: BLE001 — must never propagate
