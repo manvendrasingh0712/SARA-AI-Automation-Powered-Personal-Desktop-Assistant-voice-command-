@@ -32,9 +32,20 @@ def main():
             f"Place index.html inside sara/gui/ folder."
         )
 
-    brain, tts, ears, db, vision, reminders, db_writer, lang_state, assistant_state, notes_memory = (
-        sara_main.build_core_objects(_push)
-    )
+    # build_core_objects() ab CoreObjects (NamedTuple) return karta hai --
+    # positional unpacking ki jagah attribute access, taaki field order
+    # badalne/badhne par silent mismatch kabhi na ho.
+    co = sara_main.build_core_objects(_push)
+    brain = co.brain
+    tts = co.tts
+    ears = co.ears
+    db = co.db
+    vision = co.vision
+    reminders = co.reminders
+    db_writer = co.db_writer
+    lang_state = co.lang_state
+    assistant_state = co.assistant_state
+    notes_memory = co.notes_memory
 
     # FIX 4 -- Startup sound: one-time Windows system "ding" on boot if
     # "setting:startup_sound" is on (default off, so existing silence
@@ -61,7 +72,16 @@ def main():
     # the gate is off.
     notifications.init_watcher(tts, _push, db)
 
-    api = Api(brain, tts, ears, db, vision, reminders, lang_state, assistant_state)
+    # CROSS-MODALITY FIX: wahi 4 shared dicts jo neeche run_sara_logic
+    # thread ko bhi jaate hain -- keyword se pass kiye hain taaki arg-order
+    # par depend na karna pade.
+    api = Api(
+        brain, tts, ears, db, vision, reminders, lang_state, assistant_state,
+        confirm_state=co.confirm_state,
+        volume_state=co.volume_state,
+        playback_state=co.playback_state,
+        context_state=co.context_state,
+    )
 
     # NEW: global emergency-stop hotkey (sara/orchestrator/emergency_stop.py).
     # Registered right here, right after `api` exists -- api.stop_sara()
@@ -88,6 +108,13 @@ def main():
             lang_state,
             assistant_state,
         ),
+        kwargs={
+            # Api(...) ko upar diye gaye EXACT same dict objects.
+            "confirm_state": co.confirm_state,
+            "volume_state": co.volume_state,
+            "playback_state": co.playback_state,
+            "context_state": co.context_state,
+        },
         daemon=True,
         name="SaraLogic",
     )

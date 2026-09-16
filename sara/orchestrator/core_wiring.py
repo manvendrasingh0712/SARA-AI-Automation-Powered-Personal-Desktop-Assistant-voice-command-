@@ -9,7 +9,6 @@ from .state import LanguageState, AssistantState
 from .ui_bridge import _UICoalescer
 from .tts_worker import TTSWorker
 from .db_writer import AsyncDBWriter
-from .text_utils import _extract_name, _matches_phrase_set
 from .history import _apply_saved_preferences, _finish_brain_setup
 from .intent_handlers import _handle_command
 from .network_utils import _shutdown_network_executor
@@ -21,7 +20,7 @@ import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, NamedTuple, Optional
 
 from health_check import run_startup_diagnostics
 
@@ -79,47 +78,6 @@ logger = logging.getLogger("sara.core_logic")
 # Constants
 # ----------------------------------------------------------------------------
 
-_EXIT_WORDS = {
-    "exit",
-    "quit",
-    "stop",
-    "goodbye",
-    "bye",
-    "shutdown",
-    "band karo",
-    "band kar",
-    "alvida",
-    "phir milenge",
-    "bye bye",
-    "बंद करो",
-    "अलविदा",
-}
-_SLEEP_WORDS = {
-    "sleep",
-    "go to sleep",
-    "that's all",
-    "nothing else",
-    "nevermind",
-    "so jao",
-    "so ja",
-    "bas karo",
-    "bas kar",
-    "theek hai bas",
-    "ठीक है बस",
-    "सो जाओ",
-}
-_FORGET_WORDS = {
-    "forget our conversation",
-    "clear memory",
-    "forget everything",
-    "clear our conversation",
-    "reset memory",
-    "sab bhool jao",
-    "memory clear karo",
-    "history delete karo",
-    "conversation bhool jao",
-    "सब भूल जाओ",
-}
 
 _STRONG_NAME_PHRASES = (
     "my name is ",
@@ -213,10 +171,42 @@ _THREAD_ERROR_BACKOFF_S = 0.5
 
 
 
+class CoreObjects(NamedTuple):
+    """
+    Named return value of build_core_objects().
+
+    Ye pehle plain positional tuple tha. Ab NamedTuple hai taaki har field
+    naam se access ho (co.brain, co.confirm_state) aur order-mismatch se
+    silent bug na bane. NamedTuple isliye (dataclass nahi) kyunki ye abhi
+    bhi ek real tuple hai — indexing/iteration wala purana behavior intact
+    rehta hai.
+
+    confirm/volume/playback/context_state: CROSS-MODALITY FIX -- ye 4 dicts
+    ab yahan ek hi baar bante hain aur GUI path (Api) + voice loop
+    (run_sara_logic) dono ko SAME instance milta hai, bilkul waise hi jaise
+    lang_state/assistant_state ke saath pehle se hota aa raha hai. Pehle
+    dono side apni-apni copy banate the, isliye voice se bola gaya
+    "close explorer" GUI mein type kiye "yes" se confirm nahi hota tha.
+    """
+    brain: Any
+    tts: Any
+    ears: Any
+    db: Any
+    vision: Any
+    reminders: Any
+    db_writer: Any
+    lang_state: Any
+    assistant_state: Any
+    notes_memory: Any
+    confirm_state: dict
+    volume_state: dict
+    playback_state: dict
+    context_state: dict
+
+
 def build_core_objects(ui_update):
     """
-    Returns: (brain, tts, ears, db, vision, reminders, db_writer,
-              lang_state, assistant_state)
+    Returns: CoreObjects (see above) -- named fields, not a raw tuple.
 
     v8 (NEW UI WIRING): also constructs the shared AssistantState used
     by the Home page's Pause/Resume Listening control, restoring its
@@ -268,6 +258,17 @@ def build_core_objects(ui_update):
         initial_active = True
     assistant_state = AssistantState(initial_active=initial_active)
 
+    # CROSS-MODALITY FIX: ye 4 session-state dicts yahan, lang_state/
+    # assistant_state ke saath hi bante hain -- ek hi instance jo aage
+    # Api(...) aur run_sara_logic(...) dono ko pass hota hai. Pehle dono
+    # apni local copy banate the (core.py __init__ aur run_sara_logic ke
+    # andar), jiski wajah se voice<->GUI ke beech confirm/mute/playback/
+    # follow-up context kabhi share hi nahi hota tha.
+    confirm_state: dict = {}
+    volume_state: dict = {}
+    playback_state: dict = {}
+    context_state: dict = {}
+
     ui_update("boot_progress", "Restoring preferences...", 58)
 
     tts = TTSWorker(voice, ears, db)
@@ -318,17 +319,21 @@ def build_core_objects(ui_update):
 
     ui_update("boot_progress", "Finalizing startup...", 97)
 
-    return (
-        brain,
-        tts,
-        ears,
-        db,
-        vision,
-        reminders,
-        db_writer,
-        lang_state,
-        assistant_state,
-        notes_memory,
+    return CoreObjects(
+        brain=brain,
+        tts=tts,
+        ears=ears,
+        db=db,
+        vision=vision,
+        reminders=reminders,
+        db_writer=db_writer,
+        lang_state=lang_state,
+        assistant_state=assistant_state,
+        notes_memory=notes_memory,
+        confirm_state=confirm_state,
+        volume_state=volume_state,
+        playback_state=playback_state,
+        context_state=context_state,
     )
 
 
@@ -461,6 +466,10 @@ def run_sara_logic(
     manual_wake_event=None,
     lang_state=None,
     assistant_state=None,
+    confirm_state=None,
+    volume_state=None,
+    playback_state=None,
+    context_state=None,
 ) -> None:
     if manual_wake_event is None:
         manual_wake_event = threading.Event()
@@ -469,17 +478,25 @@ def run_sara_logic(
 
     ui_update = _UICoalescer(ui_update)
 
-    volume_state: dict = {}
-    # NEW: same pattern as volume_state -- created once for the whole run
-    # so state genuinely persists turn-to-turn. playback_state backs the
-    # "play next video" YouTube follow-up; confirm_state backs the
-    # close_app/stop_service risky-action yes/cancel flow; context_state
-    # backs short natural-language follow-ups like "what about jaipur?"
-    # right after a weather/news query (see intent_handlers.py's
-    # _h_followup_query / _remember_context).
-    playback_state: dict = {}
-    confirm_state: dict = {}
-    context_state: dict = {}
+    # CROSS-MODALITY FIX: ye 4 dicts ab build_core_objects() mein bante
+    # hain aur yahan parameter ki tarah aate hain, taaki GUI path (Api)
+    # aur ye voice loop bilkul SAME instance share karein. Fallback
+    # lang_state wale pattern jaisa hi hai: agar koi purana/dusra caller
+    # inhe pass na kare to crash nahi hoga, bas purana (per-path isolated,
+    # buggy) behavior wapas mil jayega.
+    # playback_state = "play next video" YouTube follow-up;
+    # confirm_state = close_app/stop_service risky-action yes/cancel flow;
+    # volume_state  = mute / pre-mute volume;
+    # context_state = "what about jaipur?" type short follow-ups
+    #                 (intent_handlers.py -> _h_followup_query / _remember_context).
+    if confirm_state is None:
+        confirm_state = {}
+    if volume_state is None:
+        volume_state = {}
+    if playback_state is None:
+        playback_state = {}
+    if context_state is None:
+        context_state = {}
     # v8 NEW UI WIRING: assistant_state is passed straight through to
     # _WakeWatcher, which is the only place it's actually consulted.
     wake_watcher = _WakeWatcher(ears, manual_wake_event, stop_event, assistant_state)
@@ -650,8 +667,6 @@ def run_sara_logic(
                 last_active_time = time.monotonic()
                 activity_tracker.touch()
                 ui_update("transcript", "user", user_input)
-                lowered = user_input.lower().strip()
-
                 turn_lang_mode, turn_manual_lang = lang_state.snapshot()
                 if turn_lang_mode == "auto":
                     detected_lang = ears.get_detected_language()
@@ -663,45 +678,18 @@ def run_sara_logic(
                         f"[Logic] Language this turn (manual override): '{turn_manual_lang}'"
                     )
 
-                if _matches_phrase_set(lowered, _EXIT_WORDS):
-                    farewell = "Shutting down. Goodbye!"
-                    ui_update("transcript", "sara", farewell)
-                    tts.speak(farewell, fast=True)
-                    stop_event.set()
-                    break
-
-                if _matches_phrase_set(lowered, _SLEEP_WORDS):
-                    reply = "Okay, going back to sleep."
-                    tts.speak(reply, fast=True)
-                    ui_update("transcript", "sara", reply)
-                    break
-
-                if _matches_phrase_set(lowered, _FORGET_WORDS):
-                    ui_update("status", "thinking")
-                    brain.clear_memory()
-                    reply = "Done, I've cleared our conversation history."
-                    tts.speak(reply, fast=True)
-                    ui_update("transcript", "sara", reply)
-                    db_writer.log_message("user", user_input)
-                    db_writer.log_message("assistant", reply)
-                    if _record_turn_and_check_runaway():
-                        break
-                    continue
-
-                name = _extract_name(user_input)
-                if name:
-                    ui_update("status", "thinking")
-                    db.set_user_name(name)
-                    brain.set_user_name(name)
-                    reply = f"Nice to meet you, {name}!"
-                    tts.speak(reply, fast=True)
-                    ui_update("transcript", "sara", reply)
-                    db_writer.log_message("user", user_input)
-                    db_writer.log_message("assistant", reply)
-                    if _record_turn_and_check_runaway():
-                        break
-                    continue
-
+                # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X"
+                # checks used to live HERE, before _handle_command() was ever
+                # called -- so they only ever fired for voice input. The GUI's
+                # send_text_command() calls _handle_command() directly and
+                # never ran through this code, so typing "exit" or "my name
+                # is X" in the GUI silently did nothing. Those checks now
+                # live inside _handle_command() itself (intent_handlers.py)
+                # so both callers get identical behavior. session_control is
+                # an out-param: _handle_command() sets
+                # session_control["action"] to "exit" or "sleep" when one of
+                # those phrases matched; every other case leaves it empty.
+                session_control: dict = {}
                 reply_text = _handle_command(
                     user_input,
                     brain,
@@ -717,11 +705,22 @@ def run_sara_logic(
                     confirm_state=confirm_state,
                     context_state=context_state,
                     stt_confidence=stt_confidence,
+                    session_control=session_control,
                 )
 
                 ui_update("transcript", "sara", reply_text or "(no response)")
                 db_writer.log_message("user", user_input)
                 db_writer.log_message("assistant", reply_text or "")
+
+                # SESSION-CONTROL FIX: act on what _handle_command() decided.
+                # "exit" stops the whole app (same as the old inline check);
+                # "sleep" just breaks this wake-word loop, same as before.
+                action = session_control.pop("action", None)
+                if action == "exit":
+                    stop_event.set()
+                    break
+                if action == "sleep":
+                    break
 
                 if _record_turn_and_check_runaway():
                     print(
