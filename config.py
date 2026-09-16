@@ -586,7 +586,7 @@ class Config:
 
     # ── RAG / long-term semantic memory (sara/core/rag.py) ──────────────────
     RAG_ENABLED: bool = _bool(os.getenv("RAG_ENABLED", "True"), default=True)
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
     RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=6)
     RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.40)

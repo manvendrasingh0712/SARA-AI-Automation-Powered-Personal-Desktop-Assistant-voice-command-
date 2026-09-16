@@ -21,6 +21,7 @@ from typing import List, Optional
 import numpy as np
 
 from config import Config
+from sara.core.llm.clients import _get_gemini_client
 
 logger = logging.getLogger(__name__)
 
@@ -286,33 +287,28 @@ class LongTermMemory:
         if not text or not text.strip():
             return None
         try:
-            payload = json.dumps({"model": self._embed_model, "prompt": text}).encode(
-                "utf-8"
+            client = _get_gemini_client(Config)
+            if client is None:
+                return None
+            result = client.models.embed_content(
+                model=self._embed_model,
+                contents=text,
             )
-            req = urllib.request.Request(
-                f"{self._ollama_host}/api/embeddings",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=self._embed_timeout_s) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
-            embedding = body.get("embedding")
-            if not embedding:
+            vector = result.embeddings[0].values
+            if not vector:
                 if self._debug:
                     print(
                         f"[RAG] Embedding call to '{self._embed_model}' returned no "
-                        f"vector for text: {text[:80]!r} -- is the model actually pulled?"
+                        f"vector for text: {text[:80]!r}"
                     )
                 return None
-            return np.asarray(embedding, dtype=np.float32)
+            return np.asarray(vector, dtype=np.float32)
         except Exception as e:
             logger.debug(f"[RAG] embedding request failed: {e}")
             if self._debug:
                 print(
                     f"[RAG] Embedding request FAILED ({type(e).__name__}: {e}) -- "
-                    f"is Ollama running at {self._ollama_host} and is "
-                    f"'{self._embed_model}' pulled? (ollama pull {self._embed_model})"
+                    f"check GEMINI_API_KEY and network connectivity."
                 )
             return None
 
