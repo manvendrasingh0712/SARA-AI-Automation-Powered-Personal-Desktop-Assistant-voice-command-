@@ -6,7 +6,6 @@ main always-on conversation loop.
 """
 from .lazy import _debug_log, _Lazy
 from .state import LanguageState, AssistantState
-from .ollama_manager import _ensure_ollama_running, _stop_ollama_background
 from .ui_bridge import _UICoalescer
 from .tts_worker import TTSWorker
 from .db_writer import AsyncDBWriter
@@ -286,7 +285,6 @@ def build_core_objects(ui_update):
     notes_memory = LongTermMemory() if _HAS_RAG else None
 
     def _make_brain():
-        _ensure_ollama_running(ui_update)
         # BUGFIX (Bug 1): pass the SAME notes_memory instance used by the
         # voice-intent path (ctx["notes_memory"], see run_sara_logic below)
         # into the brain, so a memory saved via one path is recallable via
@@ -748,5 +746,4 @@ def run_sara_logic(
             notes_memory.close()
         tts.shutdown()
         db_writer.shutdown()
-        _stop_ollama_background()
         _shutdown_network_executor()

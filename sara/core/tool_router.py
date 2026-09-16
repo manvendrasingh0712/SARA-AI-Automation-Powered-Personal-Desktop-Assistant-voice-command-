@@ -366,8 +366,36 @@ def _has_math_signal(text: str) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Path A (default): real LLM tool-calling via Ollama's native tools= API
+# Path A (default): real LLM tool-calling via Gemini's native function-
+# calling API
 # ══════════════════════════════════════════════════════════════════════
+
+_GEMINI_TOOLS_CACHE = None
+
+
+def _get_gemini_tools():
+    """
+    Converts TOOLS_SCHEMA (OpenAI-style dicts, defined above -- left
+    unchanged) into Gemini's Tool/FunctionDeclaration format, once, and
+    caches the result at module level so it isn't rebuilt on every call.
+    """
+    global _GEMINI_TOOLS_CACHE
+    if _GEMINI_TOOLS_CACHE is not None:
+        return _GEMINI_TOOLS_CACHE
+    from google.genai import types as _gtypes
+
+    declarations = []
+    for entry in TOOLS_SCHEMA:
+        fn = entry["function"]
+        declarations.append(
+            _gtypes.FunctionDeclaration(
+                name=fn["name"],
+                description=fn.get("description", ""),
+                parameters_json_schema=fn.get("parameters"),
+            )
+        )
+    _GEMINI_TOOLS_CACHE = [_gtypes.Tool(function_declarations=declarations)]
+    return _GEMINI_TOOLS_CACHE
 
 
 def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Dict[str, Any]]:
@@ -375,38 +403,36 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
     Returns a resolved {"name", "arguments"} dict on success, or None if
     the LLM call itself couldn't be made (client unavailable) -- callers
     treat None the same as any other failure and fall back to the
-    heuristic. Any error from the actual chat() call propagates to the
-    caller's own try/except, which logs it and falls back (see
-    resolve_tool_call() below) -- matching how every other optional
-    LLM-assist path in this codebase behaves.
+    heuristic. Any error from the actual generate_content() call
+    propagates to the caller's own try/except, which logs it and falls
+    back (see resolve_tool_call() below) -- matching how every other
+    optional LLM-assist path in this codebase behaves.
     """
-    from sara.core.llm.clients import _get_ollama_client
+    from google.genai import types as _gtypes
+    from sara.core.llm.clients import _get_gemini_client
 
-    client = _get_ollama_client(cfg)
+    client = _get_gemini_client(cfg)
     if not client:
         return None
 
-    resp = client.chat(
+    resp = client.models.generate_content(
         model=model_name,
-        messages=[
-            {"role": "system", "content": _TOOL_ROUTER_SYSTEM_PROMPT},
-            {"role": "user", "content": user_input},
-        ],
-        tools=TOOLS_SCHEMA,
-        options={"num_predict": 150},
-        keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "30m"),
+        contents=user_input,
+        config=_gtypes.GenerateContentConfig(
+            system_instruction=_TOOL_ROUTER_SYSTEM_PROMPT,
+            tools=_get_gemini_tools(),
+            max_output_tokens=150,
+        ),
     )
 
-    tool_calls = getattr(resp.message, "tool_calls", None)
-    if not tool_calls:
+    calls = resp.function_calls
+    if not calls:
         # Model looked at the tools and correctly decided none applies --
         # this is a legitimate, confident "no tool" answer, not a failure.
         return {"name": "unknown", "arguments": {}}
 
-    call = tool_calls[0]
-    name = call.function.name
-    arguments = dict(call.function.arguments or {})
-    return {"name": name, "arguments": arguments}
+    call = calls[0]
+    return {"name": call.name, "arguments": dict(call.args or {})}
 
 
 # ══════════════════════════════════════════════════════════════════════

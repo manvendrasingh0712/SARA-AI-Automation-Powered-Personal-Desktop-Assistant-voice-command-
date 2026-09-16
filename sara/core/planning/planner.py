@@ -36,7 +36,6 @@ import logging
 import threading
 from typing import Any, FrozenSet, List, Optional
 
-from sara.core.llm.clients import _get_ollama_client
 from sara.core.tool_router import TOOL_NAME_TO_INTENT, TOOLS_SCHEMA
 
 from .schema import Plan, PlanValidationError, parse_plan_from_llm
@@ -146,6 +145,35 @@ def _get_plan_tool_schema() -> List[dict]:
         return _plan_tool_schema_cache
 
 
+_GEMINI_PLAN_TOOLS_CACHE = None
+
+
+def _get_gemini_plan_tools():
+    """
+    Converts _get_plan_tool_schema()'s output (OpenAI-style dicts) into
+    Gemini's Tool/FunctionDeclaration format, once, and caches the
+    result at module level so it isn't rebuilt on every call -- same
+    pattern as tool_router.py's _get_gemini_tools().
+    """
+    global _GEMINI_PLAN_TOOLS_CACHE
+    if _GEMINI_PLAN_TOOLS_CACHE is not None:
+        return _GEMINI_PLAN_TOOLS_CACHE
+    from google.genai import types as _gtypes
+
+    declarations = []
+    for entry in _get_plan_tool_schema():
+        fn = entry["function"]
+        declarations.append(
+            _gtypes.FunctionDeclaration(
+                name=fn["name"],
+                description=fn.get("description", ""),
+                parameters_json_schema=fn.get("parameters"),
+            )
+        )
+    _GEMINI_PLAN_TOOLS_CACHE = [_gtypes.Tool(function_declarations=declarations)]
+    return _GEMINI_PLAN_TOOLS_CACHE
+
+
 def _build_planner_system_prompt(max_steps: int) -> str:
     """
     Builds the planning system prompt, listing every tool currently
@@ -193,7 +221,7 @@ def _call_planner_llm(
     user_input: str, model_name: str, cfg: Any, max_steps: int
 ) -> Any:
     """
-    Makes the actual (blocking) Ollama tool-calling request. Runs on the
+    Makes the actual (blocking) Gemini tool-calling request. Runs on the
     bounded executor above -- callers must never call this directly on
     the voice-loop thread.
 
@@ -206,46 +234,44 @@ def _call_planner_llm(
     than assumed away, since local/quantized models are known to
     sometimes ignore tool constraints).
     """
-    client = _get_ollama_client(cfg)
+    from google.genai import types as _gtypes
+    from sara.core.llm.clients import _get_gemini_client
+
+    client = _get_gemini_client(cfg)
     if not client:
-        raise PlanningUnavailableError("Ollama client not available.")
+        raise PlanningUnavailableError("Gemini client not available.")
 
     if not isinstance(user_input, str) or not user_input.strip():
         raise PlanningUnavailableError("Empty user_input passed to planner.")
 
     try:
-        resp = client.chat(
+        resp = client.models.generate_content(
             model=model_name,
-            messages=[
-                {
-                    "role": "system",
-                    "content": _build_planner_system_prompt(max_steps),
-                },
-                {"role": "user", "content": user_input},
-            ],
-            tools=_get_plan_tool_schema(),
-            # Low, fixed temperature (not OLLAMA_TEMPERATURE) on purpose: this
-            # call produces structured tool-call JSON, not conversational
-            # text, and needs to be as deterministic/correct as possible
-            # regardless of the chat-persona temperature setting.
-            options={"num_predict": 400, "temperature": 0.2},
-            keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "30m"),
+            contents=user_input,
+            config=_gtypes.GenerateContentConfig(
+                system_instruction=_build_planner_system_prompt(max_steps),
+                tools=_get_gemini_plan_tools(),
+                # Low, fixed temperature (not OLLAMA_TEMPERATURE) on purpose: this
+                # call produces structured tool-call JSON, not conversational
+                # text, and needs to be as deterministic/correct as possible
+                # regardless of the chat-persona temperature setting.
+                max_output_tokens=400,
+                temperature=0.2,
+            ),
         )
     except Exception as exc:  # noqa: BLE001 -- any transport/client error
         raise PlanningUnavailableError(
-            f"Ollama chat() call failed: {type(exc).__name__}: {exc}"
+            f"Gemini generate_content() call failed: {type(exc).__name__}: {exc}"
         ) from exc
 
-    message = getattr(resp, "message", None)
-    tool_calls = getattr(message, "tool_calls", None) if message is not None else None
-    if not tool_calls:
+    calls = resp.function_calls
+    if not calls:
         raise PlanningUnavailableError(
             "Model did not propose a plan (no tool call returned)."
         )
 
-    call = tool_calls[0]
-    function = getattr(call, "function", None)
-    function_name = getattr(function, "name", None) if function is not None else None
+    call = calls[0]
+    function_name = call.name
 
     if function_name != "propose_plan":
         raise PlanValidationError(
@@ -253,11 +279,7 @@ def _call_planner_llm(
             f"of propose_plan."
         )
 
-    raw_arguments = getattr(function, "arguments", None)
-    if raw_arguments is None:
-        raise PlanValidationError("propose_plan call had no arguments.")
-
-    arguments = dict(raw_arguments)
+    arguments = dict(call.args or {})
     return arguments.get("steps")
 
 

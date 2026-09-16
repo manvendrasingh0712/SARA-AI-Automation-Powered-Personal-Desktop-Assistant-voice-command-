@@ -387,18 +387,26 @@ class SpeechToText:
         try:
             model = WhisperModel(
                 model_size_or_path=model_size,
-                device="cpu",
-                compute_type="int8",
-                cpu_threads=cpu_threads,
+                device="cuda",
+                compute_type="float16",
             )
-
-            print("[STT] ✅ Faster Whisper loaded on CPU.")
+            print("[STT] ✅ Faster Whisper loaded on GPU (CUDA, float16).")
             return model
 
-        except Exception as cpu_error:
-            print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
-            return None
-
+        except Exception as gpu_error:
+            print(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
+            try:
+                model = WhisperModel(
+                    model_size_or_path=model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=cpu_threads,
+                )
+                print("[STT] ✅ Faster Whisper loaded on CPU (fallback).")
+                return model
+            except Exception as cpu_error:
+                print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
+                return None
     def _load_fast_wake_whisper(self) -> Optional[object]:
         """
         Small/fast dedicated Whisper model used for the STT-fallback
