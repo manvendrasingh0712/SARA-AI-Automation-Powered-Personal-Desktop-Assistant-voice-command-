@@ -108,6 +108,7 @@ flagging this here so it's a deliberate, visible decision rather than a
 silent gap.
 """
 from .calc_utils import _safe_calc, _parse_duration_to_seconds
+from .text_utils import _extract_name
 from .network_utils import _call_with_timeout
 from .tts_worker import TTSWorker
 from . import notifications
@@ -210,10 +211,16 @@ logger = logging.getLogger("sara.core_logic")
 # Constants
 # ----------------------------------------------------------------------------
 
+# STOP-WORD FIX: bare "stop" used to be in this set. _matches_phrase_set()
+# does prefix/suffix word matching, not exact matching, so ANY sentence
+# starting or ending with the single word "stop" matched -- "stop the
+# music", "stop timer", "stop recording" all silently exited the entire
+# app instead of doing what they said. Removed; "exit"/"quit"/"shutdown"/
+# "goodbye"/etc. are still exact/prefix/suffix matches for actually
+# quitting Sara.
 _EXIT_WORDS = {
     "exit",
     "quit",
-    "stop",
     "goodbye",
     "bye",
     "shutdown",
@@ -338,6 +345,25 @@ _CONFIRM_PENDING_TTL_S = 30.0
 def _is_risky(name: str, keywords) -> bool:
     lowered = (name or "").lower()
     return any(kw in lowered for kw in keywords)
+
+
+def _matches_phrase_set(text: str, phrase_set: set) -> bool:
+    """
+    Matches `text` against a set of short phrases using exact/prefix/
+    suffix word matching (NOT plain substring matching) -- e.g. "sleep"
+    matches "go to sleep" or "sleep now" but a bare substring check
+    would also wrongly match "sleeping pills" or "asleep". See the
+    STOP-WORD FIX comment near _EXIT_WORDS above for why bare substring
+    matching was previously buggy for single-word phrases like "stop".
+    """
+    if not text:
+        return False
+    for phrase in phrase_set:
+        if not phrase:
+            continue
+        if text == phrase or text.startswith(phrase + " ") or text.endswith(" " + phrase):
+            return True
+    return False
 
 
 _WAKE_POLL_INTERVAL_S = 0.05
@@ -1656,6 +1682,7 @@ def _handle_command(
     confirm_state: dict = None,
     context_state: dict = None,
     stt_confidence: float = 1.0,
+    session_control: dict = None,
 ) -> str:
     if playback_state is None:
         playback_state = {}
@@ -1663,6 +1690,54 @@ def _handle_command(
         confirm_state = {}
     if context_state is None:
         context_state = {}
+    if session_control is None:
+        session_control = {}
+
+    # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X" used to
+    # be checked only in core_wiring.py's run_sara_logic() while-loop,
+    # before _handle_command() was ever called -- so typing "exit" or
+    # "my name is Priya" in the GUI (send_text_command -> _handle_command
+    # directly) silently did nothing, only voice input honored them. Now
+    # both callers go through here, so behavior matches for both.
+    #
+    # These 4 checks stay ahead of the pending-confirmation gate below on
+    # purpose (same order as before the move): if Sara just asked "are you
+    # sure?" and the user instead says "never mind" (a _SLEEP_WORDS
+    # phrase) or "my name is Sam", that takes priority over re-parsing it
+    # as a yes/cancel answer to the stale confirmation.
+    lowered = (user_input or "").lower().strip()
+
+    if _matches_phrase_set(lowered, _EXIT_WORDS):
+        session_control["action"] = "exit"
+        farewell = "Shutting down. Goodbye!"
+        ui_update("status", "speaking")
+        tts.speak(farewell, fast=True)
+        return farewell
+
+    if _matches_phrase_set(lowered, _SLEEP_WORDS):
+        session_control["action"] = "sleep"
+        reply = "Okay, going back to sleep."
+        ui_update("status", "speaking")
+        tts.speak(reply, fast=True)
+        return reply
+
+    if _matches_phrase_set(lowered, _FORGET_WORDS):
+        ui_update("status", "thinking")
+        brain.clear_memory()
+        reply = "Done, I've cleared our conversation history."
+        ui_update("status", "speaking")
+        tts.speak(reply, fast=True)
+        return reply
+
+    name = _extract_name(user_input)
+    if name:
+        ui_update("status", "thinking")
+        db.set_user_name(name)
+        brain.set_user_name(name)
+        reply = f"Nice to meet you, {name}!"
+        ui_update("status", "speaking")
+        tts.speak(reply, fast=True)
+        return reply
 
     ctx = {
         "brain": brain,

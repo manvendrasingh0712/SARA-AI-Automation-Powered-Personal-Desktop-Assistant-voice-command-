@@ -11,12 +11,44 @@ from .helpers import (
 )
 
 import time
+import queue
 import random
 import threading
 import webview
 from datetime import datetime
 
 from config import Config
+
+# ── CONCURRENCY FIX (v14) ──────────────────────────────────────────────
+# One process-wide reentrant lock protecting the cross-modality state dicts
+# (confirm_state / volume_state / playback_state / context_state) that
+# build_core_objects() hands to BOTH this Api instance and run_sara_logic().
+#
+# Those dicts are plain dicts with no synchronisation of their own, and
+# _handle_command() does read-modify-write sequences on them (e.g. reading
+# confirm_state["pending"], deciding, then clearing it). Two commands running
+# concurrently -- two fast typed commands, or one typed + one voice turn --
+# could interleave mid-sequence and make a "yes" confirm the wrong pending
+# action, or clear a confirm that had just been set.
+#
+# It lives at module scope (not on the instance) so the voice loop can take
+# the SAME lock:
+#     from sara.gui.app.core import STATE_LOCK
+# See the note at the bottom of send_text_command() -- until run_sara_logic()
+# also takes it, this only serialises the typed path against itself.
+#
+# RLock, not Lock: _handle_command() may re-enter Api methods on the same
+# thread (e.g. the session_control "sleep" path calling stop_sara()).
+STATE_LOCK = threading.RLock()
+
+# How many typed commands may sit waiting while one is being processed.
+# Small on purpose: this is a human typing, not a job queue. Beyond this the
+# call is rejected with a "busy" reply instead of spawning more work.
+_MAX_QUEUED_COMMANDS = 3
+
+# Identical text submitted twice inside this window (double-click on Send,
+# Enter key repeat, a bouncing JS handler) is treated as one command.
+_DUPLICATE_WINDOW_SECONDS = 0.75
 
 INDIAN_MUSIC_SEARCHES = [
     "latest Bollywood songs",
@@ -53,6 +85,10 @@ class ApiCoreMixin:
         reminders,
         lang_state=None,
         assistant_state=None,
+        confirm_state=None,
+        volume_state=None,
+        playback_state=None,
+        context_state=None,
     ):
         self.brain = brain
         self.tts = tts
@@ -128,20 +164,42 @@ class ApiCoreMixin:
         random.shuffle(self.music_queries)
         self.music_index = 0
 
-        # SESSION STATE for _handle_command(): created once here (not a
-        # fresh {} per call) so it genuinely persists turn-to-turn for
-        # GUI-typed commands too -- matches how the main voice loop in
-        # core_wiring.py already does it. volume_state existing usage
-        # below used to pass a literal {} every call, silently resetting
-        # mute/pre-mute-volume state on every single typed command; fixed
-        # by reusing this same dict instead.
-        self.volume_state: dict = {}
-        self.playback_state: dict = {}
-        self.confirm_state: dict = {}
-        # Same reused-dict pattern as above -- backs short follow-ups like
-        # "what about jaipur?" right after a weather/news query typed in
-        # the GUI (see intent_handlers.py's _h_followup_query).
-        self.context_state: dict = {}
+        # CROSS-MODALITY FIX: ab ye dicts yahan locally nahi bante --
+        # build_core_objects() mein ek baar bante hain aur bootstrap.main()
+        # se yahan AUR run_sara_logic() dono ko SAME instance milta hai
+        # (lang_state/assistant_state jaisa hi pattern). Isse voice se shuru
+        # kiya confirm GUI mein "yes" type karke complete ho jata hai, mute
+        # state dono jagah ek rehta hai, aur "what about jaipur?" type
+        # follow-ups modality badalne par bhi kaam karte hain.
+        #
+        # None fallback deliberately hai -- koi purana caller Api ko sirf
+        # 8 args ke saath banaye to crash na ho, bas purana isolated
+        # behavior wapas mil jaye.
+        self.volume_state: dict = volume_state if volume_state is not None else {}
+        self.playback_state: dict = playback_state if playback_state is not None else {}
+        self.confirm_state: dict = confirm_state if confirm_state is not None else {}
+        self.context_state: dict = context_state if context_state is not None else {}
+
+        # ── CONCURRENCY FIX (v14) ─────────────────────────────────────────
+        # Guard for the four shared dicts above. Exposed as an attribute so
+        # other modules that were handed the same dicts can take the same
+        # lock without importing the module-level name.
+        self.state_lock = STATE_LOCK
+
+        # Per-session serialized command queue. send_text_command() used to
+        # do threading.Thread(target=_worker).start() on EVERY call -- an
+        # unbounded number of daemon threads all calling _handle_command()
+        # (and thus the LLM, TTS and the shared dicts) at the same time.
+        # Now every typed command is put on this bounded queue and drained
+        # by exactly ONE long-lived worker thread, so only one command is
+        # ever in flight.
+        self._cmd_queue: "queue.Queue" = queue.Queue(maxsize=_MAX_QUEUED_COMMANDS)
+        self._cmd_thread = None
+        self._cmd_thread_lock = threading.Lock()
+
+        # Double-submit suppression state, guarded by _cmd_thread_lock.
+        self._last_cmd_text = ""
+        self._last_cmd_ts = 0.0
 
         # See _bind_instance_methods() below for why this is needed on
         # top of engine.py's class-level setattr loop.
@@ -362,20 +420,70 @@ class ApiCoreMixin:
             print(f"[stop_sara push error] {e}")
         return {"ok": True}
 
-    def send_text_command(self, text):
-        # v13: same as wake_now() — a newly typed/sent command is a fresh
+    # ── Serialized typed-command pipeline (v14) ─────────────────────────
+    def _ensure_command_worker(self):
+        """
+        Start the single command worker on first use. Lazy rather than in
+        __init__ so a process that never types a command never pays for the
+        thread, and so a worker that somehow died (it shouldn't -- the loop
+        swallows everything) gets replaced on the next command.
+        """
+        with self._cmd_thread_lock:
+            if self._cmd_thread is not None and self._cmd_thread.is_alive():
+                return
+            self._cmd_thread = threading.Thread(
+                target=self._command_loop, daemon=True, name="SaraCmdWorker"
+            )
+            self._cmd_thread.start()
+
+    def _command_loop(self):
+        """
+        The one and only consumer of _cmd_queue. Daemon thread, runs for the
+        life of the process. Nothing in here is allowed to raise, or the
+        queue would stop draining and every later command would silently
+        hang at "busy".
+        """
+        while True:
+            text = self._cmd_queue.get()
+            try:
+                if text is None:  # shutdown sentinel from close_window()
+                    return
+                self._run_text_command(text)
+            except Exception as e:
+                print(f"[command worker error] {e}")
+            finally:
+                self._cmd_queue.task_done()
+
+    def _run_text_command(self, text):
+        # v13: same as wake_now() -- a newly typed/sent command is a fresh
         # turn, so clear any Stop-latch from a previous reply first.
+        # v14: this moved from send_text_command() into the worker. It must
+        # happen when the command actually STARTS, not when it was queued:
+        # clearing at queue time would un-latch the Stop the user just
+        # pressed on the reply that is still being spoken.
         try:
             if hasattr(self.tts, "clear_interrupt"):
                 self.tts.clear_interrupt()
         except Exception as e:
             print(f"[send_text_command clear_interrupt error] {e}")
-        # gui_main is cached in __init__, so we use self.gui_main
-        # to avoid the micro-latency of repeating the import lock here.
-        _push("transcript", "user", text)
 
-        def _worker():
-            try:
+        # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X"
+        # used to only be checked in the voice loop (run_sara_logic),
+        # never here -- typing "exit" or "my name is Priya" in the GUI
+        # did nothing. _handle_command() now checks these itself and
+        # reports back via this out-param dict instead of a return
+        # value, so the normal `reply` string handling below stays
+        # untouched either way.
+        session_control: dict = {}
+        try:
+            # STATE_LOCK is held across the whole _handle_command() call, not
+            # just around individual dict accesses, because the races that
+            # matter are read-modify-write sequences INSIDE it (set a pending
+            # confirm, then later consume it). Holding it for the duration is
+            # affordable precisely because the queue already guarantees only
+            # one typed command runs at a time -- the lock is what extends
+            # that guarantee to the voice loop once it takes the lock too.
+            with self.state_lock:
                 reply = self.gui_main._handle_command(
                     text,
                     self.brain,
@@ -389,24 +497,85 @@ class ApiCoreMixin:
                     playback_state=self.playback_state,
                     confirm_state=self.confirm_state,
                     context_state=self.context_state,
+                    session_control=session_control,
                 )
+        except Exception as e:
+            print(f"[send_text_command _handle_command error] {e}")
+            reply = "Sorry, something went wrong handling that. Please try again."
+            try:
+                _push("status", "sleeping")
+            except Exception as e2:
+                print(f"[send_text_command status push error] {e2}")
+        if reply:
+            _push("transcript", "sara", reply)
+            try:
+                self.db.log_message("user", text)
+                self.db.log_message("assistant", reply)
             except Exception as e:
-                print(f"[send_text_command _handle_command error] {e}")
-                reply = "Sorry, something went wrong handling that. Please try again."
-                try:
-                    _push("status", "sleeping")
-                except Exception as e2:
-                    print(f"[send_text_command status push error] {e2}")
-            if reply:
-                _push("transcript", "sara", reply)
-                try:
-                    self.db.log_message("user", text)
-                    self.db.log_message("assistant", reply)
-                except Exception as e:
-                    print(f"[db log error] {e}")
+                print(f"[db log error] {e}")
 
-        threading.Thread(target=_worker, daemon=True).start()
-        return {"ok": True}
+        # SESSION-CONTROL FIX: act on what _handle_command() decided.
+        # GUI equivalents of the voice loop's stop_event.set()/break --
+        # "exit" closes the whole app window (same as the taskbar
+        # close button, which already runs bootstrap.main()'s normal
+        # shutdown/cleanup path once webview.start() returns); "sleep"
+        # just stops the mic/TTS for this session like the Stop button,
+        # window stays open.
+        action = session_control.get("action")
+        if action == "exit":
+            self.close_window()
+        elif action == "sleep":
+            self.stop_sara()
+
+    def send_text_command(self, text):
+        """
+        Queue a typed command. Returns immediately (the JS bridge call must
+        never block on the LLM); the actual work happens on the single
+        SaraCmdWorker thread, so commands are processed strictly one at a
+        time and in submission order.
+
+        Return contract is unchanged for the happy path ({"ok": True}); a
+        rejected command now returns ok=False plus a "reason" the frontend
+        can ignore safely if it doesn't care.
+        """
+        text = (text or "").strip()
+        if not text:
+            return {"ok": False, "reason": "empty"}
+
+        now = time.time()
+        with self._cmd_thread_lock:
+            if (
+                text == self._last_cmd_text
+                and (now - self._last_cmd_ts) < _DUPLICATE_WINDOW_SECONDS
+            ):
+                # Double-click on Send / Enter repeat -- the user meant one
+                # command. Swallow it silently; the first copy is already
+                # queued and has already echoed to the transcript.
+                return {"ok": False, "reason": "duplicate"}
+            self._last_cmd_text = text
+            self._last_cmd_ts = now
+
+        self._ensure_command_worker()
+
+        try:
+            self._cmd_queue.put_nowait(text)
+        except queue.Full:
+            # Bounded on purpose: rejecting is better than letting a stuck
+            # command pile up an unbounded backlog the user forgot about.
+            _push(
+                "transcript",
+                "sara",
+                "I'm still working on your previous request — give me a moment.",
+            )
+            return {"ok": False, "reason": "busy"}
+
+        # Echo to the transcript only after the command is definitely
+        # accepted, so a rejected one doesn't leave an orphan user bubble
+        # that never gets a reply.
+        # gui_main is cached in __init__, so we use self.gui_main
+        # to avoid the micro-latency of repeating the import lock here.
+        _push("transcript", "user", text)
+        return {"ok": True, "queued": self._cmd_queue.qsize()}
 
     def minimize_window(self):
         # webview is globally imported, no need to re-import locally.
@@ -420,6 +589,22 @@ class ApiCoreMixin:
         return {"ok": True}
 
     def close_window(self):
+        # Drop anything still queued and ask the worker to exit. Best-effort
+        # and non-blocking: close_window() can be called FROM the worker
+        # itself (session_control action == "exit"), so it must never join
+        # the worker thread. The thread is a daemon either way, so a command
+        # mid-flight can't keep the process alive.
+        try:
+            while True:
+                try:
+                    self._cmd_queue.get_nowait()
+                    self._cmd_queue.task_done()
+                except queue.Empty:
+                    break
+            self._cmd_queue.put_nowait(None)
+        except Exception as e:
+            print(f"[close_window queue drain error] {e}")
+
         for w in webview.windows:
             w.destroy()
         return {"ok": True}
