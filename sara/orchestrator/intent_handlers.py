@@ -6,13 +6,23 @@ the dispatcher that routes a detected intent to its handler.
 
 PLANNING ENGINE INTEGRATION (sara.core.planning)
 ---------------------------------------------------
-_handle_command() now attempts a bounded multi-step plan (via
-try_plan_and_execute()) for "chat"-intent messages, BEFORE falling back
-to the existing single-tool resolve_tool_call() path. This only engages
-when sara.core.planning.trigger.should_attempt_plan() detects a genuine
-multi-action signal in the message -- a single-tool request is
-completely unaffected and takes the exact same path it always has, with
-zero added latency.
+_handle_command() can attempt a bounded multi-step plan (via
+try_plan_and_execute()) for "chat"-intent messages, as an alternative to
+the single-tool resolve_tool_call() path. It engages only when
+sara.core.planning.trigger.should_attempt_plan() detects a genuine
+multi-action signal in the message.
+
+LLM ROUTING IS MUTUALLY EXCLUSIVE (LATENCY FIX)
+--------------------------------------------------
+The planner and the single-tool resolver used to be two independent `if`
+blocks, so one "chat"-intent turn could cost THREE sequential LLM
+round-trips: planner -> tool-router -> final chat generation. They are
+now gated by _route_chat_message() (further down this file), a pure,
+LLM-free string heuristic that picks exactly ONE of "plan" / "tool" /
+"chat" up front. Worst case is now 2 LLM calls, and a plain
+conversational message costs exactly 1 (previously 2, because the
+tool-router ran on every unmatched message). See that function's
+docstring for the heuristic and its explicit trade-off.
 
 SECURITY HARDENING (open_url / open_app / close_app)
 --------------------------------------------------------
@@ -112,6 +122,7 @@ from .text_utils import _extract_name
 from .network_utils import _call_with_timeout
 from .tts_worker import TTSWorker
 from . import notifications
+from ._constants import _SLEEP_WORDS, _FORGET_WORDS
 
 
 import difflib
@@ -186,10 +197,26 @@ try:
         validate_tool_arguments,
     )
 
+    # LATENCY FIX: the plan-signal detector is now needed HERE, up front, by
+    # _route_chat_message() below -- it is what decides (without any LLM
+    # call) whether this turn takes the planner path or the tool-router
+    # path. It used to be called only from inside try_plan_and_execute().
+    # Imported defensively: older builds of sara.core.planning may not
+    # re-export it from the package root, in which case the router simply
+    # never picks the "plan" route and behaves like planning is disabled.
+    try:
+        from sara.core.planning import should_attempt_plan
+    except Exception:  # noqa: BLE001
+        try:
+            from sara.core.planning.trigger import should_attempt_plan
+        except Exception:  # noqa: BLE001
+            should_attempt_plan = None
+
     _HAS_PLANNING = True
 except Exception as _planning_import_err:  # noqa: BLE001
     try_plan_and_execute = None
     validate_tool_arguments = None
+    should_attempt_plan = None
 
     class PlanValidationError(Exception):  # type: ignore[no-redef]
         """Sentinel fallback so isinstance/except checks below never crash
@@ -232,87 +259,9 @@ _EXIT_WORDS = {
     "बंद करो",
     "अलविदा",
 }
-_SLEEP_WORDS = {
-    "sleep",
-    "go to sleep",
-    "that's all",
-    "nothing else",
-    "nevermind",
-    "so jao",
-    "so ja",
-    "bas karo",
-    "bas kar",
-    "theek hai bas",
-    "ठीक है बस",
-    "सो जाओ",
-}
-_FORGET_WORDS = {
-    "forget our conversation",
-    "clear memory",
-    "forget everything",
-    "clear our conversation",
-    "reset memory",
-    "sab bhool jao",
-    "memory clear karo",
-    "history delete karo",
-    "conversation bhool jao",
-    "सब भूल जाओ",
-}
-
-_STRONG_NAME_PHRASES = (
-    "my name is ",
-    "call me ",
-    "mera naam hai ",
-    "mera naam ",
-    "mujhe bulao ",
-    "main hoon ",
-)
-_WEAK_NAME_PHRASES = ("i am ", "i'm ")
-
-_WEAK_NAME_BLOCKLIST = {
-    "sorry",
-    "sure",
-    "fine",
-    "okay",
-    "ok",
-    "going",
-    "not",
-    "just",
-    "here",
-    "still",
-    "really",
-    "so",
-    "very",
-    "trying",
-    "about",
-    "done",
-    "ready",
-    "afraid",
-    "glad",
-    "happy",
-    "sad",
-    "tired",
-    "busy",
-    "confused",
-    "lost",
-    "good",
-    "great",
-    "alright",
-    "kidding",
-    "joking",
-    "serious",
-    "curious",
-    "worried",
-    "excited",
-    "bored",
-    "annoyed",
-    "stressed",
-    "hungry",
-}
-
-_MAX_EMPTY_RETRIES = 3
-_EMPTY_RETRY_GRACE_S = 8.0
-_IDLE_SLEEP_TIMEOUT_S = 180
+# NOTE: stays local, NOT in ._constants -- this shard's value conflicts
+# with another shard's copy (that one still has "stop"; this one
+# deliberately doesn't, see STOP-WORD FIX above). See CONFLICTS.
 
 # CONFIRMATION FLOW: closing/stopping something "risky" (a core system
 # process/service, not an everyday app) asks for a yes/no first instead
@@ -366,39 +315,6 @@ def _matches_phrase_set(text: str, phrase_set: set) -> bool:
     return False
 
 
-_WAKE_POLL_INTERVAL_S = 0.05
-_WAKE_WAIT_TIMEOUT_S = 0.3
-
-_BARGE_IN_POLL_S = 0.05
-_BARGE_IN_GRACE_S = 0.2
-_TTS_IDLE_POLL_S = 0.5
-_WATCH_IDLE_POLL_S = 0.5
-_DB_WRITER_IDLE_POLL_S = 1.0
-
-_NETWORK_TOOL_TIMEOUT_S = 6.0
-
-_CALC_EXPR_RE = re.compile(r"^[\d\s\+\-\*\/\(\)\.\%]+$")
-_CALC_MAX_LEN = 200
-_CALC_MAX_NUMBER_DIGITS = 12
-_CALC_MAX_POW_OPS = 1
-_CALC_MAX_EXPONENT_VALUE = 1000
-_CALC_EXPONENT_RE = re.compile(r"\*\*\s*([+-]?\d+)")
-
-_OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
-_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
-_OLLAMA_READY_TIMEOUT_S = 60
-_OLLAMA_POLL_INTERVAL_S = 0.25
-
-_DEBUG = getattr(Config, "DEBUG_MODE", False)
-
-# Kokoro speed range. Kokoro's `speed` parameter is DIRECTLY
-# proportional to playback rate (1.0 = normal, >1.0 = faster).
-_KOKORO_SPEED_MIN = 0.6
-_KOKORO_SPEED_MAX = 1.4
-
-_POST_TTS_SETTLE_WITH_AEC_S = 0.3
-
-_THREAD_ERROR_BACKOFF_S = 0.5
 
 # ── Memory management (NEW) ─────────────────────────────────────────────
 # Fuzzy-match confidence threshold the "forget that I like X" voice
@@ -1622,6 +1538,140 @@ except Exception as _skills_import_err:  # noqa: BLE001
     print(f"[Core] sara.skills unavailable, plugin skills disabled: {_skills_import_err}")
 
 
+# ── Chat-route selection (LATENCY FIX) ──────────────────────────────────
+# Before this, a "chat"-intent message (i.e. the fast-path regex matcher
+# found nothing) could cost up to THREE sequential LLM round-trips:
+#
+#   1. try_plan_and_execute()          -> planner LLM call
+#   2. resolve_tool_call()             -> tool-router LLM call
+#   3. brain.generate_response_stream() -> final chat LLM call
+#
+# because the planner block and the tool-router block were two INDEPENDENT
+# `if` statements: whenever the planner engaged and then returned None (no
+# usable plan, or a plan that produced nothing), execution fell straight
+# through into the tool-router, and from there into plain chat.
+#
+# _route_chat_message() makes those two routing stages MUTUALLY EXCLUSIVE.
+# It is a pure string heuristic -- zero LLM calls, zero I/O -- that picks
+# exactly ONE of:
+#
+#   "plan" -> only the planner is attempted. If it yields nothing we go
+#             straight to plain chat; the tool-router is NOT tried.
+#   "tool" -> only the single-tool LLM resolver is attempted. Same deal:
+#             no plan attempt, and a miss falls straight to plain chat.
+#   "chat" -> neither routing stage runs at all. A conversational message
+#             ("what do you think about X", "tell me a joke") now costs
+#             exactly ONE LLM call instead of two.
+#
+# Worst case therefore drops from 3 sequential LLM calls to 2, and the
+# common conversational case drops from 2 to 1.
+#
+# Trade-off, stated plainly: a message that the heuristic routes to "tool"
+# but that was really a multi-step request no longer gets a second chance
+# at the planner (and vice versa). That is the deliberate price of the
+# latency win -- the fallback in both cases is a normal chat answer, not
+# an error.
+
+# Upper word count for anything to be considered a command at all. Real
+# tool requests are short imperatives ("open chrome", "remind me at 6 to
+# call mom"); a long sentence is nearly always conversation.
+_TOOL_SIGNAL_MAX_WORDS = 16
+
+# Action verbs that signal "do something", EN + Hinglish. Matched only at
+# a word boundary so "opening hours" / "search engine kya hai" don't trip
+# it purely by containing the substring.
+_TOOL_SIGNAL_RE = re.compile(
+    r"\b("
+    r"open|launch|start|run|close|quit|kill|stop|restart|switch"
+    r"|play|pause|resume|skip|next|mute|unmute"
+    r"|search|google|youtube|look\s+up|find|download"
+    r"|set|change|increase|decrease|raise|lower|turn"
+    r"|remind|schedule|book|create|make|add|delete|remove|clear"
+    r"|send|message|call|email|type|press|copy|paste"
+    r"|screenshot|lock|shutdown|sleep|restart"
+    r"|kholo|khol|chalao|chala|band|bajao|baja|dhundo|dhoondo"
+    r"|bhejo|likho|banao|karo|kar\s+do|set\s+karo|yaad\s+dila"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Conversational openers that OVERRIDE the verb match above. "what is the
+# best way to open a jar" contains "open" but is obviously a question, not
+# a command -- these keep such messages out of the tool-router entirely.
+_CHAT_SIGNAL_RE = re.compile(
+    r"^\s*("
+    r"who|what|why|how|when|which|whose|whom"
+    r"|tell\s+me|explain|describe|define|summar|compare|suggest|recommend"
+    r"|do\s+you|are\s+you|can\s+you\s+explain|should\s+i|is\s+it|was\s+it"
+    r"|kya|kyun|kyu|kaise|kaun|kab|kahan|batao|bata|samjhao|samjha"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _route_chat_message(user_input: str) -> str:
+    """
+    Decide which SINGLE routing stage (if any) a "chat"-intent message gets.
+
+    Returns exactly one of "plan", "tool", or "chat". Pure function: makes
+    no LLM call, touches no network, no DB, no shared state -- so it is
+    safe to call on every chat turn and trivially unit-testable.
+
+    Order matters. The plan check runs first because a genuine multi-action
+    message ("open chrome and then play some music") would ALSO match the
+    tool-verb heuristic below, and the planner is the correct handler for
+    it; the tool-router could only ever execute the first of the two.
+    """
+    text = (user_input or "").strip()
+    if not text:
+        return "chat"
+
+    # ── 1. Multi-step plan? ─────────────────────────────────────────────
+    planning_available = (
+        _HAS_PLANNING
+        and try_plan_and_execute is not None
+        and should_attempt_plan is not None
+        and getattr(Config, "PLANNING_ENABLED", True)
+    )
+    if planning_available:
+        try:
+            wants_plan = should_attempt_plan(text)
+        except TypeError:
+            # Tolerate an older/newer signature that also takes Config,
+            # rather than hard-failing the whole routing decision on it.
+            try:
+                wants_plan = should_attempt_plan(text, Config)
+            except Exception:  # noqa: BLE001
+                wants_plan = False
+        except Exception:  # noqa: BLE001
+            # A broken trigger must degrade to "no plan", never to a
+            # crashed command -- same defensive posture as every other
+            # optional-feature call site in this module.
+            wants_plan = False
+        if wants_plan:
+            return "plan"
+
+    # ── 2. Single tool? ─────────────────────────────────────────────────
+    tool_router_available = (
+        getattr(Config, "TOOL_CALLING_ENABLED", True)
+        and resolve_tool_call is not None
+        and build_fake_match is not None
+        and bool(TOOL_NAME_TO_INTENT)
+    )
+    if not tool_router_available:
+        return "chat"
+
+    if len(text.split()) > _TOOL_SIGNAL_MAX_WORDS:
+        return "chat"
+    if _CHAT_SIGNAL_RE.match(text):
+        return "chat"
+    if _TOOL_SIGNAL_RE.search(text):
+        return "tool"
+
+    # ── 3. Neither. Straight to plain chat, one LLM call total. ─────────
+    return "chat"
+
+
 def _build_plan_dispatch_fn(ctx: dict):
     """
     Builds the DispatchFn callback sara.core.planning.try_plan_and_execute()
@@ -1888,67 +1938,65 @@ def _handle_command(
                 ctx, "Sorry, I ran into a problem with that. Let's try something else."
             )
 
-    # ── Multi-step planning engine ──────────────────────────────────────
-    # Only attempted for "chat"-intent messages (the fast-path regex
-    # matcher above found nothing), and only actually engages an LLM
-    # call if sara.core.planning.trigger.should_attempt_plan() detects a
-    # genuine multi-action signal -- see that module's docstring for the
-    # exact trigger conditions. A single-tool "chat" message costs
-    # nothing extra here: should_attempt_plan() is a pure string check
-    # that returns False before any LLM call is even considered, and
-    # execution falls straight through to the existing
-    # resolve_tool_call() block below, completely unchanged.
+    # ── LLM routing: ONE stage at most (LATENCY FIX) ────────────────────
+    # These two blocks used to be independent `if`s, so a "chat"-intent
+    # message could pay for the planner LLM call AND the tool-router LLM
+    # call AND the final chat LLM call -- three sequential round-trips for
+    # a single turn. _route_chat_message() (defined above this function)
+    # is a pure, LLM-free string heuristic that now picks exactly one of
+    # them up front, so the worst case is 2 calls and a plain
+    # conversational message costs just 1.
     #
-    # try_plan_and_execute() NEVER raises (see its own docstring) -- the
-    # try/except here is a second, redundant safety net purely so a
-    # hypothetical future bug in that contract can never escalate into
-    # killing the whole voice loop thread, matching the same defensive
-    # posture as the resolve_tool_call() block immediately below it.
-    if (
-        intent == "chat"
-        and _HAS_PLANNING
-        and try_plan_and_execute is not None
-        and getattr(Config, "PLANNING_ENABLED", True)
-    ):
-        try:
-            allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
-            plan_outcome = try_plan_and_execute(
-                user_input,
-                brain.model_name,
-                _build_plan_dispatch_fn(ctx),
-                Config,
-                allowed_apps=allowed_apps,
-            )
-            if plan_outcome is not None:
-                return _quick(ctx, plan_outcome.final_message)
-        except Exception as e:  # noqa: BLE001 -- absolute safety net
-            print(f"[Planning] Multi-step plan attempt failed unexpectedly: {e}")
-            # Deliberately falls through to the single-tool path below
-            # rather than returning an error to the user -- a planning
-            # bug should degrade to "handled like a single-tool request"
-            # wherever that's still possible, not surface as a failure.
+    # Both branches below keep their original bodies verbatim, including
+    # their defensive try/except -- a failure in either degrades to the
+    # plain-chat answer at the bottom of this function, never to an error
+    # shown to the user, and never to an exception escaping into
+    # run_sara_logic()'s fatal outer handler.
+    if intent == "chat":
+        chat_route = _route_chat_message(user_input)
 
-    if (
-        intent == "chat"
-        and getattr(Config, "TOOL_CALLING_ENABLED", True)
-        and resolve_tool_call
-        and build_fake_match
-        and TOOL_NAME_TO_INTENT
-    ):
-        try:
-            resolved = resolve_tool_call(user_input, brain.model_name)
-            tool_name = resolved.get("name")
-            tool_args = resolved.get("arguments", {})
-            mapped_intent = TOOL_NAME_TO_INTENT.get(tool_name)
-            if mapped_intent:
-                fake_match = build_fake_match(tool_name, tool_args)
-                tool_handler = _INTENT_HANDLERS.get(mapped_intent)
-                if tool_handler is not None:
-                    tool_result = tool_handler(fake_match, ctx)
-                    if tool_result is not None:
-                        return tool_result
-        except Exception as e:
-            print(f"[ToolRouter] resolution failed: {e}")
+        if chat_route == "plan":
+            # try_plan_and_execute() NEVER raises (see its own docstring);
+            # this try/except is a second, redundant safety net purely so a
+            # hypothetical future bug in that contract can never escalate
+            # into killing the whole voice loop thread.
+            try:
+                allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
+                plan_outcome = try_plan_and_execute(
+                    user_input,
+                    brain.model_name,
+                    _build_plan_dispatch_fn(ctx),
+                    Config,
+                    allowed_apps=allowed_apps,
+                )
+                if plan_outcome is not None:
+                    return _quick(ctx, plan_outcome.final_message)
+            except Exception as e:  # noqa: BLE001 -- absolute safety net
+                print(f"[Planning] Multi-step plan attempt failed unexpectedly: {e}")
+            # NOTE: no longer falls through to the tool-router. The router
+            # already judged this message multi-action; re-asking a second
+            # LLM to squeeze it into one tool was both slow and usually
+            # wrong (it could only ever execute the first action). Plain
+            # chat is the correct, cheaper fallback.
+
+        elif chat_route == "tool":
+            try:
+                resolved = resolve_tool_call(user_input, brain.model_name)
+                tool_name = resolved.get("name")
+                tool_args = resolved.get("arguments", {})
+                mapped_intent = TOOL_NAME_TO_INTENT.get(tool_name)
+                if mapped_intent:
+                    fake_match = build_fake_match(tool_name, tool_args)
+                    tool_handler = _INTENT_HANDLERS.get(mapped_intent)
+                    if tool_handler is not None:
+                        tool_result = tool_handler(fake_match, ctx)
+                        if tool_result is not None:
+                            return tool_result
+            except Exception as e:
+                print(f"[ToolRouter] resolution failed: {e}")
+
+        # chat_route == "chat": both LLM routing stages deliberately
+        # skipped -- straight to the single generation call below.
 
     # ── Self-learning fallback log ───────────────────────────────────────
     # Reached only when the fast-path regex matcher, the multi-step
