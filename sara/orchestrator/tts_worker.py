@@ -4,51 +4,25 @@ TTSWorker -- speaking/barge-in coordination wrapper around TextToSpeech,
 held as self.tts by the GUI Api object.
 """
 
-import re
 import time
 import queue
 import logging
 import threading
-
+import itertools
 
 from config import Config
 
 from sara.audio.tts import TextToSpeech
 from sara.audio.stt import SpeechToText
 
-# PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the
-# LLM tool-calling fallback are both optional, additive features — if
-# either module fails to import for any reason (e.g. numpy missing),
-# the whole app must still start exactly as before, just without that
-# one feature. Both are re-checked as None/False below wherever used.
-try:
-    from sara.core.rag import LongTermMemory
-
-    _HAS_RAG = True
-except Exception as _rag_import_err:  # noqa: BLE001
-    LongTermMemory = None
-    _HAS_RAG = False
-    print(
-        f"[Core] sara.core.rag unavailable, long-term memory disabled: {_rag_import_err}"
-    )
-
-try:
-    from sara.core.tool_router import (
-        resolve_tool_call,
-        build_fake_match,
-        TOOL_NAME_TO_INTENT,
-    )
-
-    _HAS_TOOL_ROUTER = True
-except Exception as _tool_router_import_err:  # noqa: BLE001
-    resolve_tool_call = None
-    build_fake_match = None
-    TOOL_NAME_TO_INTENT = {}
-    _HAS_TOOL_ROUTER = False
-    print(
-        f"[Core] sara.core.tool_router unavailable, LLM tool-calling fallback "
-        f"disabled: {_tool_router_import_err}"
-    )
+from sara.orchestrator._constants import (
+    _DEBUG,
+    _BARGE_IN_POLL_S,
+    _BARGE_IN_GRACE_S,
+    _TTS_IDLE_POLL_S,
+    _WATCH_IDLE_POLL_S,
+    _THREAD_ERROR_BACKOFF_S,
+)
 
 # ----------------------------------------------------------------------------
 # Logging
@@ -56,142 +30,9 @@ except Exception as _tool_router_import_err:  # noqa: BLE001
 
 logger = logging.getLogger("sara.core_logic")
 
-# ----------------------------------------------------------------------------
-# Constants
-# ----------------------------------------------------------------------------
-
-_EXIT_WORDS = {
-    "exit",
-    "quit",
-    "stop",
-    "goodbye",
-    "bye",
-    "shutdown",
-    "band karo",
-    "band kar",
-    "alvida",
-    "phir milenge",
-    "bye bye",
-    "बंद करो",
-    "अलविदा",
-}
-_SLEEP_WORDS = {
-    "sleep",
-    "go to sleep",
-    "that's all",
-    "nothing else",
-    "nevermind",
-    "so jao",
-    "so ja",
-    "bas karo",
-    "bas kar",
-    "theek hai bas",
-    "ठीक है बस",
-    "सो जाओ",
-}
-_FORGET_WORDS = {
-    "forget our conversation",
-    "clear memory",
-    "forget everything",
-    "clear our conversation",
-    "reset memory",
-    "sab bhool jao",
-    "memory clear karo",
-    "history delete karo",
-    "conversation bhool jao",
-    "सब भूल जाओ",
-}
-
-_STRONG_NAME_PHRASES = (
-    "my name is ",
-    "call me ",
-    "mera naam hai ",
-    "mera naam ",
-    "mujhe bulao ",
-    "main hoon ",
-)
-_WEAK_NAME_PHRASES = ("i am ", "i'm ")
-
-_WEAK_NAME_BLOCKLIST = {
-    "sorry",
-    "sure",
-    "fine",
-    "okay",
-    "ok",
-    "going",
-    "not",
-    "just",
-    "here",
-    "still",
-    "really",
-    "so",
-    "very",
-    "trying",
-    "about",
-    "done",
-    "ready",
-    "afraid",
-    "glad",
-    "happy",
-    "sad",
-    "tired",
-    "busy",
-    "confused",
-    "lost",
-    "good",
-    "great",
-    "alright",
-    "kidding",
-    "joking",
-    "serious",
-    "curious",
-    "worried",
-    "excited",
-    "bored",
-    "annoyed",
-    "stressed",
-    "hungry",
-}
-
-_MAX_EMPTY_RETRIES = 3
-_EMPTY_RETRY_GRACE_S = 8.0
-_IDLE_SLEEP_TIMEOUT_S = 180
-
-_WAKE_POLL_INTERVAL_S = 0.05
-_WAKE_WAIT_TIMEOUT_S = 0.3
-
-_BARGE_IN_POLL_S = 0.05
-_BARGE_IN_GRACE_S = 0.2
-_TTS_IDLE_POLL_S = 0.5
-_WATCH_IDLE_POLL_S = 0.5
-_DB_WRITER_IDLE_POLL_S = 1.0
-
-_NETWORK_TOOL_TIMEOUT_S = 6.0
-
-_CALC_EXPR_RE = re.compile(r"^[\d\s\+\-\*\/\(\)\.\%]+$")
-_CALC_MAX_LEN = 200
-_CALC_MAX_NUMBER_DIGITS = 12
-_CALC_MAX_POW_OPS = 1
-_CALC_MAX_EXPONENT_VALUE = 1000
-_CALC_EXPONENT_RE = re.compile(r"\*\*\s*([+-]?\d+)")
-
-_OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
-_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
-_OLLAMA_READY_TIMEOUT_S = 60
-_OLLAMA_POLL_INTERVAL_S = 0.25
-
-_DEBUG = getattr(Config, "DEBUG_MODE", False)
-
-# Kokoro speed range. Kokoro's `speed` parameter is DIRECTLY
-# proportional to playback rate (1.0 = normal, >1.0 = faster).
-_KOKORO_SPEED_MIN = 0.6
-_KOKORO_SPEED_MAX = 1.4
-
-_POST_TTS_SETTLE_WITH_AEC_S = 0.3
-
-_THREAD_ERROR_BACKOFF_S = 0.5
-
-
+# Grace period for the worker/watch threads to notice shutdown and exit
+# their loops cleanly before we give up waiting on join().
+_SHUTDOWN_JOIN_TIMEOUT_S = 2.0
 
 
 # ----------------------------------------------------------------------------
@@ -212,6 +53,7 @@ class TTSWorker:
         "_voice",
         "_ears",
         "_q",
+        "_seq",
         "_stop",
         "_speaking",
         "_barge_stop",
@@ -224,7 +66,8 @@ class TTSWorker:
     def __init__(self, voice: TextToSpeech, ears: SpeechToText, db=None):
         self._voice = voice
         self._ears = ears
-        self._q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._q: "queue.PriorityQueue" = queue.PriorityQueue()
+        self._seq = itertools.count()
         self._stop = threading.Event()
 
         self._speaking = threading.Event()
@@ -263,7 +106,7 @@ class TTSWorker:
         while not self._stop.is_set():
             try:
                 try:
-                    job = self._q.get(timeout=_TTS_IDLE_POLL_S)
+                    _priority, _seq, job = self._q.get(timeout=_TTS_IDLE_POLL_S)
                 except queue.Empty:
                     continue
                 if job is None:
@@ -309,6 +152,16 @@ class TTSWorker:
             print(f"[TTSWorker] _should_speak preference check failed (defaulting to speak): {e}")
             return True
 
+    def _ears_is_listening(self) -> bool:
+        """Defensive check: is STT mid-utterance right now? Never raises --
+        missing attr, wrong type, or any exception => False, so old/fake
+        `ears` objects (tests, stubs) never crash TTS playback."""
+        try:
+            ev = getattr(self._ears, "_is_listening", None)
+            return bool(ev.is_set()) if ev is not None else False
+        except Exception:
+            return False
+
     def _speak_blocking(self, text: str, fast: bool) -> None:
         if not self._should_speak():
             return
@@ -325,7 +178,8 @@ class TTSWorker:
                 self._disarm_barge_in()
         finally:
             ears.set_tts_active(False)
-            ears.mark_tts_stopped()
+            if not self._ears_is_listening():
+                ears.mark_tts_stopped()
 
     def _speak_stream_blocking(self, gen, on_first_chunk=None, on_chunk=None) -> list:
         voice, ears = self._voice, self._ears
@@ -381,18 +235,21 @@ class TTSWorker:
             return sentences
         finally:
             ears.set_tts_active(False)
-            ears.mark_tts_stopped()
+            if not self._ears_is_listening():
+                ears.mark_tts_stopped()
 
-    def speak(self, text: str, fast: bool = False, block: bool = True) -> None:
+    def speak(self, text: str, fast: bool = False, block: bool = True, priority: int = 1) -> None:
         done_event = threading.Event() if block else None
-        self._q.put((text, fast, None, None, None, done_event, None))
+        job = (text, fast, None, None, None, done_event, None)
+        self._q.put((priority, next(self._seq), job))
         if block and done_event is not None:
             done_event.wait()
 
     def speak_stream(self, gen, block: bool = True, on_first_chunk=None, on_chunk=None) -> list:
         done_event = threading.Event()
         sentences_out: list = []
-        self._q.put((None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out))
+        job = (None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out)
+        self._q.put((1, next(self._seq), job))
         if block:
             done_event.wait()
             return sentences_out
@@ -421,6 +278,23 @@ class TTSWorker:
             return self._voice.is_interrupted()
         return False
 
+    def _drain_pending_jobs(self) -> None:
+        """Unblock any caller stuck in speak()/speak_stream() with
+        block=True whose job never got a chance to run because
+        shutdown() fired first -- without this, done_event.wait() in
+        those callers would hang forever once _run() has already
+        exited its loop."""
+        while True:
+            try:
+                _priority, _seq, job = self._q.get_nowait()
+            except queue.Empty:
+                break
+            if job is None:
+                continue
+            *_rest, done_event, _sentences_out = job
+            if done_event is not None:
+                done_event.set()
+
     def shutdown(self) -> None:
         """v16 (LIFECYCLE): previously only set `self._stop` on the
         worker's own dispatch/watch threads -- the underlying
@@ -430,7 +304,18 @@ class TTSWorker:
         TextToSpeech.__del__ firing at some GC-determined time. This now
         deterministically reaches TextToSpeech.shutdown(), which is
         idempotent (see engine.py), so calling this more than once
-        remains safe."""
+        remains safe.
+
+        v17 (cleanup pass): also joins the dispatch/watch threads with a
+        bounded timeout and drains any job left sitting in the queue,
+        setting its done_event so a caller blocked in speak()/
+        speak_stream() can't hang forever past shutdown.
+        """
         self._stop.set()
+        self._speaking.clear()
+        self._barge_stop.set()
         if hasattr(self._voice, "shutdown"):
             self._voice.shutdown()
+        self._drain_pending_jobs()
+        self._thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_S)
+        self._watch_thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_S)

@@ -150,10 +150,11 @@ class NotificationWatcher:
     start() once, shutdown() during app teardown.
     """
 
-    def __init__(self, tts, ui_update: Callable[..., None], db=None) -> None:
+    def __init__(self, tts, ui_update: Callable[..., None], db=None, ears=None) -> None:
         self._tts = tts
         self._ui_update = ui_update
         self._db = db
+        self._ears = ears
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -354,6 +355,15 @@ class NotificationWatcher:
         if completed_name is not None:
             self._announce(completed_name, folder)
 
+    def _ears_is_listening(self) -> bool:
+        """Defensive check: is STT mid-utterance right now? Never raises --
+        missing attr, wrong type, or any exception => False."""
+        try:
+            ev = getattr(self._ears, "_is_listening", None)
+            return bool(ev.is_set()) if ev is not None else False
+        except Exception:
+            return False
+
     # ------------------------------------------------------------
     # Announce -- via the existing TTS worker, same call pattern
     # sara/orchestrator/proactive.py's _speak_and_notify() uses
@@ -363,6 +373,18 @@ class NotificationWatcher:
 
     def _announce(self, filename: str, folder: str) -> None:
         text = f"Your download finished -- {filename} is ready in {folder}."
+        if self._ears_is_listening():
+            # User is mid-utterance -- toast only. Note: the watch state
+            # was already cleared by _tick() before this ran, so this one
+            # completion just goes unspoken (v1 limitation of the
+            # one-shot-per-watch design, not fixed here).
+            try:
+                self._ui_update(
+                    "proactive_notification", "ti-download", "#34d399", text, "file_notification"
+                )
+            except Exception as e:
+                print(f"[Notifications] ui_update failed: {e}")
+            return
         try:
             self._tts.speak(text, fast=True)
         except Exception as e:
@@ -384,7 +406,7 @@ _watcher_instance: Optional[NotificationWatcher] = None
 _watcher_lock = threading.Lock()
 
 
-def init_watcher(tts, ui_update: Callable[..., None], db=None) -> NotificationWatcher:
+def init_watcher(tts, ui_update: Callable[..., None], db=None, ears=None) -> NotificationWatcher:
     """
     Creates (if not already created) and starts the process-wide
     NotificationWatcher singleton. Called once from
@@ -395,13 +417,13 @@ def init_watcher(tts, ui_update: Callable[..., None], db=None) -> NotificationWa
     global _watcher_instance
     with _watcher_lock:
         if _watcher_instance is None:
-            _watcher_instance = NotificationWatcher(tts, ui_update, db)
+            _watcher_instance = NotificationWatcher(tts, ui_update, db, ears=ears)
             _watcher_instance.start()
         return _watcher_instance
 
 
 def get_watcher(
-    tts=None, ui_update: Optional[Callable[..., None]] = None, db=None
+    tts=None, ui_update: Optional[Callable[..., None]] = None, db=None, ears=None
 ) -> Optional[NotificationWatcher]:
     """
     Returns the process-wide NotificationWatcher singleton. If it was
@@ -415,7 +437,7 @@ def get_watcher(
     global _watcher_instance
     with _watcher_lock:
         if _watcher_instance is None and tts is not None and ui_update is not None:
-            _watcher_instance = NotificationWatcher(tts, ui_update, db)
+            _watcher_instance = NotificationWatcher(tts, ui_update, db, ears=ears)
             _watcher_instance.start()
         return _watcher_instance
 

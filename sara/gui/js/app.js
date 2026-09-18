@@ -256,6 +256,84 @@ const _API_RETRY_DELAY_MS = 200;
 
 function _sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// One-time visible warning when the app silently falls back to the mock
+// backend -- without this, a genuine bridge break (js_api never bound)
+// just looks like "an app that works but gives wrong answers", which is
+// what hid a previous bug for a long time. Mock itself stays (still
+// useful for real preview-mode/browser use) -- this only makes the
+// fallback loud instead of silent, and only shows once (module-level
+// flag guards it, no spam).
+let _mockBannerShown = false;
+function showMockPreviewBanner() {
+  if (_mockBannerShown) return;
+  _mockBannerShown = true;
+  const banner = document.createElement('div');
+  banner.id = 'saraMockBanner';
+  banner.textContent = '⚠️ Backend connected nahi hai — preview mode (mock data dikh raha hai).';
+  banner.style.cssText = [
+    'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:100000',
+    'padding:8px 12px', 'text-align:center', 'font-size:13px',
+    'background:#f87171', 'color:#1a0505', 'font-weight:600',
+  ].join(';');
+  document.body.appendChild(banner);
+}
+
+// ── boot overlay -- boot_progress events ab kaam ke hain (window ab
+// turant ban jaata hai, aur ye events use meaningfully drive karte hain)
+let _bootOverlay = null;
+let _bootOverlayDone = false;
+
+function ensureBootOverlay() {
+  if (_bootOverlay || _bootOverlayDone) return _bootOverlay;
+  const overlay = document.createElement('div');
+  overlay.id = 'saraBootOverlay';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:99999',
+    'display:flex', 'flex-direction:column', 'align-items:center', 'justify-content:center',
+    'gap:14px', 'background:#070912', 'color:#e5e7eb',
+    'pointer-events:auto', 'transition:opacity .35s ease',
+  ].join(';');
+
+  const msg = document.createElement('div');
+  msg.id = 'saraBootOverlayMsg';
+  msg.textContent = 'Starting up…';
+  msg.style.cssText = 'font-size:14px;opacity:.85;';
+
+  const track = document.createElement('div');
+  track.style.cssText = 'width:240px;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden;';
+  const fill = document.createElement('div');
+  fill.id = 'saraBootOverlayFill';
+  fill.style.cssText = 'height:100%;width:0%;border-radius:3px;background:#6d5efc;transition:width .25s ease;';
+  track.appendChild(fill);
+
+  overlay.appendChild(msg);
+  overlay.appendChild(track);
+  document.body.appendChild(overlay);
+  _bootOverlay = { root: overlay, msg, fill };
+  return _bootOverlay;
+}
+
+function updateBootOverlay(message, percent) {
+  if (_bootOverlayDone) return;
+  const o = ensureBootOverlay();
+  if (!o) return;
+  if (message) o.msg.textContent = message;
+  const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+  o.fill.style.width = pct + '%';
+  if (pct >= 100) hideBootOverlay();
+}
+
+function hideBootOverlay() {
+  if (_bootOverlayDone) return;
+  _bootOverlayDone = true;
+  const o = _bootOverlay;
+  _bootOverlay = null;
+  if (!o) return;
+  o.root.style.pointerEvents = 'none';
+  o.root.style.opacity = '0';
+  setTimeout(() => { if (o.root.parentNode) o.root.remove(); }, 400);
+}
+
 async function callApi(name, ...args) {
   for (let attempt = 0; attempt < _API_RETRY_ATTEMPTS; attempt++) {
     if (window.pywebview && window.pywebview.api && typeof window.pywebview.api[name] === 'function') {
@@ -274,13 +352,20 @@ async function callApi(name, ...args) {
   // Still missing after retries -> genuinely not bound. Same diagnostic
   // logging as before, now with the retry count so it's clear this
   // isn't just first-call timing.
+  let _bridgeFailReason;
   if (!window.pywebview) {
-    console.warn(`[api] '${name}' -> mock after ${_API_RETRY_ATTEMPTS} retries: window.pywebview is undefined (not running inside the pywebview desktop window, or it hasn't injected yet).`);
+    _bridgeFailReason = `window.pywebview is undefined (not running inside the pywebview desktop window, or it hasn't injected yet).`;
   } else if (!window.pywebview.api) {
-    console.warn(`[api] '${name}' -> mock after ${_API_RETRY_ATTEMPTS} retries: window.pywebview.api is undefined (js_api didn't bind).`);
+    _bridgeFailReason = `window.pywebview.api is undefined (js_api didn't bind).`;
   } else {
-    console.warn(`[api] '${name}' -> mock after ${_API_RETRY_ATTEMPTS} retries: window.pywebview.api.${name} is not a function (genuinely missing, not just a binding race).`);
+    _bridgeFailReason = `window.pywebview.api.${name} is not a function (genuinely missing, not just a binding race).`;
   }
+  console.warn(`[api] '${name}' -> mock after ${_API_RETRY_ATTEMPTS} retries: ${_bridgeFailReason}`);
+  // NEW: explicit error-level log + a persistent on-screen banner (once
+  // per session) so a real bridge break can't silently masquerade as a
+  // working app giving "preview mode" replies.
+  console.error(`[api] BACKEND BRIDGE NOT CONNECTED — falling back to mock/preview mode. Reason: ${_bridgeFailReason}`);
+  showMockPreviewBanner();
   return mockApi(name, args);
 }
 
@@ -291,6 +376,18 @@ window.saraEvent = function (payload) {
     if (kind === 'transcript') {
       const role = args[0], text = args[1];
       if (role === 'user') {
+        // FIX: agar ek Sara reply abhi stream ho rahi thi (bache hue
+        // transcript_chunk events aane baaki the) aur usi beech user ne
+        // type kar diya, to purane streaming bubble ko orphan mat karo —
+        // usse FINALIZE karo (jo text ab tak accumulate hua hai wahi
+        // usme rehne do, "abhi type ho raha hai" caret class hata do)
+        // TABHI reset karo. Warna bache hue chunks user-message ke
+        // NEECHE ek NAYA Sara bubble bana dete the (duplicate), aur
+        // baad me aane wala final `transcript` (role: sara) event apna
+        // dedupe check miss kar deta tha.
+        if (_streamingSaraBubble && _streamingSaraBubble.chat) {
+          _streamingSaraBubble.chat.classList.remove('sara-type-caret');
+        }
         // Naya user turn shuru hua — pichli turn ka streaming state
         // carry na ho.
         _streamingSaraBubble = null;
@@ -322,8 +419,14 @@ window.saraEvent = function (payload) {
       // a full "so-far" transcript, not a chunk, so it REPLACES the
       // bubble's text rather than appending to it.
       const role = args[0], text = args[1];
-      if (!text) {
-        // nothing to show yet
+      if (!text || !text.trim()) {
+        // Backend ne khaali string bheja hai = STT ne kuch nahi pakda,
+        // matlab "preview hata do" — same cleanup jo transcript/user
+        // branch me hota hai.
+        if (_previewBubble) {
+          if (_previewBubble.chat && _previewBubble.chat.parentNode) _previewBubble.chat.remove();
+          _previewBubble = null;
+        }
       } else if (!_previewBubble) {
         const log = document.getElementById('chatLog');
         const div = document.createElement('div');
@@ -347,11 +450,9 @@ window.saraEvent = function (payload) {
     else if (kind === 'notification') { showToast(args[0], args[1], args[2]); maybeShowProactiveHint(args[0]); }
     else if (kind === 'proactive_notification') { showToast(args[0], args[1], args[2]); maybeShowProactiveHint(); }
         else if (kind === 'weather_update') renderWeather(args[0]);
-    else if (kind === 'backend_ready') { refreshStatusBar(); }
+    else if (kind === 'backend_ready') { refreshStatusBar(); hideBootOverlay(); }
     else if (kind === 'setup_progress') handleSetupProgress(args[0], args[1], args[2]);
-    // 'boot_progress' events exist in the backend push protocol but this
-    // design has no boot-splash screen to drive — intentionally ignored,
-    // matching window.saraEvent's silent-ignore behavior for unknown kinds.
+    else if (kind === 'boot_progress') updateBootOverlay(args[0], args[1]);
   } catch (e) { console.error('[saraEvent]', e); }
 };
 
