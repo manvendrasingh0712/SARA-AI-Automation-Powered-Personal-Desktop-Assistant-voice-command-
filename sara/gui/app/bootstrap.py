@@ -32,113 +32,155 @@ def main():
             f"Place index.html inside sara/gui/ folder."
         )
 
-    # build_core_objects() ab CoreObjects (NamedTuple) return karta hai --
-    # positional unpacking ki jagah attribute access, taaki field order
-    # badalne/badhne par silent mismatch kabhi na ho.
-    co = sara_main.build_core_objects(_push)
-    brain = co.brain
-    tts = co.tts
-    ears = co.ears
-    db = co.db
-    vision = co.vision
-    reminders = co.reminders
-    db_writer = co.db_writer
-    lang_state = co.lang_state
-    assistant_state = co.assistant_state
-    notes_memory = co.notes_memory
+    # DESIGN NOTE (perceived-latency fix): window ab TURANT ban jaata
+    # hai; heavy init (build_core_objects -> Whisper/Kokoro/DB, watcher,
+    # emergency-stop hotkey, SaraLogic thread) ek background thread
+    # (_boot_heavy) par chala gaya hai. create_window(js_api=...) ko
+    # turant ek object chahiye -- _ApiProxy dete hain jiske method names
+    # dir(Api) se copy kiye hain, taaki JS bridge shape shuru se hi
+    # Api jaisi ho. webview.start() ab bhi MAIN thread par hi chalta
+    # hai (Windows requirement) -- sirf heavy init hata hai.
+    _boot = {"api": None, "db": None, "logic_thread": None, "error": None}
+    _boot_ready = threading.Event()
 
-    # FIX 4 -- Startup sound: one-time Windows system "ding" on boot if
-    # "setting:startup_sound" is on (default off, so existing silence
-    # is preserved unless the user opts in). Runs on a background
-    # daemon thread so it never delays app startup, and is wrapped in
-    # try/except so any failure here can never block or crash boot.
-    try:
-        if db.get_preference("setting:startup_sound", "0") == "1":
-            import winsound
-            threading.Thread(
-                target=lambda: winsound.MessageBeep(),
+    class _ApiProxy:
+        """Boot ke dauraan real Api ki jagah. Method names Api class se
+        hi liye hain (__dir__ override) taaki pywebview ka introspection
+        sahi bridge banaye. Har call real Api ready hone tak bounded-wait
+        karti hai; timeout ya boot-failure par crash/hang ki jagah ek
+        safe {"ok": False, ...} deti hai."""
+        _WAIT_TIMEOUT = 20.0
+
+        def __dir__(self):
+            return [n for n in dir(Api) if not n.startswith("_")]
+
+        def __getattr__(self, name):
+            if name.startswith("_") or not callable(getattr(Api, name, None)):
+                raise AttributeError(name)
+
+            def _proxied(*args, **kwargs):
+                if not _boot_ready.wait(timeout=self._WAIT_TIMEOUT):
+                    return {"ok": False, "reason": "booting"}
+                if _boot["error"] is not None:
+                    return {"ok": False, "reason": "boot_failed"}
+                return getattr(_boot["api"], name)(*args, **kwargs)
+
+            return _proxied
+
+    def _boot_heavy():
+        try:
+            # build_core_objects() ab CoreObjects (NamedTuple) return karta
+            # hai -- positional unpacking ki jagah attribute access, taaki
+            # field order badalne/badhne par silent mismatch kabhi na ho.
+            co = sara_main.build_core_objects(_push)
+            brain = co.brain
+            tts = co.tts
+            ears = co.ears
+            db = co.db
+            vision = co.vision
+            reminders = co.reminders
+            db_writer = co.db_writer
+            lang_state = co.lang_state
+            assistant_state = co.assistant_state
+            notes_memory = co.notes_memory
+
+            # FIX 4 -- Startup sound: one-time Windows system "ding" on boot
+            # if "setting:startup_sound" is on (default off). Runs on a
+            # background daemon thread so it never delays boot, wrapped in
+            # try/except so a failure here can never block/crash boot.
+            try:
+                if db.get_preference("setting:startup_sound", "0") == "1":
+                    import winsound
+                    threading.Thread(
+                        target=lambda: winsound.MessageBeep(),
+                        daemon=True,
+                    ).start()
+            except Exception as e:
+                print(f"[startup sound error] {e}")
+
+            # NEW: file-notification watcher (sara/orchestrator/notifications.py).
+            notifications.init_watcher(tts, _push, db)
+
+            # CROSS-MODALITY FIX: wahi 4 shared dicts jo neeche run_sara_logic
+            # thread ko bhi jaate hain -- keyword se pass kiye hain taaki
+            # arg-order par depend na karna pade.
+            api = Api(
+                brain, tts, ears, db, vision, reminders, lang_state, assistant_state,
+                confirm_state=co.confirm_state,
+                volume_state=co.volume_state,
+                playback_state=co.playback_state,
+                context_state=co.context_state,
+            )
+
+            # NEW: global emergency-stop hotkey (sara/orchestrator/emergency_stop.py).
+            emergency_stop.register_emergency_stop(api)
+
+            logic_thread = threading.Thread(
+                target=sara_main.run_sara_logic,
+                args=(
+                    _push,
+                    events._stop_event,
+                    brain,
+                    tts,
+                    ears,
+                    db,
+                    vision,
+                    reminders,
+                    db_writer,
+                    notes_memory,
+                    events._manual_wake_event,
+                    lang_state,
+                    assistant_state,
+                ),
+                kwargs={
+                    # Api(...) ko upar diye gaye EXACT same dict objects.
+                    "confirm_state": co.confirm_state,
+                    "volume_state": co.volume_state,
+                    "playback_state": co.playback_state,
+                    "context_state": co.context_state,
+                },
                 daemon=True,
-            ).start()
-    except Exception as e:
-        print(f"[startup sound error] {e}")
+                name="SaraLogic",
+            )
+            logic_thread.start()
 
-    # NEW: file-notification watcher (sara/orchestrator/notifications.py).
-    # Constructed and started right here, right after `tts` exists, same
-    # "as soon as its dependencies are ready" spirit as everything else
-    # in build_core_objects() above. Config-gated internally
-    # (NOTIFICATIONS_ENABLED, checked fresh every tick) -- starting the
-    # thread unconditionally here is safe even if the feature is
-    # disabled, since the thread's own tick() immediately no-ops when
-    # the gate is off.
-    notifications.init_watcher(tts, _push, db)
+            _boot["api"] = api
+            _boot["db"] = db
+            _boot["logic_thread"] = logic_thread
 
-    # CROSS-MODALITY FIX: wahi 4 shared dicts jo neeche run_sara_logic
-    # thread ko bhi jaate hain -- keyword se pass kiye hain taaki arg-order
-    # par depend na karna pade.
-    api = Api(
-        brain, tts, ears, db, vision, reminders, lang_state, assistant_state,
-        confirm_state=co.confirm_state,
-        volume_state=co.volume_state,
-        playback_state=co.playback_state,
-        context_state=co.context_state,
-    )
-
-    # NEW: global emergency-stop hotkey (sara/orchestrator/emergency_stop.py).
-    # Registered right here, right after `api` exists -- api.stop_sara()
-    # is what the hotkey callback needs, and this is the first point in
-    # main() where it's available. Config-gated internally
-    # (EMERGENCY_STOP_ENABLED) and idempotent (safe even if main() were
-    # ever re-entered in this same process).
-    emergency_stop.register_emergency_stop(api)
-
-    logic_thread = threading.Thread(
-        target=sara_main.run_sara_logic,
-        args=(
-            _push,
-            events._stop_event,
-            brain,
-            tts,
-            ears,
-            db,
-            vision,
-            reminders,
-            db_writer,
-            notes_memory,
-            events._manual_wake_event,
-            lang_state,
-            assistant_state,
-        ),
-        kwargs={
-            # Api(...) ko upar diye gaye EXACT same dict objects.
-            "confirm_state": co.confirm_state,
-            "volume_state": co.volume_state,
-            "playback_state": co.playback_state,
-            "context_state": co.context_state,
-        },
-        daemon=True,
-        name="SaraLogic",
-    )
-    logic_thread.start()
+            # Ab hi Python-side API genuinely ready hai (pehle ye push
+            # create_window ke turant baad, models load hone se pehle
+            # hota tha -- misleading tha). Buffered rehta hai jab tak
+            # page load nahi ho jaata.
+            _push('backend_ready')
+        except Exception as e:
+            print(f"[boot heavy error] {e}")
+            _boot["error"] = e
+        finally:
+            # Proxy calls ko hamesha unblock karo -- boot fail ho jaye
+            # tab bhi, warna woh sab _WAIT_TIMEOUT tak latke rahenge.
+            _boot_ready.set()
 
     events._window = webview.create_window(
         "SARA AI",
         HTML_PATH,
-        js_api=api,
+        js_api=_ApiProxy(),
         width=1280,
         height=800,
         min_size=(1000, 640),
         background_color="#070912",
     )
-    
+
     # Any _push() call made before this fires (boot greeting, ollama
     # warm-up footer text, early wake-word status) is buffered and
     # flushed here instead of being silently dropped — see the
     # STARTUP-RACE FIX note in events.py.
     events._window.events.loaded += events._on_window_loaded  # type: ignore
-    # Notify the frontend that the Python-side API will be available so the
-    # status bar can refresh itself (some renderers inspect window.pywebview
-    # later than the page load). This is buffered until the page loads.
-    _push('backend_ready')
+
+    boot_thread = threading.Thread(
+        target=_boot_heavy, daemon=True, name="SaraBootHeavy",
+    )
+    boot_thread.start()
 
     # DEBUG_MODE also turns on pywebview's own debug flag: this enables
     # right-click "Inspect Element" / F12 DevTools on the window (off by
@@ -154,7 +196,12 @@ def main():
         private_mode=False,
     )
     events._stop_event.set()
-    logic_thread.join(timeout=5.0)
+
+    # Boot abhi complete nahi hua tha (ya fail ho gaya) to logic_thread
+    # kabhi bana hi nahi -- None-check karke safely skip.
+    logic_thread = _boot["logic_thread"]
+    if logic_thread is not None:
+        logic_thread.join(timeout=5.0)
 
     # NEW: clean teardown for the emergency-stop hotkey and the
     # notification watcher -- mirrors the existing pref-writer/db
@@ -170,13 +217,19 @@ def main():
         print(f"[shutdown] notifications watcher shutdown failed: {e}")
 
     # Flush any pending preference writes (e.g. a slider dragged right
-    # before the window was closed) before the process exits.
-    api._pref_writer.stop(timeout=3.0)
+    # before the window was closed) before the process exits. `api` tab
+    # tak nahi bana agar boot complete nahi hua/fail hua -- None-check.
+    api = _boot["api"]
+    if api is not None:
+        api._pref_writer.stop(timeout=3.0)
+
     # BUGFIX: db was never closed on shutdown, so the WAL file could stay
     # unmerged/unflushed across an abrupt exit — this is what caused
     # user_name (and other preferences) to silently fail to persist
-    # across restarts. Close it explicitly now.
-    try:
-        db.close()
-    except Exception as e:
-        print(f"[shutdown] db.close() failed: {e}")
+    # across restarts. Close it explicitly now (None-checked, same reason).
+    db = _boot["db"]
+    if db is not None:
+        try:
+            db.close()
+        except Exception as e:
+            print(f"[shutdown] db.close() failed: {e}")

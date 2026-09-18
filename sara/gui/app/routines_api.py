@@ -15,6 +15,7 @@ message on the Settings page.
 import threading
 
 from .events import _push
+from sara.orchestrator.state import STATE_LOCK
 
 
 class ApiRoutinesMixin:
@@ -128,7 +129,8 @@ class ApiRoutinesMixin:
                 "notes_memory": None,
             }
             try:
-                outcomes = routines.run_routine(name, ctx)
+                with STATE_LOCK:
+                    outcomes = routines.run_routine(name, ctx)
             except Exception as e:  # noqa: BLE001 — background thread, nothing to propagate to
                 print(f"[run_routine_now worker error] {e}")
                 return

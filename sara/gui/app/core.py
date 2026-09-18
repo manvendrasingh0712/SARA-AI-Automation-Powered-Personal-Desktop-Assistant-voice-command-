@@ -19,27 +19,35 @@ from datetime import datetime
 
 from config import Config
 
+# ── FRAGILE-INDIRECTION FIX ────────────────────────────────────────────
+# _run_text_command() below used to call self.gui_main._handle_command(...),
+# where self.gui_main is the top-level `main` module. _handle_command()
+# does not actually live in main.py -- it lives here, in
+# sara.orchestrator.intent_handlers -- and main.py only re-exported it as
+# a compatibility alias. That indirection has already caused one
+# production bug: when the re-export was (briefly) missing, every real
+# chat message raised AttributeError deep inside the send_text_command()
+# worker thread, silently, and the frontend just showed "preview mode, no
+# backend connected" with no traceback anywhere.
+#
+# Importing the real function directly turns that whole class of failure
+# into an ImportError at startup -- loud, immediate, and impossible to
+# ship unnoticed -- instead of a silent runtime AttributeError on the
+# first message a user types.
+#
+# No circular-import risk: sara.orchestrator.intent_handlers imports
+# nothing from sara.gui, and main.py only imports sara.gui.app lazily
+# inside main().
+from sara.orchestrator.intent_handlers import _handle_command
+
 # ── CONCURRENCY FIX (v14) ──────────────────────────────────────────────
-# One process-wide reentrant lock protecting the cross-modality state dicts
-# (confirm_state / volume_state / playback_state / context_state) that
-# build_core_objects() hands to BOTH this Api instance and run_sara_logic().
-#
-# Those dicts are plain dicts with no synchronisation of their own, and
-# _handle_command() does read-modify-write sequences on them (e.g. reading
-# confirm_state["pending"], deciding, then clearing it). Two commands running
-# concurrently -- two fast typed commands, or one typed + one voice turn --
-# could interleave mid-sequence and make a "yes" confirm the wrong pending
-# action, or clear a confirm that had just been set.
-#
-# It lives at module scope (not on the instance) so the voice loop can take
-# the SAME lock:
-#     from sara.gui.app.core import STATE_LOCK
-# See the note at the bottom of send_text_command() -- until run_sara_logic()
-# also takes it, this only serialises the typed path against itself.
+# Moved to sara/orchestrator/state.py -- a core lock's owner shouldn't be
+# the GUI layer. Re-exported here under the same name so any existing
+# `from sara.gui.app.core import STATE_LOCK` keeps working unchanged.
 #
 # RLock, not Lock: _handle_command() may re-enter Api methods on the same
 # thread (e.g. the session_control "sleep" path calling stop_sara()).
-STATE_LOCK = threading.RLock()
+from sara.orchestrator.state import STATE_LOCK
 
 # How many typed commands may sit waiting while one is being processed.
 # Small on purpose: this is a human typing, not a job queue. Beyond this the
@@ -111,6 +119,12 @@ class ApiCoreMixin:
         # Caching heavy imports inside __init__ ensures we avoid circular imports
         # at the module level, but we also avoid repeatedly locking sys.modules
         # during high-frequency API calls.
+        #
+        # NOTE: self.gui_main is deliberately KEPT even though the command
+        # path no longer routes through it -- other call sites (and any
+        # external/custom code holding an Api instance) may still reach for
+        # it. What changed is only that _handle_command() is no longer
+        # looked up on it at runtime; see the module-level import above.
         import main as gui_main
         import psutil
 
@@ -483,8 +497,13 @@ class ApiCoreMixin:
             # affordable precisely because the queue already guarantees only
             # one typed command runs at a time -- the lock is what extends
             # that guarantee to the voice loop once it takes the lock too.
+            #
+            # FRAGILE-INDIRECTION FIX: this is now the real function,
+            # imported at module scope from sara.orchestrator.intent_handlers,
+            # not a runtime attribute lookup on the `main` module. See the
+            # note next to that import at the top of this file.
             with self.state_lock:
-                reply = self.gui_main._handle_command(
+                reply = _handle_command(
                     text,
                     self.brain,
                     self.tts,
@@ -572,8 +591,6 @@ class ApiCoreMixin:
         # Echo to the transcript only after the command is definitely
         # accepted, so a rejected one doesn't leave an orphan user bubble
         # that never gets a reply.
-        # gui_main is cached in __init__, so we use self.gui_main
-        # to avoid the micro-latency of repeating the import lock here.
         _push("transcript", "user", text)
         return {"ok": True, "queued": self._cmd_queue.qsize()}
 

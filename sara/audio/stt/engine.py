@@ -1305,7 +1305,9 @@ class SpeechToText:
         if self._closed:
             return False
         now = time.monotonic()
-        if now - self._wakeword_last_triggered < self._wakeword_cooldown:
+        with self._threshold_lock:
+            last_triggered = self._wakeword_last_triggered
+        if now - last_triggered < self._wakeword_cooldown:
             return False
         if self._tts_active.is_set():
             return False
@@ -1326,7 +1328,8 @@ class SpeechToText:
                 )
                 threshold = float(getattr(Config, "WAKE_WORD_THRESHOLD", 0.5))
                 if any(v >= threshold for v in scores.values()):
-                    self._wakeword_last_triggered = now
+                    with self._threshold_lock:
+                        self._wakeword_last_triggered = now
                     return True
                 return False
             except Exception:
@@ -1347,7 +1350,8 @@ class SpeechToText:
             return False
         detected = self._text_has_wake_word(text)
         if detected:
-            self._wakeword_last_triggered = now
+            with self._threshold_lock:
+                self._wakeword_last_triggered = now
         return detected
 
     def is_user_speaking(self, duration: float = 0.3) -> bool:

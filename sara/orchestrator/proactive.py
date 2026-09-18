@@ -146,6 +146,7 @@ class ProactiveEngine:
         activity_tracker: ActivityTracker,
         assistant_state: Any = None,
         lang_state: Any = None,
+        ears: Any = None,
     ) -> None:
         self._db = db
         self._reminders = reminders
@@ -154,6 +155,7 @@ class ProactiveEngine:
         self._activity = activity_tracker
         self._assistant_state = assistant_state
         self._lang_state = lang_state
+        self._ears = ears
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -268,6 +270,15 @@ class ProactiveEngine:
         last = self._last_fired.get(key)
         return last is None or (time.monotonic() - last) >= cooldown_s
 
+    def _ears_is_listening(self) -> bool:
+        """Defensive check: is STT mid-utterance right now? Never raises --
+        missing attr, wrong type, or any exception => False."""
+        try:
+            ev = getattr(self._ears, "_is_listening", None)
+            return bool(ev.is_set()) if ev is not None else False
+        except Exception:
+            return False
+
     # ------------------------------------------------------------
     # Triggers
     # ------------------------------------------------------------
@@ -296,9 +307,9 @@ class ProactiveEngine:
             f"Your battery was at {percent}% and not plugged in "
             f"(the threshold is {threshold}%)."
         )
-        self._speak_and_notify(template, icon="ti-battery-1", color="#f87171",
-                                trigger="battery", reason=reason)
-        self._last_fired["battery"] = time.monotonic()
+        if self._speak_and_notify(template, icon="ti-battery-1", color="#f87171",
+                                   trigger="battery", reason=reason):
+            self._last_fired["battery"] = time.monotonic()
 
     def _check_upcoming_reminders(self) -> None:
         if not self._trigger_enabled("reminders"):
@@ -323,9 +334,9 @@ class ProactiveEngine:
                 f'You have a reminder "{text}" due at {due_at}, '
                 f"which is within the next {lead_minutes} minutes."
             )
-            self._speak_and_notify(template, icon="ti-alarm", color="#60a5fa",
-                                    trigger="reminder", reason=reason)
-            self._reminder_notified_ids.add(rid)
+            if self._speak_and_notify(template, icon="ti-alarm", color="#60a5fa",
+                                       trigger="reminder", reason=reason):
+                self._reminder_notified_ids.add(rid)
 
     def _check_upcoming_meetings(self) -> None:
         """
@@ -381,9 +392,9 @@ class ProactiveEngine:
                 f"Your calendar event '{summary}' is due at {start_iso}, "
                 f"which is within the next {lead_minutes} minutes."
             )
-            self._speak_and_notify(template, icon="ti-calendar-event", color="#34d399",
-                                    trigger="meeting", reason=reason)
-            self._meeting_notified_keys.add(key)
+            if self._speak_and_notify(template, icon="ti-calendar-event", color="#34d399",
+                                       trigger="meeting", reason=reason):
+                self._meeting_notified_keys.add(key)
 
     def _check_scheduled_routine(self) -> None:
         """
@@ -520,14 +531,14 @@ class ProactiveEngine:
             f"It had been about {int(idle_s // 60)} minutes since we last talked "
             f"(the threshold is {idle_minutes_needed} minutes)."
         )
-        self._speak_and_notify(template, icon="ti-coffee", color="#a78bfa",
-                                trigger="idle_break", reason=reason)
-        # Resets this trigger's own cooldown clock. If the user then has a
-        # real conversation turn, ActivityTracker.touch() drops
-        # idle_seconds() back near zero and this naturally won't fire
-        # again until another full idle stretch passes; if the user stays
-        # away, it won't re-fire until PROACTIVE_COOLDOWN_MINUTES either.
-        self._last_fired["idle_break"] = time.monotonic()
+        if self._speak_and_notify(template, icon="ti-coffee", color="#a78bfa",
+                                   trigger="idle_break", reason=reason):
+            # Resets this trigger's own cooldown clock. If the user then has a
+            # real conversation turn, ActivityTracker.touch() drops
+            # idle_seconds() back near zero and this naturally won't fire
+            # again until another full idle stretch passes; if the user stays
+            # away, it won't re-fire until PROACTIVE_COOLDOWN_MINUTES either.
+            self._last_fired["idle_break"] = time.monotonic()
 
     def _check_streak_milestone(self) -> None:
         if not self._trigger_enabled("streak"):
@@ -539,17 +550,17 @@ class ProactiveEngine:
             return
         template = f"By the way, we've talked {milestone} days in a row now!"
         reason = f"Your daily talk streak just reached {milestone} days."
-        self._speak_and_notify(
+        if self._speak_and_notify(
             template, icon="ti-flame", color="#fb923c",
             trigger="streak", reason=reason,
-        )
-        # Clear it so this doesn't repeat on every future tick — only fires
-        # once, right after record_interaction_day() sets it for the day
-        # the milestone was actually crossed.
-        try:
-            self._db.set_preference("streak_pending_milestone", "")
-        except Exception:
-            pass
+        ):
+            # Clear it so this doesn't repeat on every future tick — only fires
+            # once, right after record_interaction_day() sets it for the day
+            # the milestone was actually crossed.
+            try:
+                self._db.set_preference("streak_pending_milestone", "")
+            except Exception:
+                pass
 
     # ------------------------------------------------------------
     # Speak + notify (shared by every trigger)
@@ -557,8 +568,17 @@ class ProactiveEngine:
 
     def _speak_and_notify(
         self, template: str, icon: str, color: str, trigger: str, reason: str
-    ) -> None:
+    ) -> bool:
         text = self._phrase(template)
+        if self._ears_is_listening():
+            # User is mid-utterance -- don't steal their turn. Toast only;
+            # caller must NOT update cooldown/de-dupe state on a skip, so
+            # this same trigger can retry next tick.
+            try:
+                self._ui_update("proactive_notification", icon, color, text, trigger)
+            except Exception as e:
+                print(f"[Proactive] ui_update failed: {e}")
+            return False
         try:
             self._tts.speak(text, fast=True)
         except Exception as e:
@@ -579,6 +599,7 @@ class ProactiveEngine:
         except Exception as e:
             if _DEBUG:
                 print(f"[Proactive] log_proactive_event failed: {e}")
+        return True
 
     def _phrase(self, template: str) -> str:
         if not getattr(Config, "PROACTIVE_LLM_PHRASING", True):

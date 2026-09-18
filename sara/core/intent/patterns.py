@@ -4,6 +4,42 @@ The regex pattern table and substring pre-filter gates for every fast-path
 intent. Split into its own file since it is pure data (~650 lines) and
 changes far more often than the matching logic in engine.py.
 """
+
+# ── Shared building blocks for anchored, shape-bound command capture ──
+# Added for open_app / close_app / restart_application /
+# switch_to_application / typing_text (see engine.py's _APP_CAPTURE_INTENTS
+# and the accompanying WHY notes for the bug these close).
+
+# FILLER: an optional leading comma, then an optional single polite/
+# wake-word prefix, before the real trigger verb. Deliberately an
+# explicit alternation -- never a generic greedy prefix like `.*` -- so
+# it can never itself swallow part of an app name or dictation text.
+_FILLER = r"(?:,\s*)?(?:(?:please|sara|hey sara|can you|could you|zara|ek baar|jara)\s+)?"
+
+# APP_TOKEN / APP_NAME: shape-bound capture for the 4 catch-all window/app
+# intents. A "token" is letters/digits plus the punctuation that shows up
+# inside real app names (+, -, .) -- "notepad++", "7-zip", "vs code" (2
+# tokens), "microsoft word" (2 tokens). Capped at 4 tokens so a trailing
+# clause of a normal sentence can never be swallowed whole as "the app name".
+_APP_TOKEN = r"[A-Za-z0-9][A-Za-z0-9+\-.]*"
+_APP_NAME = _APP_TOKEN + r"(?:\s+" + _APP_TOKEN + r"){0,3}"
+
+# Function-word / verb-ending tokens that can never legitimately be part of
+# an app name. engine.py's _detect_intent_cached discards an open_app /
+# close_app / restart_application / switch_to_application match outright
+# if any captured token is in this set -- a last-line defense for captures
+# that are shape-legal (<=4 tokens, app-name-shaped characters) but are
+# still plainly a fragment of a Hinglish verb phrase, not a name.
+_NON_APP_TOKENS = frozenset({
+    "kerne", "karne", "karna", "karni", "karunga", "karungi", "karta",
+    "karti", "karke", "kar", "raha", "rahi", "rahe", "raaha", "rha",
+    "soch", "sochta", "sochti", "chahta", "chahti", "chahiye", "hu",
+    "hun", "hoon", "tha", "thi", "the", "hai", "ho", "ki", "ka", "ke",
+    "ko", "se", "me", "mein", "nahi", "kuch", "bss", "bas", "apna",
+    "apni", "mera", "meri", "wala", "wali", "liye", "jab", "time",
+    "mile",
+})
+
 _INTENT_PATTERNS = [
     # ── Modes / Personas (voice-triggerable, NEW) ─────────────────────
     # "switch to study mode" / "study mode on karo" -- applies a fixed
@@ -195,7 +231,14 @@ _INTENT_PATTERNS = [
     # ── Calculator ─────────────────────────────────────────────────────
     ("calculator", [
         r"(?:what is|calculate|compute|solve|evaluate)(?: the)? (\d[\d\s\+\-\*\/\(\)\.\^%]+)",
-        r"(\d+(?:\s*[\+\-\*\/\^%]\s*\d+)+)",
+        # O1 fix: a bare "12-15" (digit-minus-digit, no spaces, no other
+        # operator) must NOT match -- it's far more often a room number,
+        # a date range, or a score than arithmetic. `-` is now only
+        # accepted as an operator when it has whitespace on both sides
+        # ("12 - 15"); +, *, /, ^, % still work with or without spaces,
+        # since those are unambiguous as arithmetic in a way bare "-"
+        # between two numbers is not. See MATCHES/DOES NOT MATCH below.
+        r"(\d+(?:\s*[\+\*\/\^%]\s*\d+|\s+-\s+\d+)+)",
         r"(?:what'?s) (\d[\d\s\+\-\*\/\(\)\.\^%]+)",
         r"open calculator",
         r"open calc",
@@ -329,13 +372,13 @@ _INTENT_PATTERNS = [
         r"alt tab",
     ]),
     ("restart_application", [
-        r"restart (?:the )?(.+?)(?:\s+app(?:lication)?)?$",
-        r"(.+?) (?:ko )?restart (?:karo|kro)",
+        rf"^{_FILLER}\brestart\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app(?:lication)?)?$",
+        rf"^{_FILLER}({_APP_NAME})\s+(?:ko\s+)?restart\s+(?:karo|kro)$",
     ]),
     ("switch_to_application", [
-        r"switch to (?:the )?(.+?)(?:\s+app(?:lication)?)?$",
-        r"(.+?) (?:pe|par) switch karo",
-        r"(.+?) (?:pe|par) jao",
+        rf"^{_FILLER}\bswitch to\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app(?:lication)?)?$",
+        rf"^{_FILLER}({_APP_NAME})\s+(?:pe|par)\s+switch\s+karo$",
+        rf"^{_FILLER}({_APP_NAME})\s+(?:pe|par)\s+jao$",
     ]),
     ("move_window", [
         r"move (.+?) (?:window )?to (?:the )?(left half|right half|top half|bottom half|top left|top right|bottom left|bottom right|center|full screen)$",
@@ -380,14 +423,16 @@ _INTENT_PATTERNS = [
 
     # ── Keyboard / Typing ─────────────────────────────────────────────
     ("typing_text", [
-        r"type (?:this )?(?:for me)?[:\s]+(.+)",
-        r"type out[:\s]+(.+)",
-        r"write (?:this )?(?:for me)?[:\s]+(.+)",
+        # Colon now mandatory (was `[:\s]+`, i.e. a single space also
+        # triggered it) -- see WHY. Also anchored+fillered per Layer 1.
+        rf"^{_FILLER}\btype\b(?:\s+this)?(?:\s+for me)?\s*:\s*(.+)$",
+        rf"^{_FILLER}\btype out\b\s*:\s*(.+)$",
+        rf"^{_FILLER}\bwrite\b(?:\s+this)?(?:\s+for me)?\s*:\s*(.+)$",
     ]),
     ("press_key", [
         r"press (?:the )?(.+?) key",
         r"hit (?:the )?(.+?) key",
-        r"press (.+)",
+        # Third pattern r"press (.+)" removed -- see WHY.
     ]),
     ("copy_selection", [
         r"copy (?:this|that|selection|selected)(?: text)?$",
@@ -752,14 +797,14 @@ _INTENT_PATTERNS = [
     ]),
 
     ("open_app", [
-        r"open (?!https?://)([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
-        r"launch (?!https?://)([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
-        r"start (?!https?://)([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
-        r"run (?!https?://)([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
+        rf"^{_FILLER}\bopen\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
+        rf"^{_FILLER}\blaunch\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
+        rf"^{_FILLER}\bstart\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
+        rf"^{_FILLER}\brun\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
     ]),
     ("close_app", [
-        r"(?:close|quit|exit|kill|end)(?: the)? ([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
-        r"(?:force quit|force close)(?: the)? ([a-zA-Z0-9][\w\s]{1,40}?)(?:\s+app)?$",
+        rf"^{_FILLER}\b(?:close|quit|exit|kill|end)\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app)?$",
+        rf"^{_FILLER}\b(?:force quit|force close)\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app)?$",
     ]),
 ]
 
@@ -895,5 +940,7 @@ _INTENT_GATES = {
     "memory_recall": ("remember", "recall", "yaad", "pata"),
     "calendar_today": ("calendar", "schedule", "aaj", "meeting"),
     "calendar_create": ("meeting", "event", "baje", "calendar"),
-    # calculator, open_app, close_app: no safe substring gate — always run.
+    "open_app": ("open", "launch", "start", "run"),
+    "close_app": ("close", "quit", "exit", "kill", "end", "force quit", "force close"),
+    # calculator: no safe substring gate — always run.
 }

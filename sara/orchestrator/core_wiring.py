@@ -13,6 +13,16 @@ from .history import _apply_saved_preferences, _finish_brain_setup
 from .intent_handlers import _handle_command
 from .network_utils import _shutdown_network_executor
 from .proactive import ActivityTracker, ProactiveEngine
+from ._constants import (
+    _MAX_EMPTY_RETRIES,
+    _EMPTY_RETRY_GRACE_S,
+    _IDLE_SLEEP_TIMEOUT_S,
+    _WAKE_POLL_INTERVAL_S,
+    _WAKE_WAIT_TIMEOUT_S,
+    _DEBUG,
+    _POST_TTS_SETTLE_WITH_AEC_S,
+    _THREAD_ERROR_BACKOFF_S,
+)
 
 import re
 import time
@@ -79,94 +89,6 @@ logger = logging.getLogger("sara.core_logic")
 # ----------------------------------------------------------------------------
 
 
-_STRONG_NAME_PHRASES = (
-    "my name is ",
-    "call me ",
-    "mera naam hai ",
-    "mera naam ",
-    "mujhe bulao ",
-    "main hoon ",
-)
-_WEAK_NAME_PHRASES = ("i am ", "i'm ")
-
-_WEAK_NAME_BLOCKLIST = {
-    "sorry",
-    "sure",
-    "fine",
-    "okay",
-    "ok",
-    "going",
-    "not",
-    "just",
-    "here",
-    "still",
-    "really",
-    "so",
-    "very",
-    "trying",
-    "about",
-    "done",
-    "ready",
-    "afraid",
-    "glad",
-    "happy",
-    "sad",
-    "tired",
-    "busy",
-    "confused",
-    "lost",
-    "good",
-    "great",
-    "alright",
-    "kidding",
-    "joking",
-    "serious",
-    "curious",
-    "worried",
-    "excited",
-    "bored",
-    "annoyed",
-    "stressed",
-    "hungry",
-}
-
-_MAX_EMPTY_RETRIES = 3
-_EMPTY_RETRY_GRACE_S = 8.0
-_IDLE_SLEEP_TIMEOUT_S = 180
-
-_WAKE_POLL_INTERVAL_S = 0.05
-_WAKE_WAIT_TIMEOUT_S = 0.3
-
-_BARGE_IN_POLL_S = 0.05
-_BARGE_IN_GRACE_S = 0.2
-_TTS_IDLE_POLL_S = 0.5
-_WATCH_IDLE_POLL_S = 0.5
-_DB_WRITER_IDLE_POLL_S = 1.0
-
-_NETWORK_TOOL_TIMEOUT_S = 6.0
-
-_CALC_EXPR_RE = re.compile(r"^[\d\s\+\-\*\/\(\)\.\%]+$")
-_CALC_MAX_LEN = 200
-_CALC_MAX_NUMBER_DIGITS = 12
-_CALC_MAX_POW_OPS = 1
-_CALC_MAX_EXPONENT_VALUE = 1000
-_CALC_EXPONENT_RE = re.compile(r"\*\*\s*([+-]?\d+)")
-
-_OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
-_OLLAMA_MODEL = getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
-_OLLAMA_READY_TIMEOUT_S = 60
-_OLLAMA_POLL_INTERVAL_S = 0.25
-
-_DEBUG = getattr(Config, "DEBUG_MODE", False)
-
-# Kokoro speed range. Kokoro's `speed` parameter is DIRECTLY
-# proportional to playback rate (1.0 = normal, >1.0 = faster).
-_KOKORO_SPEED_MIN = 0.6
-_KOKORO_SPEED_MAX = 1.4
-
-_POST_TTS_SETTLE_WITH_AEC_S = 0.3
-
-_THREAD_ERROR_BACKOFF_S = 0.5
 
 
 
@@ -349,6 +271,7 @@ class _WakeWatcher:
         "_stop",
         "_assistant_state",
         "wake_event",
+        "_session_active",
         "_thread",
     )
 
@@ -370,12 +293,17 @@ class _WakeWatcher:
         # background listening.
         self._assistant_state = assistant_state
         self.wake_event = threading.Event()
+        self._session_active = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
+                if self._session_active.is_set():
+                    time.sleep(_WAKE_POLL_INTERVAL_S)
+                    continue
+
                 if self.wake_event.is_set():
                     time.sleep(_WAKE_POLL_INTERVAL_S)
                     continue
@@ -409,6 +337,14 @@ class _WakeWatcher:
                 self.wake_event.clear()
                 return True
         return False
+
+    def begin_session(self) -> None:
+        self._session_active.set()
+        self.wake_event.clear()
+
+    def end_session(self) -> None:
+        self._session_active.clear()
+        self.wake_event.clear()
 
 
 # ----------------------------------------------------------------------------
@@ -552,6 +488,10 @@ def run_sara_logic(
         if aec_active
         else float(getattr(Config, "STT_SETTLE_MIN_GAP_S", 1.3))
     )
+    if not aec_active:
+        logger.warning(
+            f"[Logic] AEC unavailable — per-turn mic settle is {post_tts_settle_s}s"
+        )
     if _DEBUG:
         print(
             f"[Logic] Post-TTS mic settle: {post_tts_settle_s}s (AEC active={aec_active})"
@@ -589,6 +529,8 @@ def run_sara_logic(
             woke = wake_watcher.wait_for_wake()
             if stop_event.is_set() or not woke:
                 break
+
+            wake_watcher.begin_session()
 
             activity_tracker.touch()
             try:
@@ -645,6 +587,7 @@ def run_sara_logic(
                     break
 
                 if not user_input:
+                    ui_update("transcript_partial", "user", "")
                     empty_retries += 1
                     idle_elapsed = time.monotonic() - last_active_time
                     retry_limit_hit = (
@@ -689,24 +632,31 @@ def run_sara_logic(
                 # an out-param: _handle_command() sets
                 # session_control["action"] to "exit" or "sleep" when one of
                 # those phrases matched; every other case leaves it empty.
+                if hasattr(tts, "clear_interrupt"):
+                    try:
+                        tts.clear_interrupt()
+                    except Exception as e:
+                        print(f"[Logic] tts.clear_interrupt() failed (continuing): {e}")
+
                 session_control: dict = {}
-                reply_text = _handle_command(
-                    user_input,
-                    brain,
-                    tts,
-                    ears,
-                    db,
-                    reminders,
-                    vision,
-                    ui_update,
-                    volume_state,
-                    notes_memory=notes_memory,
-                    playback_state=playback_state,
-                    confirm_state=confirm_state,
-                    context_state=context_state,
-                    stt_confidence=stt_confidence,
-                    session_control=session_control,
-                )
+                with STATE_LOCK:
+                    reply_text = _handle_command(
+                        user_input,
+                        brain,
+                        tts,
+                        ears,
+                        db,
+                        reminders,
+                        vision,
+                        ui_update,
+                        volume_state,
+                        notes_memory=notes_memory,
+                        playback_state=playback_state,
+                        confirm_state=confirm_state,
+                        context_state=context_state,
+                        stt_confidence=stt_confidence,
+                        session_control=session_control,
+                    )
 
                 ui_update("transcript", "sara", reply_text or "(no response)")
                 db_writer.log_message("user", user_input)
@@ -731,6 +681,8 @@ def run_sara_logic(
                     tts.speak(warn_msg, fast=True)
                     ui_update("transcript", "sara", warn_msg)
                     break
+
+            wake_watcher.end_session()
 
         try:
             ears.close()
