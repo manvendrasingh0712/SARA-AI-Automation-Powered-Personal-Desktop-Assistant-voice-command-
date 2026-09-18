@@ -15,6 +15,16 @@ from typing import Optional, Tuple
 # Order matters: more specific patterns must come before broad fallbacks.
 from .patterns import _INTENT_PATTERNS, _INTENT_GATES, _NON_APP_TOKENS
 
+# O2: guards every mutation of the module-level _INTENT_PATTERNS /
+# _INTENT_GATES lists/dicts done by register_intent() below. Without
+# this, two skills registering concurrently during startup (e.g. from
+# separate plugin-loading threads) could race on the same list/dict
+# mutation. Matching itself (_detect_intent_cached) never touches this
+# lock -- it only reads the already-rebuilt, immutable-per-rebuild
+# _ROUTES tuple, so normal hot-path matching pays no locking cost.
+_registry_lock = threading.Lock()
+
+
 
 def _merge_groupless(patterns):
     """
@@ -42,15 +52,6 @@ def _merge_groupless(patterns):
 _COMPILED_PATTERNS = []
 _ROUTES = ()
 
-# Intents whose capture group is an app/window name (open_app, close_app,
-# restart_application, switch_to_application). These are the only intents
-# subject to the post-match "is this actually shaped like an app name"
-# rejection in _detect_intent_cached below — see patterns.py's
-# _NON_APP_TOKENS for the token set that triggers rejection.
-_APP_CAPTURE_INTENTS = frozenset({
-    "open_app", "close_app", "restart_application", "switch_to_application",
-})
-
 # ── Typo-tolerance vocabulary (rescue pass only — see _correct_typos) ──
 # Built automatically from _INTENT_GATES rather than a hand-maintained
 # list, so it can never drift out of sync with the real trigger words:
@@ -63,12 +64,6 @@ _APP_CAPTURE_INTENTS = frozenset({
 _TYPO_MIN_WORD_LEN = 5
 _TYPO_CUTOFF = 0.8
 _TRIGGER_VOCAB = set()
-
-# Guards register_intent()'s mutation of the shared _INTENT_PATTERNS /
-# _INTENT_GATES module-level lists/dict (see O2) — protects against a
-# race if two skills are registered concurrently during threaded
-# plugin startup.
-_registration_lock = threading.Lock()
 
 
 def _rebuild_routes() -> None:
@@ -118,39 +113,44 @@ def register_intent(name: str, patterns, gate=None) -> None:
     _INTENT_PATTERNS entry). `gate`, if given, is a tuple of lowercase
     substrings used as the cheap pre-filter (same shape as an
     _INTENT_GATES entry) — omit it only if no safe substring gate exists
-    for this intent (matches the existing calculator/open_app/close_app
-    convention in patterns.py).
+    for this intent (matches the existing `calculator` convention in
+    patterns.py — the one remaining intent with no gate).
 
     Safe to call more than once for the same name (replaces its patterns/
     gate rather than duplicating the entry) and safe to call from
     anywhere, including inside a try/except during optional-plugin
-    loading — it never raises for a well-formed call, and a bad `patterns`
-    list surfaces immediately as a re.error, BEFORE anything is mutated
-    (see below), not silently later.
-
-    Every pattern is dry-run compiled before any shared state is touched,
-    so a malformed pattern leaves _INTENT_PATTERNS/_INTENT_GATES exactly
-    as they were — no half-inserted, corrupted table — and the same
-    re.error is re-raised to the caller. The actual mutation is done
-    under _registration_lock, so two concurrent registrations (e.g. two
-    skills loaded from different threads at startup) can't interleave
-    their reads/writes of the shared lists.
+    loading — it never raises for a well-formed call. A bad `patterns`
+    list is now caught by an O3 dry-run compile BEFORE anything is
+    mutated: re.error propagates immediately to the caller and neither
+    _INTENT_PATTERNS nor _INTENT_GATES is touched, so a failed
+    registration can never leave the tables in a half-updated state.
+    O2: the whole body runs under _registry_lock so two concurrent
+    registrations (e.g. two plugins loading on separate threads at
+    startup) can't interleave their reads/mutations of these shared
+    module-level structures.
     """
-    patterns = list(patterns)
-    for p in patterns:
-        re.compile(p, re.IGNORECASE | re.UNICODE)
+    with _registry_lock:
+        patterns = list(patterns)
+        # O3: validate every pattern compiles BEFORE removing the old
+        # entry or inserting the new one. If any pattern is malformed,
+        # this raises re.error here and _INTENT_PATTERNS/_INTENT_GATES
+        # are left completely untouched (the previous registration for
+        # `name`, if any, still stands) — no silent swallow, and no
+        # partially-applied registration for _rebuild_routes() to trip
+        # over later.
+        for p in patterns:
+            re.compile(p)
 
-    with _registration_lock:
         _INTENT_PATTERNS[:] = [(n, p) for n, p in _INTENT_PATTERNS if n != name]
         # Inserted at the FRONT, not appended — patterns.py's own comments
         # note that open_app/close_app's catch-all patterns (last in the
-        # static table) are deliberately greedy ("close|quit|exit|kill|end
-        # ...") and WILL match an unrelated phrase that merely contains one
-        # of those words as a substring if checked first (confirmed: a
-        # naive append-at-end put a test intent after close_app, and
-        # "hello skill world" was wrongly matched by close_app via its
-        # embedded "kill world"). Runtime-registered skill intents must be
-        # checked before those catch-alls.
+        # static table) are deliberately greedy ("close|quit|exit|kill ...")
+        # and WILL match an unrelated phrase that merely contains one of
+        # those words as a substring if checked first (confirmed: a naive
+        # append-at-end put a test intent after close_app, and "hello
+        # skill world" was wrongly matched by close_app via its embedded
+        # "kill world"). Runtime-registered skill intents must be checked
+        # before those catch-alls.
         _INTENT_PATTERNS.insert(0, (name, patterns))
         if gate is not None:
             _INTENT_GATES[name] = tuple(gate)
@@ -191,6 +191,33 @@ if __debug__:
 # over a long-running session instead of growing without limit.
 _INTENT_CACHE_SIZE = 256
 
+# LAYER 4: intents whose sole capturing group is a free-text "app name"
+# that shape-bounding (patterns.py's _APP_NAME) can't fully disambiguate
+# on its own -- e.g. "gym start karna hai" is still shape-valid ("gym"
+# and "karna" and "hai" all individually look like app-name tokens).
+# For exactly these four intents, a successful regex match is not
+# trusted outright: it's checked against _NON_APP_TOKENS first.
+_APP_NAME_REJECT_INTENTS = frozenset({
+    "open_app", "close_app", "restart_application", "switch_to_application",
+})
+
+
+def _captured_app_name_is_rejected(match: "re.Match") -> bool:
+    """
+    True if match's app-name capture (always group 1 for these four
+    intents -- each of their patterns has exactly one capturing group)
+    contains a Hinglish verb-ending/function-word token from
+    _NON_APP_TOKENS, meaning it's almost certainly someone talking
+    ABOUT starting/closing/restarting/switching something rather than
+    naming an actual app. Comparison is case-insensitive and per
+    whitespace-separated token, same tokenization _NON_APP_TOKENS was
+    built against.
+    """
+    captured = match.group(1)
+    if not captured:
+        return False
+    return any(tok in _NON_APP_TOKENS for tok in captured.lower().split())
+
 
 @lru_cache(maxsize=_INTENT_CACHE_SIZE)
 def _detect_intent_cached(text: str) -> Tuple[str, Optional[re.Match]]:
@@ -204,13 +231,15 @@ def _detect_intent_cached(text: str) -> Tuple[str, Optional[re.Match]]:
     and lets repeats skip regex evaluation over all ~130 pattern groups
     entirely instead of re-running them.
 
-    For the 4 app/window-name intents (_APP_CAPTURE_INTENTS), a regex
-    match is not automatically accepted: if any whitespace-split token
-    of the captured group is a known non-app-name function word
-    (patterns.py's _NON_APP_TOKENS), the match is discarded and scanning
-    continues — over the rest of that intent's own patterns, then over
-    the remaining routes — rather than falling straight through to
-    "chat", since some other, unrelated intent may still validly match.
+    LAYER 4 note: for open_app/close_app/restart_application/
+    switch_to_application specifically, a regex match is provisional —
+    see _captured_app_name_is_rejected(). A rejected match is discarded
+    and matching CONTINUES (next pattern in this intent's compiled_list,
+    then the next intent in _ROUTES) rather than returning "chat"
+    immediately, since some other, unrelated intent further down may
+    still be the correct match for the same text. This rejection is
+    scoped to exactly those four intents; every other intent's matching
+    behavior, and the _ROUTES structure itself, are unchanged.
     """
     text_lower = text.lower()
 
@@ -226,11 +255,11 @@ def _detect_intent_cached(text: str) -> Tuple[str, Optional[re.Match]]:
         for pattern in compiled_list:
             match = pattern.search(text)
             if match:
-                if intent_name in _APP_CAPTURE_INTENTS:
-                    captured = match.group(1) if match.lastindex else ""
-                    tokens = captured.lower().split()
-                    if any(tok in _NON_APP_TOKENS for tok in tokens):
-                        continue
+                if (
+                    intent_name in _APP_NAME_REJECT_INTENTS
+                    and _captured_app_name_is_rejected(match)
+                ):
+                    continue
                 return intent_name, match
 
     return "chat", None
@@ -287,7 +316,7 @@ def detect_intent(text: str) -> Tuple[str, Optional[re.Match]]:
     (would return "chat") does it retry once against a typo-corrected
     version of the text (see _correct_typos) -- a rescue pass for common
     single-word typos/homophones of real trigger words (e.g. "whether"
-    for "weather", "restrt" for "restart").  This ordering means the
+    for "weather", "restrt" for "restart"). This ordering means the
     rescue pass can only ever turn a would-be "chat" fallback into a
     real intent; it can never override or change a match that already
     succeeded on the original text.
