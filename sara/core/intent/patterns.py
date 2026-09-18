@@ -1,44 +1,48 @@
 """
 sara.core.intent.patterns
 The regex pattern table and substring pre-filter gates for every fast-path
-intent. Split into its own file since it is pure data (~650 lines) and
+intent. Split into its own file since it is pure data (~1000 lines) and
 changes far more often than the matching logic in engine.py.
 """
 
-# ── Shared building blocks for anchored, shape-bound command capture ──
-# Added for open_app / close_app / restart_application /
-# switch_to_application / typing_text (see engine.py's _APP_CAPTURE_INTENTS
-# and the accompanying WHY notes for the bug these close).
+# ── Shared fragments for the "verb + free text" catch-all intents ─────
+# (open_app, close_app, restart_application, switch_to_application) --
+# see engine.py's _detect_intent_cached() for how these combine with the
+# Layer-4 post-match rejection against _NON_APP_TOKENS below.
+#
+# LAYER 1 filler: a short, EXPLICIT list of polite/wake-word prefixes
+# that may precede the actual command, anchored with `^` so the verb has
+# to be the start of the (stripped) utterance -- not found anywhere
+# inside it via .search(). Deliberately not a greedy `(.*)` prefix: an
+# open-ended prefix would just reintroduce the exact "matches mid-
+# sentence" bug this fix removes, since `.*` would happily eat any
+# amount of leading chatter to reach the verb.
+_FILLER = (
+    r"^[\s,]*(?:please |sara |hey sara |can you |could you |zara |"
+    r"ek baar |jara )*"
+)
 
-# FILLER: an optional leading comma, then an optional single polite/
-# wake-word prefix, before the real trigger verb. Deliberately an
-# explicit alternation -- never a generic greedy prefix like `.*` -- so
-# it can never itself swallow part of an app name or dictation text.
-_FILLER = r"(?:,\s*)?(?:(?:please|sara|hey sara|can you|could you|zara|ek baar|jara)\s+)?"
-
-# APP_TOKEN / APP_NAME: shape-bound capture for the 4 catch-all window/app
-# intents. A "token" is letters/digits plus the punctuation that shows up
-# inside real app names (+, -, .) -- "notepad++", "7-zip", "vs code" (2
-# tokens), "microsoft word" (2 tokens). Capped at 4 tokens so a trailing
-# clause of a normal sentence can never be swallowed whole as "the app name".
+# LAYER 3 shape-bound app name: 1-4 whitespace-separated tokens, each
+# starting with a letter/digit and otherwise made up only of letters,
+# digits, `+`, `-`, or `.` -- covers real app names ("notepad++",
+# "vs code", "7-zip", "microsoft word") while a token with any other
+# punctuation, or a 5th+ token, simply can't be captured. This is
+# enforced IN the regex (not as a post-match length/shape check) so a
+# too-long or oddly-shaped phrase just fails to match here and falls
+# through to "chat" or the next intent in _ROUTES, same as any other
+# non-matching input.
 _APP_TOKEN = r"[A-Za-z0-9][A-Za-z0-9+\-.]*"
-_APP_NAME = _APP_TOKEN + r"(?:\s+" + _APP_TOKEN + r"){0,3}"
-
-# Function-word / verb-ending tokens that can never legitimately be part of
-# an app name. engine.py's _detect_intent_cached discards an open_app /
-# close_app / restart_application / switch_to_application match outright
-# if any captured token is in this set -- a last-line defense for captures
-# that are shape-legal (<=4 tokens, app-name-shaped characters) but are
-# still plainly a fragment of a Hinglish verb phrase, not a name.
-_NON_APP_TOKENS = frozenset({
-    "kerne", "karne", "karna", "karni", "karunga", "karungi", "karta",
-    "karti", "karke", "kar", "raha", "rahi", "rahe", "raaha", "rha",
-    "soch", "sochta", "sochti", "chahta", "chahti", "chahiye", "hu",
-    "hun", "hoon", "tha", "thi", "the", "hai", "ho", "ki", "ka", "ke",
-    "ko", "se", "me", "mein", "nahi", "kuch", "bss", "bas", "apna",
-    "apni", "mera", "meri", "wala", "wali", "liye", "jab", "time",
-    "mile",
-})
+# Repetition is LAZY ({0,3}?), not greedy: with an OPTIONAL connector
+# elsewhere in some of these patterns (e.g. restart_application's
+# "(?:ko )?"), a greedy capture backtracks from the top and happily
+# accepts the first overall match it finds — which, for "chrome ko
+# restart karo", is a 2-token capture ("chrome ko") once the optional
+# "ko " simply matches zero times. Lazy repetition tries the SHORTEST
+# capture first (1 token), succeeds against "chrome" + "ko " already
+# there in the text, and only backtracks to a longer capture (e.g.
+# "vs code") when the shorter one genuinely doesn't let the rest of the
+# pattern match.
+_APP_NAME = _APP_TOKEN + r"(?:\s+" + _APP_TOKEN + r"){0,3}?"
 
 _INTENT_PATTERNS = [
     # ── Modes / Personas (voice-triggerable, NEW) ─────────────────────
@@ -231,14 +235,18 @@ _INTENT_PATTERNS = [
     # ── Calculator ─────────────────────────────────────────────────────
     ("calculator", [
         r"(?:what is|calculate|compute|solve|evaluate)(?: the)? (\d[\d\s\+\-\*\/\(\)\.\^%]+)",
-        # O1 fix: a bare "12-15" (digit-minus-digit, no spaces, no other
-        # operator) must NOT match -- it's far more often a room number,
-        # a date range, or a score than arithmetic. `-` is now only
-        # accepted as an operator when it has whitespace on both sides
-        # ("12 - 15"); +, *, /, ^, % still work with or without spaces,
-        # since those are unambiguous as arithmetic in a way bare "-"
-        # between two numbers is not. See MATCHES/DOES NOT MATCH below.
-        r"(\d+(?:\s*[\+\*\/\^%]\s*\d+|\s+-\s+\d+)+)",
+        # O1: bare "digit-digit" with a spaceless minus used to match
+        # here on its own (no explicit keyword needed for this second
+        # pattern), so "room 12-15", "9-5 job", "555-1234", and a score
+        # like "2-1" were all misread as calculator input. Fix: every
+        # occurrence of `-` as an operator in the chain now REQUIRES
+        # whitespace on both sides; `+ * / ^ %` are unchanged (still
+        # optionally spaced) since those symbols essentially never show
+        # up in phone numbers/ranges/scores the way a bare hyphen does.
+        #   MATCHES:     "2 + 2", "3*4", "10 / 2", "100^2", "50%20",
+        #                "9 - 5", "1+2-3" (has a real '+' too)
+        #   DOES NOT MATCH: "12-15", "9-5 job", "555-1234", "2-1"
+        r"(\d+(?:\s*[+*/^%]\s*\d+|\s+-\s+\d+)+)",
         r"(?:what'?s) (\d[\d\s\+\-\*\/\(\)\.\^%]+)",
         r"open calculator",
         r"open calc",
@@ -371,14 +379,21 @@ _INTENT_PATTERNS = [
         r"switch (?:to (?:the )?(?:next|other) )?window",
         r"alt tab",
     ]),
+    # Same Layer 1/2/3 treatment as open_app/close_app above. The second
+    # pattern here is Hinglish object-verb order ("chrome ko restart
+    # karo"), so the app name is a PREFIX rather than following the verb
+    # -- _APP_NAME still bounds it to 1-4 shaped tokens, and the trailing
+    # `[\s.!]*$` anchor stops it from also swallowing trailing chatter
+    # after "karo"/"kro" the way the old unanchored `.+?` effectively
+    # could when re.search() was free to match anywhere.
     ("restart_application", [
-        rf"^{_FILLER}\brestart\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app(?:lication)?)?$",
-        rf"^{_FILLER}({_APP_NAME})\s+(?:ko\s+)?restart\s+(?:karo|kro)$",
+        _FILLER + r"\brestart\b (?:the )?(" + _APP_NAME + r")(?:\s+app(?:lication)?)?$",
+        _FILLER + r"(" + _APP_NAME + r") (?:ko )?restart (?:karo|kro)[\s.!]*$",
     ]),
     ("switch_to_application", [
-        rf"^{_FILLER}\bswitch to\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app(?:lication)?)?$",
-        rf"^{_FILLER}({_APP_NAME})\s+(?:pe|par)\s+switch\s+karo$",
-        rf"^{_FILLER}({_APP_NAME})\s+(?:pe|par)\s+jao$",
+        _FILLER + r"\bswitch\b to (?:the )?(" + _APP_NAME + r")(?:\s+app(?:lication)?)?$",
+        _FILLER + r"(" + _APP_NAME + r") (?:pe|par) switch karo[\s.!]*$",
+        _FILLER + r"(" + _APP_NAME + r") (?:pe|par) jao[\s.!]*$",
     ]),
     ("move_window", [
         r"move (.+?) (?:window )?to (?:the )?(left half|right half|top half|bottom half|top left|top right|bottom left|bottom right|center|full screen)$",
@@ -423,16 +438,31 @@ _INTENT_PATTERNS = [
 
     # ── Keyboard / Typing ─────────────────────────────────────────────
     ("typing_text", [
-        # Colon now mandatory (was `[:\s]+`, i.e. a single space also
-        # triggered it) -- see WHY. Also anchored+fillered per Layer 1.
-        rf"^{_FILLER}\btype\b(?:\s+this)?(?:\s+for me)?\s*:\s*(.+)$",
-        rf"^{_FILLER}\btype out\b\s*:\s*(.+)$",
-        rf"^{_FILLER}\bwrite\b(?:\s+this)?(?:\s+for me)?\s*:\s*(.+)$",
+        r"type (?:this )?(?:for me)?[:\s]+(.+)",
+        r"type out[:\s]+(.+)",
+        # "write" (unlike "type") is an everyday word in ordinary chat
+        # ("write my essay", "write a poem about..."), and the old
+        # `[:\s]+` separator could in principle be satisfied by nothing
+        # more than run-together whitespace, with no explicit marker
+        # that this is a dictation command. Colon now mandatory here
+        # (only for "write") so a real command reads "write: <text>" /
+        # "write this for me: <text>" and a normal sentence containing
+        # the word "write" can't accidentally satisfy it.
+        r"\bwrite\b(?: this)?(?: for me)?:\s*(.+)",
     ]),
     ("press_key", [
-        r"press (?:the )?(.+?) key",
-        r"hit (?:the )?(.+?) key",
-        # Third pattern r"press (.+)" removed -- see WHY.
+        r"\bpress\b (?:the )?(.+?) key",
+        r"\bhit\b (?:the )?(.+?) key",
+        # Third pattern `r"press (.+)"` removed: it was a bare catch-all
+        # with no end marker at all (not even "key"), so anything
+        # starting with "press " -- "press on with the plan", "press
+        # charges", etc. -- would be captured whole as a key name. The
+        # first two patterns ("press X key" / "hit X key") are the only
+        # phrasings that unambiguously name an actual key, and are
+        # already gated on ("press", "hit", "key"); if a real command
+        # needs "press <key>" without the trailing "key" word, it should
+        # get its own bounded pattern (e.g. a fixed key-name alternation)
+        # rather than a free-text catch-all.
     ]),
     ("copy_selection", [
         r"copy (?:this|that|selection|selected)(?: text)?$",
@@ -796,17 +826,61 @@ _INTENT_PATTERNS = [
         r"chalao (?:mera )?(.+?) routine",
     ]),
 
+    # LAYER 1 (start-anchor + filler), LAYER 2 (\b on the trigger verb),
+    # and LAYER 3 (shape-bound _APP_NAME capture) all applied below.
+    # Previously these were bare `.search()` patterns with a `.+`-style
+    # capture and no anchor at all, so "kuch nahi bss apna routine start
+    # kerne ki soch raaha hu" matched open_app with group(1) =
+    # "kerne ki soch raaha hu", and "...restart kerna chahiye..." matched
+    # via the literal substring "start" embedded inside "reSTART" (no
+    # word boundary). Layer 4's rejection (engine.py) is the last line
+    # of defense for the remaining Hinglish-verb-phrase case that shape-
+    # bounding alone can't rule out (e.g. "gym start karna hai" -- "gym"
+    # and "karna" and "hai" are each individually app-name-shaped).
     ("open_app", [
-        rf"^{_FILLER}\bopen\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
-        rf"^{_FILLER}\blaunch\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
-        rf"^{_FILLER}\bstart\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
-        rf"^{_FILLER}\brun\b\s+(?!https?://)({_APP_NAME})(?:\s+app)?$",
+        _FILLER + r"\bopen\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\blaunch\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\bstart\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\brun\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
     ]),
+    # "end" deliberately dropped from the verb alternation below (it was
+    # present in the original: close|quit|exit|kill|end). Even fully
+    # anchored + word-boundaried, "end" collides with ordinary sentences
+    # that are *actually* about ending something other than an app --
+    # "end the call", "end the meeting", "end this conversation" -- and
+    # those really do start with "end <noun phrase>", so anchoring can't
+    # disambiguate them the way it can for "close"/"quit"/"exit"/"kill",
+    # which are far more specifically about terminating a program in
+    # everyday usage. If a genuine "end <app>" voice command is needed
+    # later, it should go through the Layer-4 rejection list too rather
+    # than being re-added bare.
     ("close_app", [
-        rf"^{_FILLER}\b(?:close|quit|exit|kill|end)\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app)?$",
-        rf"^{_FILLER}\b(?:force quit|force close)\b(?:\s+the)?\s+({_APP_NAME})(?:\s+app)?$",
+        _FILLER + r"\b(?:close|quit|exit|kill)\b(?: the)? (" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\b(?:force quit|force close)\b(?: the)? (" + _APP_NAME + r")(?:\s+app)?$",
     ]),
 ]
+
+# ── Layer 4: Hinglish verb-phrase / function-word rejection set ───────
+# Consumed by engine.py's post-match rejection step, applied ONLY to
+# open_app, close_app, restart_application, and switch_to_application:
+# if the captured "app name" contains any of these tokens, the match is
+# discarded and matching continues with the next pattern/intent instead
+# of returning immediately (see _detect_intent_cached in engine.py).
+# These are Hinglish verb endings and function words that show up when
+# someone is talking ABOUT starting/restarting/switching/closing
+# something as a future intention or passing thought -- e.g. "apna
+# routine start kerne ki soch raaha hu" -- and never as part of an
+# actual app name.
+_NON_APP_TOKENS = frozenset({
+    "kerne", "karne", "karna", "karni", "karunga", "karungi", "karta",
+    "karti", "karke", "kar",
+    "raha", "rahi", "rahe", "raaha", "rha",
+    "soch", "sochta", "sochti", "chahta", "chahti", "chahiye",
+    "hu", "hun", "hoon", "tha", "thi", "the", "hai", "ho",
+    "ki", "ka", "ke", "ko", "se", "me", "mein", "nahi",
+    "kuch", "bss", "bas", "apna", "apni", "mera", "meri",
+    "wala", "wali", "liye", "jab", "time", "mile",
+})
 
 # ── Cheap pre-filter gates ──────────────────────────────────────────────
 _INTENT_GATES = {
@@ -862,6 +936,18 @@ _INTENT_GATES = {
     "switch_window": ("switch", "window", "alt tab"),
     "restart_application": ("restart",),
     "switch_to_application": ("switch", "pe jao", "par jao"),
+    # LAYER 5: open_app/close_app previously had no gate at all ("always
+    # run" -- see the removed comment that used to sit at the bottom of
+    # this dict). "open"/"start"/"run" are all < _TYPO_MIN_WORD_LEN (5)
+    # so only "launch" and "close" feed the typo-correction vocabulary;
+    # both are genuine, unambiguous trigger words for this feature, so
+    # that's fine. "force quit"/"force close" are multi-word and are
+    # automatically excluded from the typo vocab by _rebuild_routes().
+    # "end" is intentionally NOT included here -- it was dropped from
+    # close_app's own pattern above, so gating on it would only widen
+    # the pre-filter for a word that can never lead to an actual match.
+    "open_app": ("open", "launch", "start", "run"),
+    "close_app": ("close", "quit", "exit", "kill", "force quit", "force close"),
     "move_window": ("half", "center", "full screen", "top left", "top right", "bottom left", "bottom right"),
     "resize_window": ("half", "center", "full screen", "top left", "top right", "bottom left", "bottom right"),
     "always_on_top": ("always on top", "pin", "upar"),
@@ -940,7 +1026,6 @@ _INTENT_GATES = {
     "memory_recall": ("remember", "recall", "yaad", "pata"),
     "calendar_today": ("calendar", "schedule", "aaj", "meeting"),
     "calendar_create": ("meeting", "event", "baje", "calendar"),
-    "open_app": ("open", "launch", "start", "run"),
-    "close_app": ("close", "quit", "exit", "kill", "end", "force quit", "force close"),
-    # calculator: no safe substring gate — always run.
+    # calculator: no safe substring gate — always run (its own patterns
+    # provide the necessary keywords/digit-shape; unaffected by this pass).
 }
