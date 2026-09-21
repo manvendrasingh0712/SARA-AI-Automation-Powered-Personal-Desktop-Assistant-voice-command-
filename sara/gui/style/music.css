@@ -39,11 +39,23 @@
 .mc-chev svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
 .music-card.expanded .mc-chev{transform:rotate(90deg);color:var(--music-accent-1);}
 .mc-body{max-height:0;overflow:hidden;transition:max-height .35s ease;}
-.music-card.expanded .mc-body{max-height:320px;}
-.mc-body-inner{padding:2px 20px 20px;}
-.seek-wrap{margin-bottom:14px;}
-input.seek{width:100%;display:block;height:3px;background:linear-gradient(to right,var(--music-accent-1) var(--fill,0%),var(--line) var(--fill,0%));}
-input.seek:disabled{opacity:.4;}
+.music-card.expanded .mc-body{max-height:360px;}
+.mc-body-inner{padding:4px 20px 22px;}
+.seek-wrap{margin-bottom:16px;}
+input.seek,input.volume{
+  -webkit-appearance:none;appearance:none;display:block;height:3px;border-radius:2px;
+  outline:none;cursor:pointer;background-color:transparent;
+}
+input.seek{width:100%;background:linear-gradient(to right,var(--music-accent-1) var(--fill,0%),var(--line) var(--fill,0%));}
+input.seek::-webkit-slider-thumb,input.volume::-webkit-slider-thumb{
+  -webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--music-accent-1);
+  box-shadow:0 0 0 3px rgba(63,216,196,.2);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--music-accent-1) 20%, transparent);
+  transition:background-color .3s,box-shadow .3s;
+}
+input.seek::-moz-range-thumb,input.volume::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--music-accent-1);border:none;transition:background-color .3s;}
+input.seek::-moz-range-track,input.volume::-moz-range-track{background:transparent;height:3px;}
+input.seek:disabled,input.volume:disabled{opacity:.4;cursor:default;}
 .seek-times{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums;}
 .transport{display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:16px;}
 .transport button{background:none;border:none;color:var(--text-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:color .2s,transform .12s;}
@@ -55,8 +67,18 @@ input.seek:disabled{opacity:.4;}
 .transport .t-play svg{width:16px;height:16px;stroke:none;fill:currentColor;}
 .transport button.active{color:var(--music-accent-1);}
 .transport button.repeat-track::after{content:'1';position:absolute;top:-4px;right:-5px;font-size:9px;color:var(--music-accent-1);}
+/* ---- per-app volume (Task 2; markup: .volume-row > #mcVolumeIcon svg + #mcVolume input) ---- */
+.volume-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+.volume-row svg{width:16px;height:16px;stroke:var(--text-soft);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:stroke .2s;}
+.volume-row svg.muted{stroke:var(--muted);}
+input.volume{flex:1;min-width:0;background:linear-gradient(to right,var(--music-accent-1) var(--vol-fill,60%),var(--line) var(--vol-fill,60%));}
 .spectrum{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:32px;}
 .spectrum span{width:3px;height:3px;background:var(--music-accent-1);border-radius:2px;opacity:.25;will-change:height;transition:background-color .6s;}
+
+@media (max-width:380px){
+  .mc-body-inner{padding:4px 14px 18px;}
+  .transport{gap:14px;}
+}
 
 /* ---- mini-player (fixed above nav; hidden on Apps where the full card is visible) ---- */
 .mini-player{

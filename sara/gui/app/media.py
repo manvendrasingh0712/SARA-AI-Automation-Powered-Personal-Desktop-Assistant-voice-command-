@@ -145,6 +145,10 @@ async def _extract_album_art(props):
         reader.read_bytes(buf)
         mime = getattr(stream, "content_type", None) or "image/jpeg"
         b64 = base64.b64encode(bytes(buf)).decode("ascii")
+        # DEBUG (Task 1, item 1): confirms the art genuinely arrived from
+        # WinRT before it's ever handed to the frontend. Remove once the
+        # theming bug is confirmed fixed.
+        print(f"[art] {len(b64)} bytes, mime={mime}")
         return f"data:{mime};base64,{b64}"
     except Exception as e:
         print(f"[album art skipped] {e}")
@@ -171,6 +175,47 @@ def _friendly_app_name(aumid):
         if key in low:
             return label
     return ""
+
+
+# ── Volume control: see the long comment on ApiMediaMixin.get_media_volume
+#    below for why this exists as a *separate* pycaw path instead of an
+#    SMTC call. ───────────────────────────────────────────────────────────
+def _process_name_from_aumid(aumid):
+    """
+    Best-effort mapping from an SMTC source_app_user_model_id to the
+    Windows process name pycaw/psutil expect (e.g. 'Spotify.exe').
+
+    Win32 desktop apps (Spotify, VLC, foobar2000, most browsers) publish
+    their aumid as the exe's own path/name, so stripping any path and
+    ensuring a '.exe' suffix is normally enough. UWP apps publish a
+    package family name instead (no resemblance to a process name) --
+    those just won't resolve to a pycaw session, which is why every
+    caller below treats "no matching session" as a normal, expected
+    outcome and not an error to alarm about.
+    """
+    if not aumid:
+        return None
+    base = aumid.replace("/", "\\").rsplit("\\", 1)[-1]
+    if not base:
+        return None
+    if not base.lower().endswith(".exe"):
+        base += ".exe"
+    return base
+
+
+def _pycaw_session_for(aumid):
+    proc_name = _process_name_from_aumid(aumid)
+    if not proc_name:
+        return None
+    from pycaw.pycaw import AudioUtilities
+    for session in AudioUtilities.GetAllSessions():
+        try:
+            proc = session.Process
+            if proc is not None and proc.name().lower() == proc_name.lower():
+                return session
+        except Exception:
+            continue
+    return None
 
 
 class ApiMediaMixin:
@@ -525,4 +570,83 @@ class ApiMediaMixin:
             }
         except Exception as e:
             print(f"[cycle_repeat_mode error] {e}")
+            return {"ok": False}
+
+    # ── Mini music player: per-app volume (Task 2) ──────────────────────
+    # SMTC (GlobalSystemMediaTransportControlsSession / *PlaybackInfo /
+    # *TimelineProperties) has NO volume property or method anywhere in its
+    # API surface -- confirmed against the current WinRT reference (only
+    # play/pause/stop/skip/seek/shuffle/repeat/channel-up-down exist).
+    # `MediaTransportControls.IsVolumeEnabled` is a UWP XAML *control*
+    # setting (shows/hides a slider in an app's own UI) -- not something a
+    # third party can read or drive for someone else's session. So this
+    # genuinely cannot be built as "one more SMTC call" like the other
+    # transport methods above; it needs a different Windows API entirely.
+    #
+    # Windows' per-app volume mixer (Core Audio / WASAPI session volume,
+    # `ISimpleAudioVolume`) is a separate, unrelated API that sets the
+    # volume of one process's audio session independent of the system
+    # volume and of every other app -- this is what `pycaw` wraps. It has
+    # no knowledge of "now playing" sessions, so it's bridged to SMTC here
+    # purely by matching the *process name* behind the cached SMTC
+    # session's source_app_user_model_id against the process name behind
+    # each Core Audio session (see _pycaw_session_for above).
+    #
+    # NEW DEPENDENCY: this requires `pip install pycaw` (pulls in
+    # `comtypes`) -- add both to requirements.txt; they are not used
+    # anywhere else in this file.
+    #
+    # Known limitation: only resolves for Win32 desktop apps (Spotify
+    # desktop, VLC, browsers...), since UWP apps don't expose a matching
+    # process name (see _process_name_from_aumid). Also, a process only
+    # gets a Core Audio session once it has actually rendered audio at
+    # least once in this run, so right after launch (before the first
+    # sound) get_media_volume can legitimately report "no session yet".
+    def get_media_volume(self):
+        try:
+            cached_id = _session_cache.get("app_id")
+            if not cached_id:
+                return {"ok": False, "error": "No active media session."}
+            session = _pycaw_session_for(cached_id)
+            if session is None:
+                return {
+                    "ok": False,
+                    "error": "No matching Windows audio session for this app yet "
+                             "(UWP app, or it hasn't produced sound this run).",
+                }
+            vol = session.SimpleAudioVolume
+            return {
+                "ok": True,
+                "volume": round(float(vol.GetMasterVolume()), 3),
+                "muted": bool(vol.GetMute()),
+            }
+        except ImportError:
+            return {
+                "ok": False,
+                "error": "pycaw not installed. Run: pip install pycaw",
+            }
+        except Exception as e:
+            print(f"[get_media_volume error] {e}")
+            return {"ok": False}
+
+    def set_media_volume(self, level):
+        try:
+            level = max(0.0, min(1.0, float(level)))
+            cached_id = _session_cache.get("app_id")
+            if not cached_id:
+                return {"ok": False, "error": "No active media session."}
+            session = _pycaw_session_for(cached_id)
+            if session is None:
+                return {"ok": False, "error": "No matching Windows audio session for this app yet."}
+            session.SimpleAudioVolume.SetMasterVolume(level, None)
+            return {"ok": True, "volume": level}
+        except ImportError:
+            return {
+                "ok": False,
+                "error": "pycaw not installed. Run: pip install pycaw",
+            }
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "Invalid volume level."}
+        except Exception as e:
+            print(f"[set_media_volume error] {e}")
             return {"ok": False}

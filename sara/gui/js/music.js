@@ -56,6 +56,10 @@
      plus renderIdle() clearing it) -- never on every 2s poll. */
   let artColorToken = 0;
   function applyAccentColors(c1, c2) {
+    // DEBUG (Task 1, item 2c): confirms whether real colors or a (null,
+    // null) reset actually reached here, and prints exactly which DOM
+    // elements got the CSS custom properties set on them.
+    console.log('[accent] applyAccentColors', c1, c2, 'targets:', [card, mini].map((el) => el && el.id));
     [card, mini].forEach(function (el) {
       if (!el) return;
       if (c1 && c2) { el.style.setProperty('--music-accent-1', c1); el.style.setProperty('--music-accent-2', c2); }
@@ -68,13 +72,17 @@
     try {
       const img = new Image();
       img.onload = function () {
-        if (token !== artColorToken) return;  // a newer track already arrived; discard this stale result
+        // DEBUG (Task 1, item 2a): confirms the image itself decoded.
+        console.log('[accent] img.onload fired, naturalSize=', img.naturalWidth, 'x', img.naturalHeight);
+        if (token !== artColorToken) { console.log('[accent] stale token, discarding'); return; }  // a newer track already arrived; discard this stale result
         try {
           const SIZE = 48;
           const cv = document.createElement('canvas'); cv.width = SIZE; cv.height = SIZE;
           const ctx = cv.getContext('2d');
           ctx.drawImage(img, 0, 0, SIZE, SIZE);
           const data = ctx.getImageData(0, 0, SIZE, SIZE).data;  // throws on a canvas-taint (cross-origin) image
+          // DEBUG (Task 1, item 2b): confirms getImageData did NOT throw.
+          console.log('[accent] getImageData ok, bytes=', data.length);
           const buckets = new Map(); const STEP = 24;
           for (let i = 0; i < data.length; i += 4) {
             if (data[i + 3] < 128) continue;                      // skip transparent pixels
@@ -87,16 +95,16 @@
           }
           let best = null;
           buckets.forEach(function (v) { if (!best || v.n > best.n) best = v; });
-          if (!best) { applyAccentColors(null, null); return; }
+          if (!best) { console.log('[accent] no eligible bucket (art may be all near-black/white/grey)'); applyAccentColors(null, null); return; }
           const r1 = Math.round(best.r / best.n), g1 = Math.round(best.g / best.n), b1 = Math.round(best.b / best.n);
           const c1 = 'rgb(' + r1 + ',' + g1 + ',' + b1 + ')';
           const c2 = 'rgb(' + Math.round(r1 * 0.55) + ',' + Math.round(g1 * 0.55) + ',' + Math.round(b1 * 0.55) + ')';
           applyAccentColors(c1, c2);
-        } catch (e) { applyAccentColors(null, null); }  // canvas-taint or any extraction error -> default colors, never break the card
+        } catch (e) { console.error('[accent] extraction threw:', e); applyAccentColors(null, null); }  // canvas-taint or any extraction error -> default colors, never break the card
       };
-      img.onerror = function () { if (token === artColorToken) applyAccentColors(null, null); };
+      img.onerror = function (e) { console.error('[accent] img.onerror fired (image failed to decode)', e); if (token === artColorToken) applyAccentColors(null, null); };
       img.src = url;
-    } catch (e) { applyAccentColors(null, null); }
+    } catch (e) { console.error('[accent] extractAccentColors threw synchronously:', e); applyAccentColors(null, null); }
   }
 
   /* ---- rendering ---- */
@@ -133,6 +141,7 @@
     seek.max = 1; seek.value = 0; setFill(0); $('curTime').textContent = '0:00'; $('durTime').textContent = '0:00';
     card.classList.remove('playing'); mini.classList.remove('show', 'paused');
     $('ppShuffle').classList.remove('active'); $('ppRepeat').classList.remove('active', 'repeat-track');
+    if ($('mcVolume')) $('mcVolume').disabled = true;
     kickSpectrum();
   }
   function render(s) {
@@ -161,9 +170,42 @@
       $('curTime').textContent = SARA.fmtDuration(pos); $('durTime').textContent = SARA.fmtDuration(dur);
     }
   }
+  /* ---- volume (Task 2: Windows per-app volume mixer via pycaw, backend
+     matches the active SMTC session's app to its Core Audio session by
+     process name -- see media.py get_media_volume/set_media_volume for
+     why this can't be done through SMTC itself).
+     Expects markup in index.html: a <input type="range" id="mcVolume">
+     (0-100) and, optionally, an icon element id="mcVolumeIcon" that gets
+     a "muted" class toggled on it. Both are optional -- if absent, this
+     whole block quietly no-ops. */
+  const volSlider = $('mcVolume'), volIcon = $('mcVolumeIcon');
+  let volDragging = false;
+  function setVolFill(pct) { volSlider.style.setProperty('--vol-fill', pct + '%'); }
+  function setVolUI(vol, muted) {
+    if (!volSlider) return;
+    volSlider.disabled = false;
+    volSlider.value = Math.round((vol || 0) * 100);
+    setVolFill(volSlider.value);
+    if (volIcon) volIcon.classList.toggle('muted', !!muted);
+  }
+  async function pollVolume() {
+    if (!volSlider || !st.active || volDragging) return;
+    const res = await SARA.callApi('get_media_volume');
+    if (res && res.ok) setVolUI(res.volume, res.muted);
+    else volSlider.disabled = true;  // e.g. UWP app with no matching Core Audio session -- see media.py comment
+  }
+  if (volSlider) {
+    volSlider.addEventListener('input', function () { volDragging = true; setVolFill(volSlider.value); });
+    volSlider.addEventListener('change', async function () {
+      const level = Math.max(0, Math.min(100, parseFloat(volSlider.value) || 0)) / 100;
+      await SARA.callApi('set_media_volume', level);
+      volDragging = false;
+    });
+  }
+
   async function poll() {
     if (inflight) return; inflight = true;
-    try { render(await SARA.callApi('get_media_status')); } finally { inflight = false; }
+    try { render(await SARA.callApi('get_media_status')); await pollVolume(); } finally { inflight = false; }
   }
   setInterval(function () {                    // smooth progress between polls
     if (!st.active || dragging || document.hidden) return;
