@@ -461,8 +461,8 @@ class Config:
     )
 
     # ── Whisper transcription tuning ─────────────────────────────────────
-    WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "large-v3")
-    WHISPER_BEAM_SIZE: int = _int(os.getenv("WHISPER_BEAM_SIZE"), default=3)
+    WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "medium")
+    WHISPER_BEAM_SIZE: int = _int(os.getenv("WHISPER_BEAM_SIZE"), default=2)
     STT_NO_SPEECH_THRESHOLD: float = _float(
         os.getenv("STT_NO_SPEECH_THRESHOLD"), default=0.6
     )

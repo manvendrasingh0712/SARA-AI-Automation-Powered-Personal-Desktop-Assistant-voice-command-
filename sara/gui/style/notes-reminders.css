@@ -1,0 +1,30 @@
+/* ==========================================================================
+   notes-reminders.css  --  the combined Notes + Reminders page (two tabs).
+   Markup: index.html #page-notes.  JS: js/notes-reminders.js.  Tab/row/input styles come from components.css.
+   ========================================================================== */
+.notes-sub{font-size:12.5px;color:var(--muted);margin:0 0 16px;}
+.note-row2{padding:14px 4px;border-bottom:1px solid var(--line);max-width:640px;}
+.n-head{display:flex;justify-content:space-between;gap:12px;}
+.n-title{font-size:14.5px;overflow-wrap:anywhere;}
+.n-time{font-size:11px;color:var(--muted);flex:none;}
+.n-snip{font-size:12.5px;color:var(--muted);margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere;}
+.rem-add{max-width:640px;margin-top:18px;display:grid;grid-template-columns:1fr auto auto auto;gap:10px;}
+.rem-add input{min-width:0;}
+@media (max-width:640px){.rem-add{grid-template-columns:1fr 1fr;}.rem-add input[type=text]{grid-column:1/-1;}}
+.group-label.overdue{color:var(--danger);}
+
+/* ---- reminder checkbox: ring -> filled, checkmark draws, text strikes through (class .completing set by JS) ---- */
+.row .dot{width:17px;height:17px;border-radius:50%;flex:none;cursor:pointer;position:relative;border:1.5px solid rgba(63,216,196,.55);background:transparent;display:flex;align-items:center;justify-content:center;transition:background .25s,border-color .25s,transform .12s,box-shadow .2s;}
+.row .dot::before{content:'';position:absolute;inset:-8px;}
+.row .dot:hover{border-color:var(--core);box-shadow:0 0 8px rgba(63,216,196,.3);}
+.row .dot:active{transform:scale(.88);}
+.row .dot svg{width:11px;height:11px;fill:none;stroke:#08110F;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:14;stroke-dashoffset:14;}
+.row.done .dot{background:var(--muted);border-color:var(--muted);box-shadow:none;}
+.row.done .dot svg{stroke-dashoffset:0;}
+.row.completing .dot{background:var(--core);border-color:var(--core);animation:dotFill .35s cubic-bezier(.3,1.5,.5,1);}
+.row.completing .dot svg{animation:checkDraw .3s ease-out .12s forwards;}
+.row.completing .r-time,.row.completing .r-text{color:var(--muted);transition:color .3s .2s;}
+.row.completing .r-t{background:linear-gradient(currentColor,currentColor) no-repeat 0 58%/0% 1px;animation:strikeGrow .35s ease-out .2s forwards;}
+@keyframes checkDraw{to{stroke-dashoffset:0;}}
+@keyframes dotFill{0%{transform:scale(.85);}60%{transform:scale(1.18);}100%{transform:scale(1);}}
+@keyframes strikeGrow{to{background-size:100% 1px;}}

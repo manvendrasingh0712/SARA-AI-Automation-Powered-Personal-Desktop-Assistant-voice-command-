@@ -1,0 +1,77 @@
+/* ==========================================================================
+   music.css  --  Music card (lives on the Apps page; click head to expand into full player)
+   + the floating mini-player above the nav + the VU spectrum.
+   Markup: index.html #musicCard, #miniPlayer.  JS: js/music.js.
+   ========================================================================== */
+.music-card{
+  --music-accent-1:var(--core);--music-accent-2:var(--think); /* feature: album-art theming overrides these two inline via JS; default = old look */
+  max-width:720px;background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:6px;transition:border-color .25s;overflow:hidden;
+}
+.music-card.expanded,.music-card:hover{
+  border-color:rgba(63,216,196,.35); /* fallback for engines without color-mix() */
+  border-color:color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+}
+.mc-head{display:flex;align-items:center;gap:16px;padding:14px 16px;cursor:pointer;}
+.art-block{
+  width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--music-accent-1),var(--music-accent-2)) center/cover;
+  box-shadow:0 0 24px rgba(63,216,196,.2);
+  box-shadow:0 0 24px color-mix(in srgb, var(--music-accent-1) 20%, transparent);
+  flex:none;display:flex;align-items:center;justify-content:center;transition:box-shadow .4s,background-image .6s ease;
+}
+.art-block svg{width:24px;height:24px;stroke:#08110F;fill:none;stroke-width:1.8;}
+.art-block.has-art svg{display:none;}
+.music-card.playing .art-block{
+  box-shadow:0 0 34px rgba(63,216,196,.4);
+  box-shadow:0 0 34px color-mix(in srgb, var(--music-accent-1) 40%, transparent);
+}
+.track-meta{flex:1;min-width:0;}
+.t-title{font-size:15.5px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.t-artist{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.mc-play{width:38px;height:38px;border-radius:50%;background:var(--music-accent-1);border:none;color:#08110F;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .12s,box-shadow .2s,background-color .6s;}
+.mc-play:hover{
+  box-shadow:0 0 14px rgba(63,216,196,.35);
+  box-shadow:0 0 14px color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+}
+.mc-play:active{transform:scale(.92);}
+.mc-play svg{width:14px;height:14px;fill:currentColor;stroke:none;}
+.mc-play:disabled{opacity:.35;cursor:default;}
+.mc-chev{color:var(--muted);transition:transform .2s,color .2s;flex:none;}
+.mc-chev svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.music-card.expanded .mc-chev{transform:rotate(90deg);color:var(--music-accent-1);}
+.mc-body{max-height:0;overflow:hidden;transition:max-height .35s ease;}
+.music-card.expanded .mc-body{max-height:320px;}
+.mc-body-inner{padding:2px 20px 20px;}
+.seek-wrap{margin-bottom:14px;}
+input.seek{width:100%;display:block;height:3px;background:linear-gradient(to right,var(--music-accent-1) var(--fill,0%),var(--line) var(--fill,0%));}
+input.seek:disabled{opacity:.4;}
+.seek-times{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums;}
+.transport{display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:16px;}
+.transport button{background:none;border:none;color:var(--text-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:color .2s,transform .12s;}
+.transport button:hover:not(:disabled){color:var(--text);}
+.transport button:active:not(:disabled){transform:scale(.9);}
+.transport button:disabled{opacity:.3;cursor:default;}
+.transport button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+.transport .t-play{width:46px;height:46px;border-radius:50%;background:var(--music-accent-1);color:#08110F;transition:color .2s,transform .12s,background-color .6s;}
+.transport .t-play svg{width:16px;height:16px;stroke:none;fill:currentColor;}
+.transport button.active{color:var(--music-accent-1);}
+.transport button.repeat-track::after{content:'1';position:absolute;top:-4px;right:-5px;font-size:9px;color:var(--music-accent-1);}
+.spectrum{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:32px;}
+.spectrum span{width:3px;height:3px;background:var(--music-accent-1);border-radius:2px;opacity:.25;will-change:height;transition:background-color .6s;}
+
+/* ---- mini-player (fixed above nav; hidden on Apps where the full card is visible) ---- */
+.mini-player{
+  --music-accent-1:var(--core);--music-accent-2:var(--think); /* same override point as .music-card; JS sets both */
+  position:fixed;bottom:82px;left:50%;transform:translateX(-50%) translateY(8px);
+  display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:8px 10px 8px 8px;opacity:0;pointer-events:none;
+  transition:opacity .25s, transform .25s;z-index:9;max-width:300px;cursor:pointer;
+}
+.mini-player.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
+body[data-page="apps"] .mini-player{opacity:0;pointer-events:none;}
+.mini-player .mp-art{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--music-accent-1),var(--music-accent-2)) center/cover;flex:none;transition:background-image .6s ease;}
+.mini-player .mp-meta{min-width:0;}
+.mini-player .mp-title{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
+.mini-player .mp-artist{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
+.mini-player .mp-btn{background:none;border:none;color:var(--music-accent-1);cursor:pointer;flex:none;margin-left:2px;transition:color .6s;}
+.mini-player .mp-btn svg{width:16px;height:16px;fill:currentColor;stroke:none;}
+.mini-player.paused{opacity:.7;}

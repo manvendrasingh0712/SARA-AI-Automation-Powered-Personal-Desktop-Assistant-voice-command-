@@ -350,7 +350,9 @@ class ReminderManager:
         if self._thread and self._thread.is_alive():
             return
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self._thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="sara-reminders"
+        )
         self._thread.start()
         if Config.DEBUG_MODE:
             print("[Debug] Reminder background polling started.")
@@ -383,7 +385,10 @@ class ReminderManager:
         """Continuously checks for due reminders at the configured interval."""
         interval = max(1, Config.REMINDER_CHECK_INTERVAL)
         while not self._stop_event.wait(timeout=interval):
-            self._check_due_reminders()
+            try:
+                self._check_due_reminders()
+            except Exception as e:  # noqa: BLE001 -- a bad tick must never kill the thread
+                print(f"[Reminders] check failed (continuing): {e}")
 
     def _check_due_reminders(self) -> None:
         """Checks the database for due, untriggered reminders and fires them."""

@@ -1,0 +1,91 @@
+/* ==========================================================================
+   components.css  --  shared building blocks reused by several pages:
+   section labels, rows, inputs, buttons, toggle, tabs, chips, overlay/modal, empty state, range.
+   Page-specific styling lives in the per-page files (home.css, chat.css, ...).
+   ========================================================================== */
+.section-label{font-size:11.5px;letter-spacing:.06em;color:var(--muted);margin:22px 0 10px;text-transform:uppercase;}
+.section-label:first-child{margin-top:2px;}
+
+/* ---- list rows ---- */
+.row{display:flex;align-items:center;gap:14px;padding:13px 4px;border-bottom:1px solid var(--line);max-width:640px;}
+/* .row .dot (reminder checkbox) lives in notes-reminders.css */
+.row.done .r-text{color:var(--muted);text-decoration:line-through;}
+.r-time{font-size:12.5px;color:var(--muted);width:64px;flex:none;font-variant-numeric:tabular-nums;}
+.r-text{font-size:14.5px;flex:1;min-width:0;overflow-wrap:anywhere;}
+.r-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;opacity:0;transition:opacity .15s,color .15s;}
+.row:hover .r-del,.r-del:focus{opacity:1;}
+.r-del:hover{color:var(--danger);}
+
+/* ---- inputs + buttons ---- */
+.add-row{max-width:640px;margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.add-row input[type=text]{flex:1;min-width:160px;}
+.field,.add-row input,.modal input,.modal select,.set-row input[type=text]{
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 13px;color:var(--text);
+  font-size:13.5px;outline:none;font-family:inherit;color-scheme:dark;
+}
+.field:focus,.add-row input:focus,.modal input:focus,.modal select:focus,.set-row input[type=text]:focus{border-color:var(--core);}
+input::placeholder{color:var(--muted);}
+.pill-btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text-soft);border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;white-space:nowrap;transition:border-color .2s,color .2s,transform .12s,box-shadow .2s;}
+.pill-btn:active:not(:disabled){transform:scale(.96);}
+.pill-btn:hover:not(:disabled){box-shadow:0 0 14px rgba(63,216,196,.12);}
+.pill-btn:hover{border-color:var(--core);color:var(--text);}
+.pill-btn:disabled{opacity:.45;cursor:default;}
+.pill-btn.primary{background:var(--core);color:#08110F;border:none;font-weight:600;}
+.pill-btn.primary:hover{background:#57e2d0;}
+.pill-btn.small{padding:6px 12px;font-size:12px;}
+.pill-btn.danger:hover{border-color:var(--danger);color:var(--danger);}
+.link-btn{background:none;border:none;color:var(--muted);font-size:12.5px;cursor:pointer;padding:4px 8px;letter-spacing:.02em;transition:color .2s;}
+.link-btn:hover{color:var(--text);}
+
+/* ---- toggle ---- */
+.toggle{width:38px;height:21px;border-radius:11px;background:var(--panel-2);border:1px solid var(--line);position:relative;cursor:pointer;flex:none;outline:none;}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--muted);transition:transform .38s cubic-bezier(.34,1.56,.64,1),width .14s,background .18s,box-shadow .18s;}
+.toggle:active::after{width:19px;}
+.toggle.on:active::after{transform:translateX(13px);}
+.toggle.on{border-color:rgba(63,216,196,.4);}
+.toggle.on::after{transform:translateX(17px);background:var(--core);box-shadow:0 0 6px var(--core);}
+.toggle:focus-visible{box-shadow:0 0 0 2px rgba(63,216,196,.35);}
+
+/* ---- slider ---- */
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;background:var(--line);border-radius:2px;outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--core);box-shadow:0 0 6px rgba(63,216,196,.6);cursor:pointer;}
+
+/* ---- tabs (Notes | Reminders) ---- */
+.tabs{display:flex;gap:26px;border-bottom:1px solid var(--line);max-width:640px;margin:0 0 20px;}
+.tab{background:none;border:none;color:var(--muted);font-size:14px;padding:8px 2px 10px;cursor:pointer;position:relative;transition:color .2s;}
+.tab:hover{color:var(--text);}
+.tab.active{color:var(--text);}
+.tab.active::after{content:'';position:absolute;left:0;right:0;bottom:-1px;height:2px;background:var(--core);box-shadow:0 0 8px var(--core);border-radius:2px;}
+.pane{display:none;animation:pageIn .3s ease;}
+.pane.active{display:block;}
+
+/* ---- chips (language, modes) ---- */
+.chip-row{display:flex;gap:10px;flex-wrap:wrap;}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 15px;font-size:12.5px;color:var(--text-soft);cursor:pointer;transition:border-color .2s,color .2s,transform .12s,box-shadow .2s;}
+.chip:hover{box-shadow:0 0 12px rgba(63,216,196,.10);}
+.chip:active{transform:scale(.96);}
+.chip:hover{color:var(--text);}
+.chip.on{border-color:rgba(63,216,196,.45);color:var(--core);}
+.chip.danger:hover{border-color:var(--danger);color:var(--danger);}
+
+/* ---- empty state ---- */
+.empty{max-width:640px;padding:26px 4px;color:var(--muted);font-size:13.5px;line-height:1.55;}
+
+/* ---- overlay + modal ---- */
+.overlay{position:fixed;inset:0;z-index:40;background:rgba(4,8,8,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity .22s;}
+.overlay.open{opacity:1;pointer-events:auto;}
+.modal{width:min(520px,100%);max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px;transform:translateY(8px);transition:transform .22s;}
+.overlay.open .modal{transform:translateY(0);}
+.modal h3{margin:0 0 4px;font-size:17px;font-weight:500;}
+.modal .m-sub{font-size:12.5px;color:var(--muted);margin-bottom:16px;}
+.modal label{display:block;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;}
+.modal input,.modal select{width:100%;}
+.modal .m-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;}
+.modal .m-error{color:var(--danger);font-size:12.5px;margin-top:12px;display:none;}
+
+/* ---- skeleton shimmer (replaces plain "Loading…" text; swapped out by the page JS when data arrives) ---- */
+.skel{display:block;border-radius:6px;background:linear-gradient(100deg,var(--panel) 30%,var(--line) 50%,var(--panel) 70%);background-size:220% 100%;animation:skelShimmer 1.6s ease-in-out infinite;}
+.skel-inline{display:inline-block;width:46px;height:11px;vertical-align:middle;}
+.skel-line{height:11px;width:70%;margin:6px 0;}
+.skel-row{height:34px;margin:8px 0;border-radius:8px;}
+@keyframes skelShimmer{0%{background-position:120% 0;}100%{background-position:-120% 0;}}

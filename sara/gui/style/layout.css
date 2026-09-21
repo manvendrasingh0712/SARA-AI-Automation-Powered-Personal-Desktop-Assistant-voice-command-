@@ -1,0 +1,69 @@
+/* ==========================================================================
+   layout.css  --  app shell: page container, page header, bottom nav,
+   page transitions, toast stack, offline strip.
+   Markup: index.html (.app, .page, .nav, #toastStack). Behaviour: js/core.js (nav) + js/ui.js (toast).
+   ========================================================================== */
+.app{position:relative;z-index:2;height:100vh;display:flex;flex-direction:column;}
+
+/* ---- pages + transition ---- */
+.page{display:none;height:100%;flex-direction:column;animation:pageIn .22s cubic-bezier(.2,.7,.2,1);}
+.page.slide-r{animation-name:pageInR;}
+.page.slide-l{animation-name:pageInL;}
+.page.active{display:flex;}
+@keyframes pageIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pageInR{from{opacity:0;transform:translateX(28px);}to{opacity:1;transform:translateX(0);}}
+@keyframes pageInL{from{opacity:0;transform:translateX(-28px);}to{opacity:1;transform:translateX(0);}}
+
+/* ---- inner-page header ---- */
+.page-header{flex:none;display:flex;align-items:center;justify-content:space-between;padding:28px 40px 6px;}
+.page-title{font-size:20px;font-weight:500;color:var(--text);}
+.page-status{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);}
+.page-status span{transition:color .4s;}
+.mini-orb{
+  width:11px;height:11px;border-radius:50%;background:var(--core);box-shadow:0 0 8px var(--core);
+  animation:orbPulse 2.6s ease-in-out infinite;transition:background .5s, box-shadow .5s;cursor:pointer;flex:none;
+}
+@keyframes orbPulse{0%,100%{opacity:.65;transform:scale(0.9);}50%{opacity:1;transform:scale(1.08);}}
+.page-body{flex:1;min-height:0;padding:16px 40px 110px;overflow-y:auto;}
+
+/* ---- bottom nav (persistent) ---- */
+.nav{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  display:flex;gap:22px;padding:10px 22px;border-radius:999px;
+  background:rgba(255,255,255,0.02);opacity:.5;transition:opacity .25s, background .25s;
+  z-index:10;max-width:92vw;overflow-x:auto;scrollbar-width:none;
+}
+.nav::-webkit-scrollbar{display:none;}
+.nav:hover{opacity:1;background:rgba(255,255,255,0.04);}
+.nav button{background:none;border:none;color:var(--muted);font-size:12.5px;letter-spacing:.02em;cursor:pointer;padding:4px 2px;white-space:nowrap;flex:none;transition:color .2s,transform .12s;position:relative;z-index:1;}
+.nav button:active{transform:scale(.94);}
+/* sliding active-page underline (positioned by js/fx.js) */
+.nav-ind{position:absolute;left:0;bottom:5px;height:2px;width:0;border-radius:2px;background:var(--core);box-shadow:0 0 8px var(--core);transition:transform .34s cubic-bezier(.3,.8,.25,1),width .34s cubic-bezier(.3,.8,.25,1);pointer-events:none;}
+.nav-ind.no-anim{transition:none;}
+.nav button.active{color:var(--text);}
+.nav button:hover{color:var(--text);}
+
+/* ---- toast stack ---- */
+.toast-stack{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;z-index:60;pointer-events:none;}
+.toast{
+  display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);color:var(--text);
+  padding:9px 16px;border-radius:8px;font-size:13px;max-width:min(520px,88vw);
+  animation:toastIn .32s cubic-bezier(.2,.9,.3,1.15);pointer-events:auto;transition:opacity .22s,transform .22s;
+}
+.toast.leaving{opacity:0;transform:translateY(6px) scale(.98);}
+.toast .t-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--core);box-shadow:0 0 6px currentColor;animation:dotPop .5s cubic-bezier(.3,1.6,.5,1) .1s both;}
+.toast .t-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 6px;}
+.toast .t-x:hover{color:var(--text);}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.96);}to{opacity:1;transform:none;}}
+@keyframes dotPop{0%{transform:scale(.3);}60%{transform:scale(1.55);}100%{transform:scale(1);}}
+
+/* ---- preview-mode strip (shown only when the backend bridge is missing) ---- */
+.offline-strip{
+  position:fixed;top:0;left:0;right:0;z-index:70;text-align:center;font-size:12px;letter-spacing:.02em;
+  padding:6px 12px;background:rgba(217,122,107,.14);border-bottom:1px solid rgba(217,122,107,.35);color:var(--danger);
+}
+.offline-strip[hidden]{display:none;}
+
+@media (max-width:640px){
+  .page-header,.page-body{padding-left:20px;padding-right:20px;}
+}

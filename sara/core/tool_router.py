@@ -10,9 +10,11 @@ config.py's TOOL_CALLING_ENABLED comment both describing it as an
 "LLM-assisted" / "structured function-calling" step. It accepted a
 `model_name` argument that was never actually used to call any model.
 That mismatch is fixed here: `resolve_tool_call()` now makes a real,
-bounded-time Ollama tool-calling request (native `tools=` support,
-requires ollama>=0.4, this project pins 0.6.2) and only falls back to
-the old keyword heuristic if the LLM call is unavailable, times out, or
+bounded-time Gemini tool-calling request (native function-calling via
+google-genai's `generate_content()` with `tools=`; this module was
+originally written against Ollama and has since been migrated) and only
+falls back to the old keyword heuristic if the LLM call is unavailable,
+times out, or
 fails for any reason -- same "never block, always degrade gracefully"
 shape used everywhere else in this codebase (RAG, proactive rephrasing,
 skills auto-discovery, etc).
@@ -42,11 +44,12 @@ entry points:
   5. A bounded-size thread pool + circuit breaker around the LLM
      tool-call: if TOOL_CALLING_TIMEOUT_S is exceeded 3 turns in a row,
      the LLM tool-call is skipped entirely (straight to heuristic) for a
-     cooldown window, so a hung/slow Ollama doesn't keep adding latency
-     turn after turn. NOTE: this does not cancel the already-hung
-     background request -- that will only clear once Ollama's own
-     client-side timeout (Config.OLLAMA_TIMEOUT) elapses. If chat itself
-     stops responding, check `ollama ps` / lower OLLAMA_TIMEOUT / set
+     cooldown window, so a hung/slow Gemini request doesn't keep adding
+     latency turn after turn. NOTE: this does not cancel the already-hung
+     background request -- it keeps occupying one of the two
+     _TOOL_CALL_EXECUTOR worker threads until the Gemini client's own
+     request timeout elapses (or the call returns). If responses keep
+     stalling, check network/API status and/or set
      TOOL_CALLING_MODE=heuristic temporarily to isolate the cause.
   6. _extract_after_phrases()'s terminator regex no longer truncates on
      a bare "." -- previously "3.5", "example.com" etc. were cut short
@@ -58,7 +61,7 @@ Toggle via Config.TOOL_CALLING_MODE:
                  to the keyword heuristic below on any failure/timeout.
     "heuristic" -- skip the LLM call entirely, use only the keyword
                  heuristic (old v1 behavior; useful if you don't want
-                 an extra Ollama round-trip on every unmatched command,
+                 an extra LLM round-trip on every unmatched command,
                  e.g. on a slower machine).
 """
 
@@ -86,8 +89,11 @@ TOOL_NAME_TO_INTENT: Dict[str, str] = {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# Ollama-native tool schema (OpenAI-style function-calling shape) -- one
-# entry per tool in TOOL_NAME_TO_INTENT above. Argument keys MUST match
+# Provider-neutral tool schema (OpenAI-style function-calling shape;
+# originally written for Ollama's `tools=`) -- one entry per tool in
+# TOOL_NAME_TO_INTENT above. Converted into Gemini's Tool/
+# FunctionDeclaration format at call time by _get_gemini_tools().
+# Argument keys MUST match
 # what build_fake_match() below expects for that tool_name.
 # ══════════════════════════════════════════════════════════════════════
 
@@ -270,7 +276,7 @@ _TOOL_ROUTER_SYSTEM_PROMPT = (
 )
 
 # Bounded-size executor for the LLM tool-routing call, so a slow/hung
-# Ollama request can be abandoned via future.result(timeout=...) without
+# Gemini request can be abandoned via future.result(timeout=...) without
 # ever blocking the calling (voice-loop) thread indefinitely. Two workers
 # is plenty -- this path only runs for unmatched ("chat" intent) commands,
 # never for the fast regex-matched path, so overlap is rare.
@@ -282,7 +288,7 @@ _TOOL_CALL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
 # ROW, skip the LLM entirely (go straight to heuristic) for a cooldown
 # window instead of paying the full timeout again on every subsequent
 # turn. Does NOT cancel an already-hung background request -- see the
-# module docstring (#5) for what that implies if Ollama is fully stuck.
+# module docstring (#5) for what that implies if a request is fully stuck.
 _CIRCUIT_BREAKER_THRESHOLD = 3
 _CIRCUIT_BREAKER_COOLDOWN_S = 30.0
 _circuit_breaker_lock = threading.Lock()
@@ -637,7 +643,7 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
 
     mode = getattr(cfg, "TOOL_CALLING_MODE", "llm")
 
-    # PERF FIX: this used to unconditionally pay a real Ollama round-trip
+    # PERF FIX: this used to unconditionally pay a real LLM round-trip
     # (bounded by TOOL_CALLING_TIMEOUT_S, up to several seconds) for
     # EVERY unmatched "chat" message before generate_response_stream()
     # was even allowed to start -- including plain conversation that
@@ -692,18 +698,18 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
             # colon -- indistinguishable from a real, silent failure at a
             # glance. Naming it explicitly (with the actual budget that
             # was exceeded) makes this immediately diagnosable: it means
-            # Ollama's tool-enabled chat() call for this model is
+            # the Gemini tool-calling generate_content() call for this model is
             # routinely taking longer than TOOL_CALLING_TIMEOUT_S, not
             # that anything is broken. Two ways to address that directly,
             # if the fallback firing often enough to be annoying: raise
             # Config.TOOL_CALLING_TIMEOUT_S in .env, or set
             # Config.TOOL_CALLING_MODE=heuristic to skip this LLM call
             # entirely. NOTE: this does NOT cancel the background
-            # request already running against Ollama -- if Ollama itself
-            # is hung, that request keeps occupying its (usually serial)
-            # request queue until Config.OLLAMA_TIMEOUT elapses on the
-            # client side, which can make even normal chat responses
-            # stall in the meantime. Check `ollama ps` if this happens.
+            # request already running against Gemini -- that request
+            # keeps occupying one of _TOOL_CALL_EXECUTOR's two worker
+            # threads until the Gemini client's own request timeout
+            # elapses or the call returns. Check network/API status if
+            # this happens.
             if getattr(cfg, "DEBUG_MODE", False):
                 print(
                     f"[ToolRouter] LLM tool-call exceeded its "

@@ -122,6 +122,19 @@ class TranscriptionResult(str):
 _AEC_QUEUE_MAXSIZE = 100
 _AEC_QUEUE_IDLE_POLL_S = 0.5
 
+# ══════════════════════════════════════════════════════════════════════
+# Live mic audio-level push (GUI orb — js/home.js 'ev:audio_level')
+# ══════════════════════════════════════════════════════════════════════
+# Small and lossy by design, same reasoning as _AEC_QUEUE_MAXSIZE above:
+# dropping an occasional chunk just means one skipped orb update, which
+# is invisible at 10-15 pushes/sec. The real-time mic callback thread
+# only ever does a non-blocking put here (see _ingest_processed_chunk) —
+# the RMS math and the throttle-to-~10-15Hz decision both happen on
+# _level_worker's own background thread, never on the callback thread.
+_LEVEL_QUEUE_MAXSIZE = 8
+_AUDIO_LEVEL_PUSH_INTERVAL_S = float(getattr(Config, "AUDIO_LEVEL_PUSH_INTERVAL_S", 0.08))
+_AUDIO_LEVEL_MIC_PEAK_RMS = float(getattr(Config, "AUDIO_LEVEL_MIC_PEAK_RMS", 4000.0))
+
 # TUNING (accuracy — reduces hallucination on near-silent input): below
 # this raw peak amplitude (out of 1.0), a capture is treated as
 # effectively silence/noise-floor rather than quiet speech. The old
@@ -192,7 +205,7 @@ class SpeechToText:
     # v8.1: mic-disconnect watchdog poll interval.
     _WATCHDOG_INTERVAL: float = 7.0
 
-    def __init__(self, aec=None) -> None:
+    def __init__(self, aec=None, on_audio_level=None) -> None:
         """
         aec: optional sara.audio.aec.AECProcessor instance, shared with the
         TextToSpeech engine, constructed once in build_core_objects(). Raw
@@ -201,9 +214,19 @@ class SpeechToText:
         the pre-speech/ring buffers — never inline on the real-time audio
         callback thread. If omitted, behaves exactly as before (no
         cancellation, zero added overhead).
+
+        on_audio_level: optional callback(level: float) -- 0.0-1.0 mic
+        RMS, throttled to ~10-15Hz and pushed only while an actual
+        command/dictate listen() session is active (see
+        _ingest_processed_chunk/_level_worker below). Called from a
+        dedicated background thread, never from the real-time audio
+        callback. If omitted, behaves exactly as before (no level
+        tracking, zero added overhead).
         """
         self._closed = False
         self._aec = aec
+        self._on_audio_level = on_audio_level
+        self._level_q: "queue.Queue[bytes]" = queue.Queue(maxsize=_LEVEL_QUEUE_MAXSIZE)
 
         self._threshold_lock = threading.Lock()
         self._energy_threshold: float = float(
@@ -388,9 +411,9 @@ class SpeechToText:
             model = WhisperModel(
                 model_size_or_path=model_size,
                 device="cuda",
-                compute_type="float16",
+                compute_type="int8_float16",
             )
-            print("[STT] ✅ Faster Whisper loaded on GPU (CUDA, float16).")
+            print("[STT] ✅ Faster Whisper loaded on GPU (CUDA, int8_float16).")
             return model
 
         except Exception as gpu_error:
@@ -603,6 +626,22 @@ class SpeechToText:
         return self._vad.is_speech(chunk)
 
     def _ingest_processed_chunk(self, chunk: bytes) -> None:
+        # Cheap, non-blocking hand-off for the GUI orb's live level meter —
+        # only while a real command/dictate listen() session is active
+        # (never during idle wake-word polling, never while TTS is
+        # speaking). Actual RMS math + throttling happen on _level_worker's
+        # background thread, not here (this may run on the real-time mic
+        # callback thread when AEC is disabled).
+        if (
+            self._on_audio_level is not None
+            and self._is_listening.is_set()
+            and not self._tts_active.is_set()
+        ):
+            try:
+                self._level_q.put_nowait(chunk)
+            except queue.Full:
+                pass
+
         if self._tts_active.is_set():
             # BUGFIX/hardening (mic-blocking during TTS): previously every
             # chunk was written to self._ring during TTS regardless of
@@ -684,6 +723,28 @@ class SpeechToText:
             processed = self._apply_aec(chunk)
             self._ingest_processed_chunk(processed)
 
+    def _level_worker(self) -> None:
+        """Background consumer for the live mic level meter (see
+        _ingest_processed_chunk). Only started when on_audio_level is
+        given (_start_threads). Does the RMS math and the ~10-15Hz
+        throttling itself, so the real-time audio thread never does more
+        than a lossy queue.put_nowait()."""
+        last_push = 0.0
+        while not self._closed:
+            try:
+                chunk = self._level_q.get(timeout=_AEC_QUEUE_IDLE_POLL_S)
+            except queue.Empty:
+                continue
+            now = time.monotonic()
+            if now - last_push < _AUDIO_LEVEL_PUSH_INTERVAL_S:
+                continue
+            last_push = now
+            try:
+                level = min(1.0, _rms(chunk) / _AUDIO_LEVEL_MIC_PEAK_RMS)
+                self._on_audio_level(level)
+            except Exception:
+                pass
+
     def _start_threads(self) -> None:
         threading.Thread(
             target=self._recalib_loop, daemon=True, name="stt-recalib"
@@ -691,6 +752,10 @@ class SpeechToText:
         if self._aec is not None:
             threading.Thread(
                 target=self._aec_worker_loop, daemon=True, name="stt-aec-worker"
+            ).start()
+        if self._on_audio_level is not None:
+            threading.Thread(
+                target=self._level_worker, daemon=True, name="stt-audio-level"
             ).start()
         # v8.1: mic-disconnect watchdog (see v8.1 CHANGES note at top of file).
         threading.Thread(
@@ -1158,7 +1223,7 @@ class SpeechToText:
             no_speech_thr = float(getattr(Config, "STT_NO_SPEECH_THRESHOLD", 0.6))
 
             temperature = getattr(
-                Config, "STT_TEMPERATURE_FALLBACK", (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+                Config, "STT_TEMPERATURE_FALLBACK", (0.0, 0.4, 0.8)
             )
 
             segments, _ = model.transcribe(
