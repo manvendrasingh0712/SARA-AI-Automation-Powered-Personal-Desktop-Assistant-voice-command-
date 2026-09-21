@@ -77,6 +77,15 @@ _ENQUEUE_CHUNK_SAMPLES = _BLOCK_SIZE * 4
 _FAR_END_QUEUE_MAXSIZE = 64
 _FAR_END_IDLE_POLL_S = 0.5
 
+# Same pattern, reused for the GUI orb's live TTS level meter (see
+# _PersistentPlayer._callback/_level_worker below): small + lossy so the
+# real-time output callback never blocks, RMS math + ~10-15Hz throttling
+# both happen off-thread.
+_LEVEL_QUEUE_MAXSIZE = 8
+_LEVEL_IDLE_POLL_S = 0.5
+_LEVEL_PUSH_INTERVAL_S = float(getattr(Config, "AUDIO_LEVEL_PUSH_INTERVAL_S", 0.08))
+_LEVEL_PEAK_RMS = float(getattr(Config, "AUDIO_LEVEL_TTS_PEAK_RMS", 6000.0))
+
 _ORT_INTRA_THREADS = int(getattr(Config, "ORT_INTRA_THREADS", os.cpu_count() or 4))
 _ORT_INTER_THREADS = int(getattr(Config, "ORT_INTER_THREADS", 1))
 
@@ -170,7 +179,7 @@ class _PersistentPlayer:
     the queue looks empty from another thread.
     """
 
-    def __init__(self, aec=None) -> None:
+    def __init__(self, aec=None, on_level=None) -> None:
         self._aec = aec
         self._chunk_q: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=256)
         self._current: Optional[np.ndarray] = None
@@ -178,6 +187,20 @@ class _PersistentPlayer:
         self._clear_flag = threading.Event()
         self._stream = None
         self._closed = False
+
+        # Live TTS level meter for the GUI orb (js/home.js 'ev:audio_level').
+        # on_level(level: float), 0.0-1.0, called from _level_worker's own
+        # background thread — never from _callback (the real-time thread).
+        # If omitted, behaves exactly as before (no added overhead).
+        self._on_level = on_level
+        self._level_q: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=_LEVEL_QUEUE_MAXSIZE)
+        self._level_stop = threading.Event()
+        self._level_thread: Optional[threading.Thread] = None
+        if self._on_level is not None:
+            self._level_thread = threading.Thread(
+                target=self._level_worker, daemon=True, name="TTS-Level"
+            )
+            self._level_thread.start()
 
         # v16 (PERF): persistent, grow-only scratch buffer for the
         # real-time callback's output block — avoids allocating a fresh
@@ -238,6 +261,27 @@ class _PersistentPlayer:
             except Exception:
                 pass
 
+    def _level_worker(self) -> None:
+        """Background consumer for the live TTS level meter (see
+        _callback below). Does the RMS math and the ~10-15Hz throttling
+        itself, so the real-time output callback never does more than a
+        lossy queue.put_nowait()."""
+        last_push = 0.0
+        while not self._level_stop.is_set():
+            try:
+                block = self._level_q.get(timeout=_LEVEL_IDLE_POLL_S)
+            except queue.Empty:
+                continue
+            now = time.monotonic()
+            if now - last_push < _LEVEL_PUSH_INTERVAL_S:
+                continue
+            last_push = now
+            try:
+                rms = float(np.sqrt(np.mean(block.astype(np.float32) ** 2)))
+                self._on_level(min(1.0, rms / _LEVEL_PEAK_RMS))
+            except Exception:
+                pass
+
     def _callback(self, outdata, frames, time_info, status) -> None:
         if status and getattr(Config, "DEBUG_MODE", False):
             print(f"[TTS] output stream status: {status}")
@@ -284,6 +328,18 @@ class _PersistentPlayer:
             filled += take
 
         outdata[:, 0] = block
+
+        # Live TTS level meter hand-off — same lock-free, non-blocking
+        # pattern as the AEC far-end feed just below. `filled` is only
+        # >0 when real speech samples were actually written this block
+        # (an empty chunk_q leaves `block` all zeros, i.e. the stream is
+        # idle between utterances) — skip the queue entirely then so we
+        # don't waste cycles pushing/consuming silence.
+        if self._on_level is not None and filled > 0:
+            try:
+                self._level_q.put_nowait(block.copy())
+            except queue.Full:
+                pass
 
         # v11: hand off to the background thread instead of processing
         # here — this line must stay a cheap, non-blocking, lock-free
@@ -398,6 +454,7 @@ class _PersistentPlayer:
             return
         self._closed = True
         self._far_end_stop.set()
+        self._level_stop.set()
         try:
             if self._stream is not None:
                 self._stream.stop()

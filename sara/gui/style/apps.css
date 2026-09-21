@@ -1,0 +1,14 @@
+/* ==========================================================================
+   apps.css  --  Apps page: web-search bar, app tiles, quick system chips.
+   Markup: index.html #page-apps (#appsGrid, #toolsGrid, #sysChips).  JS: js/apps.js.
+   The Music card on this page is styled in music.css.
+   ========================================================================== */
+.apps-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:12px;max-width:720px;margin-top:2px;}
+.app-tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 12px;display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;transition:border-color .2s,transform .15s;}
+.app-tile:hover{border-color:var(--core);transform:translateY(-2px);}
+.app-tile svg{width:22px;height:22px;stroke:var(--core);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+.app-tile span{font-size:12.5px;color:var(--text-soft);text-align:center;}
+.app-tile:active{transform:scale(.97);}
+.apps-search{max-width:720px;margin:0 0 4px;}
+.sys-chips{max-width:720px;}
+#page-apps .page-body{padding-bottom:130px;}

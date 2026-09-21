@@ -436,6 +436,84 @@ def _ack(ctx: dict) -> None:
         print(f"[Core] _ack() failed (non-fatal, command continues): {e}")
 
 
+# ── Live Activity card (NEW) ─────────────────────────────────────────
+# Tells the GUI WHAT Sara is doing right now, as a small card next to the
+# orb: "Opening Chrome" -> "Chrome opened" (or "Couldn't open Chrome"),
+# then it fades away on its own. Pushed as ("activity", state, icon, text)
+# through ctx["ui_update"] -- the same channel "status"/"transcript" use.
+#   state: "start" | "done" | "error"
+# Used ONLY for genuinely slow actions that have a clear name (app launch,
+# web search, media, file/service ops) -- never for chit-chat or instant
+# local lookups. GUI side: js/home.js (ev:activity) + style/home.css.
+
+# A tool reply is treated as FAILED (card shows the warning state) if the
+# first ~60 characters START with one of the prefixes or CONTAIN one of the
+# phrases below. This is a text heuristic -- tune these two tuples if a
+# real failure shows a green tick, or a success shows a warning.
+_ACTIVITY_FAIL_PREFIXES = ("sorry", "error", "failed", "unable", "unfortunately", "oops")
+_ACTIVITY_FAIL_PHRASES = (
+    "couldn't", "could not", "i can't", "i cannot", "unable to", "failed to",
+    "timed out", "not found", "not installed", "doesn't exist",
+    "does not exist", "wasn't able",
+)
+
+
+def _activity(ctx: dict, state: str, icon: str, text: str) -> None:
+    """Push one activity event. Must NEVER raise -- a GUI hiccup must never break the command."""
+    try:
+        ctx["ui_update"]("activity", state, str(icon)[:24], str(text)[:60])
+    except Exception as e:  # noqa: BLE001
+        print(f"[Activity] push failed (non-fatal, command continues): {e}")
+
+
+def _activity_label(name, limit: int = 28) -> str:
+    """Short, tidy display name for the card: ' chrome ' -> 'Chrome'."""
+    label = " ".join(str(name or "").split())
+    if not label:
+        return "app"
+    if label.islower():
+        label = label.title()
+    return label if len(label) <= limit else label[: limit - 3] + "..."
+
+
+def _activity_failed(result) -> bool:
+    """True if a tool's reply looks like a failure (see the two tuples above)."""
+    if isinstance(result, tuple) and result:  # e.g. play_next_youtube -> (message, index)
+        result = result[0]
+    if result is None:
+        return True
+    if not isinstance(result, str):
+        return False
+    head = result.strip()[:60].lower()
+    return head.startswith(_ACTIVITY_FAIL_PREFIXES) or any(
+        phrase in head for phrase in _ACTIVITY_FAIL_PHRASES
+    )
+
+
+def _run_activity(ctx: dict, icon: str, start_text: str, done_text: str, error_text: str, call):
+    """
+    Runs `call()` (a zero-argument function that performs the action and
+    returns its reply) between a "start" card and a "done"/"error" card,
+    and hands the reply back UNCHANGED so the caller speaks it exactly as
+    before. The final card is pushed BEFORE the caller speaks the reply,
+    so the card flips to done/error the moment the action finishes, not
+    after Sara finishes talking. If `call()` raises, an error card is
+    pushed and the exception is re-raised untouched, so
+    _handle_command()'s existing handler deals with it as it always did.
+    """
+    _activity(ctx, "start", icon, start_text)
+    try:
+        result = call()
+    except Exception:
+        _activity(ctx, "error", icon, error_text)
+        raise
+    if _activity_failed(result):
+        _activity(ctx, "error", icon, error_text)
+    else:
+        _activity(ctx, "done", icon, done_text)
+    return result
+
+
 # ── Action audit log (NEW) ───────────────────────────────────────────
 def _log_action(db, action_type: str, action_name: str, outcome: str) -> None:
     """
@@ -526,7 +604,13 @@ def _h_clipboard_write(match, ctx):
 def _h_screenshot_describe(match, ctx):
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    return _quick(ctx, ctx["vision"].describe_screen())
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "screen", "Checking your screen", "Screen checked", "Couldn't check the screen",
+            lambda: ctx["vision"].describe_screen(),
+        ),
+    )
 
 
 def _h_weather(match, ctx):
@@ -536,7 +620,13 @@ def _h_weather(match, ctx):
     ctx["ui_update"]("status", "thinking")
     location = match.group(1)
     _remember_context(ctx, "weather", location)
-    return _quick(ctx, _call_with_timeout(web_tools.get_weather, location))
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "weather", "Checking weather", "Weather ready", "Couldn't get weather",
+            lambda: _call_with_timeout(web_tools.get_weather, location),
+        ),
+    )
 
 
 def _h_news(match, ctx):
@@ -545,8 +635,15 @@ def _h_news(match, ctx):
     if match and match.lastindex and match.lastindex >= 1:
         topic = match.group(1)
         _remember_context(ctx, "news", topic)
-        return _quick(ctx, _call_with_timeout(web_tools.get_news, topic))
-    return _quick(ctx, _call_with_timeout(web_tools.get_news))
+        news_call = lambda: _call_with_timeout(web_tools.get_news, topic)  # noqa: E731
+    else:
+        news_call = lambda: _call_with_timeout(web_tools.get_news)  # noqa: E731
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "news", "Fetching news", "News ready", "Couldn't get news", news_call
+        ),
+    )
 
 
 # ── Context Follow-ups ("what about jaipur?" / "aur dilli ka?") ────────
@@ -597,7 +694,18 @@ def _h_followup_query(match, ctx):
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     _remember_context(ctx, state["intent"], new_slot)
-    return _quick(ctx, _call_with_timeout(tool_fn, new_slot))
+    is_news = state["intent"] == "news"
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx,
+            "news" if is_news else "weather",
+            "Fetching news" if is_news else "Checking weather",
+            "News ready" if is_news else "Weather ready",
+            "Couldn't get news" if is_news else "Couldn't get weather",
+            lambda: _call_with_timeout(tool_fn, new_slot),
+        ),
+    )
 
 
 def _h_play_youtube(match, ctx):
@@ -605,7 +713,10 @@ def _h_play_youtube(match, ctx):
         return None
     ctx["ui_update"]("status", "thinking")
     query = match.group(1).strip()
-    result = _call_with_timeout(web_tools.play_youtube, query, tool_name="play_youtube")
+    result = _run_activity(
+        ctx, "youtube", "Searching YouTube", "Playing on YouTube", "Couldn't play that",
+        lambda: _call_with_timeout(web_tools.play_youtube, query, tool_name="play_youtube"),
+    )
     if isinstance(result, str) and result.startswith("Playing"):
         ctx["playback_state"]["youtube"] = {"query": query, "index": 0}
     return _quick(ctx, result)
@@ -621,11 +732,14 @@ def _h_play_next_youtube(match, ctx):
     if not state:
         return _quick(ctx, "I'm not playing anything from YouTube right now.")
     ctx["ui_update"]("status", "thinking")
-    result = _call_with_timeout(
-        web_tools.play_next_youtube,
-        state["query"],
-        state["index"],
-        tool_name="play_next_youtube",
+    result = _run_activity(
+        ctx, "youtube", "Loading next video", "Next video playing", "Couldn't load next video",
+        lambda: _call_with_timeout(
+            web_tools.play_next_youtube,
+            state["query"],
+            state["index"],
+            tool_name="play_next_youtube",
+        ),
     )
     if isinstance(result, tuple) and len(result) == 2:
         message, new_index = result
@@ -641,8 +755,13 @@ def _h_play_spotify(match, ctx):
     if not match:
         return None
     ctx["ui_update"]("status", "thinking")
+    query = match.group(1).strip()
     return _quick(
-        ctx, _call_with_timeout(web_tools.play_spotify, match.group(1).strip())
+        ctx,
+        _run_activity(
+            ctx, "spotify", "Opening Spotify", "Playing on Spotify", "Couldn't play that",
+            lambda: _call_with_timeout(web_tools.play_spotify, query),
+        ),
     )
 
 
@@ -651,19 +770,36 @@ def _h_web_search(match, ctx):
         return None
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    return _quick(ctx, _call_with_timeout(web_tools.search_web, match.group(1)))
+    query = match.group(1)
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "search", "Searching the web", "Search complete", "Search failed",
+            lambda: _call_with_timeout(web_tools.search_web, query),
+        ),
+    )
 
 
 def _h_summarize_url(match, ctx):
     if not match:
         return None
     ctx["ui_update"]("status", "thinking")
-    page_text = _call_with_timeout(web_tools.read_webpage, match.group(1))
-    if isinstance(page_text, str) and (
-        page_text.startswith("Error:") or page_text.startswith("Sorry,")
-    ):
-        return _quick(ctx, page_text)
-    return _quick(ctx, ctx["brain"].summarize_text(page_text))
+
+    def _read_and_summarize():
+        page_text = _call_with_timeout(web_tools.read_webpage, match.group(1))
+        if isinstance(page_text, str) and (
+            page_text.startswith("Error:") or page_text.startswith("Sorry,")
+        ):
+            return page_text
+        return ctx["brain"].summarize_text(page_text)
+
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "link", "Reading page", "Summary ready", "Couldn't read that page",
+            _read_and_summarize,
+        ),
+    )
 
 
 def _h_open_url(match, ctx):
@@ -695,7 +831,13 @@ def _h_open_url(match, ctx):
             print(f"[Security] open_url validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely open that link.")
     _ack(ctx)
-    return _quick(ctx, web_tools.open_url(raw_url))
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "link", "Opening link", "Link opened", "Couldn't open link",
+            lambda: web_tools.open_url(raw_url),
+        ),
+    )
 
 
 def _h_calculator(match, ctx):
@@ -789,15 +931,20 @@ def _h_open_app(match, ctx):
             )
             target = validated["target"]
         except PlanValidationError as e:
+            _activity(ctx, "error", "app", f"Couldn't open {_activity_label(target)}")
             return _quick(ctx, str(e))
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
             print(f"[Security] open_app validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely open that application.")
     _ack(ctx)
+    label = _activity_label(target)
     return _quick(
         ctx,
-        _call_with_timeout(
-            system_tools.open_application, target, tool_name="open_application"
+        _run_activity(
+            ctx, "app", f"Opening {label}", f"{label} opened", f"Couldn't open {label}",
+            lambda: _call_with_timeout(
+                system_tools.open_application, target, tool_name="open_application"
+            ),
         ),
     )
 
@@ -828,6 +975,7 @@ def _h_close_app(match, ctx):
             )
             app_name = validated["target"]
         except PlanValidationError as e:
+            _activity(ctx, "error", "app", f"Couldn't close {_activity_label(app_name)}")
             return _quick(ctx, str(e))
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
             print(f"[Security] close_app validation raised unexpectedly: {e}")
@@ -842,10 +990,14 @@ def _h_close_app(match, ctx):
             ctx, f"{app_name} is a system app -- are you sure you want to close it? Say yes or cancel."
         )
     _ack(ctx)
+    label = _activity_label(app_name)
     return _quick(
         ctx,
-        _call_with_timeout(
-            system_tools.close_application, app_name, tool_name="close_application"
+        _run_activity(
+            ctx, "app", f"Closing {label}", f"{label} closed", f"Couldn't close {label}",
+            lambda: _call_with_timeout(
+                system_tools.close_application, app_name, tool_name="close_application"
+            ),
         ),
     )
 def _h_typing_text(match, ctx):
@@ -865,19 +1017,28 @@ def _h_find_file(match, ctx):
         return None
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
+    file_query = match.group(1).strip()
     return _quick(
         ctx,
-        _call_with_timeout(system_tools.find_file, match.group(1).strip(), tool_name="find_file"),
+        _run_activity(
+            ctx, "file", "Searching files", "File found", "Couldn't find that file",
+            lambda: _call_with_timeout(system_tools.find_file, file_query, tool_name="find_file"),
+        ),
     )
 
 def _h_start_service(match, ctx):
     if not match:
         return None
     _ack(ctx)
+    service_name = match.group(1).strip()
+    label = _activity_label(service_name)
     return _quick(
         ctx,
-        _call_with_timeout(
-            system_tools.start_service, match.group(1).strip(), tool_name="start_service"
+        _run_activity(
+            ctx, "service", f"Starting {label}", f"{label} started", f"Couldn't start {label}",
+            lambda: _call_with_timeout(
+                system_tools.start_service, service_name, tool_name="start_service"
+            ),
         ),
     )
 
@@ -897,10 +1058,14 @@ def _h_stop_service(match, ctx):
             f"{service_name} looks like a core system service -- are you sure you want to stop it? Say yes or cancel.",
         )
     _ack(ctx)
+    label = _activity_label(service_name)
     return _quick(
         ctx,
-        _call_with_timeout(
-            system_tools.stop_service, service_name, tool_name="stop_service"
+        _run_activity(
+            ctx, "service", f"Stopping {label}", f"{label} stopped", f"Couldn't stop {label}",
+            lambda: _call_with_timeout(
+                system_tools.stop_service, service_name, tool_name="stop_service"
+            ),
         ),
     )
 
@@ -909,10 +1074,15 @@ def _h_restart_application(match, ctx):
         return None
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
+    app_name = match.group(1).strip()
+    label = _activity_label(app_name)
     return _quick(
         ctx,
-        _call_with_timeout(
-            system_tools.restart_application, match.group(1).strip(), tool_name="restart_application"
+        _run_activity(
+            ctx, "app", f"Restarting {label}", f"{label} restarted", f"Couldn't restart {label}",
+            lambda: _call_with_timeout(
+                system_tools.restart_application, app_name, tool_name="restart_application"
+            ),
         ),
     )
 
@@ -1823,12 +1993,20 @@ def _handle_command(
                 action, target = pending["action"], pending["target"]
                 _ack(ctx)
                 if action == "close_app":
-                    result = _call_with_timeout(
-                        system_tools.close_application, target, tool_name="close_application"
+                    label = _activity_label(target)
+                    result = _run_activity(
+                        ctx, "app", f"Closing {label}", f"{label} closed", f"Couldn't close {label}",
+                        lambda: _call_with_timeout(
+                            system_tools.close_application, target, tool_name="close_application"
+                        ),
                     )
                 elif action == "stop_service":
-                    result = _call_with_timeout(
-                        system_tools.stop_service, target, tool_name="stop_service"
+                    label = _activity_label(target)
+                    result = _run_activity(
+                        ctx, "service", f"Stopping {label}", f"{label} stopped", f"Couldn't stop {label}",
+                        lambda: _call_with_timeout(
+                            system_tools.stop_service, target, tool_name="stop_service"
+                        ),
                     )
                 elif action == "forget_all_memories":
                     rag = ctx.get("notes_memory")

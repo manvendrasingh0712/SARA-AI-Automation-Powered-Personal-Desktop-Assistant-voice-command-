@@ -30,10 +30,10 @@ brain.generate_response() path (this IS a real, explicit user turn, so it
 should join conversation history, unlike sara/orchestrator/proactive.py's
 background nudges which deliberately avoid that).
 
-Needs an embedding-capable Ollama model pulled locally (Config.EMBEDDING_MODEL,
-default "nomic-embed-text" — `ollama pull nomic-embed-text`) for the
-underlying LongTermMemory to actually produce embeddings; if that model
-isn't available, search() returns no hits and this skill says so rather
+Needs a working Gemini embedding model (Config.EMBEDDING_MODEL, default
+"gemini-embedding-001") and a valid GEMINI_API_KEY for the underlying
+LongTermMemory to actually produce embeddings; if embeddings aren't
+available, search() returns no hits and this skill says so rather
 than failing silently or raising.
 
 Status (get_notes_index_status): a small read-only helper for UI status
@@ -99,11 +99,12 @@ def sync_notes_folder(rag_memory, db) -> int:
         return 0
 
     if hasattr(rag_memory, "check_backend") and not rag_memory.check_backend():
-        model = getattr(Config, "EMBEDDING_MODEL", "nomic-embed-text")
+        model = getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
         print(
-            f"[NotesQA] Embedding model '{model}' isn't responding — notes "
-            f"won't be searchable until it's available. Run: "
-            f"ollama pull {model}"
+            f"[NotesQA] Gemini embedding model '{model}' isn't responding — "
+            f"notes won't be searchable until it is. Check that GEMINI_API_KEY "
+            f"is set in .env, that you're online, and that EMBEDDING_MODEL is "
+            f"'gemini-embedding-001' (or unset)."
         )
         return 0
 

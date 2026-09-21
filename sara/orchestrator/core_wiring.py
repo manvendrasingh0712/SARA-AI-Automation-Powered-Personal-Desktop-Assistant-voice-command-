@@ -13,6 +13,7 @@ from .history import _apply_saved_preferences, _finish_brain_setup
 from .intent_handlers import _handle_command
 from .network_utils import _shutdown_network_executor
 from .proactive import ActivityTracker, ProactiveEngine
+from .supervisor import ThreadSupervisor, get_notification_watcher_if_any
 from ._constants import (
     _MAX_EMPTY_RETRIES,
     _EMPTY_RETRY_GRACE_S,
@@ -155,8 +156,20 @@ def build_core_objects(ui_update):
     ui_update("boot_progress", "Starting voice engine...", 20)
 
     with ThreadPoolExecutor(max_workers=3, thread_name_prefix="sara-init") as pool:
-        tts_future = pool.submit(TextToSpeech, aec=aec)
-        ears_future = pool.submit(SpeechToText, aec=aec)
+        # audio_level: GUI orb's live level meter (js/home.js 'ev:audio_level').
+        # Both callbacks are called from a dedicated background thread inside
+        # the audio engine itself (never the real-time mic/output callback),
+        # so calling straight into ui_update() here is safe.
+        tts_future = pool.submit(
+            TextToSpeech,
+            aec=aec,
+            on_audio_level=lambda lvl: ui_update("audio_level", "tts", lvl),
+        )
+        ears_future = pool.submit(
+            SpeechToText,
+            aec=aec,
+            on_audio_level=lambda lvl: ui_update("audio_level", "mic", lvl),
+        )
         db_future = pool.submit(PreferencesDB)
 
         voice = tts_future.result()
@@ -456,6 +469,29 @@ def run_sara_logic(
     )
     proactive_engine.start()
 
+    # THREAD SUPERVISOR (sara/orchestrator/supervisor.py): every 30s confirms
+    # the reminders / notifications / proactive daemon threads are still
+    # alive and logs a WARNING if one died. Must never block startup.
+    thread_supervisor = None
+    try:
+        thread_supervisor = ThreadSupervisor(interval_s=30.0)
+        thread_supervisor.register(
+            "reminders", "sara-reminders", lambda: reminders, restartable=True
+        )
+        thread_supervisor.register(
+            "notifications",
+            "sara-notifications",
+            get_notification_watcher_if_any,
+            restartable=True,
+        )
+        thread_supervisor.register(
+            "proactive", "sara-proactive", lambda: proactive_engine, restartable=True
+        )
+        thread_supervisor.start()
+    except Exception as e:
+        print(f"[Supervisor] failed to start (continuing without it): {e}")
+        thread_supervisor = None
+
     # NOTES Q&A (sara/skills/notes_qa.py): notes_memory is now built in
     # build_core_objects() and shared with the brain (see Bug 1 fix in
     # that function) — it arrives here as a parameter instead of being
@@ -692,6 +728,8 @@ def run_sara_logic(
     except Exception as e:
         logger.critical(f"[Fatal Error \u2014 Sara logic thread] {e}", exc_info=True)
     finally:
+        if thread_supervisor is not None:
+            thread_supervisor.stop()
         proactive_engine.shutdown()
         if notes_memory is not None:
             notes_memory.close()

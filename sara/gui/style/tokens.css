@@ -1,0 +1,47 @@
+/* ==========================================================================
+   tokens.css  --  colors, font, resets, body background. (Visual source: terrarium mockup)
+   Loaded FIRST. Every other style/*.css file reads these CSS variables.
+   To retheme the whole app, change only the variables in :root below.
+   ========================================================================== */
+:root{
+  --void:#080C0D;
+  --deep:#0E1D1C;
+  --panel:#101917;
+  --panel-2:#152321;
+  --line:#1D2C29;
+  --core:#3FD8C4;
+  --think:#8B6FD8;
+  --speak:#E8C08F;
+  --text:#CBD8D6;
+  --text-soft:#8FA09D;
+  --muted:#556260;
+  --danger:#D97A6B;
+  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:radial-gradient(ellipse 65% 50% at 50% 40%, var(--deep) 0%, var(--void) 68%), var(--void);
+  color:var(--text);
+  font-family:var(--font);
+  min-height:100vh;
+  overflow:hidden;
+  position:relative;
+}
+body::after{ /* soft vignette */
+  content:'';
+  position:fixed; inset:0;
+  background:radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, rgba(0,0,0,0.5) 100%);
+  pointer-events:none;
+  z-index:1;
+}
+button{font-family:inherit;}
+input,select,textarea{font-family:inherit;}
+::selection{background:var(--core);color:#08110F;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important;}
+}

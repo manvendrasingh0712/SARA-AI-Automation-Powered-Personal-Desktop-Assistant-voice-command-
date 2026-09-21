@@ -15,23 +15,53 @@ CHANGELOG.md.
 """
 
 import os
+import sys
 
-_cuda_dll_dir_handles = []  # kept alive deliberately -- see comment below
+# ----------------------------------------------------------------------------
+# CUDA DLL setup (must run BEFORE anything imports onnxruntime / ctranslate2)
+# ----------------------------------------------------------------------------
+# The pip-installed nvidia-*-cu12 wheels (cudnn, cublas, cufft, curand,
+# cuda_runtime, cuda_nvrtc, nvjitlink, ...) each ship their DLLs in
+# site-packages/nvidia/<pkg>/bin. Windows will not find them on its own, so
+# every such bin dir is registered here. Previously only cudnn + cublas were
+# added, which left cufft64_11.dll unresolved and made onnxruntime silently
+# fall back to CPU for Kokoro TTS.
+_cuda_dll_dir_handles = []  # kept alive deliberately -- if GC'd, the dirs are removed
 try:
-    import nvidia.cudnn
-    _cudnn_bin = os.path.join(nvidia.cudnn.__path__[0], "bin")
-    import nvidia.cublas
-    _cublas_bin = os.path.join(nvidia.cublas.__path__[0], "bin")
-    for _dll_dir in (_cudnn_bin, _cublas_bin):
-        if os.path.isdir(_dll_dir):
-        
-            _cuda_dll_dir_handles.append(os.add_dll_directory(_dll_dir))
-            os.environ["PATH"] = _dll_dir + os.pathsep + os.environ.get("PATH", "")
+    import nvidia  # namespace package
+
+    for _nv_root in list(getattr(nvidia, "__path__", [])):
+        if not os.path.isdir(_nv_root):
+            continue
+        for _pkg in sorted(os.listdir(_nv_root)):
+            _dll_dir = os.path.join(_nv_root, _pkg, "bin")
+            if os.path.isdir(_dll_dir):
+                try:
+                    _cuda_dll_dir_handles.append(os.add_dll_directory(_dll_dir))
+                except OSError:
+                    pass
+                os.environ["PATH"] = _dll_dir + os.pathsep + os.environ.get("PATH", "")
 except ImportError:
+    pass
+
+# Let onnxruntime-gpu itself preload the CUDA/cuDNN DLLs it needs. This is
+# what made the standalone InferenceSession test succeed. Best-effort: older
+# onnxruntime builds don't have preload_dlls(), and CPU-only installs are fine.
+try:
+    import onnxruntime as _ort
+
+    if hasattr(_ort, "preload_dlls"):
+        _ort.preload_dlls()
+except Exception:  # noqa: BLE001
     pass
 
 import re
 import logging
+
+import win32api
+import win32con
+import win32event
+import winerror
 
 from logging_config import setup_logging
 
@@ -209,6 +239,58 @@ _POST_TTS_SETTLE_WITH_AEC_S = 0.3
 
 _THREAD_ERROR_BACKOFF_S = 0.5
 
+# ----------------------------------------------------------------------------
+# Single-instance enforcement
+# ----------------------------------------------------------------------------
+
+# "Global\" scopes it to the whole machine (not just this login session),
+# so two launches under different Windows sessions still collide correctly.
+_SINGLE_INSTANCE_MUTEX_NAME = r"Global\SaraAI_SingleInstance_Mutex"
+
+# Kept alive deliberately for the process's lifetime — if this handle were
+# GC'd, Windows would release the mutex early and a second launch would
+# wrongly succeed. OS releases it automatically on process exit/crash.
+_single_instance_mutex_handle = None
+
+
+def _acquire_single_instance_lock() -> bool:
+    """True if this process now owns the Sara AI mutex (no other instance
+    running). False if another process already holds it — caller must
+    exit without doing any further init.
+
+    Fails open on any OS-level error (e.g. a locked-down/Terminal-Services
+    session refusing Global\\ objects): a broken lock should never trap a
+    legitimate single launch out of the app.
+    """
+    global _single_instance_mutex_handle
+    try:
+        _single_instance_mutex_handle = win32event.CreateMutex(
+            None, False, _SINGLE_INSTANCE_MUTEX_NAME
+        )
+        return win32api.GetLastError() != winerror.ERROR_ALREADY_EXISTS
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Core] Single-instance check unavailable ({exc}); continuing.")
+        return True
+
+
+def _notify_already_running() -> None:
+    """User-visible heads-up for a second launch. print() alone is
+    invisible once Sara AI runs without an attached console (double-click,
+    shortcut, packaged .exe), so also pop a native, always-on-top message
+    box — the whole point of this check is that a real person sees it."""
+    print("Sara AI is already running.")
+    try:
+        win32api.MessageBox(
+            0,
+            "Sara AI is already running.\n\nCheck your taskbar / system tray for the existing window.",
+            "Sara AI",
+            win32con.MB_OK
+            | win32con.MB_ICONINFORMATION
+            | win32con.MB_TOPMOST
+            | win32con.MB_SETFOREGROUND,
+        )
+    except Exception:
+        pass  # console print above already covers headless launches
 
 
 # Re-exported so sara/gui/app/bootstrap.py's `import main as sara_main;
@@ -230,6 +312,12 @@ from sara.orchestrator.intent_handlers import _handle_command
 
 
 def main() -> None:
+    # Must be the very first thing — before logging setup, before any
+    # heavy init. Second launch exits here, no partial init happens.
+    if not _acquire_single_instance_lock():
+        _notify_already_running()
+        sys.exit(0)
+
     setup_logging()
     logger.info("Sara AI starting up (main.main).")
 

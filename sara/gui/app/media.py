@@ -229,6 +229,24 @@ class ApiMediaMixin:
                 except (TypeError, ValueError):
                     playback_rate = 1.0
 
+                # BUG FIX (seek bar snapping back ~every 3s): this must be the
+                # time the WinRT `position` above was ACTUALLY last updated,
+                # not "now". Many apps (Spotify especially) don't push fresh
+                # timeline updates every poll, so `position` is often already
+                # stale by the time we read it -- stamping it with time.time()
+                # told the frontend "this position was accurate just now",
+                # which made its smooth interpolation drift ahead and then
+                # snap back to the real (stale) value on the next poll.
+                # `tl.last_updated_time` is WinRT's own answer to exactly this
+                # (a timezone-aware datetime per the winsdk DateTime
+                # projection); convert it to Unix-epoch seconds. Fall back to
+                # time.time() only if the property is missing/unreadable.
+                last_updated = getattr(tl, "last_updated_time", None)
+                try:
+                    timeline_updated_at = last_updated.timestamp() if last_updated is not None else time.time()
+                except Exception:
+                    timeline_updated_at = time.time()
+
                 art_key = (props.title or "", props.artist or "", props.album_title or "", source_app)
                 if _art_cache.get("key") == art_key:
                     art = _art_cache.get("data")
@@ -251,7 +269,7 @@ class ApiMediaMixin:
                     "min_seek_sec": min_seek_sec,
                     "max_seek_sec": max_seek_sec,
                     "playback_rate": playback_rate,
-                    "timeline_updated_at": time.time(),
+                    "timeline_updated_at": timeline_updated_at,
                     "shuffle": bool(shuffle_active) if shuffle_active is not None else False,
                     "shuffle_supported": shuffle_active is not None,
                     "repeat": _repeat_mode_to_str(getattr(pb, "auto_repeat_mode", None)),
@@ -259,8 +277,8 @@ class ApiMediaMixin:
                         "can_next": bool(getattr(controls, "is_next_enabled", True)) if controls else True,
                         "can_prev": bool(getattr(controls, "is_previous_enabled", True)) if controls else True,
                         "can_seek": bool(getattr(controls, "is_playback_position_enabled", True)) if controls else True,
-                        "can_shuffle": bool(getattr(controls, "is_shuffle_enabled", False)) if controls else False,
-                        "can_repeat": bool(getattr(controls, "is_repeat_enabled", False)) if controls else False,
+                        "can_shuffle": bool(getattr(controls, "is_shuffle_enabled", True)) if controls else True,
+                        "can_repeat": bool(getattr(controls, "is_repeat_enabled", True)) if controls else True,
                     },
                     "track_id": "|".join(art_key),
                 }

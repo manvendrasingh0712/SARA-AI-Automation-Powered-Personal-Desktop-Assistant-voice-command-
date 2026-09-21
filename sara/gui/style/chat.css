@@ -1,0 +1,33 @@
+/* ==========================================================================
+   chat.css  --  Chat page: message log + bottom dock (mic / input / send).
+   Markup: index.html #page-chat.  JS: js/chat.js.
+   ========================================================================== */
+#page-chat .page-body{display:flex;flex-direction:column;padding-bottom:96px;}
+.chat-log{display:flex;flex-direction:column;gap:16px;padding-bottom:10px;max-width:640px;width:100%;margin:0 auto;flex:1;}
+.chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
+.msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:pageIn .25s ease;}
+.msg.user{align-self:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 15px;color:var(--text);}
+.msg.sara{align-self:flex-start;color:var(--core);padding:2px 2px;}
+.msg.preview{opacity:.6;font-style:italic;}
+.msg.sara.streaming::after,.msg.sara.typing::after{content:'▍';margin-left:2px;animation:blink 1s steps(2) infinite;}
+@keyframes blink{50%{opacity:0;}}
+.msg .ts{display:block;font-size:10.5px;color:var(--muted);margin-top:5px;font-style:normal;}
+.chat-dock{
+  flex:none;position:sticky;bottom:0;max-width:640px;width:100%;margin:14px auto 0;
+  display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
+  border-radius:14px;padding:8px 8px 8px 16px;
+}
+.chat-dock:focus-within{border-color:rgba(63,216,196,.4);}
+.chat-dock input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;}
+.dock-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:box-shadow .2s,transform .12s;}
+.dock-btn:hover{box-shadow:0 0 0 4px rgba(63,216,196,.12);}
+.dock-btn:active{transform:scale(.92);}
+.dock-btn.mic{background:var(--panel-2);color:var(--core);}
+.dock-btn.mic.on{background:var(--core);color:#08110F;box-shadow:0 0 0 5px rgba(63,216,196,.15);}
+.dock-btn.send{background:var(--core);color:#08110F;}
+.dock-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.msg-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.msg-action{background:none;border:1px solid var(--line);color:var(--text-soft);font-size:11.5px;padding:3px 10px;border-radius:999px;cursor:pointer;transition:border-color .2s,color .2s,transform .12s;}
+.msg-action:hover{border-color:rgba(63,216,196,.45);color:var(--core);}
+.msg-action:active{transform:scale(.95);}
+.msg-action:disabled{opacity:.5;cursor:default;}
