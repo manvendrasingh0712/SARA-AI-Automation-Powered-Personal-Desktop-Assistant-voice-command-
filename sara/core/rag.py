@@ -115,6 +115,46 @@ def _extract_fact_sentence(text: str) -> Optional[str]:
     return None
 
 
+def embed_text(
+    text: str, model: Optional[str] = None, debug: bool = False
+) -> Optional[np.ndarray]:
+    """
+    Embeds `text` with Google Gemini's embed_content endpoint and returns a
+    float32 vector, or None on ANY failure (never raises). Model defaults to
+    Config.EMBEDDING_MODEL ("gemini-embedding-001", 3072-dim vectors).
+    Shared by LongTermMemory._get_embedding() and the GUI setup wizard's
+    embedding health check, so both exercise the exact same code path.
+    """
+    if not text or not text.strip():
+        return None
+    model = model or getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
+    try:
+        client = _get_gemini_client(Config)
+        if client is None:
+            return None
+        result = client.models.embed_content(
+            model=model,
+            contents=text,
+        )
+        vector = result.embeddings[0].values
+        if not vector:
+            if debug:
+                print(
+                    f"[RAG] Embedding call to '{model}' returned no "
+                    f"vector for text: {text[:80]!r}"
+                )
+            return None
+        return np.asarray(vector, dtype=np.float32)
+    except Exception as e:
+        logger.debug(f"[RAG] embedding request failed: {e}")
+        if debug:
+            print(
+                f"[RAG] Embedding request FAILED ({type(e).__name__}: {e}) -- "
+                f"check GEMINI_API_KEY and network connectivity."
+            )
+        return None
+
+
 class LongTermMemory:
     """Thread-safe long-term semantic memory store. See module docstring
     for the full architecture explanation."""
@@ -122,7 +162,7 @@ class LongTermMemory:
     def __init__(self, db_path: Optional[str] = None) -> None:
         self.enabled = bool(getattr(Config, "RAG_ENABLED", True))
         self.db_path = db_path or Config.DB_PATH
-        self._embed_model = getattr(Config, "EMBEDDING_MODEL", "nomic-embed-text")
+        self._embed_model = getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
         self._embed_timeout_s = float(getattr(Config, "EMBEDDING_TIMEOUT_S", 4.0))
         self._top_k_default = int(getattr(Config, "RAG_TOP_K", 4))
         self._min_similarity = float(getattr(Config, "RAG_MIN_SIMILARITY", 0.40))
@@ -281,36 +321,24 @@ class LongTermMemory:
                 np.vstack(vecs) if vecs else np.zeros((0, 0), dtype=np.float32)
             )
 
-    # ── Embeddings (Ollama HTTP, no client-version coupling) ──────────────
+    # ── Embeddings (Gemini embed_content API, shared google-genai client) ──────────────
 
     def _get_embedding(self, text: str) -> Optional[np.ndarray]:
-        if not text or not text.strip():
-            return None
-        try:
-            client = _get_gemini_client(Config)
-            if client is None:
-                return None
-            result = client.models.embed_content(
-                model=self._embed_model,
-                contents=text,
-            )
-            vector = result.embeddings[0].values
-            if not vector:
-                if self._debug:
-                    print(
-                        f"[RAG] Embedding call to '{self._embed_model}' returned no "
-                        f"vector for text: {text[:80]!r}"
-                    )
-                return None
-            return np.asarray(vector, dtype=np.float32)
-        except Exception as e:
-            logger.debug(f"[RAG] embedding request failed: {e}")
-            if self._debug:
-                print(
-                    f"[RAG] Embedding request FAILED ({type(e).__name__}: {e}) -- "
-                    f"check GEMINI_API_KEY and network connectivity."
-                )
-            return None
+        """
+        Embeds `text` via Gemini (Config.EMBEDDING_MODEL, default
+        "gemini-embedding-001"). Returns None on any failure -- never raises.
+
+        MODEL CHANGE NOTE: switching EMBEDDING_MODEL (e.g. away from the old
+        local Ollama "nomic-embed-text") makes every stored vector
+        incompatible, even if the dimension happens to match -- different
+        models = different vector spaces. After such a change, clear the
+        memory table ONCE, with the app closed, from the project root:
+            python -c "import sqlite3; c=sqlite3.connect('sara_data.db'); c.execute('DELETE FROM long_term_memory'); c.commit()"
+        (use the file from DB_PATH if you set that in .env). Do NOT delete
+        the .db file itself -- it also holds preferences. Then touch the
+        files in sara_class_notes so NotesQA re-ingests them.
+        """
+        return embed_text(text, self._embed_model, self._debug)
 
     # ── Writer thread ────────────────────────────────────────────────────
 
@@ -663,8 +691,8 @@ class LongTermMemory:
         """
         Positively verifies, right now, whether long-term memory is
         actually working end-to-end (Bug 2 fix, item 1):
-          1. Embedding model reachable -- a live test call to Ollama's
-             /api/embeddings for self._embed_model.
+          1. Embedding model reachable -- a live test call to Gemini's
+             embed_content endpoint for self._embed_model.
           2. Round-trip write+search -- stores a throwaway probe memory,
              waits (briefly) for the background writer thread to
              actually embed+persist it, searches for it, confirms it
@@ -698,10 +726,11 @@ class LongTermMemory:
 
         if probe_vec is None:
             result["detail"] = (
-                f"Can't reach the '{self._embed_model}' embedding model on Ollama "
-                f"({self._ollama_host}). Long-term memory recall is effectively OFF "
-                f"right now -- run `ollama pull {self._embed_model}` and make sure "
-                f"Ollama is running."
+                f"Can't get embeddings from Gemini model '{self._embed_model}'. "
+                f"Long-term memory recall is effectively OFF right now -- check "
+                f"that GEMINI_API_KEY is set, that you're online, and that "
+                f"EMBEDDING_MODEL in .env is a valid Gemini embedding model "
+                f"(e.g. gemini-embedding-001)."
             )
             return result
         result["embedding_model_ok"] = True

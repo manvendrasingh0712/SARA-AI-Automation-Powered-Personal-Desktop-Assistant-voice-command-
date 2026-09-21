@@ -1,7 +1,7 @@
 """
 sara.core.planning.test_doubles
 Deterministic test doubles for unit-testing the planner and executor
-without a real Ollama instance or network access.
+without a live LLM backend (Gemini in production) or network access.
 
 Not imported by any production code path -- this module exists solely
 to support tests/test_planning.py and any future test module that needs
@@ -10,12 +10,15 @@ to exercise sara.core.planning's behavior under controlled conditions
 and offline.
 
 Design goals:
-  - Every fake mirrors the exact attribute shape planner.py / executor.py
-    actually read off a real `ollama.Client.chat()` response
+  - Every fake mirrors the attribute shape of a LEGACY Ollama
+    `ollama.Client.chat()` response
     (`resp.message.tool_calls[0].function.name` /
-    `.function.arguments`) -- these test doubles will break loudly (via
-    AttributeError) if production code's attribute-access pattern ever
-    changes, rather than silently testing against a stale shape.
+    `.function.arguments`). NOTE: production planner.py / executor.py
+    no longer use that shape -- they call Gemini via
+    `client.models.generate_content(...)` (client from
+    `_get_gemini_client()`) and read `resp.function_calls[i].name` /
+    `.args`. These doubles have NOT been adapted to that shape, so they
+    do not mirror the current production call path.
   - Every "mode" corresponds to one specific real-world failure class
     the planner/executor code paths are built to handle, named
     explicitly so a test reading `FakeOllamaClient(mode="hallucinated_tool")`
@@ -49,7 +52,9 @@ from typing import Any, Callable, Dict, List, Optional
 # ══════════════════════════════════════════════════════════════════════
 # Fake Ollama response shapes (mirrors what the real `ollama` package
 # returns from Client.chat(): resp.message.tool_calls[i].function.name /
-# .arguments)
+# .arguments). NOTE: this is the LEGACY Ollama shape; production code now
+# receives Gemini responses (`resp.function_calls[i].name` / `.args`),
+# which these dataclasses do not model.
 # ══════════════════════════════════════════════════════════════════════
 
 
@@ -82,9 +87,16 @@ class _FakeResponse:
 
 class FakeOllamaClient:
     """
-    Configurable fake matching the subset of ollama.Client used by
-    planner.py / executor.py (the object _get_ollama_client() would
-    normally return).
+    Configurable fake of the LEGACY Ollama client interface: it exposes
+    `.chat(**kwargs)` and returns `resp.message.tool_calls[i].function`
+    objects. The class name is kept because it still describes what
+    this models (an Ollama-shaped client).
+
+    NOTE: production planner.py / executor.py now get their client from
+    `_get_gemini_client()` and call `client.models.generate_content(...)`,
+    reading `resp.function_calls[i].name` / `.args`. This fake has no
+    `.models` attribute and no `.function_calls`, so it is NOT a
+    drop-in stand-in for the current production client.
 
     Behavior modes (set via constructor `mode`):
       - "valid_plan": returns a well-formed propose_plan tool call using

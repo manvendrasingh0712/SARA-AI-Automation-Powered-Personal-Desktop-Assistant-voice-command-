@@ -1,0 +1,19 @@
+/* ==========================================================================
+   ambient.css  --  very slow drifting teal/purple/amber glow behind everything (barely noticeable on purpose).
+   Pure CSS (GPU transform only). Sits between the body gradient and the app; the vignette in tokens.css stays on top.
+   ========================================================================== */
+body::before{
+  content:'';position:fixed;inset:-25%;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(38% 34% at 28% 32%, rgba(63,216,196,.075), transparent 70%),
+    radial-gradient(34% 30% at 74% 66%, rgba(139,111,216,.07), transparent 70%),
+    radial-gradient(26% 24% at 62% 22%, rgba(232,192,143,.035), transparent 70%);
+  animation:nebulaDrift 80s ease-in-out infinite alternate;
+  will-change:transform;
+}
+@keyframes nebulaDrift{
+  0%{transform:translate3d(-2%,-1%,0) rotate(0deg) scale(1);}
+  50%{transform:translate3d(2.5%,1.5%,0) rotate(3deg) scale(1.06);}
+  100%{transform:translate3d(-1%,2.5%,0) rotate(-2deg) scale(1.02);}
+}
+@media (prefers-reduced-motion:reduce){ body::before{animation:none;} }

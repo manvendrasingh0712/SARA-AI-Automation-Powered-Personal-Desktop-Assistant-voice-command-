@@ -184,7 +184,7 @@ class TextToSpeech:
       from TTSWorker.shutdown() (see tts_worker.py).
     """
 
-    def __init__(self, aec=None) -> None:
+    def __init__(self, aec=None, on_audio_level=None) -> None:
         # v16: idempotency guard for shutdown() — must be set up before
         # ANY early return below (including the disabled-TTS branches),
         # since __del__ -> shutdown() can run on a disabled instance too.
@@ -195,6 +195,11 @@ class TextToSpeech:
         self._speaking = threading.Event()
         self._lock = threading.Lock()
         self._aec = aec
+        # on_audio_level(level: float), 0.0-1.0 — forwarded straight to
+        # _PersistentPlayer, which does the actual RMS math on its own
+        # background thread (see player.py). None here is a no-op, same
+        # as omitting `aec`.
+        self._on_audio_level = on_audio_level
 
         # v13: persistent "interrupted" latch — separate from self._stop.
         # self._stop only cancels the ONE segment currently mid-playback
@@ -371,7 +376,7 @@ class TextToSpeech:
         # no longer needs its own thread pool — segments are handed to
         # the player's single ordered queue directly from
         # _playback_worker (see enqueue()'s docstring in player.py).
-        self._player = _PersistentPlayer(aec=self._aec)
+        self._player = _PersistentPlayer(aec=self._aec, on_level=self._on_audio_level)
 
         if _PG_OK and pygame is not None:
             try:

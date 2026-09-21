@@ -22,11 +22,11 @@ PERFORMANCE / ROBUSTNESS NOTES
   globally, since max_steps is config-tunable and could differ between
   calls in a test/multi-config context; the string-formatting cost is
   negligible relative to the LLM round-trip itself.
-- All exceptions from the underlying `ollama` client are caught and
+- All exceptions from the underlying Gemini client are caught and
   normalized into either PlanningUnavailableError (infrastructure
   problem: no client, timeout, transport error) or PlanValidationError
   (the call succeeded but its content was unusable) -- callers only
-  ever need to handle these two exception types, never raw ollama/
+  ever need to handle these two exception types, never raw google-genai/
   concurrent.futures exceptions.
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ logger = logging.getLogger("sara.core.planning.planner")
 class PlanningUnavailableError(Exception):
     """
     Raised when the planning LLM call itself could not be completed --
-    the Ollama client isn't available, the call timed out, or it raised
+    the Gemini client isn't available, the call timed out, or it raised
     for any other infrastructure reason. Distinct from
     PlanValidationError (which means "the call completed but the content
     was bad") purely for clearer logging; callers upstream treat both
@@ -76,7 +76,8 @@ _plan_tool_schema_cache: Optional[List[dict]] = None
 def _get_plan_tool_schema() -> List[dict]:
     """
     Returns the (lazily constructed, cached) `propose_plan` function
-    schema passed to Ollama's `tools=` parameter. Thread-safe
+    schema (OpenAI-style dicts), which _get_gemini_plan_tools() then
+    converts into Gemini's `tools=` format. Thread-safe
     double-checked construction -- this is read-only after first build,
     so no lock is needed on the hot path once populated.
     """
@@ -231,7 +232,7 @@ def _call_planner_llm(
     Raises PlanValidationError if it called a DIFFERENT function than
     propose_plan (should not normally happen given `tools=` restricts
     the model to the one schema offered, but handled explicitly rather
-    than assumed away, since local/quantized models are known to
+    than assumed away, since models are known to
     sometimes ignore tool constraints).
     """
     from google.genai import types as _gtypes
@@ -294,7 +295,7 @@ def propose_plan(
     app_allowlist_enabled: bool = True,
 ) -> Plan:
     """
-    Public entry point: makes ONE bounded Ollama tool-calling request
+    Public entry point: makes ONE bounded Gemini tool-calling request
     proposing a full ordered plan, then parses and validates it via
     schema.parse_plan_from_llm().
 
@@ -304,7 +305,7 @@ def propose_plan(
         The raw, unmatched ("chat" intent) user command -- may be
         English, Hindi, or Hinglish.
     model_name:
-        The Ollama model name to use for the planning call (same model
+        The Gemini model name to use for the planning call (same model
         the caller's single-tool resolve_tool_call() already uses).
     cfg:
         The Config class (or a compatible test double) -- read via
@@ -317,7 +318,7 @@ def propose_plan(
         model actually proposed).
     timeout_s:
         Wall-clock bound for the entire LLM call, enforced via
-        future.result(timeout=...) -- a hung Ollama request is
+        future.result(timeout=...) -- a hung Gemini request is
         guaranteed to be abandoned (not killed, just no longer awaited)
         after this many seconds.
     allowed_apps / app_allowlist_enabled:

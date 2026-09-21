@@ -1,0 +1,74 @@
+/* ==========================================================================
+   settings.css  --  Settings page: setting rows, language chips, accordions,
+   info rows, skills, analytics bars, system stats.
+   Markup: index.html #page-settings.  JS: js/settings.js, settings-panels.js, settings-data.js, settings-skills.js.
+   ========================================================================== */
+.set-row{max-width:560px;display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--line);gap:20px;}
+.set-info .s-name{font-size:14.5px;margin-bottom:3px;}
+.set-info .s-sub{font-size:12px;color:var(--muted);}
+.set-row input[type=text]{width:170px;}
+.slider-wrap{display:flex;align-items:center;gap:10px;width:170px;}
+.slider-val{font-size:12px;color:var(--muted);width:32px;text-align:right;font-variant-numeric:tabular-nums;}
+.set-group-label{max-width:560px;}
+
+/* ---- accordions ---- */
+.acc-section{max-width:560px;border-bottom:1px solid var(--line);}
+.acc-header{display:flex;justify-content:space-between;align-items:center;padding:16px 0;cursor:pointer;}
+.acc-header .a-title{font-size:14.5px;}
+.acc-header .a-sub2{font-size:12px;color:var(--muted);margin-top:2px;}
+.acc-header .chev{color:var(--muted);transition:transform .2s, color .2s;flex:none;}
+.acc-header .chev svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
+.acc-section.open .chev{transform:rotate(90deg);color:var(--core);}
+.acc-body{max-height:0;overflow:hidden;transition:max-height .3s ease;}
+.acc-section.open .acc-body{max-height:640px;overflow-y:auto;}
+.acc-body-inner{padding:2px 0 18px;display:flex;flex-direction:column;gap:11px;}
+.info-row{display:flex;justify-content:space-between;gap:16px;font-size:13px;color:var(--text-soft);}
+.info-row b{color:var(--text);font-weight:500;text-align:right;overflow-wrap:anywhere;}
+.info-row b.ok{color:var(--core);}
+.info-row b.bad{color:var(--danger);}
+.acc-note{font-size:12px;color:var(--muted);line-height:1.5;}
+.btn-row{display:flex;gap:10px;flex-wrap:wrap;}
+
+/* ---- skills ---- */
+.skill-row{display:flex;justify-content:space-between;align-items:center;gap:14px;font-size:13px;color:var(--text-soft);}
+.skill-row .s-main{min-width:0;}
+.skill-row .s-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--core);margin-right:8px;box-shadow:0 0 5px rgba(63,216,196,.5);}
+.skill-row.err .s-dot{background:var(--danger);box-shadow:none;}
+.skill-row.off .s-dot{background:var(--muted);box-shadow:none;}
+.skill-row .s-desc{display:block;font-size:11.5px;color:var(--muted);margin:2px 0 0 14px;overflow-wrap:anywhere;}
+
+/* ---- analytics ---- */
+.bar-row{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-soft);}
+.bar-row .b-name{flex:0 0 46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bar-row .b-track{flex:1;height:3px;background:var(--line);border-radius:2px;}
+.bar-row .b-fill{height:100%;background:var(--core);border-radius:2px;box-shadow:0 0 6px rgba(63,216,196,.5);}
+.bar-row .b-n{width:34px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
+.trend{display:flex;align-items:flex-end;gap:4px;height:38px;}
+.trend span{flex:1;background:var(--core);opacity:.55;border-radius:2px;min-height:2px;}
+.trend-cap{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);}
+.recent-line{font-size:12.5px;color:var(--text-soft);line-height:1.45;}
+.recent-line small{display:block;color:var(--muted);font-size:11px;}
+.info-row.tog{align-items:center;}
+
+/* ---- grouped cards (Assistant / Voice / Intelligence & Skills / Memory / System / Unsorted) ---- */
+.set-cards{display:flex;flex-direction:column;gap:14px;max-width:560px;padding-bottom:24px;}
+.set-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 18px 6px;}
+.set-card-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--line);}
+.set-card-title{font-size:14.5px;font-weight:500;}
+.set-card-sub{font-size:12px;color:var(--muted);text-align:right;}
+.set-card .set-row{max-width:none;padding:12px 0;}
+.set-card .set-row:last-child{border-bottom:none;}
+.set-card-body{display:flex;flex-direction:column;gap:11px;padding:12px 0 14px;}
+.set-card .section-label{margin:8px 0 0;}
+.set-card .section-label.sub{margin:2px 0 0;opacity:.75;}
+.set-card .section-label:first-child{margin-top:0;}
+.set-card .acc-section{max-width:none;border-bottom:none;border-top:1px solid var(--line);}
+.skills-scroll{max-height:320px;overflow-y:auto;}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;}
+.stat{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;min-width:0;}
+.stat b{font-size:15px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.stat span{font-size:11px;color:var(--muted);}
+
+/* ---- proactive toggles (compact 2-column grid inside Assistant card) ---- */
+.tog-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px;}
+.pv-recent{max-height:140px;overflow-y:auto;}

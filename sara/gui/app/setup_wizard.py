@@ -32,13 +32,13 @@ def _check_ollama() -> dict:
     """
     Best-effort, never-raises probe of a locally running Ollama server:
     is it installed (binary on PATH), is it actually running right now,
-    and are the two models this app cares about already pulled.
+    and is the local LLM model already pulled. (RAG embeddings no longer use
+    Ollama -- see _check_embedding_backend() below.)
     """
     result = {
         "ollama_installed": shutil.which("ollama") is not None,
         "ollama_running": False,
         "llm_model_pulled": False,
-        "embedding_model_pulled": False,
     }
     try:
         req = urllib.request.Request(f"{Config.OLLAMA_HOST}/api/tags")
@@ -49,11 +49,46 @@ def _check_ollama() -> dict:
         result["llm_model_pulled"] = any(
             getattr(Config, "OLLAMA_MODEL", "") in n for n in names
         )
-        result["embedding_model_pulled"] = any(
-            getattr(Config, "EMBEDDING_MODEL", "") in n for n in names
-        )
+        
     except Exception:
         pass  # Ollama not running / not reachable -- flags above stay False
+    return result
+
+
+def _check_embedding_backend() -> dict:
+    """
+    Best-effort, never-raises probe of the RAG embedding backend (Gemini).
+    Makes ONE small embed_content call through sara.core.rag.embed_text() --
+    the same code path LongTermMemory._get_embedding() uses, with the same
+    "diagnostic connectivity check" text rag.py's run_diagnostics() uses.
+    Deliberately NOT run_diagnostics() itself: that writes and deletes a probe
+    row in the real memory DB and can block for several seconds, which is too
+    heavy for a status check. Needs no Ollama at all.
+    """
+    result = {"ok": False, "error": ""}
+    if not bool(getattr(Config, "RAG_ENABLED", True)):
+        result["error"] = "Long-term memory is disabled (RAG_ENABLED=False)."
+        return result
+    if not getattr(Config, "GEMINI_API_KEY", ""):
+        result["error"] = "GEMINI_API_KEY is not set in .env."
+        return result
+    try:
+        from sara.core.rag import embed_text
+
+        vec = embed_text(
+            "diagnostic connectivity check",
+            getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001"),
+        )
+        if vec is None:
+            result["error"] = (
+                f"Gemini embedding model '{getattr(Config, 'EMBEDDING_MODEL', '')}' "
+                f"didn't return a vector -- check the model name, your API key "
+                f"and your internet connection."
+            )
+        else:
+            result["ok"] = True
+    except Exception as e:
+        result["error"] = str(e)
     return result
 
 
@@ -78,9 +113,10 @@ class ApiSetupWizardMixin:
     def check_setup_status(self):
         try:
             backend = getattr(Config, "LLM_BACKEND", "ollama")
-            ollama = _check_ollama()  # checked regardless of backend -- RAG's
-            # embedding model always goes through Ollama even when
-            # LLM_BACKEND=gemini is doing the actual chat replies.
+            ollama = _check_ollama()  # still checked regardless of backend --
+            # it's the LLM fallback (Gemini -> Ollama). RAG embeddings do NOT
+            # use Ollama anymore; see _check_embedding_backend() above.
+            embedding = _check_embedding_backend()
 
             gemini_key_set = None
             llm_model_pulled = ollama["llm_model_pulled"]
@@ -96,8 +132,11 @@ class ApiSetupWizardMixin:
                 "llm_model_pulled": llm_model_pulled,
                 "llm_model_name": getattr(Config, "OLLAMA_MODEL", ""),
                 "rag_enabled": bool(getattr(Config, "RAG_ENABLED", True)),
-                "embedding_model_pulled": ollama["embedding_model_pulled"],
+                # Key name kept so the frontend keeps working -- it now means
+                # "the Gemini embedding model answered a test call".
+                "embedding_model_pulled": embedding["ok"],
                 "embedding_model_name": getattr(Config, "EMBEDDING_MODEL", ""),
+                "embedding_backend_error": embedding["error"],
                 "kokoro_model_present": os.path.exists(
                     getattr(Config, "KOKORO_MODEL_PATH", "")
                 ),
@@ -134,9 +173,19 @@ class ApiSetupWizardMixin:
             except Exception as e:
                 return {"ok": False, "error": str(e)}
 
+        if action == "pull_embedding_model":
+            # Embeddings run on Gemini now -- there is nothing to `ollama pull`.
+            return {
+                "ok": False,
+                "error": (
+                    "Embeddings now run on Gemini, so there is nothing to pull. "
+                    "Set GEMINI_API_KEY in .env and leave EMBEDDING_MODEL unset "
+                    "(or 'gemini-embedding-001')."
+                ),
+            }
+
         valid_pulls = {
             "pull_llm_model": getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
-            "pull_embedding_model": getattr(Config, "EMBEDDING_MODEL", "nomic-embed-text"),
         }
         if action not in valid_pulls:
             return {"ok": False, "error": f"unknown action '{action}'"}

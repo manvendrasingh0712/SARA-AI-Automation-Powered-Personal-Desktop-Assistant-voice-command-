@@ -1,0 +1,24 @@
+/* ==========================================================================
+   automation.css  --  Automation page: mode chips, routine cards, routine-builder modal.
+   Markup: index.html #page-automation, #routineModal.  JS: js/automation.js, js/routine-builder.js.
+   ========================================================================== */
+.mode-note{max-width:640px;font-size:12.5px;color:var(--muted);margin:0 0 12px;}
+.auto-card{max-width:640px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;transition:border-color .2s;}
+.auto-card:hover{border-color:rgba(63,216,196,.3);}
+.auto-info{min-width:0;}
+.auto-info .a-name{font-size:14.5px;font-weight:500;margin-bottom:4px;overflow-wrap:anywhere;}
+.auto-info .a-sub{font-size:12.5px;color:var(--muted);}
+.auto-actions{display:flex;gap:8px;align-items:center;flex:none;}
+.icon-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:4px 6px;line-height:1;}
+.icon-x:hover{color:var(--danger);}
+
+/* ---- routine builder modal ---- */
+.rt-steps{display:flex;flex-direction:column;gap:8px;margin-top:4px;}
+.rt-step{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;}
+.rt-line{display:flex;gap:8px;align-items:center;}
+.rt-line select.rt-mode{flex:0 0 108px;}
+.rt-line select.rt-adv-type{flex:0 0 84px;}
+.rt-line > select,.rt-line > input{width:auto;flex:1;min-width:0;padding:8px 10px;font-size:12.5px;}
+.rt-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;flex:none;}
+.rt-x:hover{color:var(--danger);}
+.rt-empty{font-size:12.5px;color:var(--muted);}
