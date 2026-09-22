@@ -2,10 +2,14 @@
    music.js -- Music card (on the Apps page; click the head to expand into the full player)
    + floating mini-player above the nav + VU-style spectrum.
    API calls: get_media_status (polled every 2s), toggle_music_playback, run_action('play_music'),
-   stop_music, skip_next_track, skip_previous_track, seek_media, toggle_shuffle, cycle_repeat_mode.
+   stop_music, skip_next_track, skip_previous_track, seek_media, toggle_shuffle, cycle_repeat_mode,
+   get_media_volume, set_media_volume, list_media_sessions, select_media_session, toggle_session_mute,
+   get_master_volume, set_master_volume, toggle_master_mute.
    The spectrum is a simulated visual flourish (smoothed layered waves while playing, gentle decay when paused);
    the backend has no audio-level data, and the UI never presents it as real audio.
-   Styles: style/music.css.  Markup: index.html #musicCard, #miniPlayer.
+   Styles: style/music.css.  Markup: index.html #musicCard, #miniPlayer, plus the optional
+   per-feature elements documented above each block below (#mcVolume, #mcSessions, #mcSysVolume,
+   #sleepBtn, ...) -- every one of them quietly no-ops if its markup isn't present yet.
    ========================================================================== */
 (function () {
   'use strict';
@@ -53,7 +57,52 @@
   /* ---- album-art accent color extraction (feature: dynamic theming) ----
      Runs only when setArt() is called with a genuinely new track (setArt
      is itself only invoked from the trackId-changed branch in render(),
-     plus renderIdle() clearing it) -- never on every 2s poll. */
+     plus renderIdle() clearing it) -- never on every 2s poll.
+
+     COLOR BOOST (requested: card looked "dull" against the app's dark
+     theme): a plain pixel-average of a photo very often lands in a
+     desaturated, mid-grey-ish zone -- fine on a white background, but it
+     reads as flat/muddy next to a dark UI where saturated, brighter
+     accents are what actually pop. So the raw averaged RGB is converted
+     to HSL and pushed toward a minimum saturation/lightness band before
+     being used, rather than used as-is. c2 (the gradient's second stop)
+     used to just be c1 scaled to 55% brightness in RGB space, which also
+     desaturates as a side effect (scaling toward black in RGB muddies
+     the hue); it's now derived in HSL instead, keeping the same hue and
+     saturation and only dropping lightness, which reads as a real
+     gradient instead of "same color, dirtier". */
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0; const l = (max + min) / 2;
+    const d = max - min;
+    if (d !== 0) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      switch (max) {
+        case r: h = ((g - b) / d) % 6; break;
+        case g: h = (b - r) / d + 2; break;
+        default: h = (r - g) / d + 4;
+      }
+      h *= 60; if (h < 0) h += 360;
+    }
+    return [h, s, l];
+  }
+  function hslToRgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+    let r1 = 0, g1 = 0, b1 = 0;
+    if (h < 60) { r1 = c; g1 = x; } else if (h < 120) { r1 = x; g1 = c; } else if (h < 180) { g1 = c; b1 = x; }
+    else if (h < 240) { g1 = x; b1 = c; } else if (h < 300) { r1 = x; b1 = c; } else { r1 = c; b1 = x; }
+    return [Math.round((r1 + m) * 255), Math.round((g1 + m) * 255), Math.round((b1 + m) * 255)];
+  }
+  function boostAccentPair(r, g, b) {
+    let [h, s, l] = rgbToHsl(r, g, b);
+    s = Math.min(1, Math.max(s, 0.55));            // never let it go washed-out/grey
+    const l1 = Math.min(0.72, Math.max(l, 0.5));    // brighter primary stop -- visible on a dark panel
+    const l2 = Math.max(0.28, l1 - 0.22);           // same hue/saturation, just darker -- a real gradient, not mud
+    const [r1, g1, b1] = hslToRgb(h, s, l1);
+    const [r2, g2, b2] = hslToRgb(h, s, l2);
+    return ['rgb(' + r1 + ',' + g1 + ',' + b1 + ')', 'rgb(' + r2 + ',' + g2 + ',' + b2 + ')'];
+  }
   let artColorToken = 0;
   function applyAccentColors(c1, c2) {
     // DEBUG (Task 1, item 2c): confirms whether real colors or a (null,
@@ -97,8 +146,7 @@
           buckets.forEach(function (v) { if (!best || v.n > best.n) best = v; });
           if (!best) { console.log('[accent] no eligible bucket (art may be all near-black/white/grey)'); applyAccentColors(null, null); return; }
           const r1 = Math.round(best.r / best.n), g1 = Math.round(best.g / best.n), b1 = Math.round(best.b / best.n);
-          const c1 = 'rgb(' + r1 + ',' + g1 + ',' + b1 + ')';
-          const c2 = 'rgb(' + Math.round(r1 * 0.55) + ',' + Math.round(g1 * 0.55) + ',' + Math.round(b1 * 0.55) + ')';
+          const [c1, c2] = boostAccentPair(r1, g1, b1);
           applyAccentColors(c1, c2);
         } catch (e) { console.error('[accent] extraction threw:', e); applyAccentColors(null, null); }  // canvas-taint or any extraction error -> default colors, never break the card
       };
@@ -170,6 +218,88 @@
       $('curTime').textContent = SARA.fmtDuration(pos); $('durTime').textContent = SARA.fmtDuration(dur);
     }
   }
+  /* ---- session switcher (Feature: pick WHICH app's session to control,
+     for when more than one is playing at once -- e.g. Spotify desktop AND
+     a YouTube tab both audible. Without this, the widget could only ever
+     show/control whichever one _pick_active_session's "prefer anything
+     Playing" heuristic happened to land on, with no way to switch.
+     Backend: list_media_sessions() / select_media_session(app_id).
+     Expects markup: <div id="mcSessions" class="session-switcher"></div>
+     inside the expanded card body. Optional -- if absent, this whole
+     block quietly no-ops.
+
+     NEW FEATURE: per-session MUTE, directly from a chip -- lets the user
+     silence one specific app (e.g. a noisy background YouTube tab) while
+     leaving whatever they're actually switched to untouched, without
+     first switching to it. Backend: toggle_session_mute(app_id), which
+     reuses the same tiered Core Audio matching as the main volume slider
+     but applied to an arbitrary app_id, independent of which session is
+     "current". mutedIds is a small client-side set purely for the icon
+     state -- list_media_sessions() doesn't report per-session mute (that
+     would mean running the tiered pycaw match for every live session on
+     every 2s poll, which is needlessly expensive for something only the
+     mute button itself needs); the icon is instead updated directly from
+     each toggle call's own confirmed response, the same "trust the
+     confirmed value, not the request" pattern used everywhere else in
+     this file (see setVolUI, toggle_shuffle, set_media_volume...). */
+  const sessionsBox = $('mcSessions');
+  let sessionsKey = '';  // cheap fingerprint so re-render only happens on real change (avoids flicker)
+  const mutedIds = new Set();
+  const MUTE_ICON = '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/></svg>';
+  const MUTE_ICON_OFF = '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path class="mute-x" d="M15.2 9.2l4.6 4.6M19.8 9.2l-4.6 4.6"/></svg>';
+  function renderSessions(list) {
+    if (!sessionsBox) return;
+    if (!list || list.length < 2) { sessionsBox.innerHTML = ''; sessionsBox.classList.remove('show'); sessionsKey = ''; return; }
+    const key = list.map((s) => s.app_id + ':' + s.current + ':' + s.playing).join('|');
+    if (key === sessionsKey) return;
+    sessionsKey = key;
+    sessionsBox.classList.add('show');
+    sessionsBox.innerHTML = list.map(function (s) {
+      const name = s.app_name || 'App';
+      const label = name + (s.title ? ' · ' + s.title : '');
+      const id = String(s.app_id).replace(/"/g, '&quot;');
+      const muted = mutedIds.has(s.app_id);
+      return '<div class="session-chip' + (s.current ? ' active' : '') + (s.playing ? ' playing' : '') +
+        '" data-app-id="' + id + '" title="' + label.replace(/"/g, '&quot;') + '">' +
+        '<span class="chip-name">' + name + '</span>' +
+        '<button class="chip-mute' + (muted ? ' muted' : '') + '" data-app-id="' + id +
+        '" aria-label="Mute this app" title="' + (muted ? 'Unmute' : 'Mute') + ' ' + name + '">' +
+        (muted ? MUTE_ICON_OFF : MUTE_ICON) + '</button></div>';
+    }).join('');
+  }
+  if (sessionsBox) {
+    sessionsBox.addEventListener('click', async function (e) {
+      const muteBtn = e.target.closest('.chip-mute');
+      if (muteBtn) {
+        e.stopPropagation();
+        if (pending) return;
+        pending = true;
+        const appId = muteBtn.dataset.appId;
+        const res = await SARA.callApi('toggle_session_mute', appId);
+        pending = false;
+        if (res && res.ok) {
+          if (res.muted) mutedIds.add(appId); else mutedIds.delete(appId);
+          muteBtn.classList.toggle('muted', !!res.muted);
+          muteBtn.innerHTML = res.muted ? MUTE_ICON_OFF : MUTE_ICON;
+          muteBtn.title = (res.muted ? 'Unmute' : 'Mute') + ' this app';
+        } else SARA.fail('Could not mute that app.');
+        return;
+      }
+      const btn = e.target.closest('.session-chip');
+      if (!btn || btn.classList.contains('active') || pending) return;
+      pending = true;
+      const res = await SARA.callApi('select_media_session', btn.dataset.appId);
+      pending = false;
+      if (res && res.ok) { sessionsKey = ''; poll(); }  // force a fresh render + immediate status refresh
+      else SARA.fail('Could not switch to that app.');
+    });
+  }
+  async function pollSessions() {
+    if (!sessionsBox || !card.classList.contains('expanded')) return;  // only worth the extra call while visible
+    const res = await SARA.callApi('list_media_sessions');
+    if (res && res.ok) renderSessions(res.sessions);
+  }
+
   /* ---- volume (Task 2: Windows per-app volume mixer via pycaw, backend
      matches the active SMTC session's app to its Core Audio session by
      process name -- see media.py get_media_volume/set_media_volume for
@@ -195,17 +325,136 @@
     else volSlider.disabled = true;  // e.g. UWP app with no matching Core Audio session -- see media.py comment
   }
   if (volSlider) {
-    volSlider.addEventListener('input', function () { volDragging = true; setVolFill(volSlider.value); });
+    volSlider.addEventListener('input', function () {
+      volDragging = true; setVolFill(volSlider.value);
+      // DEBUG (Task 1): confirms the slider's own 'input' handler fires
+      // on drag. Remove once Problem 1 is confirmed fixed.
+      console.log('[volume] input event, value=', volSlider.value);
+    });
     volSlider.addEventListener('change', async function () {
       const level = Math.max(0, Math.min(100, parseFloat(volSlider.value) || 0)) / 100;
-      await SARA.callApi('set_media_volume', level);
+      // DEBUG (Task 1): confirms 'change' fires and set_media_volume is
+      // genuinely called with the expected level. Remove once Problem 1
+      // is confirmed fixed.
+      console.log('[volume] change event, calling set_media_volume with level=', level);
+      const res = await SARA.callApi('set_media_volume', level);
+      console.log('[volume] set_media_volume result:', res);
+      if (!res || !res.ok) console.warn('[volume] set_media_volume failed:', res && res.error);
       volDragging = false;
+    });
+  }
+
+  /* ---- system (master) volume (Feature: the previous slider only ever
+     controlled ONE app's Core Audio session -- this controls the actual
+     Windows output device level, via media.py get_master_volume /
+     set_master_volume / toggle_master_mute. Independent of st.active,
+     since master volume exists even with nothing playing.
+     Expects markup: <input type="range" id="mcSysVolume"> and, optionally,
+     id="mcSysVolumeIcon" (gets a "muted" class + acts as a mute button).
+     Both optional -- quietly no-ops if absent. */
+  const sysVolSlider = $('mcSysVolume'), sysVolIcon = $('mcSysVolumeIcon');
+  let sysVolDragging = false;
+  function setSysVolFill(pct) { sysVolSlider.style.setProperty('--vol-fill', pct + '%'); }
+  function setSysVolUI(vol, muted) {
+    if (!sysVolSlider) return;
+    sysVolSlider.value = Math.round((vol || 0) * 100);
+    setSysVolFill(sysVolSlider.value);
+    if (sysVolIcon) sysVolIcon.classList.toggle('muted', !!muted);
+  }
+  async function pollSystemVolume() {
+    if (!sysVolSlider || sysVolDragging || !card.classList.contains('expanded')) return;  // only worth polling while visible
+    const res = await SARA.callApi('get_master_volume');
+    if (res && res.ok) setSysVolUI(res.volume, res.muted);
+  }
+  if (sysVolSlider) {
+    sysVolSlider.addEventListener('input', function () { sysVolDragging = true; setSysVolFill(sysVolSlider.value); });
+    sysVolSlider.addEventListener('change', async function () {
+      const level = Math.max(0, Math.min(100, parseFloat(sysVolSlider.value) || 0)) / 100;
+      const res = await SARA.callApi('set_master_volume', level);
+      if (!res || !res.ok) console.warn('[sysvolume] set_master_volume failed:', res && res.error);
+      sysVolDragging = false;
+    });
+  }
+  if (sysVolIcon) {
+    sysVolIcon.addEventListener('click', async function () {
+      const res = await SARA.callApi('toggle_master_mute');
+      if (res && res.ok) sysVolIcon.classList.toggle('muted', !!res.muted);
+    });
+  }
+
+  /* ---- sleep timer (Feature: auto-pause after N minutes, with a gentle
+     ~12s volume fade-out first so playback doesn't just cut off mid-word.
+     Expects markup: <button id="sleepBtn">, <div id="sleepMenu"> holding
+     buttons with data-min="15|30|45|60" (clicking sleepBtn again while
+     armed cancels it), and optionally <span id="sleepBadge"> for the live
+     countdown. All optional -- quietly no-ops if the button is absent. */
+  const sleepBtn = $('sleepBtn'), sleepMenu = $('sleepMenu'), sleepBadge = $('sleepBadge');
+  const sleepState = { endsAt: null, tickId: null, fading: false };
+  function sleepCancel() {
+    sleepState.endsAt = null; sleepState.fading = false;
+    if (sleepState.tickId) { clearInterval(sleepState.tickId); sleepState.tickId = null; }
+    if (sleepBtn) sleepBtn.classList.remove('active');
+    if (sleepBadge) sleepBadge.textContent = '';
+  }
+  async function sleepFadeAndPause() {
+    if (sleepState.fading) return;
+    sleepState.fading = true;
+    if (sleepBadge) sleepBadge.textContent = 'Fading…';
+    // Best-effort fade: only works for apps get_media_volume/set_media_volume
+    // can resolve (see media.py's comment on _pycaw_session_for's known
+    // UWP-app limitation). If it can't, we just pause on schedule -- the
+    // timer's core promise (music stops) still holds either way.
+    const before = await SARA.callApi('get_media_volume');
+    const startVol = (before && before.ok) ? before.volume : null;
+    if (startVol !== null) {
+      const STEPS = 10, STEP_MS = 1200;  // ~12s fade
+      for (let i = 1; i <= STEPS; i++) {
+        await new Promise((r) => setTimeout(r, STEP_MS));
+        await SARA.callApi('set_media_volume', Math.max(0, startVol * (1 - i / STEPS)));
+      }
+    }
+    await SARA.callApi('toggle_music_playback', false);
+    if (startVol !== null) await SARA.callApi('set_media_volume', startVol);  // restore -- next play shouldn't start silent
+    sleepCancel();
+    poll();
+  }
+  function sleepArm(minutes) {
+    sleepCancel();
+    if (!minutes) return;
+    sleepState.endsAt = Date.now() + minutes * 60000;
+    if (sleepBtn) sleepBtn.classList.add('active');
+    sleepState.tickId = setInterval(function () {
+      const remain = sleepState.endsAt - Date.now();
+      if (remain <= 15000 && !sleepState.fading) { sleepFadeAndPause(); return; }
+      if (sleepBadge) {
+        const m = Math.max(0, Math.floor(remain / 60000)), s = Math.max(0, Math.floor((remain % 60000) / 1000));
+        sleepBadge.textContent = m + ':' + String(s).padStart(2, '0');
+      }
+    }, 1000);
+  }
+  if (sleepBtn && sleepMenu) {
+    sleepBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (sleepState.endsAt) { sleepCancel(); return; }  // click while armed = cancel
+      sleepMenu.classList.toggle('show');
+    });
+    sleepMenu.addEventListener('click', function (e) {
+      const btn = e.target.closest('button[data-min]');
+      if (!btn) return;
+      sleepMenu.classList.remove('show');
+      sleepArm(parseInt(btn.dataset.min, 10) || 0);
+    });
+    document.addEventListener('click', function (e) {
+      if (!sleepMenu.contains(e.target) && e.target !== sleepBtn) sleepMenu.classList.remove('show');
     });
   }
 
   async function poll() {
     if (inflight) return; inflight = true;
-    try { render(await SARA.callApi('get_media_status')); await pollVolume(); } finally { inflight = false; }
+    try {
+      render(await SARA.callApi('get_media_status'));
+      await pollVolume(); await pollSessions(); await pollSystemVolume();
+    } finally { inflight = false; }
   }
   setInterval(function () {                    // smooth progress between polls
     if (!st.active || dragging || document.hidden) return;

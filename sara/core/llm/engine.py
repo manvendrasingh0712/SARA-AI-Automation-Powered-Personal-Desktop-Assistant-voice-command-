@@ -389,6 +389,7 @@ class SaraLLM:
         prompt: str,
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
     ) -> list:
         msgs: list = [{"role": "system", "content": self.system_instruction}]
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieved long-term
@@ -411,6 +412,27 @@ class SaraLLM:
                     ),
                 }
             )
+        # CONTEXT INJECTION (NEW): same established pattern as
+        # memory_context immediately above -- a separate system message,
+        # never merged into self.system_instruction. This carries a
+        # sara.orchestrator.intent_handlers._describe_recent_entities()
+        # hint for an unresolved pronoun/reference ("it", "uska", "wo")
+        # in `prompt`. Explicitly labeled as a hint to interpret, not a
+        # fact to repeat back, so the model doesn't mistake it for
+        # something to state verbatim to the user.
+        if reference_context:
+            msgs.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Context hint (do NOT repeat this back to the user "
+                        "verbatim -- use it only to understand what a "
+                        "pronoun or reference like \"it\"/\"that\"/\"uska\"/"
+                        "\"wo\" in the user's message most likely means):\n"
+                        f"{reference_context}"
+                    ),
+                }
+            )
         for u, a in history:
             msgs.append({"role": "user", "content": u})
             msgs.append({"role": "assistant", "content": a})
@@ -422,6 +444,7 @@ class SaraLLM:
         prompt: str,
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
     ) -> list:
         # PRIORITY-4 FIX: system_instruction used to ALSO be injected here
         # as a fake user/"Understood." turn, on top of being passed via
@@ -446,6 +469,33 @@ class SaraLLM:
                 }
             )
             contents.append({"role": "model", "parts": [{"text": "Understood."}]})
+        # CONTEXT INJECTION (NEW): same established fake user/"Understood."
+        # pattern as memory_context immediately above -- Gemini's contents
+        # list has no native "system" role for mid-conversation asides, so
+        # this mirrors the exact mechanism already used there rather than
+        # inventing a new one. Carries a
+        # sara.orchestrator.intent_handlers._describe_recent_entities()
+        # hint for an unresolved pronoun/reference ("it", "uska", "wo") in
+        # `prompt`, explicitly labeled as a hint to interpret, not a fact
+        # to repeat back.
+        if reference_context:
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "[System] Context hint (do NOT repeat this "
+                                "back to the user verbatim -- use it only "
+                                "to understand what a pronoun or reference "
+                                "like \"it\"/\"that\"/\"uska\"/\"wo\" in the "
+                                f"user's message most likely means):\n{reference_context}"
+                            )
+                        }
+                    ],
+                }
+            )
+            contents.append({"role": "model", "parts": [{"text": "Understood."}]})
         for u, a in history:
             contents.append({"role": "user", "parts": [{"text": u}]})
             contents.append({"role": "model", "parts": [{"text": a}]})
@@ -459,6 +509,34 @@ class SaraLLM:
             if self._history and self._history[-1][0] == prompt:
                 self._history.pop()
             self._history.append((prompt, reply))
+
+    def record_exchange(self, user_input: str, reply: str) -> None:
+        """
+        Public wrapper around _append_history() for callers OUTSIDE this
+        module (e.g. sara.orchestrator.intent_handlers._handle_command()).
+
+        FIX (missing conversation-history recording): only the plain-chat
+        path (generate_response_stream() -> _stream_generic() ->
+        _append_history(), above) used to ever write into self._history.
+        Every other successful turn -- a fast-path intent handler, a
+        zero-arg SIMPLE_ACTIONS result, a resolved single-tool result, or
+        a completed multi-step plan -- never got recorded, so the LLM had
+        no memory those turns happened and follow-ups like "that" / "it" /
+        "the one you just did" referencing them would fail. This wrapper
+        lets _handle_command() record those four paths using the exact
+        same dedup-aware append logic the plain-chat path already relies
+        on, without a private-method reach-across from another module and
+        without touching _append_history()'s own behavior/signature.
+
+        Guards against empty/blank input the same defensive way the rest
+        of this codebase treats optional text (e.g. summarize_text()
+        above) -- a blank prompt or reply is silently skipped rather than
+        polluting history with a no-op turn.
+        """
+        u_clean = (user_input or "").strip()
+        r_clean = (reply or "").strip()
+        if u_clean and r_clean:
+            self._append_history(u_clean, r_clean)
 
     def load_history(self, history: List[Tuple[str, str]]) -> None:
         if not history:
@@ -756,6 +834,7 @@ class SaraLLM:
         prompt: str,
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
     ):
         client = _get_ollama_client(self._cfg)
         if not client:
@@ -763,7 +842,7 @@ class SaraLLM:
             # from a transient one — see _ClientUnavailableError above.
             raise _ClientUnavailableError("Ollama client not loaded.")
 
-        messages = self._build_messages_ollama(prompt, history, memory_context)
+        messages = self._build_messages_ollama(prompt, history, memory_context, reference_context)
         raw_stream = client.chat(
             model=self._ollama_model_name,
             messages=messages,
@@ -793,6 +872,7 @@ class SaraLLM:
         prompt: str,
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
     ):
         client = _get_gemini_client(self._cfg)
         if not client:
@@ -801,7 +881,7 @@ class SaraLLM:
 
         from google.genai import types
 
-        contents = self._build_contents_gemini(prompt, history, memory_context)
+        contents = self._build_contents_gemini(prompt, history, memory_context, reference_context)
 
         raw_stream = client.models.generate_content_stream(
             model=self._gemini_model_name,
@@ -820,7 +900,26 @@ class SaraLLM:
 
     # ── Public streaming API ───────────────────────────────────────────
 
-    def generate_response_stream(self, prompt: str) -> Iterator[str]:
+    def generate_response_stream(
+        self, prompt: str, reference_context: Optional[str] = None
+    ) -> Iterator[str]:
+        """
+        Stream a chat reply for `prompt`.
+
+        reference_context (NEW, optional): a short plain-text description
+        of still-fresh ctx["context_state"]["recent_entities"] (see
+        sara.orchestrator.intent_handlers._describe_recent_entities()),
+        passed by _handle_command() only when _route_chat_message()
+        detects an unresolved pronoun/reference ("it", "uska", "wo", ...)
+        in this turn that plausibly points at one of them. Injected into
+        the prompt as an additional system-role message (Ollama) / fake
+        user+"Understood." turn (Gemini) -- the SAME established pattern
+        already used below for the RAG memory_context block -- so the
+        model treats it as "what the user is likely referring to", not a
+        fact to restate verbatim. Defaults to None, so every existing
+        caller that doesn't pass it behaves exactly as before this
+        parameter existed.
+        """
         prompt = (prompt or "").strip()
         if not prompt:
             nudges = {
@@ -908,9 +1007,9 @@ class SaraLLM:
 
         def _open_primary(attempt: int):
             return (
-                self._open_ollama_stream(prompt, history, memory_context)
+                self._open_ollama_stream(prompt, history, memory_context, reference_context)
                 if self._primary_backend == "ollama"
-                else self._open_gemini_stream(prompt, history, memory_context)
+                else self._open_gemini_stream(prompt, history, memory_context, reference_context)
             )
 
         # FALLBACK FIX: build an ordered list of (label, opener) stages.
@@ -941,7 +1040,13 @@ class SaraLLM:
                 fb_memory_context, _ = self._build_capped_memory_context(
                     fb_hits, cap=fb_rag_budget or None
                 )
-                return self._open_ollama_stream(prompt, fb_history, fb_memory_context)
+                # FIX (alongside this feature): without passing
+                # reference_context through here too, a turn that fell
+                # back from Gemini to Ollama would silently lose the
+                # pronoun/reference hint that _open_primary() above
+                # would otherwise have included -- same content, same
+                # user turn, so the fallback stage must carry it as well.
+                return self._open_ollama_stream(prompt, fb_history, fb_memory_context, reference_context)
 
             stages.append(("ollama-fallback", _open_ollama_fallback))
 

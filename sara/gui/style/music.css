@@ -1,36 +1,40 @@
 /* ==========================================================================
    music.css  --  Music card (lives on the Apps page; click head to expand into full player)
    + the floating mini-player above the nav + the VU spectrum.
-   Markup: index.html #musicCard, #miniPlayer.  JS: js/music.js.
+   Markup: index.html #musicCard, #miniPlayer, plus optional feature markup:
+   #mcVolume/#mcVolumeIcon (per-app volume), #mcSessions (session switcher,
+   each chip also holds a .chip-mute per-app mute button), #mcSysVolume/
+   #mcSysVolumeIcon (system volume), #sleepBtn/#sleepMenu/#sleepBadge
+   (sleep timer). JS: js/music.js.
    ========================================================================== */
 .music-card{
   --music-accent-1:var(--core);--music-accent-2:var(--think); /* feature: album-art theming overrides these two inline via JS; default = old look */
   max-width:720px;background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:6px;transition:border-color .25s;overflow:hidden;
 }
 .music-card.expanded,.music-card:hover{
-  border-color:rgba(63,216,196,.35); /* fallback for engines without color-mix() */
-  border-color:color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+  border-color:rgba(63,216,196,.45); /* fallback for engines without color-mix() -- brightened from .35 so the border reads clearly against a dark panel */
+  border-color:color-mix(in srgb, var(--music-accent-1) 45%, transparent);
 }
 .mc-head{display:flex;align-items:center;gap:16px;padding:14px 16px;cursor:pointer;}
 .art-block{
   width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--music-accent-1),var(--music-accent-2)) center/cover;
-  box-shadow:0 0 24px rgba(63,216,196,.2);
-  box-shadow:0 0 24px color-mix(in srgb, var(--music-accent-1) 20%, transparent);
+  box-shadow:0 0 26px rgba(63,216,196,.32); /* brightened from .2 -- felt dull against the dark panel */
+  box-shadow:0 0 26px color-mix(in srgb, var(--music-accent-1) 32%, transparent);
   flex:none;display:flex;align-items:center;justify-content:center;transition:box-shadow .4s,background-image .6s ease;
 }
 .art-block svg{width:24px;height:24px;stroke:#08110F;fill:none;stroke-width:1.8;}
 .art-block.has-art svg{display:none;}
 .music-card.playing .art-block{
-  box-shadow:0 0 34px rgba(63,216,196,.4);
-  box-shadow:0 0 34px color-mix(in srgb, var(--music-accent-1) 40%, transparent);
+  box-shadow:0 0 38px rgba(63,216,196,.55); /* brightened from .4 */
+  box-shadow:0 0 38px color-mix(in srgb, var(--music-accent-1) 55%, transparent);
 }
 .track-meta{flex:1;min-width:0;}
 .t-title{font-size:15.5px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .t-artist{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .mc-play{width:38px;height:38px;border-radius:50%;background:var(--music-accent-1);border:none;color:#08110F;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .12s,box-shadow .2s,background-color .6s;}
 .mc-play:hover{
-  box-shadow:0 0 14px rgba(63,216,196,.35);
-  box-shadow:0 0 14px color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+  box-shadow:0 0 18px rgba(63,216,196,.5); /* brightened from .35 */
+  box-shadow:0 0 18px color-mix(in srgb, var(--music-accent-1) 50%, transparent);
 }
 .mc-play:active{transform:scale(.92);}
 .mc-play svg{width:14px;height:14px;fill:currentColor;stroke:none;}
@@ -39,8 +43,47 @@
 .mc-chev svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
 .music-card.expanded .mc-chev{transform:rotate(90deg);color:var(--music-accent-1);}
 .mc-body{max-height:0;overflow:hidden;transition:max-height .35s ease;}
-.music-card.expanded .mc-body{max-height:360px;}
+.music-card.expanded .mc-body{max-height:560px;} /* raised from 360px to fit the session switcher, system-volume row and sleep-timer controls below */
 .mc-body-inner{padding:4px 20px 22px;}
+
+/* ---- session switcher (Feature: pick which app's session to control;
+   markup: <div id="mcSessions" class="session-switcher"> with JS-injected
+   .session-chip elements, each holding a .chip-name (click = switch to
+   this app) and a .chip-mute button (click = mute/unmute this app in
+   place, without switching to it). Hidden by JS (no "show" class)
+   whenever fewer than 2 sessions are live, so it never appears for the
+   common one-app case. ---- */
+.session-switcher{display:none;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+.session-switcher.show{display:flex;}
+.session-chip{
+  background:var(--bg2,rgba(255,255,255,.04));border:1px solid var(--line);color:var(--text-soft);
+  font-size:11.5px;padding:5px 8px 5px 10px;border-radius:999px;cursor:pointer;display:flex;align-items:center;gap:5px;
+  max-width:180px;transition:border-color .2s,color .2s,background-color .2s;
+}
+.session-chip .chip-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.session-chip:hover{color:var(--text);}
+.session-chip.playing .chip-name::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--music-accent-1);margin-right:5px;}
+.session-chip.active{
+  color:var(--text);border-color:rgba(63,216,196,.6); /* brightened from .5 */
+  border-color:color-mix(in srgb, var(--music-accent-1) 60%, transparent);
+  background:rgba(63,216,196,.14); /* brightened from .1 */
+  background:color-mix(in srgb, var(--music-accent-1) 14%, transparent);
+}
+/* per-app mute toggle (new: silence one app's session without switching
+   to it -- e.g. mute a background YouTube tab while Spotify keeps
+   playing). Nested inside the chip; stopPropagation in JS keeps a click
+   here from also triggering the chip's own "switch to this app" handler. */
+.chip-mute{
+  background:none;border:none;padding:0;margin:0;flex:none;display:flex;align-items:center;justify-content:center;
+  color:var(--text-soft);cursor:pointer;transition:color .2s,opacity .2s;
+}
+.chip-mute:hover{color:var(--text);}
+.chip-mute svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.chip-mute svg path:first-child{fill:currentColor;stroke:none;}
+.chip-mute .mute-x{display:none;}
+.chip-mute.muted{color:var(--music-accent-1);opacity:.85;}
+.chip-mute.muted .mute-x{display:block;}
+
 .seek-wrap{margin-bottom:16px;}
 input.seek,input.volume{
   -webkit-appearance:none;appearance:none;display:block;height:3px;border-radius:2px;
@@ -49,8 +92,8 @@ input.seek,input.volume{
 input.seek{width:100%;background:linear-gradient(to right,var(--music-accent-1) var(--fill,0%),var(--line) var(--fill,0%));}
 input.seek::-webkit-slider-thumb,input.volume::-webkit-slider-thumb{
   -webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--music-accent-1);
-  box-shadow:0 0 0 3px rgba(63,216,196,.2);
-  box-shadow:0 0 0 3px color-mix(in srgb, var(--music-accent-1) 20%, transparent);
+  box-shadow:0 0 0 4px rgba(63,216,196,.28); /* brightened + slightly wider ring, from 3px/.2 */
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--music-accent-1) 28%, transparent);
   transition:background-color .3s,box-shadow .3s;
 }
 input.seek::-moz-range-thumb,input.volume::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--music-accent-1);border:none;transition:background-color .3s;}
@@ -68,12 +111,45 @@ input.seek:disabled,input.volume:disabled{opacity:.4;cursor:default;}
 .transport button.active{color:var(--music-accent-1);}
 .transport button.repeat-track::after{content:'1';position:absolute;top:-4px;right:-5px;font-size:9px;color:var(--music-accent-1);}
 /* ---- per-app volume (Task 2; markup: .volume-row > #mcVolumeIcon svg + #mcVolume input) ---- */
-.volume-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+.volume-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
 .volume-row svg{width:16px;height:16px;stroke:var(--text-soft);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:stroke .2s;}
 .volume-row svg.muted{stroke:var(--muted);}
 input.volume{flex:1;min-width:0;background:linear-gradient(to right,var(--music-accent-1) var(--vol-fill,60%),var(--line) var(--vol-fill,60%));}
+
+/* ---- system (master) volume (Feature; markup: .volume-row.system >
+   #mcSysVolumeIcon svg (also doubles as a mute button) + #mcSysVolume
+   input). Same row styling as the per-app volume above, distinguished by
+   a small "SYSTEM" label so the two are never confused. ---- */
+.volume-row.system{margin-bottom:16px;}
+.volume-row.system .vol-label{font-size:9.5px;letter-spacing:.06em;color:var(--muted);flex:none;text-transform:uppercase;}
+.volume-row.system svg{cursor:pointer;}
+
+/* ---- sleep timer (Feature; markup: #sleepBtn button, #sleepMenu chip
+   row with data-min buttons, optional #sleepBadge countdown). The menu
+   is a plain inline row (not an absolutely-positioned popover) so it is
+   never clipped by .mc-body's overflow:hidden. ---- */
+.sleep-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+.sleep-btn{
+  background:none;border:1px solid var(--line);color:var(--text-soft);border-radius:999px;
+  padding:5px 12px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:color .2s,border-color .2s;
+}
+.sleep-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+.sleep-btn:hover{color:var(--text);}
+.sleep-btn.active{
+  color:var(--music-accent-1);border-color:rgba(63,216,196,.6); /* brightened from .5 */
+  border-color:color-mix(in srgb, var(--music-accent-1) 60%, transparent);
+}
+.sleep-badge{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.sleep-menu{display:none;flex-wrap:wrap;gap:6px;}
+.sleep-menu.show{display:flex;}
+.sleep-menu button{
+  background:var(--bg2,rgba(255,255,255,.04));border:1px solid var(--line);color:var(--text-soft);
+  font-size:11px;padding:4px 9px;border-radius:999px;cursor:pointer;transition:color .2s,border-color .2s;
+}
+.sleep-menu button:hover{color:var(--text);border-color:rgba(63,216,196,.5);border-color:color-mix(in srgb, var(--music-accent-1) 50%, transparent);} /* brightened from .4 */
+
 .spectrum{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:32px;}
-.spectrum span{width:3px;height:3px;background:var(--music-accent-1);border-radius:2px;opacity:.25;will-change:height;transition:background-color .6s;}
+.spectrum span{width:3px;height:3px;background:var(--music-accent-1);border-radius:2px;opacity:.3;will-change:height;transition:background-color .6s;} /* base opacity brightened from .25 */
 
 @media (max-width:380px){
   .mc-body-inner{padding:4px 14px 18px;}

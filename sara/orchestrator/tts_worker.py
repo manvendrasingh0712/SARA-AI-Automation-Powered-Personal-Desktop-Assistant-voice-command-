@@ -96,6 +96,20 @@ class TTSWorker:
                     duration=0.3
                 ):
                     self._voice.stop()
+                    # Snapshot self._ears' ring buffer right now, at the
+                    # exact moment of interruption -- BEFORE
+                    # mark_tts_stopped() (called shortly by the TTS
+                    # thread as _speak_blocking()/_speak_stream_blocking()
+                    # unwind from voice.stop() above) gets a chance to
+                    # clear it. This is what lets the interruption become
+                    # the start of the user's next command instead of
+                    # being thrown away on the next wait_settle() (see
+                    # capture_barge_in_audio()/_collect_speech() in
+                    # engine.py). Defensive/never raises on the STT side,
+                    # so it can't interfere with voice.stop() above,
+                    # which has already run regardless of this call's
+                    # outcome.
+                    self._ears.capture_barge_in_audio()
                     self._barge_stop.set()
                 time.sleep(_BARGE_IN_POLL_S)
             except Exception as e:
