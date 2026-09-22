@@ -128,6 +128,30 @@ _INTENT_PATTERNS = [
         r"countdown (?:for|of) (.+)",
     ]),
 
+    # ── Alarm (clock-time, NEW -- distinct from set_timer's duration-
+    # based countdown above) ────────────────────────────────────────────
+    ("set_alarm", [
+        r"set (?:an )?alarm (?:for|at) (.+)",
+        r"wake me (?:up )?(?:for|at) (.+)",
+        r"alarm (?:for|at) (.+)",
+    ]),
+
+    # ── Stopwatch (NEW) ──────────────────────────────────────────────────
+    ("start_stopwatch", [
+        r"start (?:the |a )?stopwatch",
+        r"begin (?:the |a )?stopwatch",
+        r"start timing",
+    ]),
+    ("lap_stopwatch", [
+        r"(?:lap|split)(?: time)?",
+        r"stopwatch lap",
+    ]),
+    ("stop_stopwatch", [
+        r"stop (?:the )?stopwatch",
+        r"end (?:the )?stopwatch",
+        r"stopwatch time",
+    ]),
+
     # ── Notes ──────────────────────────────────────────────────────────
     ("take_note", [
         r"take (?:a )?note[:\s]+(.+)",
@@ -144,6 +168,32 @@ _INTENT_PATTERNS = [
     ]),
     ("clear_notes", [
         r"(?:clear|delete|remove|wipe) (?:all )?(?:my )?notes?",
+    ]),
+
+    # ── To-Do list (NEW, separate from Notes above) ──────────────────────
+    ("add_todo", [
+        r"add (?:a )?to-?do[:\s]+(.+)",
+        r"add (?:a |this |that )?task[:\s]+(.+)",
+        r"add (?:this |that )?to (?:my )?to-?do list[:\s]+(.+)",
+        r"to-?do list mein (.+) add karo",
+        r"naya kaam add karo[:\s]+(.+)",
+    ]),
+    ("list_todos", [
+        r"(?:show|read|list|get|what are) (?:my )?to-?dos?(?:\s+(all|everything))?",
+        r"what'?s (?:still )?pending",
+        r"any (?:pending )?to-?dos?",
+        r"mere to-?do dikhao",
+        r"kya (?:kaam )?pending hai",
+    ]),
+    ("complete_todo", [
+        r"(?:mark|complete|finish|check off) (.+?) as (?:done|complete|finished)",
+        r"(?:mark|complete|finish|check off) (?:my )?to-?do (.+?) (?:as )?done",
+        r"(.+?) (?:wala kaam|to-?do) (?:complete|done) kar diya",
+    ]),
+    ("delete_todo", [
+        r"(?:delete|remove|cancel) (?:the )?to-?do[:\s]+(.+)",
+        r"(?:delete|remove) (.+?) from (?:my )?to-?do list",
+        r"(.+?) (?:wala kaam|to-?do) (?:delete|hata) (?:kar )?do",
     ]),
 
     # ── Clipboard ──────────────────────────────────────────────────────
@@ -891,9 +941,17 @@ _INTENT_GATES = {
     "reminder_list": ("reminder",),
     "reminder_cancel": ("reminder",),
     "set_timer": ("timer", "countdown"),
+    "set_alarm": ("alarm", "wake me", "wake up"),
+    "start_stopwatch": ("stopwatch",),
+    "lap_stopwatch": ("lap", "stopwatch"),
+    "stop_stopwatch": ("stopwatch",),
     "take_note": ("note", "remember", "write", "jot"),
     "read_notes": ("note",),
     "clear_notes": ("note",),
+    "add_todo": ("to-do", "todo", "task", "kaam"),
+    "list_todos": ("to-do", "todo", "task", "pending", "kaam"),
+    "complete_todo": ("done", "complete", "finish", "mark", "check off"),
+    "delete_todo": ("delete", "remove", "cancel", "to-do", "todo", "hata"),
     "clipboard_read": ("clipboard", "copy"),
     "clipboard_write": ("copy", "clipboard"),
     "screenshot_describe": ("screen",),

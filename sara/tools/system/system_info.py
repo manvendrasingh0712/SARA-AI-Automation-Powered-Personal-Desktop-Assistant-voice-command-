@@ -8,6 +8,7 @@ import logging
 import re
 import socket
 import platform
+import threading
 
 from datetime import datetime
 
@@ -273,6 +274,83 @@ def get_process_list(limit: int = 5) -> str:
     except Exception as e:
         logger.error(f"get_process_list failed: {e}")
         return "Sorry, I couldn't retrieve the process list right now."
+
+
+# ============================================================
+# STOPWATCH
+# ============================================================
+# Simple start/stop/lap stopwatch backed by a module-level start
+# timestamp (+ lap list), guarded by _stopwatch_lock so a voice command
+# racing a GUI button (or two quick voice commands) can never corrupt
+# the state or double-start/double-stop it. Deliberately NOT run through
+# _get_cached() above -- start/stop/lap are mutating actions, not
+# idempotent reads, and caching one would risk returning a stale
+# "already running" / "not running" answer.
+
+_stopwatch_lock = threading.Lock()
+_stopwatch_start = None  # float epoch seconds, or None when not running
+_stopwatch_laps = []  # list of float epoch seconds, most recent last
+
+
+def _format_elapsed(seconds: float) -> str:
+    """"2 minutes and 15 seconds" / "45 seconds" -- same hours/minutes
+    divmod shape as get_uptime() above, extended with seconds since a
+    stopwatch interval is commonly sub-minute."""
+    total = max(0, int(round(seconds)))
+    hours, remainder = divmod(total, 3600)
+    minutes, secs = divmod(remainder, 60)
+    parts = []
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if minutes:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    if secs or not parts:
+        parts.append(f"{secs} second{'s' if secs != 1 else ''}")
+    if len(parts) == 1:
+        return parts[0]
+    return ", ".join(parts[:-1]) + f" and {parts[-1]}"
+
+
+def start_stopwatch() -> str:
+    """Starts the stopwatch. If one is already running, responds clearly
+    instead of silently restarting it (which would quietly discard the
+    elapsed time the user is presumably still tracking)."""
+    global _stopwatch_start, _stopwatch_laps
+    with _stopwatch_lock:
+        if _stopwatch_start is not None:
+            running_for = _format_elapsed(datetime.now().timestamp() - _stopwatch_start)
+            return f"The stopwatch is already running -- it's been going for {running_for}."
+        _stopwatch_start = datetime.now().timestamp()
+        _stopwatch_laps = []
+    return "Stopwatch started."
+
+
+def lap_stopwatch() -> str:
+    """Records a lap and reports both the split (since the last lap, or
+    since start if this is the first lap) and the running total."""
+    with _stopwatch_lock:
+        if _stopwatch_start is None:
+            return "The stopwatch isn't running -- say 'start stopwatch' first."
+        now = datetime.now().timestamp()
+        lap_start = _stopwatch_laps[-1] if _stopwatch_laps else _stopwatch_start
+        _stopwatch_laps.append(now)
+        lap_number = len(_stopwatch_laps)
+        split = _format_elapsed(now - lap_start)
+        total = _format_elapsed(now - _stopwatch_start)
+    return f"Lap {lap_number}: {split}, total {total}."
+
+
+def stop_stopwatch() -> str:
+    """Stops the stopwatch and reports elapsed time. If none is running,
+    responds clearly instead of erroring."""
+    global _stopwatch_start, _stopwatch_laps
+    with _stopwatch_lock:
+        if _stopwatch_start is None:
+            return "No stopwatch is currently running."
+        elapsed = _format_elapsed(datetime.now().timestamp() - _stopwatch_start)
+        _stopwatch_start = None
+        _stopwatch_laps = []
+    return f"Stopwatch stopped at {elapsed}."
 
 
 def get_system_summary() -> str:
