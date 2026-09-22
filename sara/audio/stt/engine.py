@@ -261,6 +261,21 @@ class SpeechToText:
         self._tts_active = threading.Event()
         self._tts_stopped_at: float = 0.0
         self._tts_state_lock = threading.Lock()
+
+        # BARGE-IN HANDOFF (see capture_barge_in_audio()/_collect_speech()
+        # below): audio snapshotted by capture_barge_in_audio() at the
+        # instant a barge-in interrupts TTS. A small, separate buffer --
+        # NOT part of self._ring -- so mark_tts_stopped()/wait_settle()
+        # can keep unconditionally clearing self._ring exactly as before
+        # without also discarding this. Guarded by the existing
+        # self._tts_state_lock above (already used for all other
+        # TTS-transition state on this class) rather than a new lock.
+        # List of raw mic-callback-sized chunks, NOT joined into one
+        # blob, so _collect_speech() can hand it straight to its normal
+        # per-chunk VAD scan -- webrtcvad requires fixed-size frames and
+        # would choke on one giant merged blob.
+        self._barge_in_handoff: List[bytes] = []
+
         self._is_listening = threading.Event()
 
         # v7: guards listen() so only one _collect_speech()/_transcribe()
@@ -517,6 +532,13 @@ class SpeechToText:
         with self._tts_state_lock:
             self._tts_stopped_at = time.monotonic()
         self._pre_buf.clear()
+        # Still unconditionally cleared -- this is now only ever TTS
+        # echo-tail / settle-window noise. Any audio that actually
+        # mattered (a barge-in interruption) was already copied out to
+        # self._barge_in_handoff by capture_barge_in_audio() BEFORE this
+        # runs (see TTSWorker._watch_loop() in tts_worker.py), and that
+        # buffer lives separately from self._ring, so it survives this
+        # clear untouched.
         self._ring.get_all(clear=True)
 
     def wait_settle(self, min_gap: Optional[float] = None) -> None:
@@ -539,8 +561,60 @@ class SpeechToText:
         remaining = min_gap - (time.monotonic() - stopped_at)
         if remaining > 0:
             time.sleep(remaining)
+        # Same as mark_tts_stopped() above -- unconditional clear is
+        # fine here too: self._barge_in_handoff (if a barge-in captured
+        # anything) lives in its own buffer and is untouched by this.
         self._ring.get_all(clear=True)
         self._pre_buf.clear()
+
+    def capture_barge_in_audio(self) -> None:
+        """Called by TTSWorker._watch_loop() at the exact instant a
+        barge-in interrupts TTS (right after self._voice.stop(), before
+        self._barge_stop is set -- see there) -- i.e. BEFORE
+        mark_tts_stopped() gets a chance to run (that happens shortly
+        after, as _speak_blocking()/_speak_stream_blocking() unwind from
+        voice.stop() above) and clear self._ring.
+
+        Snapshots (copies, does NOT drain) whatever's currently sitting
+        in self._ring: with STT_HARD_MUTE_DURING_TTS (the default -- see
+        _ingest_processed_chunk()), that's exactly the audio that already
+        passed _passes_barge_in_gate() while TTS was active, i.e. the
+        start of what the user is interrupting with. Stashed as a list of
+        raw chunks (not joined into one blob) in a small dedicated
+        handoff buffer -- self._ring itself is left alone so it keeps
+        accumulating normally for the rest of this TTS-stopping window
+        (is_user_speaking() etc. still reads off it) -- so
+        mark_tts_stopped()/wait_settle() can keep unconditionally
+        clearing self._ring exactly as before without losing this.
+        _collect_speech() below consumes (and clears) this buffer at the
+        start of the very next listen() session, prepending it to that
+        session's own backlog so the interruption becomes the start of
+        the user's next command instead of being thrown away.
+
+        Defensive/never raises, matching this class's other TTS-thread-
+        facing methods (e.g. _ears_is_listening() in tts_worker.py) --
+        a failure here must never be able to interfere with the actual
+        barge-in (stopping TTS), which TTSWorker._watch_loop() always
+        does first regardless of this call's outcome.
+        """
+        if self._closed:
+            return
+        try:
+            chunks = self._ring.get_all(clear=False)
+        except Exception:
+            return
+        if not chunks:
+            return
+        with self._tts_state_lock:
+            # BUGFIX-adjacent hardening: extend rather than overwrite. In
+            # practice _watch_loop() only calls this once per barge-in
+            # (self._speaking/self._voice.is_speaking() gate it off after
+            # the first trigger), but extending is a one-line safety net
+            # against ever silently losing a partial capture if that ever
+            # changes -- no realistic downside since this list is always
+            # drained (see _collect_speech()) before the next barge-in
+            # could possibly refill it.
+            self._barge_in_handoff.extend(chunks)
 
     def _close_stream(self) -> None:
         try:
@@ -927,7 +1001,24 @@ class SpeechToText:
         # _spawn_preview_transcribe()).
         self._preview_generation += 1
         my_generation = self._preview_generation
+
+        # BARGE-IN HANDOFF: prepend any audio captured by
+        # capture_barge_in_audio() at the moment a barge-in interrupted
+        # TTS (see TTSWorker._watch_loop() in tts_worker.py). Consuming
+        # it here -- right as THIS session starts pulling its own
+        # backlog off self._ring -- is what makes the interruption
+        # become the start of the user's next command instead of being
+        # lost. Cleared under the same lock immediately after reading so
+        # it's picked up by exactly one listen() call, never reused. In
+        # the normal (non-interrupted) wake->listen flow this is always
+        # empty -- capture_barge_in_audio() is only ever called from the
+        # barge-in path -- so that behavior is completely unchanged.
+        with self._tts_state_lock:
+            handoff_chunks = self._barge_in_handoff
+            self._barge_in_handoff = []
         backlog = self._ring.get_all(clear=True)
+        if handoff_chunks:
+            backlog = handoff_chunks + list(backlog)
 
         try:
             pending_chunks = list(backlog)

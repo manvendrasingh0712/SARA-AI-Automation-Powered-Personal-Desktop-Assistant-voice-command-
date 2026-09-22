@@ -4,6 +4,7 @@ build_core_objects() constructs every subsystem (LLM, TTS, STT, DB,
 reminders, vision) at startup; _WakeWatcher + run_sara_logic() are the
 main always-on conversation loop.
 """
+from sara.orchestrator.state import STATE_LOCK
 from .lazy import _debug_log, _Lazy
 from .state import LanguageState, AssistantState
 from .ui_bridge import _UICoalescer

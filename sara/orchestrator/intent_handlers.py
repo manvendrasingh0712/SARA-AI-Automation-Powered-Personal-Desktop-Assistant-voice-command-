@@ -649,22 +649,118 @@ def _h_news(match, ctx):
 # ── Context Follow-ups ("what about jaipur?" / "aur dilli ka?") ────────
 # ctx["context_state"] is a plain dict, created once per run in
 # sara/orchestrator/core_wiring.py -- same pattern as playback_state and
-# confirm_state -- so it genuinely persists turn-to-turn. Only weather
-# and news currently opt in via _remember_context(); any future intent
-# can opt in the same way by calling it with its own intent name and
-# slot value.
+# confirm_state -- so it genuinely persists turn-to-turn.
+#
+# GENERALIZED (NEW): this used to be a single hardcoded slot
+# ("last_slot_intent"), so only ONE recently-mentioned thing could ever
+# be remembered at a time, and only weather/news ever wrote to it. It's
+# now ctx["context_state"]["recent_entities"], a dict of independently
+# labeled slots (e.g. "last_location", "last_topic", "last_app",
+# "last_file", and -- for a future contacts/calling feature -- 
+# "last_person") each carrying its own value/timestamp, so an app opened
+# a minute ago and a city asked about just before it can BOTH still be
+# remembered at once, instead of the second one silently evicting the
+# first. Any handler can opt a new slot in by calling _remember_entity()
+# with its own slot name -- see _h_open_app()/_h_close_app() (last_app)
+# and _h_find_file() (last_file) below for examples. Weather/news keep
+# using the pre-existing _remember_context() wrapper unchanged (it now
+# delegates to _remember_entity() under the hood) so this section's
+# "what about X" behavior is not just preserved but untouched from the
+# caller's point of view.
 _CONTEXT_TTL_S = 120  # short window: a natural follow-up, not a resumed
                        # conversation from minutes ago
 
+# Only a slot recorded against one of these intent names is eligible to
+# answer a "what about X" / "aur X ka" followup_query -- see
+# _latest_followup_entity() below. _remember_context() (weather/news)
+# tags its entry with the intent name automatically; a slot written
+# directly via _remember_entity() with followup_intent left at its
+# default of None (last_app, last_file, ...) is still tracked for any
+# future pronoun-style handler ("usko band karo") but is simply never a
+# candidate here, exactly like every non-weather/news intent today.
+_FOLLOWUP_SLOT_BY_INTENT = {
+    "weather": "last_location",
+    "news": "last_topic",
+}
+
+
+def _remember_entity(ctx, slot_name: str, value: str, followup_intent: str = None) -> None:
+    """
+    Record `value` under `slot_name` in
+    ctx["context_state"]["recent_entities"], stamped with the current
+    time. `followup_intent`, when given, is the intent name
+    _h_followup_query() should treat this slot as continuing (see
+    _FOLLOWUP_TOOL_BY_INTENT below) -- leave it at its default of None
+    for entities (apps, files, ...) that don't yet back a "what about X"
+    style re-query.
+
+    Silently no-ops on a falsy value, same as the old _remember_context()
+    did -- callers can pass a possibly-empty regex capture straight
+    through without their own guard.
+    """
+    if not value:
+        return
+    ctx["context_state"].setdefault("recent_entities", {})[slot_name] = {
+        "value": value,
+        "ts": time.time(),
+        "intent": followup_intent,
+    }
+
+
+def _resolve_app_target(ctx, captured_text: str):
+    """
+    Resolve a fast-path regex capture meant to be an application name,
+    accounting for the fact that fast-path intents (open_app, close_app,
+    restart_application, switch_to_application) never go through
+    _route_chat_message()'s pronoun/reference handling -- a message like
+    "close it" / "usko band kar do" matches close_app directly on its
+    own regex and would otherwise hand the literal word "it"/"usko"
+    straight to allowlist validation as if it were a real app name.
+
+    Returns:
+      - `captured_text` unchanged if it's NOT a pronoun/reference (see
+        _is_pronoun_reference() above) -- the overwhelming majority of
+        calls, and the ONLY thing that happens for them: one cheap
+        regex check, no dict lookup, no added latency for the normal
+        case.
+      - the still-fresh value of
+        ctx["context_state"]["recent_entities"]["last_app"] (same
+        _CONTEXT_TTL_S expiry window _remember_entity()/
+        _describe_recent_entities() already use elsewhere in this file)
+        if `captured_text` IS a pronoun/reference and that slot exists
+        and hasn't expired.
+      - None if `captured_text` is a pronoun/reference but there's
+        nothing fresh in "last_app" to resolve it to -- callers must
+        check for this explicitly and ask the user to clarify rather
+        than letting it fall through to allowlist validation, which
+        would reject it with a misleading "not an allowed application"
+        message instead of the real problem (missing context).
+
+    Pure read of ctx["context_state"]; never writes to it -- writing the
+    resolved name back into "last_app" remains each handler's own job
+    via its existing _remember_entity() call, same as before.
+    """
+    if not _is_pronoun_reference(captured_text):
+        return captured_text
+    entry = (ctx.get("context_state") or {}).get("recent_entities", {}).get("last_app")
+    if not entry:
+        return None
+    if time.time() - entry.get("ts", 0) > _CONTEXT_TTL_S:
+        return None
+    return entry.get("value")
+
 
 def _remember_context(ctx, intent_name: str, slot_value: str) -> None:
-    if not slot_value:
-        return
-    ctx["context_state"]["last_slot_intent"] = {
-        "intent": intent_name,
-        "slot": slot_value,
-        "ts": time.time(),
-    }
+    """
+    Back-compat wrapper kept so existing call sites (_h_weather(),
+    _h_news(), and _h_followup_query() itself) don't need to know about
+    slot names at all -- it maps the intent name to its slot via
+    _FOLLOWUP_SLOT_BY_INTENT (falling back to the intent name itself for
+    any future caller that doesn't bother registering one) and tags the
+    entry with that same intent so _h_followup_query() can still find it.
+    """
+    slot_name = _FOLLOWUP_SLOT_BY_INTENT.get(intent_name, intent_name)
+    _remember_entity(ctx, slot_name, slot_value, followup_intent=intent_name)
 
 
 # Maps a remembered intent name to the tool function that intent's own
@@ -677,11 +773,40 @@ _FOLLOWUP_TOOL_BY_INTENT = {
 }
 
 
+def _latest_followup_entity(ctx):
+    """
+    Among ctx["context_state"]["recent_entities"], return the most
+    recently recorded, non-expired entry whose "intent" is one
+    _h_followup_query() actually knows how to redo (see
+    _FOLLOWUP_TOOL_BY_INTENT above) -- or None if nothing qualifies.
+
+    BUGFIX vs. the old single-slot design: with several independent
+    slots now live at once, "the most recent thing said" is no longer
+    just "the one slot" -- it has to be resolved by comparing
+    timestamps across slots. Without this, a followup_query right after
+    e.g. opening an app (which records into last_app with no "intent")
+    could otherwise have nothing to fall back to, or worse, could pick
+    an arbitrary/stale weather-or-news slot instead of the genuinely
+    most recent one.
+    """
+    entities = ctx["context_state"].get("recent_entities") or {}
+    now = time.time()
+    best = None
+    for entry in entities.values():
+        if entry.get("intent") not in _FOLLOWUP_TOOL_BY_INTENT:
+            continue
+        if now - entry.get("ts", 0) > _CONTEXT_TTL_S:
+            continue
+        if best is None or entry["ts"] > best["ts"]:
+            best = entry
+    return best
+
+
 def _h_followup_query(match, ctx):
     if not match:
         return None
-    state = ctx["context_state"].get("last_slot_intent")
-    if not state or (time.time() - state.get("ts", 0) > _CONTEXT_TTL_S):
+    state = _latest_followup_entity(ctx)
+    if not state:
         return _quick(
             ctx, "I'm not sure what you're asking about — could you rephrase that?"
         )
@@ -919,6 +1044,20 @@ def _h_open_app(match, ctx):
     if not match:
         return None
     target = match.group(1).strip()
+    # PRONOUN RESOLUTION (NEW): the open_app fast-path regex captures
+    # whatever sits in the target position with no awareness that it
+    # might be a pronoun/reference ("that", "usko", ...) rather than a
+    # real app name -- this handler is reached directly, so it never
+    # goes through _route_chat_message()'s pronoun handling. Resolve it
+    # against the last remembered app BEFORE allowlist validation, so an
+    # unresolved reference gets a clear "which app?" message instead of
+    # being validated as a literal (and rejected as an unknown app).
+    resolved_target = _resolve_app_target(ctx, target)
+    if resolved_target is None:
+        return _quick(
+            ctx, "Which app would you like me to open?"
+        )
+    target = resolved_target
     if _HAS_PLANNING and validate_tool_arguments is not None:
         try:
             allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
@@ -936,6 +1075,12 @@ def _h_open_app(match, ctx):
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
             print(f"[Security] open_app validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely open that application.")
+    # CONTEXT TRACKING (NEW): remember the (validated) app name so a later
+    # turn -- e.g. a future pronoun-style "close it" handler -- has
+    # something to resolve "it" against. Recorded after validation so an
+    # app name the allowlist just rejected is never remembered as "last
+    # opened".
+    _remember_entity(ctx, "last_app", target)
     _ack(ctx)
     label = _activity_label(target)
     return _quick(
@@ -963,6 +1108,17 @@ def _h_close_app(match, ctx):
     if not match:
         return None
     app_name = match.group(1).strip()
+    # PRONOUN RESOLUTION (NEW): same rationale as _h_open_app() above --
+    # this fast-path handler never goes through _route_chat_message(), so
+    # "close it"/"usko band kar do" would otherwise reach allowlist
+    # validation with the literal pronoun as the "app name". Resolve
+    # against last_app first.
+    resolved_app_name = _resolve_app_target(ctx, app_name)
+    if resolved_app_name is None:
+        return _quick(
+            ctx, "Which app would you like me to close?"
+        )
+    app_name = resolved_app_name
     if _HAS_PLANNING and validate_tool_arguments is not None:
         try:
             allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
@@ -980,6 +1136,11 @@ def _h_close_app(match, ctx):
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
             print(f"[Security] close_app validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely close that application.")
+    # CONTEXT TRACKING (NEW): same rationale as _h_open_app() above --
+    # remember the (validated) app name regardless of whether it then
+    # turns out to be risky/pending-confirmation, since the user has
+    # unambiguously named it either way.
+    _remember_entity(ctx, "last_app", app_name)
     if _is_risky(app_name, _RISKY_APP_KEYWORDS):
         ctx["confirm_state"]["pending"] = {
             "action": "close_app",
@@ -1018,6 +1179,10 @@ def _h_find_file(match, ctx):
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     file_query = match.group(1).strip()
+    # CONTEXT TRACKING (NEW): same rationale as _h_open_app()'s last_app
+    # tracking above -- remember the searched-for file so a later turn
+    # has something to resolve a "that file" style reference against.
+    _remember_entity(ctx, "last_file", file_query)
     return _quick(
         ctx,
         _run_activity(
@@ -1072,9 +1237,27 @@ def _h_stop_service(match, ctx):
 def _h_restart_application(match, ctx):
     if not match:
         return None
+    app_name = match.group(1).strip()
+    # PRONOUN RESOLUTION (NEW): same rationale as _h_open_app()/
+    # _h_close_app() above -- this fast-path handler never goes through
+    # _route_chat_message(), so "restart it"/"usko restart karo" would
+    # otherwise be passed straight to system_tools.restart_application()
+    # as the literal pronoun. Resolve against last_app first, and bail
+    # out with a clarifying question (rather than a confusing failure
+    # from the underlying tool) if there's nothing fresh to resolve to.
+    resolved_app_name = _resolve_app_target(ctx, app_name)
+    if resolved_app_name is None:
+        return _quick(
+            ctx, "Which app would you like me to restart?"
+        )
+    app_name = resolved_app_name
+    # CONTEXT TRACKING (BUGFIX): this handler never updated last_app
+    # before, so a "restart chrome" followed by "close it" had nothing
+    # to resolve "it" against. Recorded here, same as _h_open_app()/
+    # _h_close_app(), so the slot stays accurate for the next follow-up.
+    _remember_entity(ctx, "last_app", app_name)
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    app_name = match.group(1).strip()
     label = _activity_label(app_name)
     return _quick(
         ctx,
@@ -1090,11 +1273,26 @@ def _h_restart_application(match, ctx):
 def _h_switch_to_application(match, ctx):
     if not match:
         return None
+    app_name = match.group(1).strip()
+    # PRONOUN RESOLUTION (NEW): same rationale as the other three app
+    # handlers above -- "switch to it"/"usme switch karo" would
+    # otherwise be passed straight through as the literal pronoun.
+    resolved_app_name = _resolve_app_target(ctx, app_name)
+    if resolved_app_name is None:
+        return _quick(
+            ctx, "Which app would you like me to switch to?"
+        )
+    app_name = resolved_app_name
+    # CONTEXT TRACKING (BUGFIX): same rationale as
+    # _h_restart_application() above -- this handler never updated
+    # last_app before, leaving nothing for a later "close it" to resolve
+    # against.
+    _remember_entity(ctx, "last_app", app_name)
     _ack(ctx)
     return _quick(
         ctx,
         _call_with_timeout(
-            system_tools.switch_to_application, match.group(1).strip(), tool_name="switch_to_application"
+            system_tools.switch_to_application, app_name, tool_name="switch_to_application"
         ),
     )
 
@@ -1778,14 +1976,116 @@ _CHAT_SIGNAL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# ── Unresolved pronoun/reference detection (NEW) ────────────────────────
+# Common Hindi/English pronoun & reference words that, on their own, tell
+# us nothing -- but combined with a still-fresh entry in
+# ctx["context_state"]["recent_entities"] (see _remember_entity() /
+# _CONTEXT_TTL_S higher up in this file), strongly suggest the user means
+# something they or Sara just talked about ("close it", "uska naam kya
+# hai", "wo wala phir se kholo"). Matched at a word boundary, same
+# discipline as _TOOL_SIGNAL_RE/_CHAT_SIGNAL_RE above, so this never
+# fires on a substring inside an unrelated word.
+_REFERENCE_HINT_RE = re.compile(
+    r"\b("
+    r"it|that one|this one|the other one|the same one|that|this|them|those|these"
+    r"|uska|uski|uske|usko|usse|iska|iski|iske|isko|isse"
+    r"|unka|unki|unke|unko|inka|inki|inke|inko"
+    r"|wo|voh|woh|vo|ye|yeh"
+    r"|waha|wahan|yaha|yahan"
+    r")\b",
+    re.IGNORECASE,
+)
 
-def _route_chat_message(user_input: str) -> str:
+
+def _is_pronoun_reference(text: str) -> bool:
     """
-    Decide which SINGLE routing stage (if any) a "chat"-intent message gets.
+    True if `text` contains an unresolved pronoun/reference word (see
+    _REFERENCE_HINT_RE above) -- e.g. "that", "usko", "wo wala" -- with
+    no attempt to resolve WHAT it refers to; that's the caller's job
+    (see _resolve_app_target() and _route_chat_message() below, the two
+    current call sites).
 
-    Returns exactly one of "plan", "tool", or "chat". Pure function: makes
-    no LLM call, touches no network, no DB, no shared state -- so it is
-    safe to call on every chat turn and trivially unit-testable.
+    Pulled out as its own tiny helper (rather than each call site
+    matching _REFERENCE_HINT_RE directly) so there's exactly ONE source
+    of truth for "what counts as an unresolved pronoun/reference" across
+    the whole file -- _route_chat_message()'s chat-path detection and
+    _resolve_app_target()'s fast-path-regex-handler detection now share
+    it instead of drifting independently.
+
+    Cheap, local, string-only regex match -- no LLM call, no I/O, safe
+    to call on every fast-path handler invocation with no added latency.
+    """
+    return bool(_REFERENCE_HINT_RE.search(text or ""))
+
+
+# Slot name (as written by _remember_entity()) -> human-readable label
+# used when describing a recent entity back to the LLM below. An
+# explicit whitelist, rather than reformatting the raw slot name, so a
+# slot with an awkward internal key never leaks straight into the prompt
+# unreadably.
+_ENTITY_SLOT_LABELS = {
+    "last_location": "location",
+    "last_topic": "topic",
+    "last_app": "application",
+    "last_file": "file",
+    "last_person": "person",
+}
+
+
+def _describe_recent_entities(context_state: dict) -> str:
+    """
+    Build a short, plain-text description of every still-fresh entry in
+    context_state["recent_entities"] (see _remember_entity() /
+    _CONTEXT_TTL_S higher up in this file) -- e.g.
+    "application: chrome; location: mumbai" -- for injection into the
+    chat prompt when the user's message contains an unresolved
+    pronoun/reference. Returns "" (never None, so callers can use it
+    directly in a plain `if` check, same as the existing memory_context
+    truthy-check pattern elsewhere in this codebase) when there's
+    nothing fresh to describe.
+
+    Deliberately includes EVERY still-fresh slot, not just the single
+    most recent one (unlike _latest_followup_entity() above, which must
+    pick exactly one because it feeds a specific tool call) -- the LLM
+    itself is far better placed than this pure-string function to work
+    out which of several recent things ("the app you opened" vs. "the
+    city you asked about") a given pronoun actually refers to.
+    """
+    entities = (context_state or {}).get("recent_entities") or {}
+    now = time.time()
+    parts = []
+    for slot_name, entry in entities.items():
+        if now - entry.get("ts", 0) > _CONTEXT_TTL_S:
+            continue
+        value = entry.get("value")
+        if not value:
+            continue
+        label = _ENTITY_SLOT_LABELS.get(slot_name, slot_name.replace("_", " "))
+        parts.append(f"{label}: {value}")
+    return "; ".join(parts)
+
+
+def _route_chat_message(user_input: str, context_state: dict = None) -> tuple:
+    """
+    Decide which SINGLE routing stage (if any) a "chat"-intent message
+    gets, and whether this turn should carry an injected "what the user
+    is likely referring to" hint into the final chat prompt.
+
+    Returns a (route, context_hint) 2-tuple: route is exactly one of
+    "plan", "tool", or "chat"; context_hint is None unless an unresolved
+    pronoun/reference ("it", "uska", "wo", ...) was found alongside at
+    least one still-fresh entry in context_state["recent_entities"], in
+    which case it's the short plain-text description built by
+    _describe_recent_entities() above.
+
+    context_state is OPTIONAL and defaults to None -- a caller that
+    doesn't pass it simply never gets a context_hint, and this
+    function's plan/tool/chat decision behaves EXACTLY as it did before
+    this parameter existed.
+
+    Pure function: makes no LLM call, touches no network, no DB, and
+    only READS (never writes) context_state -- so it remains safe to
+    call on every chat turn and trivially unit-testable.
 
     Order matters. The plan check runs first because a genuine multi-action
     message ("open chrome and then play some music") would ALSO match the
@@ -1794,7 +2094,28 @@ def _route_chat_message(user_input: str) -> str:
     """
     text = (user_input or "").strip()
     if not text:
-        return "chat"
+        return "chat", None
+
+    # ── 0. Unresolved pronoun/reference to something recent? ───────────
+    # Checked FIRST, ahead of the plan/tool heuristics below, and
+    # deliberately SHORT-CIRCUITS past them rather than touching their
+    # internal logic -- a message like "close it" or "uska naam kya hai"
+    # would otherwise be routed to the tool-router or planner purely on
+    # the strength of a verb, with no way for either to resolve what
+    # "it"/"uska" actually means. Going straight to chat -- with the
+    # recent-entity hint injected into the prompt -- gives the LLM a
+    # real chance instead of guessing blind or making the user repeat
+    # themselves.
+    #
+    # Gated on context_state actually having something fresh to offer
+    # (_describe_recent_entities() returns "" otherwise, which is
+    # falsy), so a genuinely context-free "how's it going" costs nothing
+    # extra and behaves exactly as before this feature existed -- still
+    # just a plain string match, no LLM call, no added latency.
+    if context_state and _is_pronoun_reference(text):
+        context_hint = _describe_recent_entities(context_state)
+        if context_hint:
+            return "chat", context_hint
 
     # ── 1. Multi-step plan? ─────────────────────────────────────────────
     planning_available = (
@@ -1819,7 +2140,7 @@ def _route_chat_message(user_input: str) -> str:
             # optional-feature call site in this module.
             wants_plan = False
         if wants_plan:
-            return "plan"
+            return "plan", None
 
     # ── 2. Single tool? ─────────────────────────────────────────────────
     tool_router_available = (
@@ -1829,17 +2150,17 @@ def _route_chat_message(user_input: str) -> str:
         and bool(TOOL_NAME_TO_INTENT)
     )
     if not tool_router_available:
-        return "chat"
+        return "chat", None
 
     if len(text.split()) > _TOOL_SIGNAL_MAX_WORDS:
-        return "chat"
+        return "chat", None
     if _CHAT_SIGNAL_RE.match(text):
-        return "chat"
+        return "chat", None
     if _TOOL_SIGNAL_RE.search(text):
-        return "tool"
+        return "tool", None
 
     # ── 3. Neither. Straight to plain chat, one LLM call total. ─────────
-    return "chat"
+    return "chat", None
 
 
 def _build_plan_dispatch_fn(ctx: dict):
@@ -2096,6 +2417,16 @@ def _handle_command(
             # AUDIT LOG (NEW): handler ran and produced a spoken result --
             # one "success" entry.
             _log_action(db, "intent", intent, "success")
+            # HISTORY FIX (NEW): fast-path intent handlers used to never
+            # reach SaraLLM's conversation history -- only the plain-chat
+            # path at the bottom of this function did. That left the LLM
+            # with zero memory this turn happened, so a follow-up like
+            # "cancel that" right after a fast-path handler ran would fail.
+            # brain.record_exchange() is a no-op-safe public wrapper (see
+            # engine.py) around the same _append_history() the plain-chat
+            # path already uses, so this reuses its existing dedup logic
+            # rather than introducing a second, divergent history mechanism.
+            brain.record_exchange(user_input, result)
             return result
         # AUDIT LOG (NEW): handler explicitly declined (returned None,
         # e.g. "if not match: return None") -- one "skipped" entry, then
@@ -2107,6 +2438,11 @@ def _handle_command(
             result = _quick(ctx, system_tools.SIMPLE_ACTIONS[intent]())
             # AUDIT LOG (NEW): zero-arg system action executed successfully.
             _log_action(db, "system_action", intent, "success")
+            # HISTORY FIX (NEW): same gap as the fast-path handler block
+            # above -- a zero-arg system action (lock_pc, mute, ...) never
+            # made it into SaraLLM's history before. See that block's
+            # comment for the full rationale.
+            brain.record_exchange(user_input, result)
             return result
         except Exception as e:
             print(f"[Core] SIMPLE_ACTIONS['{intent}'] raised: {e}")
@@ -2130,8 +2466,17 @@ def _handle_command(
     # plain-chat answer at the bottom of this function, never to an error
     # shown to the user, and never to an exception escaping into
     # run_sara_logic()'s fatal outer handler.
+    #
+    # CONTEXT INJECTION (NEW): context_hint is declared here, OUTSIDE the
+    # `if intent == "chat":` block below, so it's always defined by the
+    # time the generate_response_stream() call at the bottom of this
+    # function is reached -- that call is NOT itself gated on
+    # intent == "chat" (any unmatched intent can fall through to it), so
+    # leaving context_hint undefined for a non-chat intent would risk a
+    # NameError instead of the intended "no hint" no-op.
+    context_hint = None
     if intent == "chat":
-        chat_route = _route_chat_message(user_input)
+        chat_route, context_hint = _route_chat_message(user_input, context_state)
 
         if chat_route == "plan":
             # try_plan_and_execute() NEVER raises (see its own docstring);
@@ -2148,7 +2493,16 @@ def _handle_command(
                     allowed_apps=allowed_apps,
                 )
                 if plan_outcome is not None:
-                    return _quick(ctx, plan_outcome.final_message)
+                    plan_result = _quick(ctx, plan_outcome.final_message)
+                    # HISTORY FIX (NEW): a completed multi-step plan never
+                    # reached SaraLLM's history before -- see the fast-path
+                    # handler block above for the full rationale. Recorded
+                    # against the ORIGINAL user_input (not any intermediate
+                    # per-step text the planner may have used internally),
+                    # since that's what a follow-up turn will actually be
+                    # replying to.
+                    brain.record_exchange(user_input, plan_result)
+                    return plan_result
             except Exception as e:  # noqa: BLE001 -- absolute safety net
                 print(f"[Planning] Multi-step plan attempt failed unexpectedly: {e}")
             # NOTE: no longer falls through to the tool-router. The router
@@ -2169,6 +2523,16 @@ def _handle_command(
                     if tool_handler is not None:
                         tool_result = tool_handler(fake_match, ctx)
                         if tool_result is not None:
+                            # HISTORY FIX (NEW): a resolved single-tool
+                            # result never reached SaraLLM's history before
+                            # -- see the fast-path handler block above for
+                            # the full rationale. Recorded against the
+                            # ORIGINAL user_input the user actually said,
+                            # not the synthetic fake_match built from the
+                            # tool-router's parsed arguments, so a later
+                            # "that"/"it" follow-up resolves against what
+                            # the user is actually referring back to.
+                            brain.record_exchange(user_input, tool_result)
                             return tool_result
             except Exception as e:
                 print(f"[ToolRouter] resolution failed: {e}")
@@ -2190,7 +2554,7 @@ def _handle_command(
 
     ui_update("status", "thinking")
     try:
-        stream = brain.generate_response_stream(user_input)
+        stream = brain.generate_response_stream(user_input, reference_context=context_hint)
         sentences = tts.speak_stream(
             stream,
             on_first_chunk=lambda: ui_update("status", "speaking"),
