@@ -221,6 +221,12 @@ _MAX_LLM_RETRY_DELAY_S = 30.0
 _MIN_LLM_WARMUP_WAIT_S = 0.0
 _MAX_LLM_WARMUP_WAIT_S = 120.0
 
+_MIN_LLM_CIRCUIT_BREAKER_THRESHOLD = 1
+_MAX_LLM_CIRCUIT_BREAKER_THRESHOLD = 20
+
+_MIN_LLM_CIRCUIT_BREAKER_COOLDOWN_S = 1.0
+_MAX_LLM_CIRCUIT_BREAKER_COOLDOWN_S = 900.0
+
 _MIN_GEMINI_HISTORY_TOKENS = 1_000
 _MAX_GEMINI_HISTORY_TOKENS = 200_000
 
@@ -275,7 +281,7 @@ class Config:
     _validated: bool = False
 
     # ── LLM backend ───────────────────────────────────────────────────────
-    LLM_BACKEND: str = os.getenv("LLM_BACKEND", "ollama").lower()
+    LLM_BACKEND: str = os.getenv("LLM_BACKEND", "gemini").lower()
 
     # ── Ollama ────────────────────────────────────────────────────────────
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
@@ -333,6 +339,22 @@ class Config:
         os.getenv("LLM_RETRY_MAX_DELAY_S"), default=8.0
     )
     LLM_WARMUP_WAIT_S: float = _float(os.getenv("LLM_WARMUP_WAIT_S"), default=20.0)
+
+    # ── Primary-backend circuit breaker ──────────────────────────────────
+    # Only meaningful when a fallback stage exists (LLM_FALLBACK_ENABLED).
+    # After this many CONSECUTIVE zero-token primary-backend failures in
+    # a row (e.g. Gemini quota exhausted, or genuinely offline), SARA
+    # stops re-trying the primary on every turn and goes straight to the
+    # fallback for LLM_CIRCUIT_BREAKER_COOLDOWN_S seconds, instead of
+    # paying the full LLM_MAX_RETRIES backoff again each time. A single
+    # primary success (during or after the cooldown) immediately resets
+    # the breaker.
+    LLM_CIRCUIT_BREAKER_THRESHOLD: int = _int(
+        os.getenv("LLM_CIRCUIT_BREAKER_THRESHOLD"), default=3
+    )
+    LLM_CIRCUIT_BREAKER_COOLDOWN_S: float = _float(
+        os.getenv("LLM_CIRCUIT_BREAKER_COOLDOWN_S"), default=60.0
+    )
 
     # ── Kokoro ONNX TTS — model / runtime ───────────────────────────────────
     KOKORO_MODEL_PATH: str = os.getenv("KOKORO_MODEL_PATH", "models/kokoro-v1.0.onnx")
@@ -654,6 +676,9 @@ class Config:
     NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH") or str(
         _PROJECT_ROOT / "sara_notes.txt"
     )
+    TODO_FILE_PATH: str = os.getenv("TODO_FILE_PATH") or str(
+        _PROJECT_ROOT / "sara_todos.txt"
+    )
     UNMATCHED_LOG_PATH: str = os.getenv("UNMATCHED_LOG_PATH") or str(
         _PROJECT_ROOT / "sara_unmatched_queries.jsonl"
     )
@@ -672,21 +697,50 @@ class Config:
             return
 
         # ── LLM backend ───────────────────────────────────────────────────
+        # BUGFIX: the "unknown LLM_BACKEND" normalization below now runs
+        # BEFORE the GEMINI_API_KEY check, not after. With the old
+        # ordering, an unrecognized LLM_BACKEND value (typo, stray
+        # whitespace, etc.) would skip the API-key check entirely (since
+        # it wasn't literally "gemini" yet), get silently normalized to
+        # "gemini" afterwards, and the app would start in Gemini-primary
+        # mode with NO API-key validation ever having run against it --
+        # the exact silent-misconfiguration failure mode this whole
+        # section exists to prevent. Normalizing first means every path
+        # through this method sees a resolved, known LLM_BACKEND value
+        # by the time the API-key check runs.
+        if cls.LLM_BACKEND not in ("ollama", "gemini"):
+            print(
+                f"[Warning] Unknown LLM_BACKEND '{cls.LLM_BACKEND}', defaulting to 'gemini'."
+            )
+            cls.LLM_BACKEND = "gemini"
+
         if cls.LLM_BACKEND == "gemini":
             if not cls.GEMINI_API_KEY or cls.GEMINI_API_KEY in (
                 "",
                 "your_api_key_here",
             ):
+                # CLARITY FIX: the old message's "switch LLM_BACKEND to
+                # 'ollama'" suggestion read as if that were just enabling
+                # the existing fallback -- it isn't. LLM_FALLBACK_ENABLED
+                # only ever applies when Gemini IS the primary backend
+                # (see SaraLLM.__init__ in engine.py); setting
+                # LLM_BACKEND=ollama makes Ollama the PRIMARY with no
+                # Gemini involved at all, which is a deliberate, fully
+                # local/offline opt-out from this project's intended
+                # Gemini-primary/Ollama-fallback setup, not "the
+                # fallback kicking in". The message now says so
+                # explicitly, and makes clear this is a hard failure --
+                # SARA never silently starts in Ollama-as-primary mode
+                # just because the key is missing.
                 raise ConfigError(
                     "LLM_BACKEND is 'gemini' but GEMINI_API_KEY is missing. "
-                    "Set GEMINI_API_KEY in your .env file, or switch "
-                    "LLM_BACKEND to 'ollama' to use a local model instead."
+                    "SARA is refusing to start rather than silently "
+                    "falling back to Ollama as the primary backend. Set "
+                    "GEMINI_API_KEY in your .env file to use the intended "
+                    "Gemini-primary/Ollama-fallback setup, or explicitly "
+                    "set LLM_BACKEND=ollama if you want to run fully "
+                    "local/offline with no Gemini involved at all."
                 )
-        if cls.LLM_BACKEND not in ("ollama", "gemini"):
-            print(
-                f"[Warning] Unknown LLM_BACKEND '{cls.LLM_BACKEND}', defaulting to 'ollama'."
-            )
-            cls.LLM_BACKEND = "ollama"
 
         # ── LLM retry / warm-up clamps ─────────────────────────────────────
         cls.LLM_MAX_RETRIES = max(
@@ -702,6 +756,14 @@ class Config:
         )
         cls.LLM_WARMUP_WAIT_S = max(
             _MIN_LLM_WARMUP_WAIT_S, min(_MAX_LLM_WARMUP_WAIT_S, cls.LLM_WARMUP_WAIT_S)
+        )
+        cls.LLM_CIRCUIT_BREAKER_THRESHOLD = max(
+            _MIN_LLM_CIRCUIT_BREAKER_THRESHOLD,
+            min(_MAX_LLM_CIRCUIT_BREAKER_THRESHOLD, cls.LLM_CIRCUIT_BREAKER_THRESHOLD),
+        )
+        cls.LLM_CIRCUIT_BREAKER_COOLDOWN_S = max(
+            _MIN_LLM_CIRCUIT_BREAKER_COOLDOWN_S,
+            min(_MAX_LLM_CIRCUIT_BREAKER_COOLDOWN_S, cls.LLM_CIRCUIT_BREAKER_COOLDOWN_S),
         )
         cls.GEMINI_MAX_HISTORY_TOKENS = max(
             _MIN_GEMINI_HISTORY_TOKENS,

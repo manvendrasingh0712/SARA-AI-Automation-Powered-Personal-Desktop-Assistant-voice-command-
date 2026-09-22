@@ -84,8 +84,16 @@ TOOL_NAME_TO_INTENT: Dict[str, str] = {
     "clipboard_read": "clipboard_read",
     "clipboard_write": "clipboard_write",
     "open_app": "open_app",
+    "open_file": "open_file",
     "close_app": "close_app",
     "calculator": "calculator",
+    "set_alarm": "set_alarm",
+    "start_stopwatch": "start_stopwatch",
+    "stop_stopwatch": "stop_stopwatch",
+    "add_todo": "add_todo",
+    "list_todos": "list_todos",
+    "complete_todo": "complete_todo",
+    "delete_todo": "delete_todo",
 }
 
 # ══════════════════════════════════════════════════════════════════════
@@ -235,6 +243,20 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "open_file",
+            "description": "Find a file by name in the user's common folders (Downloads, Documents, Desktop, Pictures, Music, Videos, home) and open it. Only opens it when exactly one match is found; if the name is ambiguous (multiple matches) or not found, it reports that instead of guessing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Filename or partial filename to find and open, e.g. 'resume' or 'budget.xlsx'."}
+                },
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "close_app",
             "description": "Close/quit a desktop application by name.",
             "parameters": {
@@ -257,6 +279,95 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
                     "expr": {"type": "string", "description": "The math expression to evaluate, e.g. '12 * (3 + 4)'."}
                 },
                 "required": ["expr"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_alarm",
+            "description": "Set a clock-time alarm for a specific time of day, e.g. '7am' or '6:30pm'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "string", "description": "The clock time to set the alarm for, e.g. '7am' or '6:30pm'."}
+                },
+                "required": ["time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_stopwatch",
+            "description": "Start a stopwatch to time how long something takes.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_stopwatch",
+            "description": "Stop the running stopwatch and report the elapsed time.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_todo",
+            "description": "Add a new item to the user's to-do list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The to-do item text, e.g. 'buy milk'."}
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_todos",
+            "description": "Read back the user's to-do list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "description": "'all' to include completed items too. Empty string for pending items only.",
+                    }
+                },
+                "required": ["scope"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_todo",
+            "description": "Mark a to-do item as done, identified by its id or by matching its text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "identifier": {"type": "string", "description": "The to-do's id, or a phrase matching its text, e.g. 'buy milk'."}
+                },
+                "required": ["identifier"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_todo",
+            "description": "Delete a to-do item, identified by its id or by matching its text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "identifier": {"type": "string", "description": "The to-do's id, or a phrase matching its text, e.g. 'buy milk'."}
+                },
+                "required": ["identifier"],
             },
         },
     },
@@ -477,6 +588,8 @@ _TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
         "open", "launch", "start",
         "close", "quit", "exit", "terminate",
         "calculate",
+        "alarm", "wake me",
+        "stopwatch",
     }
 )
 
@@ -550,6 +663,18 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
     if _kw_present(lowered, ("clipboard",)) and _kw_present(lowered, ("copy", "write", "paste", "set")):
         snippet = _extract_after_phrases(text, ("copy", "write", "paste", "set"))
         return {"name": "clipboard_write", "arguments": {"text": snippet}}
+
+    if _kw_present(lowered, ("alarm", "wake me")):
+        time_text = _extract_after_phrases(
+            text, ("alarm for", "alarm at", "wake me up at", "wake me at", "wake me up for", "alarm")
+        )
+        return {"name": "set_alarm", "arguments": {"time": time_text or text}}
+
+    if _kw_present(lowered, ("stopwatch",)) and _kw_present(lowered, ("start", "begin")):
+        return {"name": "start_stopwatch", "arguments": {}}
+
+    if _kw_present(lowered, ("stopwatch",)) and _kw_present(lowered, ("stop", "end")):
+        return {"name": "stop_stopwatch", "arguments": {}}
 
     if _kw_present(lowered, ("open", "launch", "start")):
         app = _extract_after_phrases(text, ("open", "launch", "start"))
@@ -742,8 +867,21 @@ def build_fake_match(tool_name: str, arguments: Dict[str, Any]) -> Optional[_Fak
         return _FakeMatch(())
     if tool_name == "clipboard_write":
         return _FakeMatch((arguments.get("text", ""),))
-    if tool_name in ("open_app", "close_app"):
+    if tool_name in ("open_app", "close_app", "open_file"):
         return _FakeMatch((arguments.get("target", ""),))
     if tool_name == "calculator":
         return _FakeMatch((arguments.get("expr", ""),))
+    if tool_name == "set_alarm":
+        return _FakeMatch((arguments.get("time", ""),))
+    if tool_name in ("start_stopwatch", "stop_stopwatch"):
+        return _FakeMatch(())
+    if tool_name == "add_todo":
+        return _FakeMatch((arguments.get("text", ""),))
+    if tool_name == "list_todos":
+        # arguments.get("scope","") lines up with _h_list_todos()'s
+        # match.group(1) check in intent_handlers.py: "" (or missing)
+        # -> pending-only, "all"/"everything" -> include completed too.
+        return _FakeMatch((arguments.get("scope", ""),))
+    if tool_name in ("complete_todo", "delete_todo"):
+        return _FakeMatch((arguments.get("identifier", ""),))
     return None

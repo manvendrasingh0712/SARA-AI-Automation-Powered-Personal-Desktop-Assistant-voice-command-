@@ -577,6 +577,79 @@ def _h_set_timer(match, ctx):
     return _quick(ctx, system_tools.set_timer(seconds, duration_text, _timer_done))
 
 
+def _h_set_alarm(match, ctx):
+    """
+    "set an alarm for 7am" / "wake me up at 6:30" -- a CLOCK-TIME alarm,
+    distinct from _h_set_timer()'s DURATION-based countdown above. Parses
+    the target time via dateparser (same restricted-language pattern as
+    _h_calendar_create()'s dateparser.parse() call further down this
+    file), computes the delay until it next occurs, and hands the
+    resulting seconds off to the EXACT SAME system_tools.set_timer() /
+    play_alarm_beep() mechanism _h_set_timer() uses above -- an alarm is
+    just a timer computed from a clock time, so the underlying
+    scheduling/beeping logic is intentionally not duplicated here.
+    """
+    if not match:
+        return None
+    time_text = match.group(1).strip()
+    if not time_text:
+        return _quick(ctx, "What time would you like the alarm for?")
+
+    target_dt = dateparser.parse(
+        time_text,
+        languages=_CALENDAR_DATEPARSER_LANGUAGES,
+        settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": datetime.now()},
+    )
+    if not target_dt:
+        return _quick(ctx, f"Sorry, I couldn't understand the time '{time_text}'.")
+
+    now = datetime.now()
+    if target_dt <= now:
+        # EDGE CASE: dateparser's PREFER_DATES_FROM="future" resolves
+        # ambiguous DATES (e.g. "Friday") into the future, but a bare
+        # clock time with no date component (e.g. "7am") has no date to
+        # roll forward -- it can still resolve to today's 7am even after
+        # that's already passed. Roll it onto tomorrow ourselves rather
+        # than trust that setting to cover this case (behavior here can
+        # vary by dateparser version), and rather than reject it the way
+        # _h_calendar_create() does above -- "wake me up at 7am" said at
+        # 8am clearly means tomorrow, not "that's not possible".
+        target_dt += timedelta(days=1)
+
+    seconds = (target_dt - now).total_seconds()
+    if seconds <= 0:
+        # Defensive: should be unreachable after the rollover above, but
+        # set_timer() has no defined behavior for a non-positive delay,
+        # so guard it explicitly rather than trust the arithmetic blindly.
+        return _quick(ctx, f"Sorry, I couldn't understand the time '{time_text}'.")
+
+    label = target_dt.strftime("%I:%M %p").lstrip("0")
+    tts, ui_update = ctx["tts"], ctx["ui_update"]
+
+    def _alarm_done(msg: str):
+        try:
+            play_alarm_beep(repetitions=2)
+        except Exception as e:
+            print(f"[Warning] alarm beep failed: {e}")
+        ui_update("status", "speaking")
+        tts.speak(msg, fast=True)
+        ui_update("transcript", "sara", f"\u23f0 {msg}")
+
+    return _quick(ctx, system_tools.set_timer(seconds, label, _alarm_done))
+
+
+def _h_start_stopwatch(match, ctx):
+    return _quick(ctx, system_tools.start_stopwatch())
+
+
+def _h_stop_stopwatch(match, ctx):
+    return _quick(ctx, system_tools.stop_stopwatch())
+
+
+def _h_lap_stopwatch(match, ctx):
+    return _quick(ctx, system_tools.lap_stopwatch())
+
+
 def _h_take_note(match, ctx):
     if not match:
         return None
@@ -589,6 +662,36 @@ def _h_read_notes(match, ctx):
 
 def _h_clear_notes(match, ctx):
     return _quick(ctx, system_tools.clear_notes())
+
+
+def _h_add_todo(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.add_todo(match.group(1).strip()))
+
+
+def _h_list_todos(match, ctx):
+    """
+    "what are my to-dos" defaults to pending-only (group(1) absent/
+    empty); "show me all my to-dos" / "show everything" captures
+    "all"/"everything" into group(1), which flips pending_only off --
+    same optional-capture-group shape as _h_news()'s topic handling
+    above.
+    """
+    pending_only = not (match and match.lastindex and match.group(1))
+    return _quick(ctx, system_tools.list_todos(pending_only=pending_only))
+
+
+def _h_complete_todo(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.complete_todo(match.group(1).strip()))
+
+
+def _h_delete_todo(match, ctx):
+    if not match:
+        return None
+    return _quick(ctx, system_tools.delete_todo(match.group(1).strip()))
 
 
 def _h_clipboard_read(match, ctx):
@@ -1190,6 +1293,39 @@ def _h_find_file(match, ctx):
             lambda: _call_with_timeout(system_tools.find_file, file_query, tool_name="find_file"),
         ),
     )
+
+
+def _h_open_file(match, ctx):
+    """
+    Finds and opens a file captured by the new open_file fast-path
+    regex (or resolved by the LLM single-tool router -- see
+    TOOL_NAME_TO_INTENT/TOOLS_SCHEMA in tool_router.py). Mirrors
+    _h_find_file() above exactly (_ack(), "thinking" status,
+    last_file context tracking, _run_activity() card) -- the only
+    difference is which system_tools function it calls: this backs the
+    ambiguity-safe find_and_open_file() rather than the search-only
+    find_file(), so "open my resume" actually opens the file instead
+    of only reading its path back.
+    """
+    if not match:
+        return None
+    _ack(ctx)
+    ctx["ui_update"]("status", "thinking")
+    file_query = match.group(1).strip()
+    # CONTEXT TRACKING (NEW): same rationale as _h_find_file()'s
+    # last_file tracking above -- remember the file so a later turn has
+    # something to resolve a "that file" style reference against.
+    _remember_entity(ctx, "last_file", file_query)
+    return _quick(
+        ctx,
+        _run_activity(
+            ctx, "file", "Opening file", "Done", "Couldn't open that file",
+            lambda: _call_with_timeout(
+                system_tools.find_and_open_file, file_query, tool_name="find_and_open_file"
+            ),
+        ),
+    )
+
 
 def _h_start_service(match, ctx):
     if not match:
@@ -1829,9 +1965,17 @@ _INTENT_HANDLERS = {
     "reminder_list": _h_reminder_list,
     "reminder_cancel": _h_reminder_cancel,
     "set_timer": _h_set_timer,
+    "set_alarm": _h_set_alarm,
+    "start_stopwatch": _h_start_stopwatch,
+    "stop_stopwatch": _h_stop_stopwatch,
+    "lap_stopwatch": _h_lap_stopwatch,
     "take_note": _h_take_note,
     "read_notes": _h_read_notes,
     "clear_notes": _h_clear_notes,
+    "add_todo": _h_add_todo,
+    "list_todos": _h_list_todos,
+    "complete_todo": _h_complete_todo,
+    "delete_todo": _h_delete_todo,
     "clipboard_read": _h_clipboard_read,
     "clipboard_write": _h_clipboard_write,
     "screenshot_describe": _h_screenshot_describe,
@@ -1855,6 +1999,7 @@ _INTENT_HANDLERS = {
     "typing_text": _h_typing_text,
     "press_key": _h_press_key,
     "find_file": _h_find_file,
+    "open_file": _h_open_file,
     "start_service": _h_start_service,
     "stop_service": _h_stop_service,
     "restart_application": _h_restart_application,
