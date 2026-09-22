@@ -156,6 +156,22 @@ class SaraLLM:
         # race and create two executors if two requests hit it at once.
         self._fact_executor_lock = threading.Lock()
 
+        # CIRCUIT BREAKER FIX: instance-level (NOT global/class-level --
+        # each SaraLLM owns its own breaker) state tracking consecutive
+        # PRIMARY-backend failures across turns, so an outage doesn't
+        # force every single turn to re-pay the full LLM_MAX_RETRIES
+        # backoff before falling back. time.monotonic() is used for the
+        # cooldown deadline rather than time.time() so a wall-clock
+        # adjustment (NTP sync, DST, manual change) can never cause the
+        # breaker to stay tripped forever or reset early. Guarded by its
+        # own lock (same discipline as self._history_lock above) since
+        # _stream_generic() can run concurrently across threads. See
+        # _circuit_breaker_active()/_record_success()/_record_failure()
+        # and _stream_generic() for where this is consulted/updated.
+        self._cb_lock = threading.Lock()
+        self._cb_consecutive_failures: int = 0
+        self._cb_cooldown_until: float = 0.0
+
         self.user_name: Optional[str] = None
         self._tz: str = getattr(self._cfg, "SARA_TIMEZONE", "local")
 
@@ -188,7 +204,19 @@ class SaraLLM:
             self._cfg, "GEMINI_MODEL", "gemini-2.5-flash"
         )
 
-        self._primary_backend = getattr(self._cfg, "LLM_BACKEND", "ollama")
+        # Ollama-as-primary remains a fully supported LOCAL/OFFLINE mode
+        # for users without a Gemini API key (LLM_BACKEND=ollama in
+        # config.py) -- but this project's default, INTENDED setup is
+        # Gemini-primary with Ollama as the fallback (see
+        # self._fallback_enabled just below), never the reverse. Don't
+        # mistake this dual-primary code path for an oversight.
+        # CONSISTENCY FIX: the getattr default here is now "gemini" too,
+        # matching config.py's own LLM_BACKEND default -- previously it
+        # said "ollama", so a Config-like object that omitted
+        # LLM_BACKEND entirely (e.g. a hand-rolled cfg in a test) would
+        # have silently degraded to local-only Ollama instead of the
+        # intended Gemini-primary/Ollama-fallback setup.
+        self._primary_backend = getattr(self._cfg, "LLM_BACKEND", "gemini")
         # Gemini -> Ollama automatic fallback (see _stream_generic /
         # generate_response_stream). Only meaningful when Gemini is the
         # primary backend -- Ollama has nowhere further to fall back to.
@@ -566,6 +594,38 @@ class SaraLLM:
         clean_ready = [_clean_markdown(s) for s in ready if s.strip()]
         return clean_ready, remainder
 
+    # ── Primary-backend circuit breaker ──────────────────────────────────
+
+    def _circuit_breaker_active(self) -> bool:
+        """Thread-safe check: True while the primary backend's breaker
+        is still tripped (inside its LLM_CIRCUIT_BREAKER_COOLDOWN_S
+        cooldown window). Once the deadline passes this reverts to
+        False on its own -- the very next turn "probes" the primary
+        normally again, per point 4 of the circuit-breaker spec."""
+        with self._cb_lock:
+            return time.monotonic() < self._cb_cooldown_until
+
+    def _circuit_breaker_record_success(self) -> None:
+        """Stage-0 (primary) succeeded -- immediately reset the failure
+        streak and clear any active trip. A single success un-trips the
+        breaker even mid-cooldown, since it proves the primary is
+        healthy again right now."""
+        with self._cb_lock:
+            self._cb_consecutive_failures = 0
+            self._cb_cooldown_until = 0.0
+
+    def _circuit_breaker_record_failure(self) -> None:
+        """Stage-0 (primary) exhausted its retries without yielding a
+        single token. Bump the consecutive-failure streak and, once it
+        reaches LLM_CIRCUIT_BREAKER_THRESHOLD, (re-)trip the breaker
+        with a fresh LLM_CIRCUIT_BREAKER_COOLDOWN_S window."""
+        threshold = int(getattr(self._cfg, "LLM_CIRCUIT_BREAKER_THRESHOLD", 3))
+        cooldown = float(getattr(self._cfg, "LLM_CIRCUIT_BREAKER_COOLDOWN_S", 60.0))
+        with self._cb_lock:
+            self._cb_consecutive_failures += 1
+            if self._cb_consecutive_failures >= threshold:
+                self._cb_cooldown_until = time.monotonic() + cooldown
+
     def _stream_generic(
         self,
         prompt: str,
@@ -603,7 +663,27 @@ class SaraLLM:
         reply_parts: list[str] = []
         stream_ok = False
 
+        # CIRCUIT BREAKER FIX: if the primary has racked up
+        # LLM_CIRCUIT_BREAKER_THRESHOLD consecutive zero-token failures
+        # and we're still inside the resulting cooldown, skip stage 0
+        # entirely this turn and go straight to the fallback -- but only
+        # when a fallback stage actually exists (len(stages) > 1, i.e.
+        # self._fallback_enabled). With a single-stage setup there is
+        # nothing to fall back to, so behavior there is fully unchanged:
+        # some attempt at the primary is always strictly better than
+        # yielding nothing.
+        skip_primary = len(stages) > 1 and self._circuit_breaker_active()
+        if skip_primary and is_debug:
+            print(
+                "[LLM] Circuit breaker tripped — skipping primary backend "
+                "this turn, going straight to fallback."
+            )
+
         for stage_idx, (stage_name, open_stream) in enumerate(stages):
+            if stage_idx == 0 and skip_primary:
+                # Primary is presumed still down -- don't burn the
+                # LLM_MAX_RETRIES backoff against it again this turn.
+                continue
             is_last_stage = stage_idx == len(stages) - 1
             stage_retries = max_retries if stage_idx == 0 else fallback_max_retries
             yielded_any = False
@@ -691,6 +771,19 @@ class SaraLLM:
                             stream_iter.close()
                         except Exception:
                             pass
+
+            if stage_idx == 0:
+                # CIRCUIT BREAKER FIX: record this turn's primary-backend
+                # outcome. A full zero-token exhaustion (retries used up,
+                # yielded_any still False) is what actually indicates
+                # "primary is down" -- a partial mid-stream interruption
+                # (yielded_any True) means the primary DID connect and
+                # start responding, so that case is deliberately left
+                # out of the failure count below.
+                if stream_ok:
+                    self._circuit_breaker_record_success()
+                elif not yielded_any:
+                    self._circuit_breaker_record_failure()
 
             if stream_ok:
                 # This stage succeeded outright -- done.
