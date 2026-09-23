@@ -44,7 +44,18 @@ from .shortcuts import (
     scroll_up, scroll_down, scroll_top, scroll_bottom,
 )
 from .connectivity import wifi_on, wifi_off, bluetooth_on, bluetooth_off, dark_mode, light_mode
-from .files_notes import find_file, empty_recycle_bin, take_note, read_notes, clear_notes, get_notes
+from .files_notes import (
+    find_file,
+    empty_recycle_bin,
+    take_note,
+    read_notes,
+    clear_notes,
+    get_notes,
+    add_todo,
+    list_todos,
+    complete_todo,
+    delete_todo,
+)
 from .timers import set_timer, cancel_timer
 from .folders import (
     open_downloads, open_documents, open_desktop_folder, open_pictures, open_music,
@@ -82,7 +93,9 @@ __all__ = [
     "zoom_out", "zoom_reset", "scroll_up", "scroll_down", "scroll_top",
     "scroll_bottom", "wifi_on", "wifi_off", "bluetooth_on", "bluetooth_off",
     "dark_mode", "light_mode", "find_file", "empty_recycle_bin", "take_note",
-    "read_notes", "clear_notes", "get_notes", "set_timer", "cancel_timer",
+    "read_notes", "clear_notes", "get_notes",
+    "add_todo", "list_todos", "complete_todo", "delete_todo",
+    "set_timer", "cancel_timer",
     "open_downloads", "open_documents", "open_desktop_folder", "open_pictures",
     "open_music", "open_videos", "open_this_pc", "open_recycle_bin",
     "open_file_explorer", "open_control_panel", "open_task_manager",
