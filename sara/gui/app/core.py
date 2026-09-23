@@ -97,6 +97,7 @@ class ApiCoreMixin:
         volume_state=None,
         playback_state=None,
         context_state=None,
+        notes_memory=None,
     ):
         self.brain = brain
         self.tts = tts
@@ -114,6 +115,15 @@ class ApiCoreMixin:
         # control genuinely pause the wake-word detection loop, not just
         # the UI display.
         self.assistant_state = assistant_state
+        # BUGFIX (notes_memory never reached the GUI text-command path):
+        # build_core_objects() constructs this once and shares it with
+        # both run_sara_logic() (voice loop) and SaraLLM itself, but
+        # bootstrap.py's Api(...) call and this __init__ never stored it
+        # -- so send_text_command() -> _handle_command() always ran with
+        # notes_memory=None, silently breaking "what do you remember
+        # about me" / "forget that I like X" / "forget everything
+        # long-term" whenever typed in the GUI instead of spoken.
+        self.notes_memory = notes_memory
 
         # ── LATENCY OPTIMIZATION ──────────────────────────────────────────
         # Caching heavy imports inside __init__ ensures we avoid circular imports
@@ -513,6 +523,7 @@ class ApiCoreMixin:
                     self.vision,
                     _push,
                     self.volume_state,
+                    notes_memory=self.notes_memory,
                     playback_state=self.playback_state,
                     confirm_state=self.confirm_state,
                     context_state=self.context_state,

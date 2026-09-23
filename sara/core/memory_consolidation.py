@@ -1,11 +1,20 @@
 """
 sara.core.memory_consolidation
 Periodic background summarizer that reads the most recent raw
-conversation_log entries and asks the LOCAL Ollama LLM (via the existing
-brain.generate_response() call, sara/core/llm/engine.py -- never a new
-cloud client) to extract a handful of short, durable "facts worth
-remembering long-term", storing them into the existing RAG long-term
-memory store (sara/core/rag.py's LongTermMemory.add_memory()).
+conversation_log entries and asks the model behind the existing
+brain.generate_response() call (sara/core/llm/engine.py's SaraLLM --
+never a new/separate client of any kind) to extract a handful of short,
+durable "facts worth remembering long-term", storing them into the
+existing RAG long-term memory store (sara/core/rag.py's
+LongTermMemory.add_memory()).
+
+Because this module only ever calls brain.generate_response(), it
+automatically follows whichever backend the rest of the app is actually
+using at the time: Ollama-only (LLM_BACKEND=ollama), Gemini-primary, or
+Gemini-primary-currently-running-on-its-Ollama-fallback (per SaraLLM's
+circuit breaker). This module does not know or care which of those is
+active -- see brain.is_usable() below for how it confirms *some* stage
+is currently viable before spending a tick on it.
 
 DESIGN
 ------
@@ -16,13 +25,19 @@ sara/orchestrator/proactive.py:
   - sleeps in a loop checking a stop-event (never a busy-loop)
   - every tick is wrapped in its own try/except so one bad pass can
     never kill the thread
-  - if Ollama is unreachable, this SKIPS the tick silently (a logged
-    warning, never a crash) and tries again next interval -- per this
-    feature's spec ("must never run if Ollama is unreachable").
+  - if brain.is_usable() reports no backend stage is currently viable
+    (see sara/core/llm/engine.py's SaraLLM.is_usable()), this SKIPS the
+    tick silently (a logged warning, never a crash) and tries again
+    next interval -- per this feature's spec ("must never run if the
+    configured LLM backend(s) are unreachable").
 
-100% LOCAL / FREE: the only network call this module ever makes is to
-Config.OLLAMA_HOST (the same local Ollama server the rest of Sara
-already depends on for chat) -- no paid API, no new cloud service.
+NO DIRECT NETWORK CALLS: this module itself never opens a network
+connection of its own -- it only ever calls the already-existing
+brain.generate_response(), so whatever backend(s) that call reaches
+(local Ollama, cloud Gemini, or Gemini-with-Ollama-fallback) is
+entirely SaraLLM's concern, not this module's. Whether that chain is
+free/local, paid/cloud, or a mix depends purely on how LLM_BACKEND and
+LLM_FALLBACK_ENABLED are configured elsewhere.
 
 WIRING (NOT done automatically by this file)
 ---------------------------------------------
@@ -54,7 +69,6 @@ import threading
 from typing import List, Optional
 
 from config import Config
-from sara.core.llm.clients import _get_gemini_client
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +87,6 @@ _EXTRACTION_PROMPT_TEMPLATE = (
 )
 
 _BULLET_PREFIX_RE = re.compile(r"^[\-\*\d\.\)\s]+")
-
-
-def _is_gemini_reachable() -> bool:
-    try:
-        return _get_gemini_client(Config) is not None
-    except Exception:
-        return False
 
 
 def _extract_facts(brain, conversation_text: str, max_facts: int) -> List[str]:
@@ -148,10 +155,17 @@ def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> N
             if rag_memory is None or not getattr(rag_memory, "enabled", False):
                 stop_event.wait(_STOP_POLL_S)
                 continue
-            if not _is_gemini_reachable():
+            if not brain.is_usable():
+                # brain.is_usable() (sara/core/llm/engine.py) is a cheap,
+                # already-computed state read -- it mirrors the exact
+                # same stage-selection logic _stream_generic() uses to
+                # decide whether at least one backend stage (primary or
+                # fallback) is currently viable, so checking it here adds
+                # no network I/O and no latency to this loop.
                 logger.debug(
-                    "[MemoryConsolidation] Gemini unreachable this cycle -- skipping "
-                    "(per spec: never runs while Gemini is down)."
+                    "[MemoryConsolidation] brain backend chain unusable this cycle -- "
+                    "skipping (per spec: never runs while brain.generate_response() "
+                    "would have nowhere left to go)."
                 )
                 stop_event.wait(interval_s)
                 continue

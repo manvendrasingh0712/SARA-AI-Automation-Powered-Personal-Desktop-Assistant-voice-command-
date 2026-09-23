@@ -56,6 +56,12 @@ _STREAM_INTERRUPTED_MESSAGES = {
     "hinglish": "Hmm, beech mein thoda glitch ho gaya — abhi bas itna hi.",
 }
 
+# FALLBACK-DISCLOSURE FIX: single source of truth for the Ollama
+# fallback stage's label, shared between where the stage is registered
+# (generate_response_stream()) and where it's checked
+# (used_fallback_last_turn()) so the two can never silently drift apart.
+_FALLBACK_STAGE_LABEL = "ollama-fallback"
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Language-aware system prompt templates
@@ -171,6 +177,24 @@ class SaraLLM:
         self._cb_lock = threading.Lock()
         self._cb_consecutive_failures: int = 0
         self._cb_cooldown_until: float = 0.0
+
+        # FALLBACK-DISCLOSURE FIX: which stage (see `stages` in
+        # generate_response_stream()) actually produced the most
+        # recently completed turn's tokens -- e.g. self._primary_backend
+        # or _FALLBACK_STAGE_LABEL. Updated in _stream_generic() the
+        # instant a stage proves itself by yielding its first real
+        # token (see below), so core_wiring.py can tell the user when a
+        # turn came from the much smaller local fallback model instead
+        # of it just feeling randomly "dumb". A fully-failed turn (zero
+        # tokens from every stage) deliberately leaves this untouched --
+        # it reflects the last turn that actually produced something,
+        # not every turn attempted. Guarded by its own lock (same
+        # discipline as self._cb_lock above) since _stream_generic() can
+        # run concurrently across threads (e.g. a GUI text command
+        # racing the voice loop against the same SaraLLM instance). See
+        # used_fallback_last_turn() below for the public read.
+        self._last_stage_lock = threading.Lock()
+        self._last_stage_used: Optional[str] = None
 
         self.user_name: Optional[str] = None
         self._tz: str = getattr(self._cfg, "SARA_TIMEZONE", "local")
@@ -626,6 +650,47 @@ class SaraLLM:
             if self._cb_consecutive_failures >= threshold:
                 self._cb_cooldown_until = time.monotonic() + cooldown
 
+    def is_usable(self) -> bool:
+        """
+        Cheap, read-only reflection of the same stage-selection logic
+        _stream_generic() uses to decide whether at least one backend
+        stage is currently viable for a turn:
+          - if the primary's circuit breaker is NOT tripped, the primary
+            is presumed healthy (or hasn't failed enough in a row yet
+            to be distrusted) -- usable.
+          - if the primary's breaker IS tripped, this brain is usable
+            only when a fallback stage actually exists
+            (self._fallback_enabled) -- the exact same condition
+            _stream_generic() checks (`len(stages) > 1`) before it will
+            skip stage 0 and try the fallback instead of yielding
+            nothing at all.
+
+        This makes no network call and takes no lock beyond
+        _circuit_breaker_active()'s own -- safe for any external caller
+        (e.g. memory_consolidation's tick gate) to poll at any
+        frequency without adding latency anywhere on the hot path.
+        """
+        if not self._circuit_breaker_active():
+            return True
+        return self._fallback_enabled
+
+    def used_fallback_last_turn(self) -> bool:
+        """
+        Cheap, read-only check: did the most recently completed
+        streaming turn actually get served by the local Ollama fallback
+        stage rather than the primary backend? Backed by
+        self._last_stage_used, which _stream_generic() updates the
+        instant a stage yields its first token -- so this is an
+        in-memory read behind a single uncontended lock, no I/O, no new
+        LLM/network call, safe to poll after every turn.
+
+        NOTE: distinct from _is_fallback_reply() below, which checks
+        whether a reply STRING is one of our own canned error messages
+        -- unrelated question, easy to conflate by name.
+        """
+        with self._last_stage_lock:
+            return self._last_stage_used == _FALLBACK_STAGE_LABEL
+
     def _stream_generic(
         self,
         prompt: str,
@@ -701,6 +766,18 @@ class SaraLLM:
                     for piece in stream_iter:
                         if not piece:
                             continue
+
+                        if not yielded_any:
+                            # FALLBACK-DISCLOSURE FIX: this is the first
+                            # real token this stage has produced this
+                            # turn -- it has now proven itself, so record
+                            # it as the stage serving this reply. Done
+                            # here (not after the loop) so a stage that
+                            # yields a few tokens and then dies mid-reply
+                            # still correctly reports as the stage that
+                            # served the (partial) reply.
+                            with self._last_stage_lock:
+                                self._last_stage_used = stage_name
 
                         buffer_str += piece
                         reply_parts.append(piece)
@@ -907,6 +984,8 @@ class SaraLLM:
         # PRIORITY-8 FIX: used to decide whether a reply is one of our
         # own localized error/interrupted messages, so we don't pollute
         # long-term memory with "sorry, I'm having trouble" exchanges.
+        # NOTE: despite the name, this has nothing to do with the Ollama
+        # fallback BACKEND -- for that, see used_fallback_last_turn().
         reply = (reply or "").strip()
         return reply in _STREAM_FAIL_MESSAGES.values() or reply in _STREAM_INTERRUPTED_MESSAGES.values()
 
@@ -1141,7 +1220,7 @@ class SaraLLM:
                 # user turn, so the fallback stage must carry it as well.
                 return self._open_ollama_stream(prompt, fb_history, fb_memory_context, reference_context)
 
-            stages.append(("ollama-fallback", _open_ollama_fallback))
+            stages.append((_FALLBACK_STAGE_LABEL, _open_ollama_fallback))
 
         yield from self._stream_generic(prompt, stages)
 
