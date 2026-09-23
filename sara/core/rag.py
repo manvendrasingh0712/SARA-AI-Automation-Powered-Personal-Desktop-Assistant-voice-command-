@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MemoryHit:
+    id: int
     text: str
     score: float
     source: str
@@ -170,6 +171,20 @@ class LongTermMemory:
         # see search()'s docstring for why.
         self._fact_min_similarity = float(
             getattr(Config, "RAG_FACT_MIN_SIMILARITY", 0.30)
+        )
+        # SUPERSEDE FIX: a SEPARATE, much HIGHER threshold used only to
+        # decide whether a new fact/consolidation memory is similar
+        # enough to an existing one to plausibly be about the very same
+        # thing (e.g. "user lives in Delhi" vs. a later "user lives in
+        # Jaipur") and therefore a candidate to replace it. Unrelated to
+        # _fact_min_similarity above, which governs normal recall.
+        # Deliberately conservative: wrongly deleting a still-true fact
+        # is far worse than leaving two similar-but-different facts
+        # stored side by side, so this defaults well above every normal
+        # recall threshold and should only be lowered with real
+        # false-negative evidence in hand.
+        self._fact_supersede_min_similarity = float(
+            getattr(Config, "RAG_FACT_SUPERSEDE_MIN_SIMILARITY", 0.92)
         )
         self._max_in_memory = int(getattr(Config, "RAG_MAX_IN_MEMORY", 5000))
         self._ollama_host = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
@@ -371,6 +386,20 @@ class LongTermMemory:
                 logger.error(f"[RAG] background write failed: {e}")
 
     def _write_one(self, text: str, source: str, timestamp: str) -> None:
+        # SUPERSEDE FIX: distilled fact-type memories (source == "fact"
+        # from maybe_extract_fact(), or "consolidation" from the
+        # background consolidation daemon) get checked against what's
+        # already stored BEFORE being persisted, so a changed fact (a
+        # new city, a new job, etc.) replaces the old one instead of
+        # both living on forever with equal weight in search() results.
+        # Raw "conversation" exchanges are deliberately left completely
+        # untouched -- see _check_fact_supersede()'s docstring for the
+        # full rationale and its conservative threshold. This all runs
+        # here, on this background writer thread, so add_memory() stays
+        # exactly the simple, non-blocking enqueue it already was.
+        if source in ("fact", "consolidation") and self._check_fact_supersede(text):
+            return  # exact-enough duplicate of an existing fact -- nothing to store
+
         vec = self._get_embedding(text)
         if vec is None:
             # Embedding backend unavailable for this item — skip it rather
@@ -420,6 +449,77 @@ class LongTermMemory:
 
         if self._debug:
             print(f"[RAG] Stored memory id={new_id} source={source} text={text[:80]!r}")
+
+    def _check_fact_supersede(self, text: str) -> bool:
+        """
+        Called only from _write_one(), only for source in
+        ("fact", "consolidation") -- never for raw "conversation"
+        exchanges. Looks for an existing fact-type memory that's a
+        near-duplicate of `text` (e.g. "The user lives in Delhi" vs. a
+        later "The user lives in Jaipur") and, if one is found, either
+        skips this write entirely (the exact same fact re-extracted
+        twice -- e.g. by both maybe_extract_fact() and consolidation
+        independently) or retires the old memory so the new one
+        replaces it instead of both living on forever with equal
+        weight in search() results.
+
+        Deliberately reuses search() itself (with
+        _fact_supersede_min_similarity -- a threshold set FAR above the
+        normal recall thresholds, see __init__) rather than a second,
+        parallel cosine-similarity implementation. The extra embedding
+        call this costs is an accepted trade-off for that code reuse;
+        it only ever runs on this background writer thread for the
+        relatively rare fact/consolidation writes, never on the hot
+        conversation path.
+
+        Bias is explicitly conservative: wrongly deleting a still-true
+        fact is far worse than leaving two similar-but-different facts
+        stored side by side. So only the SINGLE closest fact-type match
+        above that high bar is ever touched, and any failure here
+        (embedding hiccup, search() error) is swallowed and treated as
+        "no match found" -- it must never block a legitimate write.
+
+        Returns True if `text` is an exact-enough duplicate of
+        something already stored and the caller should skip storing it.
+        Returns False in every other case, including when an older
+        fact was found and queued for deletion -- the new text still
+        needs to be stored by the caller.
+        """
+        try:
+            hits = self.search(
+                text, top_k=3, min_similarity=self._fact_supersede_min_similarity
+            )
+        except Exception as e:
+            # A failed supersede check must never block a normal write.
+            logger.debug(f"[RAG] fact-supersede check failed (continuing): {e}")
+            return False
+
+        for hit in hits:
+            if hit.source not in ("fact", "consolidation"):
+                continue  # only ever supersede a fact with another fact
+
+            if hit.text.strip().lower() == text.strip().lower():
+                if self._debug:
+                    print(f"[RAG] Skipped duplicate fact: {text[:80]!r}")
+                return True
+
+            if self._debug:
+                print(
+                    f"[RAG] Superseding old fact id={hit.id} "
+                    f"{hit.text[:80]!r} -> {text[:80]!r}"
+                )
+            # Fire-and-forget, same convention every other caller in this
+            # class already uses -- this just enqueues a "__DELETE__" job
+            # behind the current one on the SAME writer queue, so there's
+            # no re-entrancy/deadlock risk even though we're calling it
+            # from inside a job this same writer thread is processing.
+            self.delete_memory(hit.id, wait=False)
+            # Only the single closest fact-type match is ever superseded
+            # -- hits are already sorted by descending similarity, so
+            # stop here rather than deleting further, weaker matches too.
+            break
+
+        return False
 
     def _delete_one(self, memory_id: int, future: Optional[Future]) -> None:
         """
@@ -631,6 +731,11 @@ class LongTermMemory:
             texts = self._texts
             sources = self._sources
             timestamps = self._timestamps
+            # SUPERSEDE FIX: search() previously discarded each hit's id
+            # entirely -- the only caller that needed it
+            # (_check_fact_supersede(), below) had no safe way to target
+            # the exact row to retire without this.
+            ids = self._ids
 
         if matrix.shape[1] != query_vec.shape[0]:
             # Embedding model changed since these memories were stored
@@ -664,6 +769,7 @@ class LongTermMemory:
                 continue
             hits.append(
                 MemoryHit(
+                    id=ids[idx],
                     text=texts[idx],
                     score=score,
                     source=row_source,

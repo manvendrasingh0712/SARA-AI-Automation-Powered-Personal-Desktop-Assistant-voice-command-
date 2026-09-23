@@ -34,6 +34,25 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 from typing import Any, NamedTuple, Optional
 
+# FALLBACK-DISCLOSURE FIX: spoken once per wake session, the first turn
+# SaraLLM.used_fallback_last_turn() flips True/False (see run_sara_logic
+# below) -- so a sudden drop (or return) in answer quality is legible
+# instead of feeling like a random glitch. Keyed the same way as
+# engine.py's own message dicts (english/hindi/hinglish), picked via
+# brain.get_language() so the disclosure matches whatever language the
+# turn itself was already in.
+_FALLBACK_DISCLOSURE_MESSAGES = {
+    "english": "Quick heads up — I'm running on my lighter local brain right now, so I might be a bit slower on the uptake.",
+    "hindi": "Ek baat bata doon — abhi main apne chhote, local brain pe chal raha hoon, jawab thode simple ho sakte hain.",
+    "hinglish": "Quick heads up yaar — abhi main apne lighter local brain pe chal raha hoon, thoda different lag sakta hoon.",
+}
+
+_FALLBACK_RECOVERY_MESSAGES = {
+    "english": "And I'm back on my full brain now — should be sharper again.",
+    "hindi": "Aur haan, ab main wapas apne poore brain pe aa gaya hoon.",
+    "hinglish": "Aur ab main wapas apne full brain pe aa gaya hoon.",
+}
+
 from health_check import run_startup_diagnostics
 
 from config import Config
@@ -601,6 +620,12 @@ def run_sara_logic(
             session_start = time.monotonic()
             last_active_time = session_start
             recent_turn_times.clear()
+            # FALLBACK-DISCLOSURE FIX: one-shot-per-direction gates, reset
+            # at the start of every wake session so a user who wakes SARA
+            # again while still degraded (or freshly recovered) hears
+            # about it again rather than only once ever.
+            session_fallback_disclosed = False
+            session_recovery_disclosed = False
 
             while not stop_event.is_set():
                 ui_update("status", "listening")
@@ -652,6 +677,31 @@ def run_sara_logic(
                     detected_lang = ears.get_detected_language()
                     tts.set_language(detected_lang)
                     _debug_log(f"[Logic] Language this turn (auto): '{detected_lang}'")
+                    # BRAIN-LANGUAGE-SYNC FIX: settings.py's manual toggle
+                    # already syncs the LLM brain's reply language
+                    # (self.brain.set_language) the instant the user picks
+                    # one -- but this auto-detect branch never did, so
+                    # brain.get_language() (used by core_wiring.py's own
+                    # fallback-disclosure message lookup, and by the LLM's
+                    # own reply-language selection) stayed frozen at
+                    # Config.SARA_LANGUAGE for the whole session unless the
+                    # user manually toggled language at least once. Same
+                    # en/hi/hinglish -> english/hindi/hinglish mapping
+                    # settings.py uses, confirmed against
+                    # sara/audio/stt/helpers.py's _detect_language() /
+                    # _lang_from_stt_language(), which are the only two
+                    # producers of ears.get_detected_language()'s value.
+                    try:
+                        _brain_lang_map = {
+                            "en": "english",
+                            "hi": "hindi",
+                            "hinglish": "hinglish",
+                        }
+                        brain_lang = _brain_lang_map.get(detected_lang)
+                        if brain_lang:
+                            brain.set_language(brain_lang)
+                    except Exception as e:
+                        print(f"[Logic] brain.set_language (auto) failed (continuing): {e}")
                 else:
                     tts.set_language(turn_manual_lang)
                     _debug_log(
@@ -698,6 +748,40 @@ def run_sara_logic(
                 ui_update("transcript", "sara", reply_text or "(no response)")
                 db_writer.log_message("user", user_input)
                 db_writer.log_message("assistant", reply_text or "")
+
+                # FALLBACK-DISCLOSURE FIX: cheap in-memory flag read (no
+                # LLM/network call, no added latency) -- see
+                # SaraLLM.used_fallback_last_turn(). Wrapped defensively
+                # since a disclosure check must never be able to take
+                # down the main conversation loop.
+                try:
+                    used_fallback = brain.used_fallback_last_turn()
+                except Exception as e:
+                    used_fallback = None
+                    print(f"[Logic] used_fallback_last_turn() check failed (continuing): {e}")
+
+                if used_fallback and not session_fallback_disclosed:
+                    disclosure = _FALLBACK_DISCLOSURE_MESSAGES.get(
+                        brain.get_language(), _FALLBACK_DISCLOSURE_MESSAGES["english"]
+                    )
+                    try:
+                        tts.speak(disclosure, fast=True)
+                    except Exception as e:
+                        print(f"[Logic] fallback-disclosure speak failed (continuing): {e}")
+                    ui_update("transcript", "sara", disclosure)
+                    session_fallback_disclosed = True
+                    session_recovery_disclosed = False
+                elif used_fallback is False and session_fallback_disclosed and not session_recovery_disclosed:
+                    recovery = _FALLBACK_RECOVERY_MESSAGES.get(
+                        brain.get_language(), _FALLBACK_RECOVERY_MESSAGES["english"]
+                    )
+                    try:
+                        tts.speak(recovery, fast=True)
+                    except Exception as e:
+                        print(f"[Logic] fallback-recovery speak failed (continuing): {e}")
+                    ui_update("transcript", "sara", recovery)
+                    session_recovery_disclosed = True
+                    session_fallback_disclosed = False
 
                 # SESSION-CONTROL FIX: act on what _handle_command() decided.
                 # "exit" stops the whole app (same as the old inline check);
