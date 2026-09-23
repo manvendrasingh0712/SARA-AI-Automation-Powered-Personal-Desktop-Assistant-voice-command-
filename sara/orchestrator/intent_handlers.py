@@ -130,6 +130,7 @@ import random
 import re
 import time
 import logging
+from typing import Optional
 from datetime import datetime, timedelta
 
 import dateparser
@@ -407,6 +408,41 @@ def _quick(ctx: dict, text: str) -> str:
     ctx["ui_update"]("status", "speaking")
     ctx["tts"].speak(text, fast=True)
     return text
+
+
+class _LikelyMisfireReply(str):
+    """
+    A str subclass -- same trick ears.listen()'s TranscriptionResult
+    (see core_wiring.py) already uses to carry extra signal on top of a
+    plain string -- marking a fast-path handler's reply as OUR OWN "I
+    matched something, but I don't trust the argument I captured" case
+    (e.g. an unresolved pronoun/reference with nothing fresh to resolve
+    against -- see _resolve_app_target() above), as opposed to a normal
+    successful reply OR a genuine, expected failure (wrong permissions,
+    app not installed, ...) that just happens to also be an error
+    string.
+
+    Every existing caller of a handler (_build_plan_dispatch_fn()'s
+    _dispatch(), the chat_route == "tool" branch, _quick() itself) keeps
+    working completely unchanged, since this IS a str -- only
+    _handle_command()'s fast-path dispatch below additionally checks
+    `isinstance(result, _LikelyMisfireReply)` to decide whether a second
+    opinion from the smarter LLM tool router (_retry_via_tool_router()
+    below) is worth trying before accepting this as the final answer.
+    """
+
+
+def _quick_likely_misfire(ctx: dict, text: str) -> _LikelyMisfireReply:
+    """
+    Same as _quick() (speaks `text`, updates status) but returns it
+    wrapped as _LikelyMisfireReply instead of a plain str. Use this
+    ONLY for "I matched something, but I don't trust the captured
+    argument" replies -- never for a genuine/expected failure, or every
+    real error would start paying for an extra, usually-pointless LLM
+    round-trip.
+    """
+    spoken = _quick(ctx, text)
+    return _LikelyMisfireReply(spoken)
 
 
 _ACK_PHRASES = (
@@ -1157,7 +1193,10 @@ def _h_open_app(match, ctx):
     # being validated as a literal (and rejected as an unknown app).
     resolved_target = _resolve_app_target(ctx, target)
     if resolved_target is None:
-        return _quick(
+        # LIKELY-MISFIRE SIGNAL (NEW): unresolved pronoun/reference, not
+        # a genuine failure -- see _LikelyMisfireReply for why this uses
+        # _quick_likely_misfire() instead of plain _quick().
+        return _quick_likely_misfire(
             ctx, "Which app would you like me to open?"
         )
     target = resolved_target
@@ -1218,7 +1257,8 @@ def _h_close_app(match, ctx):
     # against last_app first.
     resolved_app_name = _resolve_app_target(ctx, app_name)
     if resolved_app_name is None:
-        return _quick(
+        # LIKELY-MISFIRE SIGNAL (NEW): see _h_open_app() above.
+        return _quick_likely_misfire(
             ctx, "Which app would you like me to close?"
         )
     app_name = resolved_app_name
@@ -1383,7 +1423,8 @@ def _h_restart_application(match, ctx):
     # from the underlying tool) if there's nothing fresh to resolve to.
     resolved_app_name = _resolve_app_target(ctx, app_name)
     if resolved_app_name is None:
-        return _quick(
+        # LIKELY-MISFIRE SIGNAL (NEW): see _h_open_app() above.
+        return _quick_likely_misfire(
             ctx, "Which app would you like me to restart?"
         )
     app_name = resolved_app_name
@@ -1415,7 +1456,8 @@ def _h_switch_to_application(match, ctx):
     # otherwise be passed straight through as the literal pronoun.
     resolved_app_name = _resolve_app_target(ctx, app_name)
     if resolved_app_name is None:
-        return _quick(
+        # LIKELY-MISFIRE SIGNAL (NEW): see _h_open_app() above.
+        return _quick_likely_misfire(
             ctx, "Which app would you like me to switch to?"
         )
     app_name = resolved_app_name
@@ -2210,6 +2252,23 @@ def _describe_recent_entities(context_state: dict) -> str:
     return "; ".join(parts)
 
 
+def _tool_router_available() -> bool:
+    """
+    Cheap, LLM-free check: is the single-tool LLM router
+    (resolve_tool_call() + build_fake_match() + TOOL_NAME_TO_INTENT)
+    actually usable right now? Factored out of _route_chat_message()
+    below (which used to inline this exact check) so
+    _retry_via_tool_router() can share the identical condition instead
+    of a second, easily-drifting copy of it.
+    """
+    return bool(
+        getattr(Config, "TOOL_CALLING_ENABLED", True)
+        and resolve_tool_call is not None
+        and build_fake_match is not None
+        and TOOL_NAME_TO_INTENT
+    )
+
+
 def _route_chat_message(user_input: str, context_state: dict = None) -> tuple:
     """
     Decide which SINGLE routing stage (if any) a "chat"-intent message
@@ -2288,13 +2347,7 @@ def _route_chat_message(user_input: str, context_state: dict = None) -> tuple:
             return "plan", None
 
     # ── 2. Single tool? ─────────────────────────────────────────────────
-    tool_router_available = (
-        getattr(Config, "TOOL_CALLING_ENABLED", True)
-        and resolve_tool_call is not None
-        and build_fake_match is not None
-        and bool(TOOL_NAME_TO_INTENT)
-    )
-    if not tool_router_available:
+    if not _tool_router_available():
         return "chat", None
 
     if len(text.split()) > _TOOL_SIGNAL_MAX_WORDS:
@@ -2306,6 +2359,48 @@ def _route_chat_message(user_input: str, context_state: dict = None) -> tuple:
 
     # ── 3. Neither. Straight to plain chat, one LLM call total. ─────────
     return "chat", None
+
+
+def _retry_via_tool_router(user_input: str, ctx: dict, brain) -> Optional[str]:
+    """
+    Give the smarter LLM tool router (resolve_tool_call()) ONE genuine
+    second attempt at the SAME original user_input, for the specific
+    case where a fast-path regex handler matched but came back with its
+    own "I don't trust the argument I captured" signal (see
+    _LikelyMisfireReply above) -- e.g. "close that" where the regex
+    grabbed a pronoun no fast-path handler could resolve on its own,
+    but real function-calling parsing the full sentence might.
+
+    Mirrors the chat_route == "tool" branch in _handle_command() below
+    EXACTLY (same resolve_tool_call() -> TOOL_NAME_TO_INTENT ->
+    build_fake_match() -> _INTENT_HANDLERS chain) -- kept as its own
+    function so the two call sites can't silently drift apart, and so
+    there's a single obvious place gating on _tool_router_available()
+    and swallowing this path's own failures.
+
+    Returns the tool handler's result string, or None if the router
+    isn't available, couldn't resolve anything, or the resolved handler
+    itself declined/raised -- callers MUST treat None as "no better
+    answer available" and fall back to whatever they already had, never
+    as a reason to error out or go silent.
+    """
+    if not _tool_router_available():
+        return None
+    try:
+        resolved = resolve_tool_call(user_input, brain.model_name)
+        tool_name = resolved.get("name")
+        tool_args = resolved.get("arguments", {})
+        mapped_intent = TOOL_NAME_TO_INTENT.get(tool_name)
+        if not mapped_intent:
+            return None
+        tool_handler = _INTENT_HANDLERS.get(mapped_intent)
+        if tool_handler is None:
+            return None
+        fake_match = build_fake_match(tool_name, tool_args)
+        return tool_handler(fake_match, ctx)
+    except Exception as e:
+        print(f"[ToolRouter] misfire-retry resolution failed: {e}")
+        return None
 
 
 def _build_plan_dispatch_fn(ctx: dict):
@@ -2559,6 +2654,24 @@ def _handle_command(
             _log_action(db, "intent", intent, "fail")
             return result
         if result is not None:
+            if isinstance(result, _LikelyMisfireReply):
+                # LIKELY-MISFIRE RETRY (NEW): the fast-path regex matched
+                # something, but the handler itself doesn't trust what it
+                # captured (see _LikelyMisfireReply) -- give the smarter
+                # LLM tool router ONE genuine second attempt at the SAME
+                # original user_input before accepting this as the final
+                # answer. Gated on this exact signal ONLY, so a normal
+                # success or a genuine/expected failure (neither of
+                # which is ever wrapped as _LikelyMisfireReply) pays
+                # zero added latency or LLM calls -- exactly as before
+                # this feature existed.
+                retried_result = _retry_via_tool_router(user_input, ctx, brain)
+                if retried_result is not None:
+                    # Second opinion actually resolved something -- use
+                    # it. If it didn't (None), `result` still holds the
+                    # original handler's clarifying message, so the user
+                    # never ends up with silence or a worse experience.
+                    result = retried_result
             # AUDIT LOG (NEW): handler ran and produced a spoken result --
             # one "success" entry.
             _log_action(db, "intent", intent, "success")

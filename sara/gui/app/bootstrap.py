@@ -110,6 +110,7 @@ def main():
                 volume_state=co.volume_state,
                 playback_state=co.playback_state,
                 context_state=co.context_state,
+                notes_memory=co.notes_memory,
             )
 
             # NEW: global emergency-stop hotkey (sara/orchestrator/emergency_stop.py).
