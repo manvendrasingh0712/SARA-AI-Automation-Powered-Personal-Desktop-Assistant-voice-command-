@@ -13,7 +13,7 @@ import sqlite3
 import threading
 import time
 import urllib.request
-from concurrent.futures import Future
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
@@ -21,7 +21,7 @@ from typing import List, Optional
 import numpy as np
 
 from config import Config
-from sara.core.llm.clients import _get_gemini_client
+from sara.core.llm.clients import _get_embedding_vector
 
 logger = logging.getLogger(__name__)
 
@@ -120,28 +120,47 @@ def embed_text(
     text: str, model: Optional[str] = None, debug: bool = False
 ) -> Optional[np.ndarray]:
     """
-    Embeds `text` with Google Gemini's embed_content endpoint and returns a
-    float32 vector, or None on ANY failure (never raises). Model defaults to
-    Config.EMBEDDING_MODEL ("gemini-embedding-001", 3072-dim vectors).
-    Shared by LongTermMemory._get_embedding() and the GUI setup wizard's
-    embedding health check, so both exercise the exact same code path.
+    Embeds `text` via Config.EMBEDDING_BACKEND ("gemini" default, using
+    Gemini's embed_content endpoint with Config.EMBEDDING_MODEL --
+    "gemini-embedding-001", 3072-dim vectors -- or "ollama", using the
+    local ollama client's embed() endpoint with
+    Config.OLLAMA_EMBEDDING_MODEL) and returns a float32 vector, or None
+    on ANY failure (never raises). `model` overrides the backend's
+    configured model name when given. Shared by
+    LongTermMemory._get_embedding() and the GUI setup wizard's embedding
+    health check, so both exercise the exact same code path.
     """
     if not text or not text.strip():
         return None
-    model = model or getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
     try:
-        client = _get_gemini_client(Config)
-        if client is None:
-            return None
-        result = client.models.embed_content(
-            model=model,
-            contents=text,
-        )
-        vector = result.embeddings[0].values
+        cfg = Config
+        if model is not None:
+            # Caller passed an explicit model override -- build a tiny
+            # shim so _get_embedding_vector() picks it up regardless of
+            # which backend is active, without duplicating its branching
+            # logic here.
+            class _cfg_override:
+                EMBEDDING_BACKEND = getattr(Config, "EMBEDDING_BACKEND", "gemini")
+                EMBEDDING_MODEL = model
+                OLLAMA_EMBEDDING_MODEL = model
+                OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
+                OLLAMA_TIMEOUT = getattr(Config, "OLLAMA_TIMEOUT", 30.0)
+                EMBEDDING_TIMEOUT_S = getattr(Config, "EMBEDDING_TIMEOUT_S", 4.0)
+                GEMINI_API_KEY = getattr(Config, "GEMINI_API_KEY", "")
+
+            cfg = _cfg_override
+
+        vector = _get_embedding_vector(cfg, text)
         if not vector:
             if debug:
+                backend = getattr(cfg, "EMBEDDING_BACKEND", "gemini")
+                used_model = model or getattr(
+                    cfg,
+                    "OLLAMA_EMBEDDING_MODEL" if backend == "ollama" else "EMBEDDING_MODEL",
+                    "",
+                )
                 print(
-                    f"[RAG] Embedding call to '{model}' returned no "
+                    f"[RAG] Embedding call to '{used_model}' returned no "
                     f"vector for text: {text[:80]!r}"
                 )
             return None
@@ -151,7 +170,8 @@ def embed_text(
         if debug:
             print(
                 f"[RAG] Embedding request FAILED ({type(e).__name__}: {e}) -- "
-                f"check GEMINI_API_KEY and network connectivity."
+                f"check EMBEDDING_BACKEND/GEMINI_API_KEY/OLLAMA_HOST and "
+                f"network connectivity."
             )
         return None
 
@@ -210,8 +230,17 @@ class LongTermMemory:
             self._conn = self._open_connection()
             self._ensure_table()
             self._load_into_memory()
-        except Exception as e:
+        except (sqlite3.Error, ValueError, OSError) as e:
             logger.error(f"[RAG] Failed to initialize: {e}")
+            print(f"[RAG] Failed to initialize — long-term memory disabled: {e}")
+            self.enabled = False
+            self._conn = None
+            return
+        except Exception as e:
+            logger.exception(
+                "[RAG] Failed to initialize with an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             print(f"[RAG] Failed to initialize — long-term memory disabled: {e}")
             self.enabled = False
             self._conn = None
@@ -265,8 +294,14 @@ class LongTermMemory:
         for row_id, text, embedding_blob, source, timestamp in rows:
             try:
                 vec = np.frombuffer(embedding_blob, dtype=np.float32)
-            except Exception:
+            except (ValueError, TypeError):
                 continue  # skip a corrupted row rather than failing the whole load
+            except Exception:
+                logger.exception(
+                    "[RAG] unexpected error type while decoding a stored embedding "
+                    "(this may be a bug); skipping that row"
+                )
+                continue
             ids.append(row_id)
             texts.append(text)
             sources.append(source)
@@ -397,10 +432,17 @@ class LongTermMemory:
         # full rationale and its conservative threshold. This all runs
         # here, on this background writer thread, so add_memory() stays
         # exactly the simple, non-blocking enqueue it already was.
-        if source in ("fact", "consolidation") and self._check_fact_supersede(text):
+        # Embed ONCE; the same vector is reused for the supersede check
+        # (via search(precomputed_vector=...)) and for the actual storage.
+        vec = self._get_embedding(text)
+
+        if (
+            vec is not None
+            and source in ("fact", "consolidation")
+            and self._check_fact_supersede(text, precomputed_vector=vec)
+        ):
             return  # exact-enough duplicate of an existing fact -- nothing to store
 
-        vec = self._get_embedding(text)
         if vec is None:
             # Embedding backend unavailable for this item — skip it rather
             # than storing a memory with no vector (would be unsearchable
@@ -450,7 +492,9 @@ class LongTermMemory:
         if self._debug:
             print(f"[RAG] Stored memory id={new_id} source={source} text={text[:80]!r}")
 
-    def _check_fact_supersede(self, text: str) -> bool:
+    def _check_fact_supersede(
+        self, text: str, precomputed_vector: Optional[np.ndarray] = None
+    ) -> bool:
         """
         Called only from _write_one(), only for source in
         ("fact", "consolidation") -- never for raw "conversation"
@@ -487,11 +531,14 @@ class LongTermMemory:
         """
         try:
             hits = self.search(
-                text, top_k=3, min_similarity=self._fact_supersede_min_similarity
+                text,
+                top_k=3,
+                min_similarity=self._fact_supersede_min_similarity,
+                precomputed_vector=precomputed_vector,
             )
         except Exception as e:
             # A failed supersede check must never block a normal write.
-            logger.debug(f"[RAG] fact-supersede check failed (continuing): {e}")
+            logger.warning(f"[RAG] fact-supersede check failed (continuing): {e}", exc_info=True)
             return False
 
         for hit in hits:
@@ -541,20 +588,48 @@ class LongTermMemory:
             if future is not None:
                 future.set_exception(e)
             return
+        except Exception as e:
+            logger.exception(
+                "[RAG] delete_memory DB delete raised an unexpected error type "
+                "(this may be a bug): %s", e
+            )
+            if future is not None:
+                future.set_exception(e)
+            return
 
-        if deleted:
-            with self._matrix_lock:
-                if memory_id in self._ids:
-                    idx = self._ids.index(memory_id)
-                    del self._ids[idx]
-                    del self._texts[idx]
-                    del self._sources[idx]
-                    del self._timestamps[idx]
-                    if self._matrix.shape[0] > idx:
-                        self._matrix = np.delete(self._matrix, idx, axis=0)
+        try:
+            if deleted:
+                with self._matrix_lock:
+                    if memory_id in self._ids:
+                        idx = self._ids.index(memory_id)
+                        # Build every new value first; only swap them in
+                        # once all of them succeeded, so a mid-way failure
+                        # can never leave the lists and _matrix out of sync.
+                        new_matrix = self._matrix
+                        if self._matrix.shape[0] > idx:
+                            new_matrix = np.delete(self._matrix, idx, axis=0)
+                        new_ids = self._ids[:idx] + self._ids[idx + 1:]
+                        new_texts = self._texts[:idx] + self._texts[idx + 1:]
+                        new_sources = self._sources[:idx] + self._sources[idx + 1:]
+                        new_timestamps = (
+                            self._timestamps[:idx] + self._timestamps[idx + 1:]
+                        )
+                        self._ids = new_ids
+                        self._texts = new_texts
+                        self._sources = new_sources
+                        self._timestamps = new_timestamps
+                        self._matrix = new_matrix
 
-        if future is not None:
-            future.set_result(deleted)
+            if future is not None:
+                future.set_result(deleted)
+        except Exception as e:
+            logger.exception(
+                "[RAG] delete_memory in-memory index update raised an unexpected "
+                "error type (this may be a bug): %s", e
+            )
+            if future is not None:
+                future.set_exception(e)
+            return
 
     def _clear_all_one(self, future: Optional[Future]) -> None:
         """
@@ -572,16 +647,33 @@ class LongTermMemory:
             if future is not None:
                 future.set_exception(e)
             return
+        except Exception as e:
+            logger.exception(
+                "[RAG] clear_all DB delete raised an unexpected error type "
+                "(this may be a bug): %s", e
+            )
+            if future is not None:
+                future.set_exception(e)
+            return
 
-        with self._matrix_lock:
-            self._ids = []
-            self._texts = []
-            self._sources = []
-            self._timestamps = []
-            self._matrix = np.zeros((0, 0), dtype=np.float32)
+        try:
+            with self._matrix_lock:
+                self._ids = []
+                self._texts = []
+                self._sources = []
+                self._timestamps = []
+                self._matrix = np.zeros((0, 0), dtype=np.float32)
 
-        if future is not None:
-            future.set_result(True)
+            if future is not None:
+                future.set_result(True)
+        except Exception as e:
+            logger.exception(
+                "[RAG] clear_all in-memory index reset raised an unexpected "
+                "error type (this may be a bug): %s", e
+            )
+            if future is not None:
+                future.set_exception(e)
+            return
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -594,10 +686,15 @@ class LongTermMemory:
         timestamp = datetime.now().isoformat()
         try:
             self._write_queue.put_nowait((text.strip(), source, timestamp))
-        except Exception as e:
+        except queue.Full as e:
             logger.debug(f"[RAG] add_memory enqueue failed: {e}")
             if self._debug:
                 print(f"[RAG] add_memory enqueue FAILED: {e}")
+        except Exception as e:
+            logger.exception(
+                "[RAG] add_memory enqueue raised an unexpected error type "
+                "(this may be a bug): %s", e
+            )
 
     def maybe_extract_fact(self, user_text: str) -> None:
         
@@ -650,14 +747,26 @@ class LongTermMemory:
         future: Optional[Future] = Future() if wait else None
         try:
             self._write_queue.put_nowait(("__DELETE__", memory_id, future))
-        except Exception as e:
+        except queue.Full as e:
             logger.debug(f"[RAG] delete_memory enqueue failed: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                "[RAG] delete_memory enqueue raised an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             return False
         if wait and future is not None:
             try:
                 return bool(future.result(timeout=timeout))
-            except Exception as e:
+            except (FutureTimeoutError, sqlite3.Error) as e:
                 logger.error(f"[RAG] delete_memory timed out/failed: {e}")
+                return False
+            except Exception as e:
+                logger.exception(
+                    "[RAG] delete_memory raised an unexpected error type "
+                    "(this may be a bug): %s", e
+                )
                 return False
         return True
 
@@ -676,14 +785,26 @@ class LongTermMemory:
         future: Optional[Future] = Future() if wait else None
         try:
             self._write_queue.put_nowait(("__CLEAR__", future))
-        except Exception as e:
+        except queue.Full as e:
             logger.debug(f"[RAG] clear_all enqueue failed: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                "[RAG] clear_all enqueue raised an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             return False
         if wait and future is not None:
             try:
                 return bool(future.result(timeout=timeout))
-            except Exception as e:
+            except (FutureTimeoutError, sqlite3.Error) as e:
                 logger.error(f"[RAG] clear_all timed out/failed: {e}")
+                return False
+            except Exception as e:
+                logger.exception(
+                    "[RAG] clear_all raised an unexpected error type "
+                    "(this may be a bug): %s", e
+                )
                 return False
         return True
 
@@ -692,6 +813,8 @@ class LongTermMemory:
         query: str,
         top_k: Optional[int] = None,
         min_similarity: Optional[float] = None,
+        *,
+        precomputed_vector: Optional[np.ndarray] = None,
     ) -> List[MemoryHit]:
     
         if not self.enabled or not query or not query.strip():
@@ -710,7 +833,11 @@ class LongTermMemory:
             else self._fact_min_similarity
         )
 
-        query_vec = self._get_embedding(query)
+        query_vec = (
+            precomputed_vector
+            if precomputed_vector is not None
+            else self._get_embedding(query)
+        )
         if query_vec is None:
             if self._debug:
                 print(

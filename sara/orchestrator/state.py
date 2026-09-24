@@ -88,3 +88,46 @@ class AssistantState:
     def is_active(self) -> bool:
         with self._lock:
             return self._active
+
+
+# ----------------------------------------------------------------------------
+# Turn state -- per-command cancellation + generation id.
+# begin() is called when a command starts; cancel() when Stop is pressed.
+# Anything long-running checks current_event().is_set() to exit early, and
+# late results check is_current(gen) before touching the UI or TTS.
+# ----------------------------------------------------------------------------
+
+
+class TurnState:
+    _serializable = False
+
+    __slots__ = ("_lock", "_gen", "_event")
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._gen = 0
+        self._event = threading.Event()
+
+    def begin(self):
+        """Start a new turn. Returns (generation, cancel_event)."""
+        with self._lock:
+            self._gen += 1
+            self._event = threading.Event()
+            return self._gen, self._event
+
+    def cancel(self) -> int:
+        """Cancel the current turn (Stop button). Returns its generation."""
+        with self._lock:
+            self._event.set()
+            return self._gen
+
+    def current_event(self) -> threading.Event:
+        with self._lock:
+            return self._event
+
+    def is_current(self, gen: int) -> bool:
+        with self._lock:
+            return gen == self._gen and not self._event.is_set()
+
+
+TURN_STATE = TurnState()

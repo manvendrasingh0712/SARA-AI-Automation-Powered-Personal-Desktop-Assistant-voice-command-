@@ -55,8 +55,19 @@ from .schema import (
     StepStatus,
     validate_tool_arguments,
 )
+from sara.core.llm.clients import _get_gemini_client, _get_ollama_client, _select_llm_client
 
 logger = logging.getLogger("sara.core.planning.executor")
+
+
+def _plan_cancelled() -> bool:
+    """True if the current turn was cancelled via Stop (lazy import avoids cycles)."""
+    try:
+        from sara.orchestrator.state import TURN_STATE
+
+        return TURN_STATE.current_event().is_set()
+    except Exception:  # noqa: BLE001
+        return False
 
 # DispatchFn: given (tool_name, arguments) -> a human-readable result
 # string, or raises on failure. Supplied by the caller (see
@@ -64,6 +75,36 @@ logger = logging.getLogger("sara.core.planning.executor")
 # sara.orchestrator.intent_handlers itself -- that would risk a
 # circular import (intent_handlers -> planning -> intent_handlers).
 DispatchFn = Callable[[str, Dict[str, Any]], str]
+
+
+class PlanStepRequiresConfirmation(Exception):
+    """
+    Raised by a DispatchFn implementation (see
+    sara.orchestrator.intent_handlers._build_plan_dispatch_fn) when a
+    plan step maps to the SAME destructive/risky action that
+    _handle_command()'s single-command path already gates behind an
+    explicit yes/no confirmation (close_app on a risky target,
+    stop_service on a risky target, forget_all_memories, or anything in
+    _LOW_CONFIDENCE_CONFIRM_ACTIONS) -- so a multi-step LLM-generated
+    plan can never silently execute one of those without the same
+    "are you sure?" the user would get for the identical single command.
+
+    `action`/`target` mirror confirm_state["pending"]'s existing shape
+    exactly (see intent_handlers.py's pending-confirmation block) so the
+    caller can arm it directly; `prompt` is the exact spoken confirmation
+    question. execute_plan() catches this SEPARATELY from a normal
+    dispatch failure -- it is never retried via the self-correction path
+    (asking the model to "correct" a confirmation requirement makes no
+    sense), and it aborts the rest of the plan rather than continuing
+    past an unresolved risky step.
+    """
+
+    def __init__(self, action: str, target: Optional[str], prompt: str):
+        super().__init__(prompt)
+        self.action = action
+        self.target = target
+        self.prompt = prompt
+
 
 _CORRECTION_TOOL_SCHEMA: List[Dict[str, Any]] = [
     {
@@ -147,10 +188,7 @@ def _request_step_correction(
     if timeout_s <= 0:
         return None
 
-    from google.genai import types as _gtypes
-    from sara.core.llm.clients import _get_gemini_client
-
-    client = _get_gemini_client(cfg)
+    backend, client = _select_llm_client(cfg, _get_ollama_client, _get_gemini_client)
     if not client:
         return None
 
@@ -161,16 +199,32 @@ def _request_step_correction(
         "that fix this specific problem. Do not change the tool name."
     )
 
-    future = _CORRECTION_EXECUTOR.submit(
-        client.models.generate_content,
-        model=model_name,
-        contents=prompt,
-        config=_gtypes.GenerateContentConfig(
-            tools=_get_gemini_correction_tools(),
-            max_output_tokens=150,
-            temperature=0.2,
-        ),
-    )
+    if backend == "ollama":
+        future = _CORRECTION_EXECUTOR.submit(
+            client.chat,
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            tools=_CORRECTION_TOOL_SCHEMA,
+            think=False,
+            options={
+                "num_predict": 150,
+                "temperature": 0.2,
+            },
+            keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+        )
+    else:
+        from google.genai import types as _gtypes
+
+        future = _CORRECTION_EXECUTOR.submit(
+            client.models.generate_content,
+            model=model_name,
+            contents=prompt,
+            config=_gtypes.GenerateContentConfig(
+                tools=_get_gemini_correction_tools(),
+                max_output_tokens=150,
+                temperature=0.2,
+            ),
+        )
     try:
         resp = future.result(timeout=timeout_s)
     except concurrent.futures.TimeoutError:
@@ -189,6 +243,19 @@ def _request_step_correction(
             exc,
         )
         return None
+
+    if backend == "ollama":
+        calls = resp.message.tool_calls
+        if not calls:
+            return None
+
+        call = calls[0]
+        if call.function.name != "corrected_step":
+            return None
+
+        arguments = dict(call.function.arguments or {})
+        corrected = arguments.get("arguments")
+        return corrected if isinstance(corrected, dict) else None
 
     calls = resp.function_calls
     if not calls:
@@ -312,6 +379,12 @@ def execute_plan(
     )
     try:
         for index, step in enumerate(plan.steps):
+            if _plan_cancelled():
+                aborted = True
+                abort_reason = "Stopped by user."
+                logger.info("Plan cancelled by Stop before step %d.", index + 1)
+                break
+
             remaining_before_step = _remaining_budget(start, total_timeout_s)
             if remaining_before_step <= 0:
                 aborted = True
@@ -357,6 +430,32 @@ def execute_plan(
                 predecessor_blocked = False
                 logger.info("Step %d ('%s') succeeded on first attempt.", index, step.tool)
                 continue
+            except PlanStepRequiresConfirmation as exc:
+                # A risky/destructive step (same gate as the single-command
+                # path -- see this exception's docstring) can never be
+                # retried via self-correction or silently skipped past:
+                # the whole plan stops here so the user can be asked
+                # "are you sure?" exactly as they would be for the
+                # identical single command.
+                results.append(
+                    StepResult(
+                        step=step,
+                        status=StepStatus.FAILED,
+                        error=f"Needs confirmation: {exc.prompt}",
+                        attempts=attempts,
+                    )
+                )
+                aborted = True
+                abort_reason = (
+                    f"CONFIRMATION_REQUIRED::{exc.action}::{exc.target or ''}::{exc.prompt}"
+                )
+                logger.info(
+                    "Step %d ('%s') requires explicit confirmation; pausing plan.",
+                    index,
+                    step.tool,
+                )
+                predecessor_blocked = True
+                break
             except Exception as exc:  # noqa: BLE001
                 first_error = f"{type(exc).__name__}: {exc}"
                 logger.warning(
@@ -394,6 +493,20 @@ def execute_plan(
                     f"attempted for step {index + 1}."
                 )
                 logger.warning(abort_reason)
+                predecessor_blocked = True
+                break
+
+            if _plan_cancelled():
+                results.append(
+                    StepResult(
+                        step=step,
+                        status=StepStatus.FAILED,
+                        error=first_error,
+                        attempts=attempts,
+                    )
+                )
+                aborted = True
+                abort_reason = "Stopped by user."
                 predecessor_blocked = True
                 break
 

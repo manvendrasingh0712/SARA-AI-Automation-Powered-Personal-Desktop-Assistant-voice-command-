@@ -37,6 +37,7 @@ import threading
 from typing import Any, FrozenSet, List, Optional
 
 from sara.core.tool_router import TOOL_NAME_TO_INTENT, TOOLS_SCHEMA
+from sara.core.llm.clients import _get_gemini_client, _get_ollama_client, _select_llm_client
 
 from .schema import Plan, PlanValidationError, parse_plan_from_llm
 
@@ -235,15 +236,53 @@ def _call_planner_llm(
     than assumed away, since models are known to
     sometimes ignore tool constraints).
     """
-    from google.genai import types as _gtypes
-    from sara.core.llm.clients import _get_gemini_client
-
-    client = _get_gemini_client(cfg)
+    backend, client = _select_llm_client(cfg, _get_ollama_client, _get_gemini_client)
     if not client:
-        raise PlanningUnavailableError("Gemini client not available.")
+        raise PlanningUnavailableError(f"{backend.capitalize()} client not available.")
 
     if not isinstance(user_input, str) or not user_input.strip():
         raise PlanningUnavailableError("Empty user_input passed to planner.")
+
+    if backend == "ollama":
+        try:
+            resp = client.chat(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": _build_planner_system_prompt(max_steps)},
+                    {"role": "user", "content": user_input},
+                ],
+                tools=_get_plan_tool_schema(),
+                think=False,
+                options={
+                    "num_predict": 400,
+                    "temperature": 0.2,
+                },
+                keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+            )
+        except Exception as exc:  # noqa: BLE001 -- any transport/client error
+            raise PlanningUnavailableError(
+                f"Ollama chat() call failed: {type(exc).__name__}: {exc}"
+            ) from exc
+
+        calls = resp.message.tool_calls
+        if not calls:
+            raise PlanningUnavailableError(
+                "Model did not propose a plan (no tool call returned)."
+            )
+
+        call = calls[0]
+        function_name = call.function.name
+
+        if function_name != "propose_plan":
+            raise PlanValidationError(
+                f"Model called unexpected function {function_name!r} instead "
+                f"of propose_plan."
+            )
+
+        arguments = dict(call.function.arguments or {})
+        return arguments.get("steps")
+
+    from google.genai import types as _gtypes
 
     try:
         resp = client.models.generate_content(

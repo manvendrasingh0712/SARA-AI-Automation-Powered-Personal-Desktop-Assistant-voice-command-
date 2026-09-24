@@ -26,6 +26,16 @@ from config import Config
 logger = logging.getLogger("sara.llm.engine")
 
 
+def _current_cancel_event() -> threading.Event:
+    """Current turn's cancel event (lazy import avoids a circular import)."""
+    try:
+        from sara.orchestrator.state import TURN_STATE
+
+        return TURN_STATE.current_event()
+    except Exception:  # noqa: BLE001
+        return threading.Event()
+
+
 # PRIORITY-7 FIX: dedicated subclass (still a RuntimeError, so any
 # existing external `except RuntimeError` handling elsewhere keeps
 # working unchanged) used ONLY for the two deterministic "client isn't
@@ -724,6 +734,7 @@ class SaraLLM:
         )
         is_debug = getattr(self._cfg, "DEBUG_MODE", False)
 
+        cancel_event = _current_cancel_event()
         buffer_str: str = ""
         reply_parts: list[str] = []
         stream_ok = False
@@ -761,9 +772,13 @@ class SaraLLM:
                 stream_iter = None
 
                 try:
+                    if cancel_event.is_set():
+                        return
                     stream_iter = open_stream(attempt)
 
                     for piece in stream_iter:
+                        if cancel_event.is_set():
+                            return
                         if not piece:
                             continue
 
@@ -1107,6 +1122,9 @@ class SaraLLM:
         # latency exactly once — the first time the brain is actually used
         # — rather than letting a cold Ollama model produce a spurious
         # timeout on whatever happens to be the first real user command.
+        if _current_cancel_event().is_set():
+            return
+
         warm_wait_s = float(getattr(self._cfg, "LLM_WARMUP_WAIT_S", 20.0))
         warm = self.wait_until_warm(timeout=warm_wait_s)
         if not warm.ok and getattr(self._cfg, "DEBUG_MODE", False):
@@ -1231,6 +1249,8 @@ class SaraLLM:
         # most recently appended pair) rather than re-deriving the reply
         # text here, since _stream_generic() already appended it via
         # _append_history() as a side effect of the yield above.
+        if _current_cancel_event().is_set():
+            return
         if self._memory is not None and not trivial:
             with self._history_lock:
                 last_pair = self._history[-1] if self._history else None

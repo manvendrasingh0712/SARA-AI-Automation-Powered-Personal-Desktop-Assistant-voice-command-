@@ -46,6 +46,7 @@ from .shortcuts import (
 from .connectivity import wifi_on, wifi_off, bluetooth_on, bluetooth_off, dark_mode, light_mode
 from .files_notes import (
     find_file,
+    find_and_open_file,
     empty_recycle_bin,
     take_note,
     read_notes,
@@ -92,7 +93,7 @@ __all__ = [
     "new_tab", "close_tab", "next_tab", "prev_tab", "reload_page", "zoom_in",
     "zoom_out", "zoom_reset", "scroll_up", "scroll_down", "scroll_top",
     "scroll_bottom", "wifi_on", "wifi_off", "bluetooth_on", "bluetooth_off",
-    "dark_mode", "light_mode", "find_file", "empty_recycle_bin", "take_note",
+    "dark_mode", "light_mode", "find_file", "find_and_open_file", "empty_recycle_bin", "take_note",
     "read_notes", "clear_notes", "get_notes",
     "add_todo", "list_todos", "complete_todo", "delete_todo",
     "set_timer", "cancel_timer",

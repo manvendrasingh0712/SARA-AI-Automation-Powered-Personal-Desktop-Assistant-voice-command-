@@ -59,8 +59,14 @@ def get_battery_status() -> str:
             percent = round(battery.percent)
             status = "charging" if battery.power_plugged else "on battery power"
             return f"Battery is at {percent}% and currently {status}."
-        except Exception as e:
+        except (psutil.Error, OSError) as e:
             logger.error(f"get_battery_status failed: {e}")
+            return "Sorry, I couldn't retrieve the battery status right now."
+        except Exception as e:
+            logger.exception(
+                "get_battery_status hit an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             return "Sorry, I couldn't retrieve the battery status right now."
 
     return _get_cached("battery", _fetch)
@@ -73,8 +79,14 @@ def get_battery_raw():
             if battery is None:
                 return None
             return (round(battery.percent), bool(battery.power_plugged))
-        except Exception as e:
+        except (psutil.Error, OSError) as e:
             logger.error(f"get_battery_raw failed: {e}")
+            return None
+        except Exception as e:
+            logger.exception(
+                "get_battery_raw hit an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             return None
 
     return _get_cached("battery_raw", _fetch)
@@ -84,8 +96,13 @@ def get_cpu_usage() -> str:
     try:
         usage = psutil.cpu_percent(interval=None)
         return f"CPU usage is currently at {usage}%."
-    except Exception as e:
+    except (psutil.Error, OSError) as e:
         logger.error(f"get_cpu_usage failed: {e}")
+        return "Sorry, I couldn't retrieve CPU usage right now."
+    except Exception as e:
+        logger.exception(
+            "get_cpu_usage hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't retrieve CPU usage right now."
 
 
@@ -96,8 +113,14 @@ def get_ram_usage() -> str:
             used_gb = mem.used / (1024**3)
             total_gb = mem.total / (1024**3)
             return f"RAM usage is at {mem.percent}% ({used_gb:.1f} GB of {total_gb:.1f} GB used)."
-        except Exception as e:
+        except (psutil.Error, OSError) as e:
             logger.error(f"get_ram_usage failed: {e}")
+            return "Sorry, I couldn't retrieve RAM usage right now."
+        except Exception as e:
+            logger.exception(
+                "get_ram_usage hit an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             return "Sorry, I couldn't retrieve RAM usage right now."
 
     return _get_cached("ram", _fetch)
@@ -113,8 +136,14 @@ def get_disk_usage(drive: str = "C:\\") -> str:
                 f"Disk {drive} is at {usage.percent}% usage "
                 f"({used_gb:.1f} GB of {total_gb:.1f} GB used)."
             )
-        except Exception as e:
+        except (OSError, TypeError, ValueError) as e:
             logger.error(f"get_disk_usage failed for drive '{drive}': {e}")
+            return f"Sorry, I couldn't retrieve disk usage for {drive} right now."
+        except Exception as e:
+            logger.exception(
+                "get_disk_usage hit an unexpected error type for drive '%s' "
+                "(this may be a bug): %s", drive, e
+            )
             return f"Sorry, I couldn't retrieve disk usage for {drive} right now."
 
     return _get_cached(f"disk:{drive}", _fetch)
@@ -127,8 +156,13 @@ def get_uptime() -> str:
         hours, remainder = divmod(int(delta.total_seconds()), 3600)
         minutes = remainder // 60
         return f"Your system has been running for {hours} hours and {minutes} minutes."
-    except Exception as e:
+    except (OSError, OverflowError, ValueError) as e:
         logger.error(f"get_uptime failed: {e}")
+        return "Sorry, I couldn't retrieve the system uptime right now."
+    except Exception as e:
+        logger.exception(
+            "get_uptime hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't retrieve the system uptime right now."
 
 
@@ -142,8 +176,13 @@ def get_local_ip() -> str:
         finally:
             s.close()
         return f"Your local IP address is {ip}."
-    except Exception as e:
+    except OSError as e:
         logger.error(f"get_local_ip failed: {e}")
+        return "Sorry, I couldn't retrieve the local IP address right now."
+    except Exception as e:
+        logger.exception(
+            "get_local_ip hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't retrieve the local IP address right now."
 
 
@@ -177,7 +216,14 @@ def get_gpu_status() -> str:
                         handle, pynvml.NVML_TEMPERATURE_GPU
                     )
                     temp_part = f", temperature {temp}°C"
+                except pynvml.NVMLError:
+                    temp_part = ""
                 except Exception:
+                    logger.warning(
+                        "get_gpu_status: unexpected error type reading GPU "
+                        "temperature (this may be a bug); omitting it",
+                        exc_info=True,
+                    )
                     temp_part = ""
                 return (
                     f"{name} is at {util.gpu}% usage, using "
@@ -185,8 +231,17 @@ def get_gpu_status() -> str:
                 )
             finally:
                 pynvml.nvmlShutdown()
-        except Exception as e:
+        except pynvml.NVMLError as e:
             logger.error(f"get_gpu_status failed: {e}")
+            return (
+                "Sorry, I couldn't read the GPU status right now. "
+                "Make sure an NVIDIA GPU and driver are installed."
+            )
+        except Exception as e:
+            logger.exception(
+                "get_gpu_status hit an unexpected error type "
+                "(this may be a bug): %s", e
+            )
             return (
                 "Sorry, I couldn't read the GPU status right now. "
                 "Make sure an NVIDIA GPU and driver are installed."

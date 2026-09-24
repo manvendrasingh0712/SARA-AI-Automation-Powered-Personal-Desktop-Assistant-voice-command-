@@ -44,8 +44,14 @@ def _find_service(name: str):
                 return info  # exact match — no need to look at the rest
             if substring_match is None and name_lower in info["display_name"].lower():
                 substring_match = info
-    except Exception as e:
+    except (psutil.Error, OSError) as e:
         logger.error(f"_find_service failed to enumerate services: {e}")
+        return None
+    except Exception as e:
+        logger.exception(
+            "_find_service raised an unexpected error type enumerating "
+            "services (this may be a bug): %s", e
+        )
         return None
 
     return substring_match
@@ -71,8 +77,14 @@ def list_services(running_only: bool = True) -> str:
         shown = names[:10]
         more = f", and {len(names) - 10} more" if len(names) > 10 else ""
         return f"{len(names)} services running: {', '.join(shown)}{more}."
-    except Exception as e:
+    except (psutil.Error, OSError) as e:
         logger.error(f"list_services failed: {e}")
+        return "Sorry, I couldn't list services right now."
+    except Exception as e:
+        logger.exception(
+            "list_services raised an unexpected error type "
+            "(this may be a bug): %s", e
+        )
         return "Sorry, I couldn't list services right now."
 
 
@@ -107,8 +119,14 @@ def _run_sc(action: str, service_name: str) -> str:
         return f"Couldn't {action} {label}: {stderr or 'unknown error'}."
     except subprocess.TimeoutExpired:
         return f"{verb_ing} {label} timed out."
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         logger.error(f"_run_sc({action}) failed for '{service_name}': {e}")
+        return f"Sorry, I couldn't {action} '{service_name}' right now."
+    except Exception as e:
+        logger.exception(
+            "_run_sc(%s) for %r raised an unexpected error type "
+            "(this may be a bug): %s", action, service_name, e
+        )
         return f"Sorry, I couldn't {action} '{service_name}' right now."
 
 

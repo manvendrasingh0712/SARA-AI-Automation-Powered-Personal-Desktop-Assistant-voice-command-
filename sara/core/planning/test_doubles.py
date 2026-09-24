@@ -298,6 +298,7 @@ class FakeConfig:
         self.APP_LAUNCH_ALLOWLIST_ENABLED = True
         self.APP_LAUNCH_ALLOWLIST: List[str] = ["chrome", "notepad", "calculator", "spotify"]
         self.TOOL_CALLING_TIMEOUT_S = 3.0
+        self.LLM_BACKEND = "ollama"
         self.OLLAMA_KEEP_ALIVE = "30m"
         self.DEBUG_MODE = False
         for key, value in overrides.items():

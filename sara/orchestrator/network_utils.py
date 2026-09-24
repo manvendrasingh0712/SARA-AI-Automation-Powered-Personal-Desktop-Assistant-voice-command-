@@ -10,6 +10,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from sara.orchestrator._constants import _NETWORK_TOOL_TIMEOUT_S
+from sara.orchestrator.state import TURN_STATE
 
 # ----------------------------------------------------------------------------
 # Logging
@@ -49,6 +50,30 @@ _breaker_open_until: dict[str, float] = {}
 _breaker_lock = threading.Lock()
 
 
+class _TurnCancelled(Exception):
+    """Raised internally when the current turn was cancelled via Stop."""
+
+
+def _wait_cancellable(future, timeout: float, cancel_event):
+    """
+    Same semantics as future.result(timeout=timeout), but polls in short
+    slices so a Stop press aborts the wait within ~0.1s. The overall
+    timeout still applies exactly as before.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise FutureTimeoutError()
+        try:
+            return future.result(timeout=min(0.1, remaining))
+        except FutureTimeoutError:
+            if future.done():
+                raise  # the wrapped fn itself raised a timeout; not a poll miss
+            if cancel_event.is_set():
+                raise _TurnCancelled()
+
+
 def _call_with_timeout(
     fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, tool_name: str = None, **kwargs
 ):
@@ -63,9 +88,16 @@ def _call_with_timeout(
                 f"{max(remaining, 1)} seconds and try again."
             )
 
+    cancel_event = TURN_STATE.current_event()
+    if cancel_event.is_set():
+        return "Okay, stopped."
+
     future = _NETWORK_EXECUTOR.submit(fn, *args, **kwargs)
     try:
-        result = future.result(timeout=timeout)
+        result = _wait_cancellable(future, timeout, cancel_event)
+    except _TurnCancelled:
+        future.cancel()  # no-op if already running; see KNOWN LIMITATION
+        return "Okay, stopped."  # a Stop is not a tool failure: no breaker hit
     except FutureTimeoutError:
         future.cancel()  # no-op if fn is already running; see note above
         _record_breaker_failure(name)
