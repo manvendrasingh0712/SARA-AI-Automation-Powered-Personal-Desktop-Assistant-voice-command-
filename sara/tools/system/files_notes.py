@@ -178,8 +178,13 @@ def find_file(name: str) -> str:
         results = "; ".join(found[:5])
         return f"Found {len(found)} file(s) matching '{name}': {results}"
 
-    except Exception as e:
+    except OSError as e:
         logger.error(f"find_file failed: {e}")
+        return "Sorry, I couldn't complete the file search right now."
+    except Exception as e:
+        logger.exception(
+            "find_file hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't complete the file search right now."
 
 
@@ -214,8 +219,14 @@ def find_and_open_file(name: str) -> str:
     query = name.strip().lower()
     try:
         found, timed_out = _locate_files(query)
-    except Exception as e:
+    except OSError as e:
         logger.error(f"find_and_open_file failed: {e}")
+        return "Sorry, I couldn't complete the file search right now."
+    except Exception as e:
+        logger.exception(
+            "find_and_open_file hit an unexpected error type "
+            "(this may be a bug): %s", e
+        )
         return "Sorry, I couldn't complete the file search right now."
 
     if not found:
@@ -267,8 +278,14 @@ def empty_recycle_bin() -> str:
         if result == 0 or result == -2147418113:  # S_OK or already empty
             return "Recycle Bin has been emptied."
         return f"Recycle Bin emptied (code {result})."
-    except Exception as e:
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
         logger.error(f"empty_recycle_bin failed: {e}")
+        return "Sorry, I couldn't empty the Recycle Bin right now."
+    except Exception as e:
+        logger.exception(
+            "empty_recycle_bin hit an unexpected error type "
+            "(this may be a bug): %s", e
+        )
         return "Sorry, I couldn't empty the Recycle Bin right now."
 
 
@@ -310,11 +327,24 @@ def take_note(text: str, return_id: bool = False):
             with open(_NOTES_FILE, "r", encoding="utf-8") as f:
                 line_count = sum(1 for _ in f if _.strip())
             note_id = line_count - 1
+        except (OSError, UnicodeDecodeError):
+            note_id = None
         except Exception:
+            logger.warning(
+                "take_note: unexpected error type while counting note lines "
+                "(this may be a bug); returning id=None",
+                exc_info=True,
+            )
             note_id = None
         return {"message": message, "id": note_id}
-    except Exception as e:
+    except (OSError, UnicodeEncodeError) as e:
         logger.error(f"take_note failed: {e}")
+        err = "Sorry, I couldn't save that note right now."
+        return {"message": err, "id": None} if return_id else err
+    except Exception as e:
+        logger.exception(
+            "take_note hit an unexpected error type (this may be a bug): %s", e
+        )
         err = "Sorry, I couldn't save that note right now."
         return {"message": err, "id": None} if return_id else err
 
@@ -332,8 +362,13 @@ def read_notes() -> str:
         if len(lines) == 1:
             return f"You have one note: {lines[0]}"
         return f"You have {len(lines)} notes: " + ". ".join(lines)
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         logger.error(f"read_notes failed: {e}")
+        return "Sorry, I couldn't read your notes right now."
+    except Exception as e:
+        logger.exception(
+            "read_notes hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't read your notes right now."
 
 
@@ -344,8 +379,13 @@ def clear_notes() -> str:
             return "You have no notes to clear."
         os.remove(_NOTES_FILE)
         return "All your notes have been cleared."
-    except Exception as e:
+    except OSError as e:
         logger.error(f"clear_notes failed: {e}")
+        return "Sorry, I couldn't clear your notes right now."
+    except Exception as e:
+        logger.exception(
+            "clear_notes hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't clear your notes right now."
 
 
@@ -384,8 +424,13 @@ def get_notes() -> list:
                 # note the user actually wrote.
                 result.append({"id": idx, "text": line, "timestamp": ""})
         return result
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         logger.error(f"get_notes failed: {e}")
+        return []
+    except Exception as e:
+        logger.exception(
+            "get_notes hit an unexpected error type (this may be a bug): %s", e
+        )
         return []
 
 
@@ -410,8 +455,13 @@ def _read_todos() -> list:
     try:
         with open(_TODO_FILE, "r", encoding="utf-8") as f:
             lines = [line.rstrip("\n") for line in f if line.strip()]
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         logger.error(f"_read_todos failed to read file: {e}")
+        return []
+    except Exception as e:
+        logger.exception(
+            "_read_todos hit an unexpected error type (this may be a bug): %s", e
+        )
         return []
 
     todos = []
@@ -452,8 +502,13 @@ def _write_todos(todos: list) -> bool:
                 status = "x" if todo["done"] else " "
                 f.write(f"[{todo['id']}][{todo['timestamp']}][{status}] {todo['text']}\n")
         return True
-    except Exception as e:
+    except (OSError, UnicodeEncodeError) as e:
         logger.error(f"_write_todos failed: {e}")
+        return False
+    except Exception as e:
+        logger.exception(
+            "_write_todos hit an unexpected error type (this may be a bug): %s", e
+        )
         return False
 
 
@@ -522,8 +577,13 @@ def add_todo(text: str) -> str:
         with open(_TODO_FILE, "a", encoding="utf-8") as f:
             f.write(f"[{todo_id}][{timestamp}][ ] {clean_text}\n")
         return f"Added to your to-do list: {clean_text}"
-    except Exception as e:
+    except (OSError, UnicodeEncodeError) as e:
         logger.error(f"add_todo failed: {e}")
+        return "Sorry, I couldn't save that to-do right now."
+    except Exception as e:
+        logger.exception(
+            "add_todo hit an unexpected error type (this may be a bug): %s", e
+        )
         return "Sorry, I couldn't save that to-do right now."
 
 

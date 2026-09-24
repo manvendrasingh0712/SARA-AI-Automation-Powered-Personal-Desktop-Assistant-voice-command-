@@ -72,9 +72,11 @@ of any function for a normal, valid response.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import random
 import re
+import socket
 import threading
 import time
 import urllib.parse
@@ -139,6 +141,7 @@ _PAGE_FETCH_TIMEOUT_SECONDS = 10
 _YTDLP_SOCKET_TIMEOUT_SECONDS = 8
 _YTDLP_SCRAPE_TIMEOUT_SECONDS = 10
 _MAX_PAGE_DOWNLOAD_BYTES = 2 * 1024 * 1024  # 2 MB hard cap for read_webpage()
+_PAGE_TOTAL_DEADLINE_SECONDS = 15  # wall-clock cap on the whole streamed download
 
 # OPTIMIZATION 10: sane upper bounds on user-supplied strings that get
 # baked into outbound URLs.
@@ -242,6 +245,58 @@ def _clamp_text_length(value: str, max_len: int, name: str) -> str:
     return value
 
 
+def _unsafe_url_reason(url: str) -> Optional[str]:
+    """
+    Returns None if `url` is safe to fetch, else a short reason string.
+    Allows only http/https with a real hostname, and rejects any host
+    that resolves to a loopback/private/link-local/multicast/reserved/
+    unspecified (or otherwise non-public) IP address.
+    """
+    try:
+        parsed = urllib.parse.urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return "invalid URL"
+
+    if parsed.scheme not in ("http", "https"):
+        return "only http/https URLs are allowed"
+    if not hostname:
+        return "URL has no hostname"
+
+    try:
+        infos = socket.getaddrinfo(
+            hostname,
+            port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except (socket.gaierror, UnicodeError):
+        return "hostname could not be resolved"
+    if not infos:
+        return "hostname could not be resolved"
+
+    for info in infos:
+        addr = info[4][0].split("%", 1)[0]  # strip IPv6 scope id
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return "hostname resolved to an invalid address"
+        if ip.version == 6 and ip.ipv4_mapped is not None:
+            ip = ip.ipv4_mapped  # ::ffff:127.0.0.1 style bypass
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+            or not ip.is_global
+        ):
+            return "address is not a public internet address"
+
+    return None
+
+
 def _retry(fn: "Callable[[], Any]", attempts: int = 2, delay: float = 1.0):
     """
     Calls fn() up to `attempts` times, sleeping ~`delay` seconds (plus a
@@ -304,6 +359,8 @@ def _get_youtube_urls_ytdlp(query: str, max_results: int = 5) -> list[str]:
         "extract_flat": "in_playlist",
         "default_search": "ytsearch",
         "socket_timeout": _YTDLP_SOCKET_TIMEOUT_SECONDS,
+        "retries": 1,
+        "extractor_retries": 1,
     }
     urls: list[str] = []
     try:
@@ -702,15 +759,39 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
         logger.debug("Page cache hit for '%s'.", url)
         return cached
 
+    unsafe_reason = _unsafe_url_reason(url)
+    if unsafe_reason:
+        logger.warning("read_webpage: blocked URL '%s' (%s).", url, unsafe_reason)
+        return f"Error: Refusing to fetch '{url}' ({unsafe_reason})."
+
+    response = None
+
     try:
         # OPTIMIZATION 9: stream the response and stop after a hard byte
         # cap instead of unconditionally pulling a (possibly huge) page
         # fully into memory before truncating it down to max_chars.
         response = _session.get(url, timeout=_PAGE_FETCH_TIMEOUT_SECONDS, stream=True)
+
+        if response.history or response.url != url:
+            final_reason = _unsafe_url_reason(response.url)
+            if final_reason:
+                logger.warning(
+                    "read_webpage: '%s' redirected to blocked URL '%s' (%s).",
+                    url, response.url, final_reason,
+                )
+                return f"Error: '{url}' redirected to a blocked address ({final_reason})."
+
         response.raise_for_status()
 
         raw_bytes = bytearray()
+        download_deadline = time.monotonic() + _PAGE_TOTAL_DEADLINE_SECONDS
         for chunk in response.iter_content(chunk_size=8192):
+            if time.monotonic() > download_deadline:
+                logger.debug(
+                    "read_webpage: total download deadline hit for '%s'; stopping.",
+                    url,
+                )
+                break
             if not chunk:
                 continue
             raw_bytes.extend(chunk)
@@ -726,6 +807,9 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
         return f"Error: Timed out fetching '{url}'."
     except requests.exceptions.RequestException as e:
         return f"Error: Failed to fetch '{url}'. Details: {e}"
+    finally:
+        if response is not None:
+            response.close()
 
     try:
         soup = BeautifulSoup(html_text, "html.parser")

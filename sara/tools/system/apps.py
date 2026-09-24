@@ -316,7 +316,13 @@ def _try_launch(target: str) -> Tuple[str, Optional[BaseException]]:
         return _LAUNCH_OK, None
     except FileNotFoundError:
         pass
+    except (OSError, ValueError) as e:
+        return _LAUNCH_ERROR, e
     except Exception as e:
+        logger.exception(
+            "os.startfile(%r) raised an unexpected error type "
+            "(this may be a bug): %s", target, e
+        )
         return _LAUNCH_ERROR, e
 
     exe_path = _resolve_executable(target)
@@ -326,7 +332,13 @@ def _try_launch(target: str) -> Tuple[str, Optional[BaseException]]:
     try:
         _spawn_detached(exe_path)
         return _LAUNCH_OK, None
+    except (OSError, ValueError) as e:
+        return _LAUNCH_ERROR, e
     except Exception as e:
+        logger.exception(
+            "_spawn_detached(%r) raised an unexpected error type "
+            "(this may be a bug): %s", exe_path, e
+        )
         return _LAUNCH_ERROR, e
 
 
@@ -351,10 +363,21 @@ def _protected_pids() -> Set[int]:
             try:
                 if parent.name().lower() != "explorer.exe":
                     pids.add(parent.pid)
-            except Exception:
+            except psutil.Error:
                 continue
-    except Exception:
+            except Exception:
+                logger.warning(
+                    "_protected_pids: unexpected error type reading a parent "
+                    "process name (this may be a bug)", exc_info=True
+                )
+                continue
+    except psutil.Error:
         pass
+    except Exception:
+        logger.exception(
+            "_protected_pids: unexpected error type enumerating SARA's "
+            "process tree (this may be a bug)"
+        )
     return pids
 
 
@@ -512,8 +535,14 @@ def restart_application(app_name: str) -> str:
 
     try:
         result = _terminate_matching(process_exe)
-    except Exception as e:
+    except (psutil.Error, OSError) as e:
         logger.error(f"restart_application enumeration failed for '{label}': {e}")
+        return f"Sorry, I couldn't restart '{label}' right now."
+    except Exception as e:
+        logger.exception(
+            "restart_application enumeration for %r raised an unexpected "
+            "error type (this may be a bug): %s", label, e
+        )
         return f"Sorry, I couldn't restart '{label}' right now."
 
     if not result.procs:
@@ -535,8 +564,14 @@ def restart_application(app_name: str) -> str:
         else:
             os.startfile(target)
         return f"Restarted {label}."
-    except Exception as e:
+    except (OSError, ValueError) as e:
         logger.error(f"restart_application relaunch failed for '{label}': {e}")
+        return f"Closed {label} but couldn't relaunch it automatically."
+    except Exception as e:
+        logger.exception(
+            "restart_application relaunch for %r raised an unexpected "
+            "error type (this may be a bug): %s", label, e
+        )
         return f"Closed {label} but couldn't relaunch it automatically."
 
 
@@ -573,8 +608,14 @@ def close_application(process_name: str) -> str:
 
     try:
         result = _terminate_matching(target_exe)
-    except Exception as e:
+    except (psutil.Error, OSError) as e:
         logger.error(f"close_application failed for '{label}': {e}")
+        return f"Sorry, I couldn't close '{label}' right now."
+    except Exception as e:
+        logger.exception(
+            "close_application for %r raised an unexpected error type "
+            "(this may be a bug): %s", label, e
+        )
         return f"Sorry, I couldn't close '{label}' right now."
 
     if result.procs:

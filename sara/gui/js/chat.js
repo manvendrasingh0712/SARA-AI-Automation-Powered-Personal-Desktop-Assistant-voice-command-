@@ -109,8 +109,11 @@
     } else if (role === 'sara' && streaming) {
       finalizeStream();                       // this reply was already streamed live -> no duplicate bubble
     } else {
-      const nb = makeBubble(role, text, canAnimate()); SARA.sound.received();
-      if (!canAnimate()) attachActions(nb);   // animated bubbles get buttons when the typewriter finishes
+      // This event arrives AFTER Sara has already spoken the reply (backend pushes it once
+      // _handle_command() returns), so a typewriter here only makes the UI look "still generating".
+      // Render instantly; the streaming path (ev:transcript_chunk) keeps its typewriter.
+      const nb = makeBubble(role, text, false); SARA.sound.received();
+      attachActions(nb);
     }
   });
 

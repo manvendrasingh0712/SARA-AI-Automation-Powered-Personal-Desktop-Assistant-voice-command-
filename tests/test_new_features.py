@@ -322,18 +322,24 @@ class NewFeatureTests(unittest.TestCase):
     # Plain notes vs. to-dos: two independent stores, one change must
     # never leak into or clear the other.
     #
-    # ASSUMPTION (flagged): take_note/read_notes/clear_notes operate on
-    # system_info._NOTES_FILE, which system_info.py's own header defines
-    # as `Config.NOTES_FILE_PATH` read ONCE at import time (see
-    # _NOTES_FILE / _NOTE_LINE_RE at the top of that module) -- so
-    # overriding Config.NOTES_FILE_PATH after import wouldn't take
-    # effect; the module attribute itself is patched directly instead,
-    # the same way existing tests already reach into private internals
-    # (manager._thread, engine._enabled_now(), etc.).
+    # take_note/read_notes/clear_notes are reached through the public
+    # package (`sara.tools.system`, aliased system_tools), exactly like
+    # intent_handlers.py does -- they are defined in files_notes.py, not
+    # system_info.py, so system_info.take_note is not a valid call path.
+    #
+    # SANDBOXING (flagged): the notes file path is a module-level
+    # `_NOTES_FILE` constant read at import time, so overriding
+    # Config.NOTES_FILE_PATH after import would not take effect; the
+    # module attribute itself is patched directly instead, the same way
+    # existing tests already reach into private internals. Because the
+    # constant could live in files_notes.py or system_info.py, this
+    # redirects it in whichever of the two defines it, and refuses to
+    # run at all if it can't find one -- otherwise take_note() and
+    # clear_notes() would operate on the REAL notes file.
     # ------------------------------------------------------------------
     def test_notes_and_todos_do_not_interfere_with_each_other(self):
-        from sara.tools.system import system_info
         from sara.tools import system as system_tools
+        from sara.tools.system import files_notes, system_info
         import config as config_module
 
         notes_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
@@ -341,18 +347,31 @@ class NewFeatureTests(unittest.TestCase):
         db_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
         db_tmp.close()
 
-        original_notes_file = system_info._NOTES_FILE
         original_db_path = config_module.Config.DB_PATH
-        system_info._NOTES_FILE = notes_tmp.name
         config_module.Config.DB_PATH = db_tmp.name
+
+        patched_notes_modules = []
+        for module in (files_notes, system_info):
+            if hasattr(module, "_NOTES_FILE"):
+                patched_notes_modules.append((module, module._NOTES_FILE))
+                module._NOTES_FILE = notes_tmp.name
         try:
+            # Safety guard: never call take_note()/clear_notes() unless
+            # the notes file was actually redirected to the temp file.
+            self.assertTrue(
+                patched_notes_modules,
+                "Could not find a module-level _NOTES_FILE in files_notes or "
+                "system_info to redirect; refusing to run take_note()/"
+                "clear_notes() against the real notes file.",
+            )
+
             note_text = f"note {uuid.uuid4().hex[:8]}: water the plants"
             todo_text = f"todo {uuid.uuid4().hex[:8]}: water the plants"
 
-            system_info.take_note(note_text)
+            system_tools.take_note(note_text)
             system_tools.add_todo(todo_text)
 
-            notes_after = system_info.read_notes()
+            notes_after = system_tools.read_notes()
             todos_after = system_tools.list_todos(pending_only=True)
 
             self.assertIn(note_text, notes_after)
@@ -361,11 +380,12 @@ class NewFeatureTests(unittest.TestCase):
             self.assertNotIn(todo_text, notes_after)
 
             # Clearing notes must not touch the to-do list.
-            system_info.clear_notes()
-            self.assertNotIn(note_text, system_info.read_notes())
+            system_tools.clear_notes()
+            self.assertNotIn(note_text, system_tools.read_notes())
             self.assertIn(todo_text, system_tools.list_todos(pending_only=True))
         finally:
-            system_info._NOTES_FILE = original_notes_file
+            for module, original_value in patched_notes_modules:
+                module._NOTES_FILE = original_value
             config_module.Config.DB_PATH = original_db_path
             for path in (notes_tmp.name, db_tmp.name):
                 if os.path.exists(path):

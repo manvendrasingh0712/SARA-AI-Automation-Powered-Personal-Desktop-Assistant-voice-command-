@@ -83,7 +83,13 @@ def _find_window(app_name: str):
             proc = psutil.Process(pid)
             if proc.name().lower() == target_exe:
                 return hwnd
+        except (psutil.Error, win32process.error):
+            continue
         except Exception:
+            logger.warning(
+                "_find_window: unexpected error type checking a window's "
+                "process (this may be a bug)", exc_info=True
+            )
             continue
 
     return None
@@ -109,8 +115,18 @@ def switch_to_application(app_name: str) -> str:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         win32gui.SetForegroundWindow(hwnd)
         return f"Switched to {app_name}."
-    except Exception as e:
+    except win32gui.error as e:
         logger.error(f"switch_to_application failed for '{app_name}': {e}")
+        return (
+            f"I found {app_name}'s window but couldn't bring it to the "
+            f"front — Windows sometimes blocks this if Sara isn't the "
+            f"currently focused app."
+        )
+    except Exception as e:
+        logger.exception(
+            "switch_to_application for %r raised an unexpected error type "
+            "(this may be a bug): %s", app_name, e
+        )
         return (
             f"I found {app_name}'s window but couldn't bring it to the "
             f"front — Windows sometimes blocks this if Sara isn't the "
@@ -152,8 +168,14 @@ def move_window(app_name: str, position: str) -> str:
         win32gui.MoveWindow(hwnd, x, y, w, h, True)
         win32gui.SetForegroundWindow(hwnd)
         return f"Moved {app_name} to {position_key}."
-    except Exception as e:
+    except (win32gui.error, win32api.error) as e:
         logger.error(f"move_window failed for '{app_name}' -> '{position}': {e}")
+        return f"Sorry, I couldn't move '{app_name}' right now."
+    except Exception as e:
+        logger.exception(
+            "move_window for %r -> %r raised an unexpected error type "
+            "(this may be a bug): %s", app_name, position, e
+        )
         return f"Sorry, I couldn't move '{app_name}' right now."
 
 
@@ -181,8 +203,14 @@ def toggle_always_on_top(app_name: str) -> str:
             win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
         )
         return f"{'Disabled' if is_topmost else 'Enabled'} always-on-top for {app_name}."
-    except Exception as e:
+    except win32gui.error as e:
         logger.error(f"toggle_always_on_top failed for '{app_name}': {e}")
+        return f"Sorry, I couldn't change always-on-top for '{app_name}' right now."
+    except Exception as e:
+        logger.exception(
+            "toggle_always_on_top for %r raised an unexpected error type "
+            "(this may be a bug): %s", app_name, e
+        )
         return f"Sorry, I couldn't change always-on-top for '{app_name}' right now."
 
 

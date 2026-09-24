@@ -120,6 +120,7 @@ silent gap.
 from .calc_utils import _safe_calc, _parse_duration_to_seconds
 from .text_utils import _extract_name
 from .network_utils import _call_with_timeout
+from .state import TURN_STATE
 from .tts_worker import TTSWorker
 from . import notifications
 from ._constants import _SLEEP_WORDS, _FORGET_WORDS
@@ -127,6 +128,8 @@ from ._constants import _SLEEP_WORDS, _FORGET_WORDS
 
 import difflib
 import random
+import sqlite3
+from concurrent.futures import TimeoutError as _FutureTimeoutError
 import re
 import time
 import logging
@@ -197,6 +200,7 @@ try:
         PlanValidationError,
         validate_tool_arguments,
     )
+    from sara.core.planning.executor import PlanStepRequiresConfirmation
 
     # LATENCY FIX: the plan-signal detector is now needed HERE, up front, by
     # _route_chat_message() below -- it is what decides (without any LLM
@@ -222,6 +226,8 @@ except Exception as _planning_import_err:  # noqa: BLE001
     class PlanValidationError(Exception):  # type: ignore[no-redef]
         """Sentinel fallback so isinstance/except checks below never crash
         when sara.core.planning failed to import."""
+
+    PlanStepRequiresConfirmation = None
 
     _HAS_PLANNING = False
     print(
@@ -1515,8 +1521,13 @@ def _h_why_proactive(match, ctx):
     if db is not None and hasattr(db, "get_last_proactive_event"):
         try:
             event = db.get_last_proactive_event()
-        except Exception as e:
+        except (sqlite3.Error, _FutureTimeoutError) as e:
             print(f"[Proactive] get_last_proactive_event failed: {e}")
+        except Exception as e:
+            logger.exception(
+                "[Proactive] get_last_proactive_event raised an unexpected error "
+                "type (this may be a bug): %s", e
+            )
     if not event:
         return _quick(ctx, "I haven't said anything on my own recently.")
     reason = event.get("reason") or "I don't have a specific reason recorded for that one."
@@ -1544,8 +1555,14 @@ def _h_why_decision(match, ctx):
 
     try:
         entry = db.find_decision_by_query(query_text)
-    except Exception as e:
+    except (sqlite3.Error, _FutureTimeoutError) as e:
         print(f"[Memory] find_decision_by_query failed: {e}")
+        return _quick(ctx, "Sorry, I couldn't look that up right now.")
+    except Exception as e:
+        logger.exception(
+            "[Memory] find_decision_by_query raised an unexpected error type "
+            "(this may be a bug): %s", e
+        )
         return _quick(ctx, "Sorry, I couldn't look that up right now.")
 
     if not entry:
@@ -1601,8 +1618,14 @@ def _h_undo_setting_change(match, ctx):
 
     try:
         entry = db.get_last_decision()
-    except Exception as e:
+    except (sqlite3.Error, _FutureTimeoutError) as e:
         print(f"[Undo] get_last_decision failed: {e}")
+        return _quick(ctx, "Sorry, I couldn't look up your last change right now.")
+    except Exception as e:
+        logger.exception(
+            "[Undo] get_last_decision raised an unexpected error type "
+            "(this may be a bug): %s", e
+        )
         return _quick(ctx, "Sorry, I couldn't look up your last change right now.")
 
     if not entry:
@@ -1629,8 +1652,14 @@ def _h_undo_setting_change(match, ctx):
     _ack(ctx)
     try:
         ok = db.set_preference(setting_key, old_value)
-    except Exception as e:
+    except (sqlite3.Error, _FutureTimeoutError) as e:
         print(f"[Undo] set_preference('{setting_key}') failed: {e}")
+        ok = False
+    except Exception as e:
+        logger.exception(
+            "[Undo] set_preference('%s') raised an unexpected error type "
+            "(this may be a bug): %s", setting_key, e
+        )
         ok = False
 
     if not ok:
@@ -1839,8 +1868,14 @@ def _h_switch_mode(match, ctx):
         for key, value in bundle.items():
             db.set_preference(key, value)
         db.set_preference("active_mode", mode_name)
-    except Exception as e:
+    except (sqlite3.Error, _FutureTimeoutError) as e:
         print(f"[Mode] set_preference failed while switching to '{mode_name}': {e}")
+        return _quick(ctx, "Sorry, I ran into a problem switching modes.")
+    except Exception as e:
+        logger.exception(
+            "[Mode] set_preference raised an unexpected error type while "
+            "switching to '%s' (this may be a bug): %s", mode_name, e
+        )
         return _quick(ctx, "Sorry, I ran into a problem switching modes.")
 
     confirmation = _MODE_CONFIRMATIONS[mode_name]
@@ -2403,6 +2438,70 @@ def _retry_via_tool_router(user_input: str, ctx: dict, brain) -> Optional[str]:
         return None
 
 
+def _plan_step_confirmation_needed(mapped_intent: str, fake_match):
+    """
+    Mirrors _handle_command()'s existing pending-confirmation gate (see
+    that function's "Pending destructive-action confirmation" block)
+    for a step a multi-step PLAN is about to dispatch -- so a planned
+    close_app/stop_service on a risky target, forget_all_memories, or
+    anything in _LOW_CONFIDENCE_CONFIRM_ACTIONS can never auto-execute
+    just because it arrived via the planner instead of a single command.
+    Reuses _is_risky()/_RISKY_APP_KEYWORDS/_RISKY_SERVICE_KEYWORDS/
+    _LOW_CONFIDENCE_CONFIRM_ACTIONS/_LOW_CONFIDENCE_CONFIRM_PHRASES
+    exactly as-is -- no separate/duplicated risk logic.
+
+    Returns (action, target, prompt) if this step needs confirmation
+    before running, or None if it's safe to dispatch immediately.
+    """
+    if mapped_intent == "close_app":
+        target = (
+            fake_match.group(1).strip()
+            if fake_match and fake_match.lastindex
+            else ""
+        )
+        if target and _is_risky(target, _RISKY_APP_KEYWORDS):
+            return (
+                "close_app",
+                target,
+                f"{target} is a system app -- are you sure you want to close it? Say yes or cancel.",
+            )
+        return None
+
+    if mapped_intent == "stop_service":
+        target = (
+            fake_match.group(1).strip()
+            if fake_match and fake_match.lastindex
+            else ""
+        )
+        if target and _is_risky(target, _RISKY_SERVICE_KEYWORDS):
+            return (
+                "stop_service",
+                target,
+                f"{target} looks like a core system service -- are you sure you want to stop it? Say yes or cancel.",
+            )
+        return None
+
+    if mapped_intent == "memory_forget_all":
+        return (
+            "forget_all_memories",
+            None,
+            "This will permanently delete everything I've remembered about you "
+            "long-term -- are you sure? Say yes or cancel.",
+        )
+
+    if mapped_intent in _LOW_CONFIDENCE_CONFIRM_ACTIONS:
+        phrase = _LOW_CONFIDENCE_CONFIRM_PHRASES.get(
+            mapped_intent, mapped_intent.replace("_", " ")
+        )
+        return (
+            mapped_intent,
+            None,
+            f"Are you sure you want to {phrase}? Say yes or cancel.",
+        )
+
+    return None
+
+
 def _build_plan_dispatch_fn(ctx: dict):
     """
     Builds the DispatchFn callback sara.core.planning.try_plan_and_execute()
@@ -2419,10 +2518,23 @@ def _build_plan_dispatch_fn(ctx: dict):
     "plan execution" code path for the tool functions themselves; only
     the decision of WHICH tools to call and in WHAT order is new.
 
+    SAFETY GATE (NEW): before calling the real handler, _dispatch() below
+    checks _plan_step_confirmation_needed() -- the SAME risky-action gate
+    _handle_command()'s single-command path already enforces (close_app/
+    stop_service on a risky target, forget_all_memories, or anything in
+    _LOW_CONFIDENCE_CONFIRM_ACTIONS). If the step needs confirmation, it
+    raises sara.core.planning.executor.PlanStepRequiresConfirmation
+    instead of dispatching -- execute_plan() catches that specifically,
+    never retries it, and aborts the plan so _handle_command() can arm
+    the same confirm_state/_CONFIRM_YES_WORDS mechanism already used for
+    a single risky command.
+
     Raises RuntimeError (never returns None) on any failure -- the
     executor in sara.core.planning.executor treats any raised exception
     from this callback identically to a tool function raising directly,
-    triggering its existing retry/skip/partial-success logic.
+    triggering its existing retry/skip/partial-success logic (except
+    PlanStepRequiresConfirmation, which it handles separately -- see
+    that exception's docstring).
 
     NOTE: steps executed through this callback are NOT written to the
     action_log audit table -- see this module's docstring ("KNOWN SCOPE
@@ -2437,6 +2549,11 @@ def _build_plan_dispatch_fn(ctx: dict):
         if tool_handler is None:
             raise RuntimeError(f"No handler registered for intent '{mapped_intent}'.")
         fake_match = build_fake_match(tool_name, tool_args)
+        if PlanStepRequiresConfirmation is not None:
+            confirmation = _plan_step_confirmation_needed(mapped_intent, fake_match)
+            if confirmation is not None:
+                action, target, prompt = confirmation
+                raise PlanStepRequiresConfirmation(action, target, prompt)
         result = tool_handler(fake_match, ctx)
         if result is None:
             raise RuntimeError(
@@ -2473,6 +2590,11 @@ def _handle_command(
         context_state = {}
     if session_control is None:
         session_control = {}
+
+    # Cancellation: begin() is called by the CALLER (core.py / core_wiring.py).
+    cancel_event = TURN_STATE.current_event()
+    if cancel_event.is_set():
+        return ""
 
     # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X" used to
     # be checked only in core_wiring.py's run_sara_logic() while-loop,
@@ -2634,6 +2756,9 @@ def _handle_command(
             f"Say yes or cancel.",
         )
 
+    if cancel_event.is_set():
+        return ""
+
     handler = _INTENT_HANDLERS.get(intent)
     if handler is not None:
         try:
@@ -2653,6 +2778,8 @@ def _handle_command(
             # one of the two dispatch chokepoints action_log is written from.
             _log_action(db, "intent", intent, "fail")
             return result
+        if cancel_event.is_set():
+            return ""
         if result is not None:
             if isinstance(result, _LikelyMisfireReply):
                 # LIKELY-MISFIRE RETRY (NEW): the fast-path regex matched
@@ -2750,7 +2877,34 @@ def _handle_command(
                     Config,
                     allowed_apps=allowed_apps,
                 )
+                if cancel_event.is_set():
+                    return ""
                 if plan_outcome is not None:
+                    # SAFETY GATE (NEW): a plan step that hit a risky/
+                    # destructive action (see PlanStepRequiresConfirmation
+                    # in sara.core.planning.executor) aborts the plan and
+                    # encodes the confirmation request in abort_reason --
+                    # arm the SAME confirm_state/_CONFIRM_YES_WORDS
+                    # mechanism _handle_command()'s single-command path
+                    # already uses (see the "Pending destructive-action
+                    # confirmation" block above), instead of speaking
+                    # plan_outcome's normal final_message, which would
+                    # misleadingly say the step just "couldn't complete."
+                    plan_abort_reason = plan_outcome.abort_reason or ""
+                    if plan_outcome.aborted and plan_abort_reason.startswith(
+                        "CONFIRMATION_REQUIRED::"
+                    ):
+                        _, confirm_action, confirm_target, confirm_prompt = (
+                            plan_abort_reason.split("::", 3)
+                        )
+                        ctx["confirm_state"]["pending"] = {
+                            "action": confirm_action,
+                            "target": confirm_target or None,
+                            "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+                        }
+                        plan_result = _quick(ctx, confirm_prompt)
+                        brain.record_exchange(user_input, plan_result)
+                        return plan_result
                     plan_result = _quick(ctx, plan_outcome.final_message)
                     # HISTORY FIX (NEW): a completed multi-step plan never
                     # reached SaraLLM's history before -- see the fast-path
@@ -2780,6 +2934,8 @@ def _handle_command(
                     tool_handler = _INTENT_HANDLERS.get(mapped_intent)
                     if tool_handler is not None:
                         tool_result = tool_handler(fake_match, ctx)
+                        if cancel_event.is_set():
+                            return ""
                         if tool_result is not None:
                             # HISTORY FIX (NEW): a resolved single-tool
                             # result never reached SaraLLM's history before
@@ -2809,6 +2965,9 @@ def _handle_command(
     # review later for new _INTENT_PATTERNS/_INTENT_GATES entries.
     if intent == "chat":
         log_unmatched(user_input)
+
+    if cancel_event.is_set():
+        return ""
 
     ui_update("status", "thinking")
     try:

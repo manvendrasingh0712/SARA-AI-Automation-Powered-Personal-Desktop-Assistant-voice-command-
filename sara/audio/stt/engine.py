@@ -10,6 +10,7 @@ from .buffers import _PreBuffer, _RingBuffer, _VADFilter, _SilenceGate, _NoiseFl
 
 import os
 import atexit
+import logging
 import collections
 import difflib
 import re
@@ -87,6 +88,24 @@ except ImportError:
 import queue
 
 from config import Config
+
+logger = logging.getLogger(__name__)
+
+# Rate-limited logging for hot-path catches (_apply_aec, is_wake_word_detected,
+# is_user_speaking): these run on every mic chunk / poll, so a persistent
+# failure would otherwise flood the log. At most one line per function name
+# per _RATE_LIMITED_LOG_INTERVAL_S seconds.
+_RATE_LIMITED_LOG_INTERVAL_S = 30.0
+_rate_limited_last_logged: dict = {}
+
+
+def _log_rate_limited(func_name: str, msg: str, *args, exc_info: bool = False) -> None:
+    now = time.monotonic()
+    last = _rate_limited_last_logged.get(func_name)
+    if last is not None and (now - last) < _RATE_LIMITED_LOG_INTERVAL_S:
+        return
+    _rate_limited_last_logged[func_name] = now
+    logger.warning(msg, *args, exc_info=exc_info)
 
 
 class TranscriptionResult(str):
@@ -646,8 +665,14 @@ class SpeechToText:
             )
             self._stream.start()
             return True
-        except Exception as e:
+        except (sd.PortAudioError, OSError, ValueError) as e:
             print(f"[STT Error] sounddevice open failed: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                "[STT] unexpected error type opening the sounddevice stream "
+                "(this may be a bug): %s", e
+            )
             return False
 
     def _open_pyaudio_stream(self) -> bool:
@@ -665,8 +690,14 @@ class SpeechToText:
             )
             self._stream.start_stream()
             return True
-        except Exception as e:
+        except (OSError, ValueError) as e:
             print(f"[STT Error] PyAudio open failed: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                "[STT] unexpected error type opening the PyAudio stream "
+                "(this may be a bug): %s", e
+            )
             return False
 
     def _apply_aec(self, chunk: bytes) -> bytes:
@@ -674,7 +705,21 @@ class SpeechToText:
             return chunk
         try:
             return self._aec.process_near_end(chunk)
-        except Exception:
+        except (ValueError, OSError) as e:
+            _log_rate_limited(
+                "_apply_aec",
+                "[STT] AEC process_near_end failed (passing raw chunk through): %s: %s",
+                type(e).__name__, e,
+            )
+            return chunk
+        except Exception as e:
+            _log_rate_limited(
+                "_apply_aec",
+                "[STT] AEC process_near_end raised an unexpected error type "
+                "(this may be a bug; passing raw chunk through): %s: %s",
+                type(e).__name__, e,
+                exc_info=True,
+            )
             return chunk
 
     def _passes_barge_in_gate(self, chunk: bytes) -> bool:
@@ -1488,7 +1533,21 @@ class SpeechToText:
                         self._wakeword_last_triggered = now
                     return True
                 return False
-            except Exception:
+            except (ValueError, TypeError, RuntimeError) as e:
+                _log_rate_limited(
+                    "is_wake_word_detected",
+                    "[STT] wake-word model check failed (treating as no detection): %s: %s",
+                    type(e).__name__, e,
+                )
+                return False
+            except Exception as e:
+                _log_rate_limited(
+                    "is_wake_word_detected",
+                    "[STT] wake-word model check raised an unexpected error type "
+                    "(this may be a bug; treating as no detection): %s: %s",
+                    type(e).__name__, e,
+                    exc_info=True,
+                )
                 return False
 
         probe_n = max(1, int((self.SAMPLE_RATE / self.CHUNK_SIZE) * 0.3))
@@ -1533,7 +1592,21 @@ class SpeechToText:
 
             vad_confirmed = sum(1 for c in loud if self._vad.is_speech(c))
             return vad_confirmed >= max(1, int(len(loud) * 0.6))
-        except Exception:
+        except (ValueError, TypeError) as e:
+            _log_rate_limited(
+                "is_user_speaking",
+                "[STT] is_user_speaking check failed (treating as not speaking): %s: %s",
+                type(e).__name__, e,
+            )
+            return False
+        except Exception as e:
+            _log_rate_limited(
+                "is_user_speaking",
+                "[STT] is_user_speaking raised an unexpected error type "
+                "(this may be a bug; treating as not speaking): %s: %s",
+                type(e).__name__, e,
+                exc_info=True,
+            )
             return False
 
     # TUNING (robustness): validated against a fixed allow-list before
