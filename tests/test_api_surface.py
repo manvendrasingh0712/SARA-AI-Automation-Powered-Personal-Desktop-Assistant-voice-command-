@@ -98,6 +98,14 @@ _STUB_MODULES = [
 ]
 
 
+# Bookkeeping so every stub installed by this file can be undone. Nothing
+# installed here may survive past ApiSurfaceTests (see _restore_stubs()).
+_MISSING = object()
+_STUB_SYS_MODULES_PREV = {}   # sys.modules key -> previous value (or _MISSING)
+_STUB_PARENT_ATTRS = []       # (parent_module, child_name, previous attr or _MISSING)
+_MODULES_BEFORE_STUBS = set() # sys.modules keys present before any stub/Api import
+
+
 def _install_stub(name: str) -> None:
     """Install a permissive fake module at sys.modules[name], but only if
     it isn't already genuinely importable on this machine."""
@@ -115,17 +123,66 @@ def _install_stub(name: str) -> None:
     # constant) that real code pulls off this module at import time
     # (`numpy.array`, `from onnxruntime import InferenceSession`, ...)
     # resolves to a MagicMock instead of raising AttributeError.
-    module.__getattr__ = lambda attr_name, _m=_mock: getattr(_m, attr_name)  # type: ignore[attr-defined]
+    module.__getattr__ = lambda attr_name, _m=_mock: getattr(_m, attr_name)  
+    # type: ignore[attr-defined]
+    STUB_SYS_MODULES_PREV.setdefault(name, sys.modules.get(name, _MISSING))
     sys.modules[name] = module
 
     if "." in name:
         parent_name, _, child_name = name.rpartition(".")
         _install_stub(parent_name)
-        setattr(sys.modules[parent_name], child_name, module)
+        parent = sys.modules[parent_name]
+        # vars() (not getattr) so a stubbed parent's permissive __getattr__
+        # can't hand back a MagicMock as the "previous" attribute.
+        _STUB_PARENT_ATTRS.append((parent, child_name, vars(parent).get(child_name, _MISSING)))
+        setattr(parent, child_name, module)
 
 
-for _name in _STUB_MODULES:
-    _install_stub(_name)
+def _install_all_stubs() -> None:
+    """Snapshot sys.modules, then install every stub. Called from
+    ApiSurfaceTests.setUpClass (not at import time), so nothing is stubbed
+    while pytest collects or runs any other test file."""
+    _MODULES_BEFORE_STUBS.clear()
+    _MODULES_BEFORE_STUBS.update(sys.modules.keys())
+    for _name in _STUB_MODULES:
+        _install_stub(_name)
+
+
+def _restore_stubs() -> None:
+    """Undo everything _install_all_stubs() and the Api import did:
+      - restore/remove parent-module attributes set for dotted stubs,
+      - drop every sara.* module first imported while stubs were active
+        (they hold references to MagicMocks and must be re-imported fresh by
+        later tests),
+      - delete stubs this file added and put back anything it overwrote.
+    Idempotent."""
+    if not _MODULES_BEFORE_STUBS:
+        return
+
+    for parent, child, prev in reversed(_STUB_PARENT_ATTRS):
+        if prev is _MISSING:
+            vars(parent).pop(child, None)
+        else:
+            setattr(parent, child, prev)
+    _STUB_PARENT_ATTRS.clear()
+
+    for mod_name in list(sys.modules):
+        if mod_name in _MODULES_BEFORE_STUBS:
+            continue
+        if mod_name == "sara" or mod_name.startswith("sara."):
+            sys.modules.pop(mod_name, None)
+            parent_name, _, child_name = mod_name.rpartition(".")
+            parent_mod = sys.modules.get(parent_name) if parent_name else None
+            if parent_mod is not None:
+                vars(parent_mod).pop(child_name, None)
+
+    for mod_name, prev in reversed(list(_STUB_SYS_MODULES_PREV.items())):
+        if prev is _MISSING:
+            sys.modules.pop(mod_name, None)
+        else:
+            sys.modules[mod_name] = prev
+    _STUB_SYS_MODULES_PREV.clear()
+    _MODULES_BEFORE_STUBS.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -225,8 +282,18 @@ def _public_callable_names(cls) -> set:
 class ApiSurfaceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.Api = _import_api()
-        cls.actual_methods = _public_callable_names(cls.Api)
+        _install_all_stubs()
+        try:
+            cls.Api = _import_api()
+            cls.actual_methods = _public_callable_names(cls.Api)
+        except BaseException:
+            # tearDownClass is not called when setUpClass fails.
+            _restore_stubs()
+            raise
+
+    @classmethod
+    def tearDownClass(cls):
+        _restore_stubs()
 
     def test_no_expected_methods_missing(self):
         missing = sorted(EXPECTED_METHODS - self.actual_methods)

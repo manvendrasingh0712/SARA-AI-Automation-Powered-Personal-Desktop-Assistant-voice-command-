@@ -5,6 +5,7 @@ natural-language duration parsing (timer intent).
 """
 
 import ast
+import logging
 import operator
 import re
 
@@ -16,6 +17,8 @@ from sara.orchestrator._constants import (
     _CALC_MAX_EXPONENT_VALUE,
     _CALC_EXPONENT_RE,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------
@@ -110,7 +113,8 @@ def _safe_calc(expression: str) -> str:
     except ZeroDivisionError:
         return "That's a division by zero \u2014 undefined."
     except Exception as e:
-        return f"I couldn't calculate that. Error: {e}"
+        logger.error(f"Failed to evaluate expression '{expression}': {e}")
+        return "I couldn't calculate that \u2014 please check the expression."
 
 
 def _parse_duration_to_seconds(text: str):

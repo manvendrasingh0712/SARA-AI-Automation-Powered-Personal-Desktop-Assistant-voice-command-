@@ -165,7 +165,29 @@ _cache_lock = threading.Lock()
 # SHARED HTTP SESSION  (OPTIMIZATION 7)
 # ============================================================
 
-def _build_session() -> requests.Session:
+class _PinnedIPAdapter(HTTPAdapter):
+    """
+    HTTPS adapter for requests whose URL host is an already-validated IP
+    address (see _pinned_get()). It makes urllib3 use the ORIGINAL
+    hostname for TLS SNI and certificate hostname verification, so
+    certificate checking stays fully enabled even though the TCP
+    connection goes to the pinned IP instead of a fresh DNS lookup.
+    """
+
+    def __init__(self, server_hostname: Optional[str] = None, **kwargs: Any) -> None:
+        # Must be set BEFORE super().__init__(), which calls init_poolmanager().
+        self._server_hostname = server_hostname
+        super().__init__(**kwargs)
+
+    def init_poolmanager(self, connections, maxsize, block=False, **pool_kwargs):
+        server_hostname = getattr(self, "_server_hostname", None)
+        if server_hostname:
+            pool_kwargs["server_hostname"] = server_hostname
+            pool_kwargs["assert_hostname"] = server_hostname
+        super().init_poolmanager(connections, maxsize, block=block, **pool_kwargs)
+
+
+def _build_session(pinned_hostname: Optional[str] = None) -> requests.Session:
     """
     One shared requests.Session for every plain HTTP call in this
     module (weather, page reads, YouTube HTML fallback). This reuses
@@ -181,8 +203,17 @@ def _build_session() -> requests.Session:
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"],
     )
-    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
-    session.mount("https://", adapter)
+    adapter_kwargs = dict(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
+    adapter = HTTPAdapter(**adapter_kwargs)
+    # DNS pinning: only the https:// adapter needs the original hostname
+    # (for SNI + certificate verification); plain http:// has no TLS.
+    # Same retry/pool config either way -- no duplicated setup.
+    https_adapter = (
+        _PinnedIPAdapter(server_hostname=pinned_hostname, **adapter_kwargs)
+        if pinned_hostname
+        else adapter
+    )
+    session.mount("https://", https_adapter)
     session.mount("http://", adapter)
     session.headers.update({"User-Agent": _USER_AGENT})
     return session
@@ -245,24 +276,33 @@ def _clamp_text_length(value: str, max_len: int, name: str) -> str:
     return value
 
 
-def _unsafe_url_reason(url: str) -> Optional[str]:
+def _validate_url_and_pin(url: str) -> "tuple[Optional[str], Optional[str]]":
     """
-    Returns None if `url` is safe to fetch, else a short reason string.
-    Allows only http/https with a real hostname, and rejects any host
-    that resolves to a loopback/private/link-local/multicast/reserved/
-    unspecified (or otherwise non-public) IP address.
+    Returns (reason, pinned_ip).
+
+    `reason` is None if `url` is safe to fetch, else a short reason string
+    (and `pinned_ip` is then None). Allows only http/https with a real
+    hostname, and rejects any host that resolves to a loopback/private/
+    link-local/multicast/reserved/unspecified (or otherwise non-public)
+    IP address -- EVERY address the lookup returned must pass.
+
+    `pinned_ip` is the first validated address from that SAME
+    getaddrinfo() result (IPv4-mapped IPv6 normalized to plain IPv4), so
+    the caller can connect to exactly the address that was checked
+    instead of triggering a second, independent DNS lookup
+    (DNS-rebinding defense-in-depth).
     """
     try:
         parsed = urllib.parse.urlparse(url)
         hostname = parsed.hostname
         port = parsed.port
     except ValueError:
-        return "invalid URL"
+        return "invalid URL", None
 
     if parsed.scheme not in ("http", "https"):
-        return "only http/https URLs are allowed"
+        return "only http/https URLs are allowed", None
     if not hostname:
-        return "URL has no hostname"
+        return "URL has no hostname", None
 
     try:
         infos = socket.getaddrinfo(
@@ -271,16 +311,17 @@ def _unsafe_url_reason(url: str) -> Optional[str]:
             type=socket.SOCK_STREAM,
         )
     except (socket.gaierror, UnicodeError):
-        return "hostname could not be resolved"
+        return "hostname could not be resolved", None
     if not infos:
-        return "hostname could not be resolved"
+        return "hostname could not be resolved", None
 
+    pinned_ip: Optional[str] = None
     for info in infos:
         addr = info[4][0].split("%", 1)[0]  # strip IPv6 scope id
         try:
             ip = ipaddress.ip_address(addr)
         except ValueError:
-            return "hostname resolved to an invalid address"
+            return "hostname resolved to an invalid address", None
         if ip.version == 6 and ip.ipv4_mapped is not None:
             ip = ip.ipv4_mapped  # ::ffff:127.0.0.1 style bypass
         if (
@@ -292,9 +333,112 @@ def _unsafe_url_reason(url: str) -> Optional[str]:
             or ip.is_unspecified
             or not ip.is_global
         ):
-            return "address is not a public internet address"
+            return "address is not a public internet address", None
+        if pinned_ip is None:
+            pinned_ip = str(ip)
 
-    return None
+    return None, pinned_ip
+
+
+def _unsafe_url_reason(url: str) -> Optional[str]:
+    """
+    Back-compat wrapper: returns None if `url` is safe to fetch, else a
+    short reason string. Identical checks to _validate_url_and_pin(),
+    which callers that also need the validated IP (to pin the connection
+    to it) should use instead.
+    """
+    return _validate_url_and_pin(url)[0]
+
+
+_MAX_PAGE_REDIRECTS = 5
+_REDIRECT_STATUS_CODES = (301, 302, 303, 307, 308)
+
+
+def _is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def _pinned_get(url: str, pinned_ip: str):
+    """
+    Streams `url`, connecting to `pinned_ip` (the address the caller
+    already validated via _validate_url_and_pin()) instead of letting
+    requests/urllib3 do a second, independent DNS lookup. The original
+    hostname is still sent in the Host header and used for TLS SNI /
+    certificate verification (see _PinnedIPAdapter).
+
+    Redirects are followed manually so EVERY hop is re-validated AND
+    pinned BEFORE any connection to it is made (previously the redirect
+    target was only validated after requests had already connected).
+
+    Returns (response, session, blocked):
+      - success: (response, session, None) -- caller must close both.
+      - a redirect hop failed validation: (None, None, (blocked_url, reason)).
+    Raises requests exceptions (Timeout, ConnectionError, TooManyRedirects,
+    ...) exactly like _session.get() would.
+
+    Credentials embedded in the URL (user:pass@host) are not forwarded on
+    the pinned request.
+    """
+    current_url = url
+    current_ip = pinned_ip
+
+    for _ in range(_MAX_PAGE_REDIRECTS + 1):
+        parsed = urllib.parse.urlparse(current_url)
+        hostname = parsed.hostname or ""
+        request_url = current_url
+        headers: dict[str, str] = {}
+        pinned_hostname: Optional[str] = None
+
+        # An IP-literal URL has no DNS step to pin -- fetch it as-is.
+        if hostname and not _is_ip_literal(hostname):
+            try:
+                ascii_host = hostname.encode("idna").decode("ascii")
+            except UnicodeError:
+                ascii_host = hostname
+            port = parsed.port
+            ip_host = f"[{current_ip}]" if ":" in current_ip else current_ip
+            request_url = urllib.parse.urlunparse(
+                parsed._replace(netloc=f"{ip_host}:{port}" if port else ip_host)
+            )
+            headers["Host"] = f"{ascii_host}:{port}" if port else ascii_host
+            if parsed.scheme == "https":
+                pinned_hostname = ascii_host
+
+        # Fresh session per hop: a pooled keep-alive connection from an
+        # earlier request could otherwise be reused against a different IP.
+        session = _build_session(pinned_hostname=pinned_hostname)
+        try:
+            response = session.get(
+                request_url,
+                headers=headers,
+                timeout=_PAGE_FETCH_TIMEOUT_SECONDS,
+                stream=True,
+                allow_redirects=False,
+            )
+        except Exception:
+            session.close()
+            raise
+
+        location = response.headers.get("Location")
+        if response.status_code in _REDIRECT_STATUS_CODES and location:
+            next_url = urllib.parse.urljoin(current_url, location)
+            response.close()
+            session.close()
+            reason, next_ip = _validate_url_and_pin(next_url)
+            if reason:
+                return None, None, (next_url, reason)
+            current_url, current_ip = next_url, next_ip
+            continue
+
+        return response, session, None
+
+    raise requests.exceptions.TooManyRedirects(
+        f"Exceeded {_MAX_PAGE_REDIRECTS} redirects fetching '{url}'."
+    )
 
 
 def _retry(fn: "Callable[[], Any]", attempts: int = 2, delay: float = 1.0):
@@ -759,27 +903,30 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
         logger.debug("Page cache hit for '%s'.", url)
         return cached
 
-    unsafe_reason = _unsafe_url_reason(url)
+    unsafe_reason, pinned_ip = _validate_url_and_pin(url)
     if unsafe_reason:
         logger.warning("read_webpage: blocked URL '%s' (%s).", url, unsafe_reason)
         return f"Error: Refusing to fetch '{url}' ({unsafe_reason})."
 
     response = None
+    pinned_session = None
 
     try:
         # OPTIMIZATION 9: stream the response and stop after a hard byte
         # cap instead of unconditionally pulling a (possibly huge) page
         # fully into memory before truncating it down to max_chars.
-        response = _session.get(url, timeout=_PAGE_FETCH_TIMEOUT_SECONDS, stream=True)
-
-        if response.history or response.url != url:
-            final_reason = _unsafe_url_reason(response.url)
-            if final_reason:
-                logger.warning(
-                    "read_webpage: '%s' redirected to blocked URL '%s' (%s).",
-                    url, response.url, final_reason,
-                )
-                return f"Error: '{url}' redirected to a blocked address ({final_reason})."
+        #
+        # DNS-REBINDING DEFENSE: connect to the exact IP validated above
+        # (no second DNS lookup), and re-validate + re-pin every redirect
+        # hop BEFORE connecting to it (see _pinned_get()).
+        response, pinned_session, blocked = _pinned_get(url, pinned_ip)
+        if blocked:
+            blocked_url, final_reason = blocked
+            logger.warning(
+                "read_webpage: '%s' redirected to blocked URL '%s' (%s).",
+                url, blocked_url, final_reason,
+            )
+            return f"Error: '{url}' redirected to a blocked address ({final_reason})."
 
         response.raise_for_status()
 
@@ -806,10 +953,13 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
     except requests.exceptions.Timeout:
         return f"Error: Timed out fetching '{url}'."
     except requests.exceptions.RequestException as e:
-        return f"Error: Failed to fetch '{url}'. Details: {e}"
+        logger.error("Failed to fetch '%s': %s", url, e)
+        return f"Error: Failed to fetch '{url}'."
     finally:
         if response is not None:
             response.close()
+        if pinned_session is not None:
+            pinned_session.close()
 
     try:
         soup = BeautifulSoup(html_text, "html.parser")

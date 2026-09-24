@@ -117,6 +117,26 @@ def _get_embedding_vector(cfg, text: str):
     return embeddings[0].values
 
 
+def _build_gemini_generate_config(types_module, timeout_s, **config_kwargs):
+    """
+    Builds a GenerateContentConfig with a real per-call I/O timeout
+    (http_options, SDK expects milliseconds) -- the inner timeout layer
+    for Gemini generate_content() calls, independent of any outer
+    future.result(timeout=...) deadline. `types_module` is the caller's
+    own lazily-imported `google.genai.types`, so no provider import
+    happens outside the caller's Gemini branch. If the installed
+    google-genai doesn't support http_options, falls back to the same
+    config without it (same defensive shape as _get_embedding_vector()).
+    """
+    try:
+        return types_module.GenerateContentConfig(
+            http_options=types_module.HttpOptions(timeout=int(float(timeout_s) * 1000)),
+            **config_kwargs,
+        )
+    except Exception:  # noqa: BLE001 -- older SDK without http_options support
+        return types_module.GenerateContentConfig(**config_kwargs)
+
+
 def _select_llm_client(cfg, ollama_getter, gemini_getter):
     """
     Shared provider-selection helper for tool-calling call sites
