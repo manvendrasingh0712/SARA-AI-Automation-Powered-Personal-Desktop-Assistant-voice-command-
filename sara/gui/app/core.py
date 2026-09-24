@@ -47,7 +47,7 @@ from sara.orchestrator.intent_handlers import _handle_command
 #
 # RLock, not Lock: _handle_command() may re-enter Api methods on the same
 # thread (e.g. the session_control "sleep" path calling stop_sara()).
-from sara.orchestrator.state import STATE_LOCK
+from sara.orchestrator.state import STATE_LOCK, TURN_STATE
 
 # How many typed commands may sit waiting while one is being processed.
 # Small on purpose: this is a human typing, not a job queue. Beyond this the
@@ -434,6 +434,10 @@ class ApiCoreMixin:
         #      sentence — which was the actual bug.
         #   3. clears whatever's already queued on the audio device.
         try:
+            TURN_STATE.cancel()
+        except Exception as e:
+            print(f"[stop_sara cancel error] {e}")
+        try:
             if hasattr(self.tts, "stop"):
                 self.tts.stop()
         except Exception as e:
@@ -491,6 +495,9 @@ class ApiCoreMixin:
         except Exception as e:
             print(f"[send_text_command clear_interrupt error] {e}")
 
+        # Cancellation: new generation + fresh cancel event for this command.
+        turn_gen, turn_cancel = TURN_STATE.begin()
+
         # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X"
         # used to only be checked in the voice loop (run_sara_logic),
         # never here -- typing "exit" or "my name is Priya" in the GUI
@@ -536,6 +543,10 @@ class ApiCoreMixin:
                 _push("status", "sleeping")
             except Exception as e2:
                 print(f"[send_text_command status push error] {e2}")
+        was_cancelled = turn_cancel.is_set() or not TURN_STATE.is_current(turn_gen)
+        if was_cancelled:
+            print("[send_text_command] turn cancelled by Stop; dropping late result")
+            reply = None
         if reply:
             _push("transcript", "sara", reply)
             try:
@@ -551,7 +562,7 @@ class ApiCoreMixin:
         # shutdown/cleanup path once webview.start() returns); "sleep"
         # just stops the mic/TTS for this session like the Stop button,
         # window stays open.
-        action = session_control.get("action")
+        action = None if was_cancelled else session_control.get("action")
         if action == "exit":
             self.close_window()
         elif action == "sleep":

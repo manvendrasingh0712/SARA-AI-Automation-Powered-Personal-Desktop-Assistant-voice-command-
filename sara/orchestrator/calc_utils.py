@@ -4,6 +4,8 @@ Safe arithmetic-expression evaluation (calculator intent) and
 natural-language duration parsing (timer intent).
 """
 
+import ast
+import operator
 import re
 
 from sara.orchestrator._constants import (
@@ -19,6 +21,63 @@ from sara.orchestrator._constants import (
 # ----------------------------------------------------------------------------
 # Calculator
 # ----------------------------------------------------------------------------
+
+
+class _CalcError(Exception):
+    """Raised for any disallowed node or unsafe construct in an expression."""
+
+
+_CALC_MAX_AST_DEPTH = 20
+
+_CALC_BIN_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+
+_CALC_UNARY_OPS = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
+
+
+def _eval_node(node, depth: int = 0):
+    if depth > _CALC_MAX_AST_DEPTH:
+        raise _CalcError("expression is nested too deeply")
+
+    if isinstance(node, ast.Expression):
+        return _eval_node(node.body, depth + 1)
+
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            raise _CalcError("only numeric constants are allowed")
+        return node.value
+
+    if isinstance(node, ast.BinOp):
+        op = _CALC_BIN_OPS.get(type(node.op))
+        if op is None:
+            raise _CalcError(f"operator {type(node.op).__name__} is not allowed")
+        left = _eval_node(node.left, depth + 1)
+        right = _eval_node(node.right, depth + 1)
+        if isinstance(node.op, ast.Pow) and abs(right) > _CALC_MAX_EXPONENT_VALUE:
+            raise _CalcError("exponent is too large")
+        return op(left, right)
+
+    if isinstance(node, ast.UnaryOp):
+        op = _CALC_UNARY_OPS.get(type(node.op))
+        if op is None:
+            raise _CalcError(f"operator {type(node.op).__name__} is not allowed")
+        return op(_eval_node(node.operand, depth + 1))
+
+    raise _CalcError(f"{type(node).__name__} is not allowed")
+
+
+def _ast_eval(expr: str):
+    tree = ast.parse(expr, mode="eval")
+    return _eval_node(tree)
 
 
 def _safe_calc(expression: str) -> str:
@@ -44,7 +103,7 @@ def _safe_calc(expression: str) -> str:
             return "Those numbers are too large for me to calculate safely."
 
     try:
-        result = eval(expr, {"__builtins__": {}}, {})
+        result = _ast_eval(expr)
         if isinstance(result, float) and result.is_integer():
             result = int(result)
         return f"The answer is {result}."

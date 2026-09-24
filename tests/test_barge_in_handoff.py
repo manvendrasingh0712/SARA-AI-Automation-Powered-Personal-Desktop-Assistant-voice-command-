@@ -203,6 +203,16 @@ class BargeInHandoffTests(unittest.TestCase):
         stt.capture_barge_in_audio()
         self.assertEqual(stt._barge_in_handoff, [chunk_a1, chunk_a2])
 
+        # Mirror the real ordering: in production, TTSWorker._watch_loop()
+        # calls capture_barge_in_audio() and then mark_tts_stopped() runs
+        # as TTS unwinds, clearing self._ring BEFORE the next listen()
+        # starts. capture_barge_in_audio() only COPIES the ring, so
+        # without this call the ring would still hold [a1, a2] when
+        # _collect_speech() runs, and its backlog (handoff + ring) would
+        # double-count the same audio. The handoff buffer is untouched
+        # by this call, so it remains the sole copy of the interruption.
+        stt.mark_tts_stopped()
+
         # max_duration kept short so the SPEAKING state's "keep waiting
         # for more ring data" polling (self._ring.wait(timeout=0.05))
         # exits promptly once our fake VAD's always-speech reading means

@@ -59,6 +59,12 @@ def _send_keys(combo: str) -> Optional[str]:
         return None
     except ImportError:
         return "Window/media control requires the 'keyboard' package. Run: pip install keyboard"
-    except Exception as e:
+    except (ValueError, OSError) as e:
         logger.error(f"_send_keys failed for combo '{combo}': {e}")
+        return "Sorry, I couldn't send that key command right now."
+    except Exception as e:
+        logger.exception(
+            "_send_keys raised an unexpected error type for combo '%s' "
+            "(this may be a bug): %s", combo, e
+        )
         return "Sorry, I couldn't send that key command right now."

@@ -4,7 +4,7 @@ build_core_objects() constructs every subsystem (LLM, TTS, STT, DB,
 reminders, vision) at startup; _WakeWatcher + run_sara_logic() are the
 main always-on conversation loop.
 """
-from sara.orchestrator.state import STATE_LOCK
+from sara.orchestrator.state import STATE_LOCK, TURN_STATE
 from .lazy import _debug_log, _Lazy
 from .state import LanguageState, AssistantState
 from .ui_bridge import _UICoalescer
@@ -727,6 +727,7 @@ def run_sara_logic(
 
                 session_control: dict = {}
                 with STATE_LOCK:
+                    turn_gen, turn_cancel = TURN_STATE.begin()
                     reply_text = _handle_command(
                         user_input,
                         brain,
@@ -744,6 +745,10 @@ def run_sara_logic(
                         stt_confidence=stt_confidence,
                         session_control=session_control,
                     )
+
+                if turn_cancel.is_set():
+                    logger.info("[Logic] turn cancelled by Stop; dropping late result")
+                    continue
 
                 ui_update("transcript", "sara", reply_text or "(no response)")
                 db_writer.log_message("user", user_input)

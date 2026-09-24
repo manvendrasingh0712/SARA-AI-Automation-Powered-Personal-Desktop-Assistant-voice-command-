@@ -608,7 +608,19 @@ class Config:
 
     # ── RAG / long-term semantic memory (sara/core/rag.py) ──────────────────
     RAG_ENABLED: bool = _bool(os.getenv("RAG_ENABLED", "True"), default=True)
+    # EMBEDDING_BACKEND is an EXPLICIT, separate switch from LLM_BACKEND --
+    # a user can run LLM_BACKEND=ollama for chat while still using Gemini
+    # for embeddings (or vice versa). Defaults to "gemini" so existing
+    # installs see zero behavior change. Set to "ollama" to use the local
+    # ollama==0.6.2 client's embed() endpoint instead (requires the model
+    # in OLLAMA_EMBEDDING_MODEL below to already be pulled locally, e.g.
+    # `ollama pull nomic-embed-text`).
+    EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "gemini").lower()
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+    # Only used when EMBEDDING_BACKEND="ollama" -- separate from
+    # EMBEDDING_MODEL (which is Gemini's model name) since the two
+    # backends' model catalogs don't overlap.
+    OLLAMA_EMBEDDING_MODEL: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
     RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=6)
     RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.40)
@@ -1220,5 +1232,3 @@ class Config:
                     f"top_p={cls.OLLAMA_TOP_P} repeat_penalty={cls.OLLAMA_REPEAT_PENALTY} "
                     f"temperature={cls.OLLAMA_TEMPERATURE}"
                 )
-
-Config.validate()

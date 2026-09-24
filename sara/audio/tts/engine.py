@@ -15,6 +15,7 @@ from .voice_params import (
 from .text_prep import clean_for_tts, _split_adaptive
 from .synth import _synth_kokoro
 from .player import _PersistentPlayer, _drain
+from .cache import _phrase_cache_get, _phrase_cache_put
 
 
 import os
@@ -214,16 +215,15 @@ class TextToSpeech:
         # v14 (LATENCY): short-phrase PCM cache — greetings/acks/sleep
         # lines repeat verbatim every cycle, so cache synthesized audio
         # and skip Kokoro synthesis on hits (only playback time remains).
-        # FIFO eviction once _PHRASE_CACHE_MAX entries held. Keyed on
+        # LRU eviction (shared cache in .cache) once _PHRASE_CACHE_MAX entries held. Keyed on
         # (text, lang, fast, speed_override) since fast=True uses
         # different synth params and a live speed override (v15, see
         # set_speed() below) must not reuse audio cached at a different
         # speed. Only used by the non-streaming speak() path —
         # speak_stream() sentences vary too much to benefit and aren't
         # cached.
-        self._phrase_cache: dict[tuple[str, str, bool, float | None], np.ndarray] = {}
-        self._phrase_cache_order: list[tuple[str, str, bool, float | None]] = []
-        self._phrase_cache_lock = threading.Lock()
+        # (cache storage now lives in sara/audio/tts/cache.py -- see
+        # _phrase_cache_get()/_phrase_cache_put(); no per-instance state.)
 
         # v12: None -> automatic per-sentence detection via _detect_lang().
         # "en" / "hi" -> caller has manually forced that language via
@@ -420,15 +420,11 @@ class TextToSpeech:
                         ack_text, self._kokoro, ack_params, self._synth_lock
                     )
                     if ack_pcm is not None and len(ack_pcm) > 0:
-                        with self._phrase_cache_lock:
-                            # v15: 4-tuple key now — None here matches
-                            # "no speed override active", which is the
-                            # state at warm-up time (nothing has called
-                            # set_speed() yet this session).
-                            key = (ack_text, "en", True, None)
-                            if key not in self._phrase_cache:
-                                self._phrase_cache_order.append(key)
-                            self._phrase_cache[key] = ack_pcm.copy()
+                        # v15: 4-tuple key now — None here matches
+                        # "no speed override active", which is the
+                        # state at warm-up time (nothing has called
+                        # set_speed() yet this session).
+                        _phrase_cache_put((ack_text, "en", True, None), ack_pcm.copy())
             except Exception as e:
                 if getattr(Config, "DEBUG_MODE", False):
                     print(f"[TTS] wake-ack pre-cache failed (non-fatal): {e}")
@@ -559,8 +555,7 @@ class TextToSpeech:
                cache_key = (text, lang, fast, self.get_speed()) if cacheable else None
                pcm = None
                if cache_key is not None:
-                   with self._phrase_cache_lock:
-                       cached = self._phrase_cache.get(cache_key)
+                   cached = _phrase_cache_get(cache_key)
                    if cached is not None:
                        pcm = cached.copy()
 
@@ -569,13 +564,7 @@ class TextToSpeech:
                    self._warmup_done.wait(timeout=_WARMUP_WAIT_S)
                    pcm = _synth_kokoro(text, self._kokoro, params, self._synth_lock)
                    if cache_key is not None and pcm is not None and len(pcm) > 0:
-                       with self._phrase_cache_lock:
-                           if cache_key not in self._phrase_cache:
-                               if len(self._phrase_cache_order) >= _PHRASE_CACHE_MAX:
-                                   oldest = self._phrase_cache_order.pop(0)
-                                   self._phrase_cache.pop(oldest, None)
-                               self._phrase_cache_order.append(cache_key)
-                           self._phrase_cache[cache_key] = pcm.copy()
+                       _phrase_cache_put(cache_key, pcm.copy())
 
                if pcm is not None and len(pcm) > 0:
                    self._player.play_and_wait(pcm, self._stop, self._volume)

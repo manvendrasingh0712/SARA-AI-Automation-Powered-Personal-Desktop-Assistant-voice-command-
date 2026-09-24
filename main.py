@@ -318,6 +318,8 @@ def main() -> None:
         _notify_already_running()
         sys.exit(0)
 
+    Config.validate()
+
     setup_logging()
     logger.info("Sara AI starting up (main.main).")
 
