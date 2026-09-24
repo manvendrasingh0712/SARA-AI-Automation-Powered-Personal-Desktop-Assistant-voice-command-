@@ -1,6 +1,19 @@
 # ==========================================
 # SARA AI - requirements.txt
 # ==========================================
+# INSTALL -- exactly one ONNX Runtime build, chosen by the extra file:
+#   CPU:  pip install -r requirements.txt -r requirements-cpu.txt
+#   GPU:  pip install -r requirements.txt -r requirements-gpu.txt
+# onnxruntime / onnxruntime-gpu were moved OUT of this file into those two
+# files (same 1.21.0 pin, unchanged). NOTE: kokoro-onnx, faster-whisper and
+# openwakeword each depend on the CPU `onnxruntime` package themselves, so on
+# the GPU path pip can still bring it in transitively -- see "KNOWN CONFLICT
+# FLAGGED" below and requirements-gpu.txt.
+#
+# TODO (follow-up, NOT done yet): generate a lock file (pip-compile or
+# equivalent) once these files are verified installable in a real
+# environment, so a fresh clone reproduces the tested set exactly. Do not
+# let this be forgotten.
 # Every pinned version below was verified against the real PyPI index
 # (and, where relevant, cross-checked against every `import` in the
 # codebase) before being committed here.
@@ -169,10 +182,9 @@ Pillow==10.0.0
 python-dotenv==1.0.1
 numpy==2.1.0
 
-# ONNX Runtime — CPU build pinned explicitly alongside the GPU build below
-# to keep both at the exact same version (see "KNOWN CONFLICT FLAGGED" above).
-onnxruntime==1.21.0
-onnxruntime-gpu==1.21.0
+# ONNX Runtime is intentionally NOT listed here. Install exactly one build via
+#   requirements-cpu.txt  (onnxruntime==1.21.0)      or
+#   requirements-gpu.txt  (onnxruntime-gpu==1.21.0)
 
 # CUDA/cuDNN DLLs for onnxruntime-gpu + faster-whisper's ctranslate2 backend
 # (both need cuDNN 9.x / CUDA 12.x; loaded explicitly in main.py, see note above)

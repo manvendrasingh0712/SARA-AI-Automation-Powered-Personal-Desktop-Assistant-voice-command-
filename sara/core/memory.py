@@ -193,11 +193,21 @@ class PreferencesDB:
                 result = fn(write_conn)
                 if future is not None:
                     future.set_result(result)
-            except Exception as e:
+            except sqlite3.Error as e:
                 if future is not None:
+                    logger.debug("DB write failed with sqlite3.Error; forwarding to caller: %s", e)
                     future.set_exception(e)
                 else:
                     logger.error("Background DB write failed: %s", e)
+                    print(f"[Error] Background DB write failed: {e}")
+            except Exception as e:
+                # Unexpected (non-sqlite) failure: still forwarded/handled exactly
+                # as before so the writer thread never dies, but with a traceback.
+                if future is not None:
+                    logger.exception("Unexpected error in DB write job; forwarding to caller: %s", e)
+                    future.set_exception(e)
+                else:
+                    logger.exception("Background DB write failed unexpectedly: %s", e)
                     print(f"[Error] Background DB write failed: {e}")
 
     def _submit_write(
@@ -224,9 +234,15 @@ class PreferencesDB:
                 logger.error("DB write timed out after %.1fs.", timeout)
                 print(f"[Error] DB write did not complete in time ({timeout}s).")
                 return False
-            except Exception as e:
+            except (sqlite3.Error, RuntimeError) as e:
+                # Expected: a sqlite error, or the writer's own
+                # RuntimeError("Write connection is closed.") during shutdown.
                 logger.error("DB write raised an exception: %s", e)
                 print(f"[Error] DB write raised an exception: {e}")
+                return False
+            except Exception as e:
+                logger.exception("DB write raised an unexpected exception: %s", e)
+                print(f"[Error] DB write raised an unexpected exception: {e}")
                 return False
         return True
 

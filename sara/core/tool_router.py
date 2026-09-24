@@ -395,6 +395,23 @@ _TOOL_CALL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
     max_workers=2, thread_name_prefix="sara-tool-router"
 )
 
+
+def _shutdown_tool_call_executor() -> None:
+    """
+    Cooperative shutdown of the module-level tool-router executor: queued
+    (not yet started) calls are cancelled, anything already running is
+    detached from, never force-killed. Safe to call more than once and
+    never raises. Mirrors network_utils._shutdown_network_executor().
+    """
+    try:
+        try:
+            _TOOL_CALL_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            # Python < 3.9: shutdown() has no cancel_futures parameter.
+            _TOOL_CALL_EXECUTOR.shutdown(wait=False)
+    except Exception as e:  # noqa: BLE001 -- shutdown must never raise
+        print(f"[ToolRouter] executor shutdown failed: {e}")
+
 # Circuit breaker: if the LLM tool-call times out this many turns IN A
 # ROW, skip the LLM entirely (go straight to heuristic) for a cooldown
 # window instead of paying the full timeout again on every subsequent
@@ -525,21 +542,65 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
     back (see resolve_tool_call() below) -- matching how every other
     optional LLM-assist path in this codebase behaves.
     """
-    from google.genai import types as _gtypes
-    from sara.core.llm.clients import _get_gemini_client
+    from sara.core.llm.clients import (
+        _build_gemini_generate_config,
+        _get_gemini_client,
+        _get_ollama_client,
+        _select_llm_client,
+    )
 
-    client = _get_gemini_client(cfg)
+    backend, client = _select_llm_client(cfg, _get_ollama_client, _get_gemini_client)
     if not client:
         return None
+
+    if backend == "ollama":
+        # TOOLS_SCHEMA is already in Ollama's native
+        # {"type": "function", "function": {...}} shape -- used as-is.
+        resp = client.chat(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": _TOOL_ROUTER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_input},
+            ],
+            tools=TOOLS_SCHEMA,
+            think=False,
+            options={"num_predict": 150, "temperature": 0},
+            keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+        )
+
+        calls = resp.message.tool_calls
+        if not calls:
+            # Same legitimate "no tool applies" answer as the Gemini branch.
+            return {"name": "unknown", "arguments": {}}
+
+        call = calls[0]
+        return {
+            "name": call.function.name,
+            "arguments": dict(call.function.arguments or {}),
+        }
+
+    from google.genai import types as _gtypes
+
+    # Real I/O-level timeout for the Gemini HTTP request itself (inner
+    # layer), independent of the outer future.result(timeout=...)
+    # deadline in resolve_tool_call(), which cannot stop a thread that
+    # is already running.
+    try:
+        _http_timeout_s = float(getattr(cfg, "TOOL_ROUTER_LLM_TIMEOUT_S", 8.0))
+    except (TypeError, ValueError):
+        _http_timeout_s = 8.0
+    _gen_config = _build_gemini_generate_config(
+        _gtypes,
+        _http_timeout_s,
+        system_instruction=_TOOL_ROUTER_SYSTEM_PROMPT,
+        tools=_get_gemini_tools(),
+        max_output_tokens=150,
+    )
 
     resp = client.models.generate_content(
         model=model_name,
         contents=user_input,
-        config=_gtypes.GenerateContentConfig(
-            system_instruction=_TOOL_ROUTER_SYSTEM_PROMPT,
-            tools=_get_gemini_tools(),
-            max_output_tokens=150,
-        ),
+        config=_gen_config,
     )
 
     calls = resp.function_calls

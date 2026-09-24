@@ -68,6 +68,7 @@ PRODUCTION-AUDIT CHANGES (this revision)
 """
 
 import os
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -77,6 +78,47 @@ load_dotenv()
 # paths below. Do NOT use os.getcwd() for anything that must be stable
 # regardless of where the process happens to be launched from. ──────────
 _PROJECT_ROOT = Path(__file__).resolve().parent
+
+# ── Per-user app-data directory ───────────────────────────────────────────
+# Runtime/user data must not default to the Git checkout. Resolves to
+# %LOCALAPPDATA%/SARA-AI on Windows, ~/.sara-ai elsewhere. If the directory
+# cannot be created (permissions, read-only FS, no home dir), falls back to
+# _PROJECT_ROOT with a logged warning so import never crashes.
+_APP_DATA_SUBDIRS = ("data", "logs", "exports", "cache")
+_APP_DATA_RESOLVED = None
+
+
+def app_data_dir() -> Path:
+    global _APP_DATA_RESOLVED
+    if _APP_DATA_RESOLVED is not None:
+        return _APP_DATA_RESOLVED
+    try:
+        local = os.getenv("LOCALAPPDATA")
+        if local:
+            base = Path(local) / "SARA-AI"
+        elif os.name == "nt":
+            base = Path.home() / "AppData" / "Local" / "SARA-AI"
+        else:
+            base = Path.home() / ".sara-ai"
+        base.mkdir(parents=True, exist_ok=True)
+        for _sub in _APP_DATA_SUBDIRS:
+            (base / _sub).mkdir(parents=True, exist_ok=True)
+        _APP_DATA_RESOLVED = base
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            "[config] Could not create app-data directory (%s); "
+            "falling back to project root: %s", e, _PROJECT_ROOT
+        )
+        _APP_DATA_RESOLVED = _PROJECT_ROOT
+    return _APP_DATA_RESOLVED
+
+
+def app_data_subdir(name: str) -> Path:
+    root = app_data_dir()
+    # Fallback mode (root == project root) keeps the old flat layout.
+    if root == _PROJECT_ROOT:
+        return root
+    return root / name
 
 
 class ConfigError(Exception):
@@ -684,15 +726,17 @@ class Config:
     ]
 
     # ── Shared file paths (CWD-independent) ─────────────────────────────────
-    DB_PATH: str = os.getenv("DB_PATH") or str(_PROJECT_ROOT / "sara_data.db")
+    DB_PATH: str = os.getenv("DB_PATH") or str(
+        app_data_subdir("data") / "sara_data.db"
+    )
     NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH") or str(
-        _PROJECT_ROOT / "sara_notes.txt"
+        app_data_subdir("data") / "sara_notes.txt"
     )
     TODO_FILE_PATH: str = os.getenv("TODO_FILE_PATH") or str(
-        _PROJECT_ROOT / "sara_todos.txt"
+        app_data_subdir("data") / "sara_todos.txt"
     )
     UNMATCHED_LOG_PATH: str = os.getenv("UNMATCHED_LOG_PATH") or str(
-        _PROJECT_ROOT / "sara_unmatched_queries.jsonl"
+        app_data_subdir("logs") / "sara_unmatched_queries.jsonl"
     )
 
     # ── Google Calendar (sara/tools/calendar.py) ─────────────────────────
@@ -700,7 +744,7 @@ class Config:
         "GOOGLE_CALENDAR_CREDENTIALS_PATH"
     ) or str(_PROJECT_ROOT / "credentials.json")
     GOOGLE_CALENDAR_TOKEN_PATH: str = os.getenv("GOOGLE_CALENDAR_TOKEN_PATH") or str(
-        _PROJECT_ROOT / "token.json"
+        app_data_subdir("data") / "token.json"
     )
 
     @classmethod
