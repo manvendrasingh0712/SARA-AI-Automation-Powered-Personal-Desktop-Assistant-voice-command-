@@ -820,6 +820,13 @@ def run_sara_logic(
     finally:
         if thread_supervisor is not None:
             thread_supervisor.stop()
+        # `reminders` is a _Lazy proxy: this call waits for the background
+        # factory to finish and raises RuntimeError if it failed, so it must
+        # be wrapped -- a failure here must never block the shutdown steps below.
+        try:
+            reminders.shutdown()
+        except Exception as e:  # noqa: BLE001
+            print(f"[Shutdown] reminders shutdown failed: {e}")
         proactive_engine.shutdown()
         if notes_memory is not None:
             notes_memory.close()

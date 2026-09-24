@@ -32,7 +32,12 @@ def _current_cancel_event() -> threading.Event:
         from sara.orchestrator.state import TURN_STATE
 
         return TURN_STATE.current_event()
-    except Exception:  # noqa: BLE001
+    except (ImportError, AttributeError) as e:
+        # Expected: lazy-import cycle / TURN_STATE not available yet.
+        logger.debug("cancel event unavailable, using a fresh Event: %s", e)
+        return threading.Event()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("unexpected error getting cancel event: %s", e)
         return threading.Event()
 
 

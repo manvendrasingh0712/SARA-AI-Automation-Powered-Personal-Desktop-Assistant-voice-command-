@@ -106,7 +106,8 @@ def _call_with_timeout(
         )
     except Exception as e:
         _record_breaker_failure(name)
-        return f"Sorry, I ran into a problem: {e}"
+        logger.error(f"[NetworkTimeout] '{name}' failed: {e}")
+        return "Sorry, that ran into a problem \u2014 please try again."
     else:
         _record_breaker_success(name)
         return result

@@ -4,6 +4,7 @@ ApiNotesMixin -- Quick Notes panel + full conversation/preferences export.
 """
 from .helpers import _row_to_export_dict
 from .events import _push
+from config import app_data_subdir
 
 import os
 import json
@@ -52,7 +53,7 @@ class ApiNotesMixin:
     # ── Memory page ────────────────────────────────────────────────────
     def export_memory(self):
         try:
-            export_path = os.path.join(os.getcwd(), "memory_export.json")
+            export_path = os.path.join(str(app_data_subdir("exports")), "memory_export.json")
 
             # Both the DB read (up to 500 rows) and the file write can be
             # slow enough to be felt on the bridge thread, so the whole

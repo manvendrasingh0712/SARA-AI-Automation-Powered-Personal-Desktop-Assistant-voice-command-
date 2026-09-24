@@ -161,7 +161,8 @@ class ReminderManager:
             friendly_time = due_dt.strftime("%I:%M %p on %B %d")
             return f"Got it. I'll remind you to {message.strip()} at {friendly_time}."
         except sqlite3.Error as e:
-            return f"Failed to save the reminder. Error: {e}"
+            print(f"[Error] Failed to save reminder: {e}")
+            return "Sorry, I couldn't save that reminder right now."
 
     def list_reminders(self) -> str:
         """Returns a human-readable list of all upcoming (untriggered) reminders."""
@@ -184,7 +185,8 @@ class ReminderManager:
 
             return "Here are your upcoming reminders: " + "; ".join(lines)
         except sqlite3.Error as e:
-            return f"Failed to fetch reminders. Error: {e}"
+            print(f"[Error] Failed to fetch reminders: {e}")
+            return "Sorry, I couldn't fetch your reminders right now."
 
     def cancel_all_reminders(self) -> str:
         """Cancels (deletes) all pending reminders."""
@@ -201,7 +203,8 @@ class ReminderManager:
                 return "You have no pending reminders to cancel."
             return f"Cancelled {count} pending reminder(s)."
         except sqlite3.Error as e:
-            return f"Failed to cancel reminders. Error: {e}"
+            print(f"[Error] Failed to cancel reminders: {e}")
+            return "Sorry, I couldn't cancel that reminder right now."
 
     # ------------------------------------------------------------
     # Calendar-style API (used by sara/gui/app.py Api class)

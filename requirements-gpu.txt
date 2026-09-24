@@ -1,0 +1,44 @@
+# pip install -r requirements.txt -r requirements-gpu.txt
+onnxruntime-gpu==1.21.0
+# The cuDNN / cuBLAS DLL packages this build needs stay in requirements.txt.
+# NOTE: kokoro-onnx, faster-whisper and openwakeword also depend on the CPU
+# `onnxruntime` package, so pip may install it next to this one. If CUDA isn't
+# used or you get DLL-load errors:
+#   pip uninstall -y onnxruntime onnxruntime-gpu
+#   pip install onnxruntime-gpu==1.21.0
+
+
+
+# SARA ke liye 20 suggestions
+
+# Ye sab aapke code me maujood cheezon (planner, RAG, action_log, context_state, proactive, ProactiveEngine, TTSWorker) par bane hain. Isliye zyadatar naya system banane ke bajaye jude hue hisse hain.
+
+# Fast (speed)
+# Speculative tool-router warm-up: user bol hi raha ho tab partial transcript par has_probable_tool_intent() chala do. Jawab ready hote hi turant aa jaye.
+# Small local model for routing: simple commands ("volume badhao", "time kya hai") ke liye chhota Ollama model, aur bhaari sawaalon ke liye bada Gemini/Ollama. Latency aadhi ho jaati hai.
+# Predictive pre-loading: jo app user roz subah 9 baje kholta hai, use SARA pehle se garam kar de. Weather aur news bhi 8 baje background me fetch karke cache me rakh sakti hai.
+# Streaming TTS with barge-in: SARA bol rahi ho aur user beech me bole, to turant ruk kar sun le. speak_stream pehle se hai, bas interrupt handling chahiye.
+# Multi-step plans me parallel steps: jo steps ek doosre par nirbhar nahi hain (jaise "weather batao aur Spotify chalao"), unhe saath me chalao. Abhi executor ek-ek karke chalata hai.
+# Smart (samajh aur reasoning)
+# Automatic backend failover: Gemini fail ho ya circuit breaker khule, to SARA khud Ollama par chali jaye. Ye pichli list me bhi tha, par sabse zyada asar isi ka hai.
+# Learning from unmatched_log: jo commands baar-baar miss hote hain, unse SARA khud naye intent patterns suggest kare. Aap sirf "haan/na" bolo.
+# Clarifying questions, guess nahi: "usko band karo" jaise ambiguous command par SARA do options bataye ("Chrome ya Spotify?"). _LikelyMisfireReply ka retry mechanism iska base hai.
+# Habit detection: roz raat 11 baje brightness kam karte ho? SARA pooche "Isko routine bana doon?" aur routines me save kar de.
+# Self-explaining actions: _h_why_decision ko action_log se jodo. Phir "tumne ye kyun kiya?" ka jawab planner ke asli steps ke saath mile.
+# Human jaisi (natural behaviour)
+# Emotion-aware tone: STT confidence, bolne ki speed aur time of day se mood ka andaza lagakar jawab ka andaaz badle. Thaki hui raat me chhota aur shaant, subah me energetic.
+# Hinglish natural switching: jis mix me user bolta hai (Hindi/English), usi me jawab de. Formal Hindi ya text-book English nahi.
+# Small talk aur follow-ups yaad rakhna: "kal tumne kaha tha exam hai, kaisa gaya?" jaisa follow-up RAG memory se, aur sirf tab jab user ne khud wo baat share ki ho.
+# Varied acknowledgements: _ACK_PHRASES ki 5 fixed lines ki jagah context ke hisaab se ("Chrome khol rahi hoon", "Ek second, dhoondh rahi hoon"). Repetition robotic lagta hai.
+# "Sochne" ka natural pause aur filler: lambe kaam par "hmm, ruko" jaisa halka filler aur beech me progress ("aadha ho gaya"). Isse chup-chaap intezaar ka dar khatam hota hai.
+# Impressive (user experience aur trust)
+# Live plan-progress card: multi-step kaam me GUI par checklist (✓ / ✗ / skipped) aur Stop button. Ye pichli list me bhi tha, kyunki execute_plan ab har step ka outcome jaanta hai.
+# "Sara ne kya kiya?" timeline page: action_log (jisme ab planner steps bhi hain) ko Analytics page par filter aur success/fail ke saath dikhao. Sabse zyada bharosa yahi banata hai.
+# Undo ka safety net, sirf settings ka nahi: har destructive ya reversible action (file khulna, app band hona) ke baad "wapas karo" bolne par ulta ho sake. _h_undo_setting_change ka pattern aage badhao.
+# Proactive suggestions with reason: ProactiveEngine pehle se kaaran (reason) record karta hai. Nudge ke saath uska chhota kaaran dikhao ("Kyunki aapne 2 ghante se break nahi liya").
+# First-run wizard aur "Open data folder": pehli baar chalane par bataye ki data ab %LOCALAPPDATA%/SARA-AI me hai, aur "Import old data" ka one-click button ho. Ye pichli list ka suggestion hai, aur aapke manual migration ka asaan version bhi.
+# Kahan se shuru karein
+
+# Sabse zyada asar, kam mehnat me: #6 (failover), #17 (timeline page), #14 (varied acks), #16 (plan card). In chaaron ka zyadatar base aapke code me pehle se hai.
+
+# Bolo to inme se kisi ek ke Find/Replace blocks bana dunga. Uske liye jo files chahiye, unhe upload kar dena.

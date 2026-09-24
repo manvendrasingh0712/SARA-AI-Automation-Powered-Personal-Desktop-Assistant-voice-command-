@@ -24,12 +24,13 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from threading import Lock
 
-# Written next to the app, same convention as memory_export.json
-# (see Memory page: "Saves your recent conversation history to
-# memory_export.json next to the app"). analytics.py lives at
-# sara/gui/app/analytics.py, so parents[3] is the project root.
+# Written to the per-user app-data directory (%LOCALAPPDATA%/SARA-AI/data
+# on Windows, ~/.sara-ai/data elsewhere) via the shared helper in config.py,
+# which falls back to the project root only if that directory can't be created.
+from config import app_data_subdir
+
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-_ANALYTICS_PATH = _PROJECT_ROOT / "analytics_usage.json"
+_ANALYTICS_PATH = app_data_subdir("data") / "analytics_usage.json"
 
 _LOCK = Lock()
 

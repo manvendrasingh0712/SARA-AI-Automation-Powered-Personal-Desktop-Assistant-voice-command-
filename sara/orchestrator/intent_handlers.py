@@ -2562,6 +2562,10 @@ def _build_plan_dispatch_fn(ctx: dict):
             )
         return result
 
+    # Audit hook: sara.core.planning.executor.execute_plan() reads this to
+    # write one action_log entry per plan step. None is a silent no-op.
+    _dispatch.audit_db = ctx.get("db")
+
     return _dispatch
 
 

@@ -99,7 +99,12 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
     rest of the app (same client helpers, same config knobs).
     """
     try:
-        from sara.core.llm.clients import _get_gemini_client
+        from sara.core.llm.clients import (
+            _get_gemini_client,
+            _get_ollama_client,
+            _select_llm_client,
+            _build_gemini_generate_config,
+        )
 
         system_prompt = (
             "You are Sara, a voice assistant. Rephrase the following short "
@@ -108,17 +113,45 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
             f"Respond only in {lang}, no markdown, no quotes."
         )
 
-        client = _get_gemini_client(Config)
+        backend, client = _select_llm_client(Config, _get_ollama_client, _get_gemini_client)
         if not client:
             return None
+
+        if backend == "ollama":
+            # Single attempt, no retries, small token cap -- any failure
+            # falls to the outer except and returns None (template used).
+            resp = client.chat(
+                model=getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": template},
+                ],
+                think=False,
+                options={"temperature": 0.6, "num_predict": 60},
+                keep_alive=getattr(Config, "OLLAMA_KEEP_ALIVE", "5m"),
+            )
+            text = (resp.message.content or "").strip()
+            return text or None
+
         from google.genai import types
+
+        # Real I/O-level timeout (short: this is best-effort and must
+        # never hang). Falls back to no http_options on an older SDK.
+        try:
+            _http_timeout_s = float(getattr(Config, "PROACTIVE_LLM_TIMEOUT_S", 3.5))
+        except (TypeError, ValueError):
+            _http_timeout_s = 3.5
+        _gen_config = _build_gemini_generate_config(
+            types,
+            _http_timeout_s,
+            system_instruction=system_prompt,
+            temperature=0.6,
+        )
 
         resp = client.models.generate_content(
             model=getattr(Config, "GEMINI_MODEL", "gemini-2.5-flash"),
             contents=[{"role": "user", "parts": [{"text": template}]}],
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt, temperature=0.6
-            ),
+            config=_gen_config,
         )
         text = (resp.text or "").strip()
 

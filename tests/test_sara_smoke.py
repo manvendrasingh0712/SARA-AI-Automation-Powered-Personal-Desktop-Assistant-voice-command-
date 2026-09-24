@@ -18,7 +18,17 @@ from config import Config
 
 class SaraSmokeTests(unittest.TestCase):
     def test_config_validate(self):
-        Config.validate(force=True)
+        # Validate the validation LOGIC deterministically: use a backend that
+        # needs no cloud API key, and restore Config state afterward so this
+        # test can't leak into later tests in the same process.
+        original_backend = Config.LLM_BACKEND
+        original_validated = Config._validated
+        Config.LLM_BACKEND = "ollama"
+        try:
+            Config.validate(force=True)
+        finally:
+            Config.LLM_BACKEND = original_backend
+            Config._validated = original_validated
 
     def test_intent_engine(self):
         from sara.core.intent.engine import detect_intent

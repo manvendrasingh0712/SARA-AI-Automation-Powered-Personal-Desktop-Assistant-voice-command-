@@ -60,6 +60,38 @@ from sara.core.llm.clients import _get_gemini_client, _get_ollama_client, _selec
 logger = logging.getLogger("sara.core.planning.executor")
 
 
+def _audit_plan_results(dispatch: Any, results: List[StepResult]) -> None:
+    """
+    Fire-and-forget audit logging: exactly ONE action_log entry per
+    executed step (action_type="planner", action_name=<tool name>,
+    outcome=success/fail/skipped). Only action_type/action_name/outcome
+    are logged -- never the step's arguments or output.
+
+    The db handle is read off the dispatch callable (`dispatch.audit_db`,
+    set by intent_handlers._build_plan_dispatch_fn()); if it's missing,
+    this is a silent no-op. _log_action is imported lazily (same pattern
+    as _plan_cancelled() above) to avoid a circular import. Never raises.
+    """
+    try:
+        audit_db = getattr(dispatch, "audit_db", None)
+        if audit_db is None or not results:
+            return
+        from sara.orchestrator.intent_handlers import _log_action
+
+        outcome_by_status = {
+            StepStatus.SUCCESS: "success",
+            StepStatus.FAILED: "fail",
+            StepStatus.SKIPPED: "skipped",
+        }
+        for step_result in results:
+            outcome = outcome_by_status.get(step_result.status)
+            if outcome is None:
+                continue
+            _log_action(audit_db, "planner", step_result.step.tool, outcome)
+    except Exception:  # noqa: BLE001 -- audit logging must never break execution
+        pass
+
+
 def _plan_cancelled() -> bool:
     """True if the current turn was cancelled via Stop (lazy import avoids cycles)."""
     try:
@@ -626,6 +658,8 @@ def execute_plan(
         # from -- it keeps running to completion on its own thread, but
         # this function never waits for or observes that again.
         step_executor.shutdown(wait=False, cancel_futures=True)
+
+    _audit_plan_results(dispatch, results)
 
     elapsed_s = time.monotonic() - start
     final_message = _build_final_message(tuple(results), aborted, abort_reason)

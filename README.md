@@ -531,6 +531,8 @@ SARA-AI/
 │
 ├── assets/screenshots/
 ├── requirements.txt
+├── requirements-cpu.txt
+├── requirements-gpu.txt
 ├── requirements-build.txt
 ├── BUILD.md
 ├── CHANGELOG.md
@@ -570,9 +572,26 @@ python -m pip install --upgrade pip
 
 ### 3. Install dependencies
 
+Install the shared dependencies plus **exactly one** ONNX Runtime build.
+
+**CPU only:**
+
 ```powershell
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-cpu.txt
 ```
+
+**NVIDIA GPU (recommended):**
+
+```powershell
+pip install -r requirements.txt -r requirements-gpu.txt
+```
+
+> Note: `kokoro-onnx`, `faster-whisper` and `openwakeword` each depend on the CPU `onnxruntime` package, so pip can still install it next to `onnxruntime-gpu` (both use the same folder). If CUDA isn't used or you get DLL-load errors, run:
+>
+> ```powershell
+> pip uninstall -y onnxruntime onnxruntime-gpu
+> pip install onnxruntime-gpu==1.21.0
+> ```
 
 ### 4. Install / start Ollama
 

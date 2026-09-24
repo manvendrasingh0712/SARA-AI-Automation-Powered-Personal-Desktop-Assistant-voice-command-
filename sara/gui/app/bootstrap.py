@@ -217,6 +217,31 @@ def main():
     except Exception as e:
         print(f"[shutdown] notifications watcher shutdown failed: {e}")
 
+    # NEW: stop project-owned worker executors (planner + step-correction,
+    # LLM tool-router, network-call) BEFORE the pref-writer flush and
+    # db.close() below. Cooperative only: wait=False, nothing is
+    # force-killed, and ThreadPoolExecutor.shutdown() is idempotent so a
+    # repeated shutdown is safe. Imports live inside each try so a missing
+    # optional module can never block the rest of shutdown.
+    try:
+        from sara.core.planning import shutdown_planning_executors
+
+        shutdown_planning_executors(wait=False)
+    except Exception as e:
+        print(f"[shutdown] planning executors shutdown failed: {e}")
+    try:
+        from sara.core.tool_router import _shutdown_tool_call_executor
+
+        _shutdown_tool_call_executor()
+    except Exception as e:
+        print(f"[shutdown] tool-router executor shutdown failed: {e}")
+    try:
+        from sara.orchestrator.network_utils import _shutdown_network_executor
+
+        _shutdown_network_executor()
+    except Exception as e:
+        print(f"[shutdown] network executor shutdown failed: {e}")
+
     # Flush any pending preference writes (e.g. a slider dragged right
     # before the window was closed) before the process exits. `api` tab
     # tak nahi bana agar boot complete nahi hua/fail hua -- None-check.
