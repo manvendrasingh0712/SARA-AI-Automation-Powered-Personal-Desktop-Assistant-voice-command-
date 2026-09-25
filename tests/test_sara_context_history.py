@@ -313,6 +313,7 @@ class SaraContextAndHistoryTests(unittest.TestCase):
         sara.core.unmatched_log's own (unrelated) file/DB writes.
         """
         import sara.orchestrator.intent_handlers as ih
+        from sara.orchestrator import dispatcher
 
         class _FakeTTS:
             def speak(self, text, fast=False):
@@ -344,10 +345,10 @@ class SaraContextAndHistoryTests(unittest.TestCase):
         }
         brain = _FakeBrain()
 
-        original_detect_intent = ih.detect_intent
-        original_log_unmatched = ih.log_unmatched
-        ih.detect_intent = lambda text: ("chat", None)
-        ih.log_unmatched = lambda *a, **k: None
+        original_detect_intent = dispatcher.detect_intent
+        original_log_unmatched = dispatcher.log_unmatched
+        dispatcher.detect_intent = lambda text: ("chat", None)
+        dispatcher.log_unmatched = lambda *a, **k: None
         try:
             result = ih._handle_command(
                 "can you close it please",
@@ -362,8 +363,8 @@ class SaraContextAndHistoryTests(unittest.TestCase):
                 context_state=context_state,
             )
         finally:
-            ih.detect_intent = original_detect_intent
-            ih.log_unmatched = original_log_unmatched
+            dispatcher.detect_intent = original_detect_intent
+            dispatcher.log_unmatched = original_log_unmatched
 
         self.assertEqual(result, "Okay, closing it.")
         self.assertEqual(len(brain.stream_calls), 1)
