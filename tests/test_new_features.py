@@ -147,8 +147,8 @@ class NewFeatureTests(unittest.TestCase):
         target = datetime(2026, 9, 22, 21, 0, 0)  # 9:00 PM, same day
 
         ctx = _fake_ctx()
-        with patch("sara.orchestrator.intent_handlers.datetime") as mock_dt, \
-             patch("sara.orchestrator.intent_handlers.dateparser") as mock_dateparser, \
+        with patch("sara.orchestrator.handlers.timers.datetime") as mock_dt, \
+             patch("sara.orchestrator.handlers.timers.dateparser") as mock_dateparser, \
              patch.object(ih.system_tools, "set_timer", return_value="Alarm set.") as mock_set_timer:
             mock_dt.now.return_value = fixed_now
             mock_dateparser.parse.return_value = target
@@ -170,8 +170,8 @@ class NewFeatureTests(unittest.TestCase):
         target_before_rollover = datetime(2026, 9, 22, 7, 0, 0)  # already passed
 
         ctx = _fake_ctx()
-        with patch("sara.orchestrator.intent_handlers.datetime") as mock_dt, \
-             patch("sara.orchestrator.intent_handlers.dateparser") as mock_dateparser, \
+        with patch("sara.orchestrator.handlers.timers.datetime") as mock_dt, \
+             patch("sara.orchestrator.handlers.timers.dateparser") as mock_dateparser, \
              patch.object(ih.system_tools, "set_timer", return_value="Alarm set.") as mock_set_timer:
             mock_dt.now.return_value = fixed_now
             mock_dateparser.parse.return_value = target_before_rollover

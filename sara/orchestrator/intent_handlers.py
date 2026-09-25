@@ -193,6 +193,7 @@ from .context_tracking import (
     _ENTITY_SLOT_LABELS,
     _describe_recent_entities,
 )
+from sara.tools import system as system_tools  # noqa: F401 -- re-exported so tests can patch.object(ih.system_tools, ...) and reach the same shared module every handler file uses
 from .handlers.timers import (
     _h_reminder_add,
     _h_reminder_list,
