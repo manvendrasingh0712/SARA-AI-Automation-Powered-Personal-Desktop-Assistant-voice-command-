@@ -202,10 +202,12 @@ class LikelyMisfireRetryTests(unittest.TestCase):
         register_handler("test_misfire_secondary", _secondary_handler)
         intent_handlers.TOOL_NAME_TO_INTENT["test_open_thing_tool"] = "test_misfire_secondary"
 
-        original_resolve = intent_handlers.resolve_tool_call
-        original_build_match = intent_handlers.build_fake_match
-        intent_handlers.resolve_tool_call = _fake_resolve_tool_call
-        intent_handlers.build_fake_match = _fake_build_fake_match
+        from sara.orchestrator import route_chat
+
+        original_resolve = route_chat.resolve_tool_call
+        original_build_match = route_chat.build_fake_match
+        route_chat.resolve_tool_call = _fake_resolve_tool_call
+        route_chat.build_fake_match = _fake_build_fake_match
         try:
             result = _handle_command(
                 "open my thing",
@@ -220,8 +222,8 @@ class LikelyMisfireRetryTests(unittest.TestCase):
                 notes_memory=None,
             )
         finally:
-            intent_handlers.resolve_tool_call = original_resolve
-            intent_handlers.build_fake_match = original_build_match
+            route_chat.resolve_tool_call = original_resolve
+            route_chat.build_fake_match = original_build_match
             del intent_handlers.TOOL_NAME_TO_INTENT["test_open_thing_tool"]
 
         self.assertEqual(result, "Opened the correct thing via the tool router!")

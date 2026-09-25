@@ -125,7 +125,7 @@ def _install_stub(name: str) -> None:
     # resolves to a MagicMock instead of raising AttributeError.
     module.__getattr__ = lambda attr_name, _m=_mock: getattr(_m, attr_name)  
     # type: ignore[attr-defined]
-    STUB_SYS_MODULES_PREV.setdefault(name, sys.modules.get(name, _MISSING))
+    _STUB_SYS_MODULES_PREV.setdefault(name, sys.modules.get(name, _MISSING))
     sys.modules[name] = module
 
     if "." in name:
@@ -203,8 +203,12 @@ EXPECTED_METHODS = {
     "get_display_name",
     "export_memory",
     "get_assistant_active",
+    "get_master_volume",
     "get_media_status",
+    "get_media_volume",
     "get_memory_stats",
+    "list_media_sessions",
+    "select_media_session",
     "get_modes_status",
     "get_notes",
     "get_proactive_stats",
@@ -232,6 +236,8 @@ EXPECTED_METHODS = {
     "set_display_name",
     "set_focus_mode",
     "set_language",
+    "set_master_volume",
+    "set_media_volume",
     "set_mic_sensitivity",
     "set_mute",
     "set_skill_enabled",
@@ -241,16 +247,18 @@ EXPECTED_METHODS = {
     "stop_music",
     "stop_sara",
     "toggle_maximize",
+    "toggle_master_mute",
     "toggle_music_playback",
     "toggle_reminder",
+    "toggle_session_mute",
     "toggle_shuffle",
     "toggle_wifi",
     "update_setting",
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 57, (
-    "EXPECTED_METHODS must contain exactly 57 entries, found "
+assert len(EXPECTED_METHODS) == 65, (
+    "EXPECTED_METHODS must contain exactly 65 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 
