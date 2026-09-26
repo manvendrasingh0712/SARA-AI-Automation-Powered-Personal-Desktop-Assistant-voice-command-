@@ -66,6 +66,7 @@ import winerror
 from logging_config import setup_logging
 
 from config import Config
+from ollama_manager import OllamaManager
 
 
 
@@ -323,9 +324,37 @@ def main() -> None:
     setup_logging()
     logger.info("Sara AI starting up (main.main).")
 
-    from sara.gui.app import main as webview_main
+    # ------------------------------------------------------------------------
+    # Ollama lifecycle
+    # ------------------------------------------------------------------------
+    # Reuse an already-running Ollama server.
+    # Otherwise start a private background `ollama serve` process owned by SARA.
+    ollama_manager = OllamaManager(
+        host=getattr(Config, "OLLAMA_HOST", _OLLAMA_HOST),
+        ready_timeout_s=_OLLAMA_READY_TIMEOUT_S,
+        poll_interval_s=_OLLAMA_POLL_INTERVAL_S,
+    )
 
-    webview_main()
+    ollama_ready = ollama_manager.start()
+
+    if not ollama_ready:
+        logger.warning(
+            "Ollama could not be started or reached. "
+            "SARA will continue startup; local Ollama-dependent "
+            "features may be unavailable."
+        )
+
+    try:
+        from sara.gui.app import main as webview_main
+
+        webview_main()
+
+    finally:
+        # Stops only the Ollama process started by this SARA instance.
+        # An externally running Ollama server is never terminated.
+        ollama_manager.stop()
+
+        logger.info("Sara AI shutdown complete.")
 
 
 if __name__ == "__main__":

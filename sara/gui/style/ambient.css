@@ -1,19 +1,26 @@
 /* ==========================================================================
    ambient.css  --  very slow drifting teal/purple/amber glow behind everything (barely noticeable on purpose).
-   Pure CSS (GPU transform only). Sits between the body gradient and the app; the vignette in tokens.css stays on top.
+   Pure CSS (GPU transform only), plus two lightweight reactive touches:
+   1) cursor parallax -- --mx/--my (px) are set by js/fx.js on a throttled rAF loop and nudge the
+      gradient centres a few px toward the pointer. 2) body.sara-active (toggled by js/home.js
+      refreshChrome() whenever Sara is listening/thinking/speaking/working) saturates + brightens
+      the glow a touch, so the room itself feels like it's paying attention.
+   Sits between the body gradient and the app; the vignette in tokens.css stays on top.
    ========================================================================== */
 body::before{
   content:'';position:fixed;inset:-25%;z-index:0;pointer-events:none;
   background:
-    radial-gradient(38% 34% at 28% 32%, rgba(63,216,196,.075), transparent 70%),
-    radial-gradient(34% 30% at 74% 66%, rgba(139,111,216,.07), transparent 70%),
-    radial-gradient(26% 24% at 62% 22%, rgba(232,192,143,.035), transparent 70%);
+    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgba(63,216,196,.075), transparent 70%),
+    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgba(139,111,216,.07), transparent 70%),
+    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgba(232,192,143,.035), transparent 70%);
   animation:nebulaDrift 80s ease-in-out infinite alternate;
   will-change:transform;
+  transition:filter .8s ease;
 }
+body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
 @keyframes nebulaDrift{
   0%{transform:translate3d(-2%,-1%,0) rotate(0deg) scale(1);}
   50%{transform:translate3d(2.5%,1.5%,0) rotate(3deg) scale(1.06);}
   100%{transform:translate3d(-1%,2.5%,0) rotate(-2deg) scale(1.02);}
 }
-@media (prefers-reduced-motion:reduce){ body::before{animation:none;} }
+@media (prefers-reduced-motion:reduce){ body::before{animation:none;transition:none;} }

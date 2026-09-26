@@ -60,12 +60,18 @@ from sara.core.llm.clients import _get_gemini_client, _get_ollama_client, _selec
 logger = logging.getLogger("sara.core.planning.executor")
 
 
-def _audit_plan_results(dispatch: Any, results: List[StepResult]) -> None:
+def _audit_plan_results(
+    dispatch: Any, results: List[StepResult], plan_goal: Optional[str] = None
+) -> None:
     """
     Fire-and-forget audit logging: exactly ONE action_log entry per
     executed step (action_type="planner", action_name=<tool name>,
-    outcome=success/fail/skipped). Only action_type/action_name/outcome
-    are logged -- never the step's arguments or output.
+    outcome=success/fail/skipped, reason=<plan_goal>). Only
+    action_type/action_name/outcome/reason are logged -- never the
+    step's arguments or output. `plan_goal` is the original user
+    request text that produced this plan (see execute_plan()'s own
+    `plan_goal` param) -- passed through unchanged so "why did you do
+    that" can later recover it via action_log's `reason` column.
 
     The db handle is read off the dispatch callable (`dispatch.audit_db`,
     set by intent_handlers._build_plan_dispatch_fn()); if it's missing,
@@ -87,7 +93,7 @@ def _audit_plan_results(dispatch: Any, results: List[StepResult]) -> None:
             outcome = outcome_by_status.get(step_result.status)
             if outcome is None:
                 continue
-            _log_action(audit_db, "planner", step_result.step.tool, outcome)
+            _log_action(audit_db, "planner", step_result.step.tool, outcome, reason=plan_goal)
     except Exception:  # noqa: BLE001 -- audit logging must never break execution
         pass
 
@@ -100,6 +106,22 @@ def _plan_cancelled() -> bool:
         return TURN_STATE.current_event().is_set()
     except Exception:  # noqa: BLE001
         return False
+
+
+def _fire_plan_event(on_event, stage: str, payload: dict) -> None:
+    """
+    Best-effort GUI progress push for a running plan (start/step/end).
+    `on_event` may legitimately be None (older callers, tests) -- this
+    is then a silent no-op. Must NEVER raise or block plan execution,
+    same contract as _activity()/_log_action() elsewhere in this
+    codebase.
+    """
+    if on_event is None:
+        return
+    try:
+        on_event(stage, payload)
+    except Exception:  # noqa: BLE001 -- a GUI push must never break the plan
+        pass
 
 # DispatchFn: given (tool_name, arguments) -> a human-readable result
 # string, or raises on failure. Supplied by the caller (see
@@ -338,9 +360,10 @@ def execute_plan(
     cfg: Any,
     step_timeout_s: float,
     total_timeout_s: float,
-    retry_enabled: bool = True,
+        retry_enabled: bool = True,
     allowed_apps: FrozenSet[str] = frozenset(),
     app_allowlist_enabled: bool = True,
+    on_event: Optional[Callable[[str, dict], None]] = None,
 ) -> PlanOutcome:
     """
     Executes every step in `plan`, in order, subject to:
@@ -397,6 +420,12 @@ def execute_plan(
             final_message="There was nothing to do.",
         )
 
+    _fire_plan_event(
+        on_event,
+        "start",
+        {"steps": [{"index": i, "tool": s.tool} for i, s in enumerate(plan.steps)]},
+    )
+
     start = time.monotonic()
     results: List[StepResult] = []
     aborted = False
@@ -435,6 +464,7 @@ def execute_plan(
                         error="Skipped: depended on a previous step that failed or was skipped.",
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "skipped"})
                 logger.info(
                     "Skipping step %d ('%s'): depended on a failed/skipped predecessor.",
                     index,
@@ -444,6 +474,8 @@ def execute_plan(
                 continue
 
             this_step_timeout = min(step_timeout_s, remaining_before_step)
+
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "running"})
 
             attempts = 1
             first_error: Optional[str] = None
@@ -459,6 +491,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "success"})
                 predecessor_blocked = False
                 logger.info("Step %d ('%s') succeeded on first attempt.", index, step.tool)
                 continue
@@ -477,6 +510,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 aborted = True
                 abort_reason = (
                     f"CONFIRMATION_REQUIRED::{exc.action}::{exc.target or ''}::{exc.prompt}"
@@ -506,6 +540,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 predecessor_blocked = True
                 continue
 
@@ -519,6 +554,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 aborted = True
                 abort_reason = (
                     "Total plan timeout reached before a retry could be "
@@ -537,6 +573,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 aborted = True
                 abort_reason = "Stopped by user."
                 predecessor_blocked = True
@@ -557,6 +594,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 predecessor_blocked = True
                 continue
 
@@ -583,6 +621,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 predecessor_blocked = True
                 continue
 
@@ -596,6 +635,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
                 aborted = True
                 abort_reason = (
                     "Total plan timeout reached before the retry dispatch "
@@ -622,6 +662,7 @@ def execute_plan(
                         attempts=attempts,
                     )
                 )
+                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "success"})
                 predecessor_blocked = False
                 logger.info(
                     "Step %d ('%s') succeeded after 1 correction retry.",
@@ -639,13 +680,17 @@ def execute_plan(
                 results.append(
                     StepResult(
                         step=step,
-                        status=StepStatus.FAILED,
-                        error=f"{first_error}; retry also failed: {second_error}",
+                        status=StepStatus.SUCCESS,
+                        output=output,
                         attempts=attempts,
                     )
                 )
-                predecessor_blocked = True
-    finally:
+                predecessor_blocked = False
+                logger.info(
+                    "Step %d ('%s') succeeded after 1 correction retry.",
+                    index,
+                    step.tool,
+                )
         # CRITICAL: wait=False + cancel_futures=True. Do NOT use a `with`
         # context manager for step_executor -- ThreadPoolExecutor's
         # __exit__ defaults to shutdown(wait=True), which would block
@@ -659,7 +704,7 @@ def execute_plan(
         # this function never waits for or observes that again.
         step_executor.shutdown(wait=False, cancel_futures=True)
 
-    _audit_plan_results(dispatch, results)
+    _audit_plan_results(dispatch, results, plan_goal=plan_goal)
 
     elapsed_s = time.monotonic() - start
     final_message = _build_final_message(tuple(results), aborted, abort_reason)

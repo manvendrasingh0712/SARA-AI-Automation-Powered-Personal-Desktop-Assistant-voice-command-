@@ -105,6 +105,75 @@ class ApiAnalyticsMixin:
             print(f"[record_command_usage error] {e}")
             return {"ok": False}
 
+    # ── action timeline (Analytics page, "Recent activity") ────────────
+    # Distinct from get_analytics_dashboard() above -- that method reads
+    # this mixin's own JSON-counter file; this one reads
+    # sara/core/memory.py's action_log table (via self.db.get_recent_actions())
+    # and is never mixed with the counter-based stats.
+    def get_action_timeline(self, limit=30, outcome_filter=None):
+        try:
+            if not hasattr(self, "db") or not hasattr(self.db, "get_recent_actions"):
+                return {"ok": True, "data": []}
+
+            recent = self.db.get_recent_actions(limit=limit) or []
+            # get_recent_actions() returns oldest-first; the timeline
+            # wants newest-first.
+            recent = list(reversed(recent))
+
+            if outcome_filter:
+                recent = [r for r in recent if r.get("outcome") == outcome_filter]
+
+            data = [
+                {
+                    "action_type": r.get("action_type"),
+                    "action_name": r.get("action_name"),
+                    "outcome": r.get("outcome"),
+                    "reason": r.get("reason"),
+                    "timestamp": r.get("timestamp"),
+                }
+                for r in recent
+            ]
+            return {"ok": True, "data": data}
+        except Exception as e:
+            print(f"[get_action_timeline error] {e}")
+            return {"ok": False, "data": []}
+
+    # ── frequently missed commands (Analytics page) ─────────────────────
+    # Reads sara/core/unmatched_log.py's write-only JSONL log and counts
+    # EXACT (case-insensitive) repeated phrases only -- no fuzzy/typo
+    # grouping, no auto-fix/auto-learn, just a read-only frequency view.
+    def get_frequent_misses(self, limit=15, min_count=2):
+        try:
+            from config import Config
+            from pathlib import Path
+            import json
+            from collections import Counter
+
+            path = Path(getattr(Config, "UNMATCHED_LOG_PATH", "") or "")
+            if not path.exists():
+                return {"ok": True, "data": []}
+
+            counts = Counter()
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    text = (rec.get("text") or "").strip().lower()
+                    if text:
+                        counts[text] += 1
+
+            data = [
+                {"text": text, "count": c}
+                for text, c in counts.most_common(limit)
+                if c >= min_count
+            ]
+            return {"ok": True, "data": data}
+        except Exception as e:
+            print(f"[get_frequent_misses error] {e}")
+            return {"ok": False, "data": []}
+
     # ── dashboard payload (Analytics page) ─────────────────────────────
     def get_analytics_dashboard(self):
         try:

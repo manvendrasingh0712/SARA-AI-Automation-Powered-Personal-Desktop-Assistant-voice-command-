@@ -49,17 +49,21 @@ _breaker_failure_counts: dict[str, int] = {}
 _breaker_open_until: dict[str, float] = {}
 _breaker_lock = threading.Lock()
 
+_FILLER_PHRASES = ("Hmm, ek second...", "Ruko, dekh rahi hoon...", "Just a moment...", "Almost there...")
+
 
 class _TurnCancelled(Exception):
     """Raised internally when the current turn was cancelled via Stop."""
 
 
-def _wait_cancellable(future, timeout: float, cancel_event):
+def _wait_cancellable(future, timeout: float, cancel_event, ctx=None, filler_after: float = 4.0):
     """
     Same semantics as future.result(timeout=timeout), but polls in short
     slices so a Stop press aborts the wait within ~0.1s. The overall
     timeout still applies exactly as before.
     """
+    start = time.monotonic()
+    filler_spoken = False
     deadline = time.monotonic() + timeout
     while True:
         remaining = deadline - time.monotonic()
@@ -72,10 +76,18 @@ def _wait_cancellable(future, timeout: float, cancel_event):
                 raise  # the wrapped fn itself raised a timeout; not a poll miss
             if cancel_event.is_set():
                 raise _TurnCancelled()
+            if ctx is not None and not filler_spoken and (time.monotonic() - start) >= filler_after:
+                filler_spoken = True
+                try:
+                    import random
+                    ctx["tts"].speak(random.choice(_FILLER_PHRASES), fast=True, block=False)
+                except Exception:
+                    pass
 
 
 def _call_with_timeout(
-    fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, tool_name: str = None, **kwargs
+    fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, tool_name: str = None,
+    ctx=None, filler_after: float = 4.0, **kwargs
 ):
     name = tool_name or getattr(fn, "__name__", "unknown_tool")
 
@@ -94,7 +106,7 @@ def _call_with_timeout(
 
     future = _NETWORK_EXECUTOR.submit(fn, *args, **kwargs)
     try:
-        result = _wait_cancellable(future, timeout, cancel_event)
+        result = _wait_cancellable(future, timeout, cancel_event, ctx=ctx, filler_after=filler_after)
     except _TurnCancelled:
         future.cancel()  # no-op if already running; see KNOWN LIMITATION
         return "Okay, stopped."  # a Stop is not a tool failure: no breaker hit

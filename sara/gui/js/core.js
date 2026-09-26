@@ -74,7 +74,7 @@
     SARA.toast(icon, color, msg, { tone: 'notify' });
     if (PROACTIVE_ICONS.indexOf(icon) >= 0) SARA.proactiveHint();
   });
-  SARA.on('ev:proactive_notification', function (icon, color, msg) { SARA.toast(icon, color, msg, { tone: 'notify' }); SARA.proactiveHint(); });
+  SARA.on('ev:proactive_notification', function (icon, color, msg, trigger, reason) { SARA.toast(icon, color, msg, { tone: 'notify', sub: reason }); SARA.proactiveHint(); });
   SARA.on('ev:boot_progress', function (m, p) { SARA.bootOverlay.update(m, p); });
   SARA.on('ev:backend_ready', function () { SARA.refreshConnection(); SARA.bootOverlay.hide(); SARA.emit('backend_ready'); });
 

@@ -21,6 +21,7 @@
   box-shadow:0 0 26px rgba(63,216,196,.32); /* brightened from .2 -- felt dull against the dark panel */
   box-shadow:0 0 26px color-mix(in srgb, var(--music-accent-1) 32%, transparent);
   flex:none;display:flex;align-items:center;justify-content:center;transition:box-shadow .4s,background-image .6s ease;
+  position:relative;
 }
 .art-block svg{width:24px;height:24px;stroke:#08110F;fill:none;stroke-width:1.8;}
 .art-block.has-art svg{display:none;}
@@ -28,6 +29,14 @@
   box-shadow:0 0 38px rgba(63,216,196,.55); /* brightened from .4 */
   box-shadow:0 0 38px color-mix(in srgb, var(--music-accent-1) 55%, transparent);
 }
+/* ---- rotating accent ring while a track is actually playing (paused = no rotation, no clutter) ---- */
+.music-card.playing .art-block::after{
+  content:'';position:absolute;inset:-4px;border-radius:14px;pointer-events:none;
+  background:conic-gradient(from 0deg, transparent, color-mix(in srgb, var(--music-accent-1) 55%, transparent) 22%, transparent 45%);
+  animation:artSpin 3.2s linear infinite;
+}
+@keyframes artSpin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.music-card.playing .art-block::after{animation:none;display:none;}}
 .track-meta{flex:1;min-width:0;}
 .t-title{font-size:15.5px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .t-artist{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}

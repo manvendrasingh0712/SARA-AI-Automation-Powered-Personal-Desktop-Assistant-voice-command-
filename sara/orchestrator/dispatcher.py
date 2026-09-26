@@ -341,6 +341,16 @@ def _build_plan_dispatch_fn(ctx: dict):
     # write one action_log entry per plan step. None is a silent no-op.
     _dispatch.audit_db = ctx.get("db")
 
+    # Live-progress hook: execute_plan() calls this at plan start/each
+    # step/plan end so the GUI can show a running plan card. Never raises
+    # -- a GUI push must never break plan execution.
+    def _on_plan_event(stage, payload):
+        try:
+            ctx["ui_update"]("plan_progress", stage, payload)
+        except Exception as e:
+            print(f"[PlanProgress] event push failed (non-fatal): {e}")
+    _dispatch.on_event = _on_plan_event
+
     return _dispatch
 
 
@@ -747,6 +757,22 @@ def _handle_command(
 
     if cancel_event.is_set():
         return ""
+
+    # RAG FOLLOW-UP CONTEXT (NEW): only for a plain chat message with no
+    # context_hint already set from elsewhere -- a cheap, best-effort
+    # lookup against long-term memory so the LLM can be reminded of
+    # something the user explicitly told Sara before. Never allowed to
+    # break or slow down the turn: any failure just leaves context_hint
+    # as None, exactly as before this change.
+    if intent == "chat" and chat_route == "chat" and not context_hint:
+        try:
+            rag = ctx.get("notes_memory")
+            if rag is not None and _HAS_RAG:
+                hits = rag.search(user_input, top_k=1, min_similarity=0.55)
+                if hits:
+                    context_hint = f"(Relevant past note: {hits[0].text})"
+        except Exception as e:
+            print(f"[RAG] follow-up context lookup failed (continuing): {e}")
 
     ui_update("status", "thinking")
     try:

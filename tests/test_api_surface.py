@@ -197,10 +197,12 @@ EXPECTED_METHODS = {
     "cycle_repeat_mode",
     "delete_reminder",
     "delete_routine",
+    "get_action_timeline",
     "get_analytics_dashboard",
     "get_calendar_status",
     "get_today_calendar_events",
     "get_display_name",
+    "get_frequent_misses",
     "export_memory",
     "get_assistant_active",
     "get_master_volume",
@@ -257,8 +259,8 @@ EXPECTED_METHODS = {
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 65, (
-    "EXPECTED_METHODS must contain exactly 65 entries, found "
+assert len(EXPECTED_METHODS) == 67, (
+    "EXPECTED_METHODS must contain exactly 67 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

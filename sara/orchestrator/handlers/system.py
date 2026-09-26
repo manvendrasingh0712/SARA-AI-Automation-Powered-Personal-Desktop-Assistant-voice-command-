@@ -241,6 +241,7 @@ def _h_close_app(match, ctx):
     # turns out to be risky/pending-confirmation, since the user has
     # unambiguously named it either way.
     _remember_entity(ctx, "last_app", app_name)
+    _remember_entity(ctx, "last_closed_app", app_name)
     if _is_risky(app_name, _RISKY_APP_KEYWORDS):
         ctx["confirm_state"]["pending"] = {
             "action": "close_app",
