@@ -11,6 +11,7 @@ from .clients import _get_ollama_client, _get_gemini_client
 
 
 import logging
+import re
 import threading
 import time
 from collections import deque
@@ -76,6 +77,31 @@ _STREAM_INTERRUPTED_MESSAGES = {
 # (generate_response_stream()) and where it's checked
 # (used_fallback_last_turn()) so the two can never silently drift apart.
 _FALLBACK_STAGE_LABEL = "ollama-fallback"
+
+# TASK A (two-tier model routing): a short, known-vocabulary command
+# ("set volume to 50", "what time is it") is routed to the smaller/
+# faster Ollama model (self._ollama_fast_model_name) instead of the
+# main one -- anything longer or open-ended (chat, multi-clause asks,
+# questions) stays on the main model. Never raises; unknown/empty
+# input is NOT simple (safer default = main model).
+_SIMPLE_QUERY_MAX_WORDS = 6
+_SIMPLE_QUERY_PATTERNS = re.compile(
+    r"\b(volume|brightness|mute|unmute|time|date|battery|pause|"
+    r"resume|stop|skip|next|previous|louder|quieter|screenshot)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_simple_query(text: str) -> bool:
+    try:
+        if not text or not text.strip():
+            return False
+        words = text.strip().split()
+        if len(words) > _SIMPLE_QUERY_MAX_WORDS:
+            return False
+        return bool(_SIMPLE_QUERY_PATTERNS.search(text))
+    except Exception:
+        return False
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -239,6 +265,12 @@ class SaraLLM:
         # back to Ollama below, _open_ollama_stream would have sent the
         # Gemini model string to the Ollama client.
         self._ollama_model_name = getattr(self._cfg, "OLLAMA_MODEL", "llama3")
+        # TASK A: falls back to the main model when unset/empty, so this
+        # is a fully safe no-op default until Manav actually sets
+        # OLLAMA_FAST_MODEL.
+        self._ollama_fast_model_name = (
+            getattr(self._cfg, "OLLAMA_FAST_MODEL", "") or self._ollama_model_name
+        )
         self._gemini_model_name = getattr(
             self._cfg, "GEMINI_MODEL", "gemini-2.5-flash"
         )
@@ -1036,7 +1068,11 @@ class SaraLLM:
 
         messages = self._build_messages_ollama(prompt, history, memory_context, reference_context)
         raw_stream = client.chat(
-            model=self._ollama_model_name,
+            model=(
+                self._ollama_fast_model_name
+                if _is_simple_query(prompt)
+                else self._ollama_model_name
+            ),
             messages=messages,
             stream=True,
             think=False,

@@ -122,9 +122,12 @@ class TranscriptionResult(str):
     object.
     """
 
-    def __new__(cls, text: str, confidence: float = 0.0) -> "TranscriptionResult":
+    def __new__(
+        cls, text: str, confidence: float = 0.0, speech_rate: float = 0.0
+    ) -> "TranscriptionResult":
         obj = super().__new__(cls, text)
         obj.confidence = float(confidence)
+        obj.speech_rate = float(speech_rate)
         return obj
 
 # ══════════════════════════════════════════════════════════════════════
@@ -268,9 +271,25 @@ class SpeechToText:
         self._detected_lang: str = "en"
 
         self._wakeword_last_triggered: float = 0.0
+        self._wakeword_last_inference: float = 0.0
+
+        # Temporary one-shot diagnostics for wake pipeline isolation.
+        self._wake_diag_audio_seen = False
+        self._wake_diag_inference_seen = False
+
         self._wakeword_cooldown: float = float(
             getattr(Config, "WAKE_WORD_COOLDOWN_S", 2.0)
         )
+
+        # Dedicated RAW microphone buffer for OpenWakeWord.
+        # Do NOT feed AEC/NS processed audio to the wake model.
+        self._wake_ring = _RingBuffer(maxlen=50)
+
+        # Sequential audio accumulator for OpenWakeWord.
+        # IMPORTANT: _wake_ring is drained only once per wake check.
+        # OpenWakeWord.predict() maintains its own streaming state, so we
+        # must never repeatedly submit the same rolling audio window.
+        self._wake_pending = bytearray()
 
         self._wake_variants = self._build_wake_variants()
         self._wake_re = self._compile_wake_regex(self._wake_variants)
@@ -382,16 +401,25 @@ class SpeechToText:
     @staticmethod
     def _build_wake_variants() -> List[str]:
         cfg_words = getattr(Config, "WAKE_WORDS", None)
-        if cfg_words:
-            variants = [w.strip().lower() for w in cfg_words if w and w.strip()]
-        else:
-            raw = getattr(Config, "WAKE_WORD", "sara")
-            variants = [w.strip().lower() for w in re.split(r"[,;]", raw) if w.strip()]
 
-        for must in ("sara", "sarah", "hey sara", "hey sarah"):
-            if must not in variants:
-                variants.append(must)
-        return variants
+        if cfg_words:
+            variants = [
+                w.strip().lower()
+                for w in cfg_words
+                if w and w.strip()
+            ]
+        else:
+            raw = getattr(Config, "WAKE_WORD", "hey sara")
+            variants = [
+                w.strip().lower()
+                for w in re.split(r"[,;]", raw)
+                if w.strip()
+            ]
+
+        # OpenWakeWord is the authoritative passive wake detector.
+        # Do NOT inject legacy variants such as "sara", "sarah",
+        # or "hey sarah".
+        return variants or ["hey sara"]
 
     @staticmethod
     def _compile_wake_regex(variants: List[str]) -> "re.Pattern":
@@ -499,20 +527,63 @@ class SpeechToText:
             return None
 
     def _load_wakeword(self) -> Optional["_OWWModel"]:
+        """
+        Load the passive wake detector.
+
+        OpenWakeWord is the ONLY passive wake detection mechanism.
+        Whisper/STT fallback is intentionally not allowed.
+        """
         if not _HAS_WAKEWORD or not _OWWModel:
-            return None
-        model_path = getattr(Config, "WAKE_WORD_MODEL_PATH", None)
-        if not model_path:
             print(
-                "[STT] No custom wake-word model configured (WAKE_WORD_MODEL_PATH unset) "
-                "— using STT-based fallback wake detection for: "
-                f"{', '.join(self._wake_variants)}"
+                "[STT Warning] OpenWakeWord is unavailable. "
+                "Passive wake detection is disabled."
             )
             return None
+
+        model_path = getattr(Config, "WAKE_WORD_MODEL_PATH", None)
+
+        if not model_path:
+            print(
+                "[STT Warning] WAKE_WORD_MODEL_PATH is not configured. "
+                "Passive wake detection is disabled."
+            )
+            return None
+
+        model_path = str(model_path)
+
+        if not os.path.isabs(model_path):
+            model_path = str(
+                Path(__file__).resolve().parents[3] / model_path
+            )
+
+        if not os.path.exists(model_path):
+            print(
+                f"[STT Warning] OpenWakeWord model not found: "
+                f"{model_path}. Passive wake detection is disabled."
+            )
+            return None
+
         try:
-            return _OWWModel(wakeword_models=[model_path], inference_framework="onnx")
+            model = _OWWModel(
+                wakeword_models=[model_path],
+                inference_framework="onnx",
+            )
+
+            print(
+                "[STT] ✅ OpenWakeWord loaded successfully: "
+                f"{model_path}"
+            )
+
+            # Startup test inference is intentionally silent.
+            # Successful model loading is already reported above.
+
+            return model
+
         except Exception as e:
-            print(f"[STT Warning] Wake word model load failed: {e}")
+            print(
+                f"[STT Warning] OpenWakeWord model load failed: {e}. "
+                "Passive wake detection is disabled."
+            )
             return None
 
     @property
@@ -619,21 +690,31 @@ class SpeechToText:
         if self._closed:
             return
         try:
-            chunks = self._ring.get_all(clear=False)
+            chunks = self._wake_ring.peek_latest(n=4)
+
+            if not chunks:
+                return
+
+            if not self._wake_diag_audio_seen:
+                self._wake_diag_audio_seen = True
+                print(
+                    f"[WakeDiag] RAW mic stream reached wake detector | "
+                    f"chunks={len(chunks)} | "
+                    f"rms={_rms(chunks[-1]):.1f}"
+                )
+            with self._tts_state_lock:
+                # BUGFIX-adjacent hardening: extend rather than overwrite. In
+                # practice _watch_loop() only calls this once per barge-in
+                # (self._speaking/self._voice.is_speaking() gate it off after
+                # the first trigger), but extending is a one-line safety net
+                # against ever silently losing a partial capture if that ever
+                # changes -- no realistic downside since this list is always
+                # drained (see _collect_speech()) before the next barge-in
+                # could possibly refill it.
+                self._barge_in_handoff.extend(chunks)
         except Exception:
+            # Barge-in capture must never interfere with stopping TTS.
             return
-        if not chunks:
-            return
-        with self._tts_state_lock:
-            # BUGFIX-adjacent hardening: extend rather than overwrite. In
-            # practice _watch_loop() only calls this once per barge-in
-            # (self._speaking/self._voice.is_speaking() gate it off after
-            # the first trigger), but extending is a one-line safety net
-            # against ever silently losing a partial capture if that ever
-            # changes -- no realistic downside since this list is always
-            # drained (see _collect_speech()) before the next barge-in
-            # could possibly refill it.
-            self._barge_in_handoff.extend(chunks)
 
     def _close_stream(self) -> None:
         try:
@@ -792,6 +873,12 @@ class SpeechToText:
             print(f"[STT] input stream status: {status}")
 
         chunk = bytes(indata)
+
+        # OpenWakeWord must see RAW microphone PCM.
+        # AEC/NS can distort the acoustic pattern expected by the
+        # custom wake-word model.
+        self._wake_ring.put(chunk)
+
         if self._aec is None:
             self._ingest_processed_chunk(chunk)
             return
@@ -814,6 +901,9 @@ class SpeechToText:
 
         if status_flags and getattr(Config, "DEBUG_MODE", False):
             print(f"[STT] pyaudio input status flags: {status_flags}")
+
+        # OpenWakeWord receives the RAW microphone signal.
+        self._wake_ring.put(in_data)
 
         if self._aec is None:
             self._ingest_processed_chunk(in_data)
@@ -1432,7 +1522,9 @@ class SpeechToText:
                     ]
                 self._update_detected_language(text)
 
-            return TranscriptionResult(text, confidence)
+            word_count = max(1, len(text.split()))
+            speech_rate = word_count / duration_s if duration_s > 0 else 0.0
+            return TranscriptionResult(text, confidence, speech_rate)
 
         except Exception as e:
             print(f"[STT Error] Faster-Whisper Inference Failed: {e}")
@@ -1496,78 +1588,170 @@ class SpeechToText:
                 if mode == "wake"
                 else None
             )
-            return self._transcribe(
-                audio, beam_size_override=beam_override, model_override=model_override
+
+            result = self._transcribe(
+                audio,
+                beam_size_override=beam_override,
+                model_override=model_override,
             )
+
+            print(
+                f"[STTDiag] listen completed | "
+                f"mode={mode} | "
+                f"audio={len(audio) / (self.SAMPLE_RATE * self.SAMPLE_WIDTH):.2f}s | "
+                f"text={str(result)!r} | "
+                f"confidence={getattr(result, 'confidence', 0.0):.3f}"
+            )
+
+            return result
         finally:
             self._listen_lock.release()
 
     def is_wake_word_detected(self) -> bool:
+        """
+        Passive wake detection using OpenWakeWord only.
+
+        Whisper/STT is NEVER used here.
+        """
         if self._closed:
             return False
+
+        model = self._wakeword_model
+
+        # OpenWakeWord is the ONLY passive wake detector.
+        # No Whisper fallback.
+        if model is None:
+            if getattr(Config, "DEBUG_MODE", False):
+                print("[WakeDebug] OpenWakeWord model is unavailable.")
+            return False
+
         now = time.monotonic()
+
         with self._threshold_lock:
             last_triggered = self._wakeword_last_triggered
+
+        # Prevent repeated triggers.
         if now - last_triggered < self._wakeword_cooldown:
             return False
+
+        # Never listen for wake word while TTS is active.
         if self._tts_active.is_set():
             return False
 
-        if self._wakeword_model is not None:
-            try:
-                chunks = self._ring.peek_latest(
-                    n=max(1, int(self.SAMPLE_RATE / self.CHUNK_SIZE))
-                )
-                if not chunks:
-                    return False
-                joined = b"".join(chunks)
-                if _rms(joined) < self.energy_threshold * 0.25:
-                    return False
+        # Do not run inference more often than configured.
+        inference_interval = float(
+            getattr(
+                Config,
+                "WAKE_WORD_INFERENCE_INTERVAL_S",
+                0.08,
+            )
+        )
 
-                scores = self._wakeword_model.predict(
-                    np.frombuffer(joined, dtype=np.int16)
-                )
-                threshold = float(getattr(Config, "WAKE_WORD_THRESHOLD", 0.5))
-                if any(v >= threshold for v in scores.values()):
-                    with self._threshold_lock:
-                        self._wakeword_last_triggered = now
-                    return True
-                return False
-            except (ValueError, TypeError, RuntimeError) as e:
-                _log_rate_limited(
-                    "is_wake_word_detected",
-                    "[STT] wake-word model check failed (treating as no detection): %s: %s",
-                    type(e).__name__, e,
-                )
-                return False
-            except Exception as e:
-                _log_rate_limited(
-                    "is_wake_word_detected",
-                    "[STT] wake-word model check raised an unexpected error type "
-                    "(this may be a bug; treating as no detection): %s: %s",
-                    type(e).__name__, e,
-                    exc_info=True,
-                )
-                return False
-
-        probe_n = max(1, int((self.SAMPLE_RATE / self.CHUNK_SIZE) * 0.3))
-        probe_chunks = self._ring.peek_latest(n=probe_n)
-        if not probe_chunks:
-            return False
-        probe_joined = b"".join(probe_chunks)
-        has_energy = _rms(probe_joined) > self.energy_threshold * 0.5
-        has_vad_speech = any(self._vad.is_speech(c) for c in probe_chunks)
-        if not (has_energy or has_vad_speech):
+        if now - self._wakeword_last_inference < inference_interval:
             return False
 
-        text = self.listen(mode="wake", model_override=self._wake_whisper_model)
-        if not text:
+        # OpenWakeWord must consume NEW audio from the dedicated RAW
+        # microphone stream.
+        #
+        # Do NOT use peek_latest() here. That repeatedly submits an
+        # overlapping/duplicated rolling window to model.predict().
+        # OpenWakeWord maintains streaming state internally, so the
+        # detector must receive sequential NEW PCM samples.
+        new_chunks = self._wake_ring.get_all(clear=True)
+
+        if new_chunks:
+            self._wake_pending.extend(b"".join(new_chunks))
+
+        frame_samples = int(
+            self.SAMPLE_RATE
+            * getattr(Config, "WAKE_WORD_FRAME_MS", 80)
+            / 1000
+        )
+
+        # Defensive OpenWakeWord frame size.
+        if frame_samples != 1280:
+            frame_samples = 1280
+
+        frame_bytes = frame_samples * self.SAMPLE_WIDTH
+
+        if len(self._wake_pending) < frame_bytes:
             return False
-        detected = self._text_has_wake_word(text)
-        if detected:
-            with self._threshold_lock:
-                self._wakeword_last_triggered = now
-        return detected
+
+        # Consume exactly one NEW 80 ms frame.
+        frame = np.frombuffer(
+            bytes(self._wake_pending[:frame_bytes]),
+            dtype=np.int16,
+        )
+        del self._wake_pending[:frame_bytes]
+
+        # IMPORTANT:
+        # Do not use the STT/barge-in energy threshold as a hard gate for
+        # OpenWakeWord. That threshold is dynamically recalibrated for
+        # speech/STT and can suppress a valid but quieter wake phrase.
+
+        self._wakeword_last_inference = now
+
+        try:
+            scores = model.predict(frame)
+
+            if not self._wake_diag_inference_seen:
+                self._wake_diag_inference_seen = True
+                print(
+                    f"[WakeDiag] OpenWakeWord inference is running | "
+                    f"scores={scores}"
+                )
+
+            threshold = float(
+                getattr(
+                    Config,
+                    "WAKE_WORD_THRESHOLD",
+                    0.50,
+                )
+            )
+
+            max_score = max(
+                scores.values(),
+                default=0.0,
+            )
+
+            # Per-frame wake scores are intentionally not logged.
+            # OpenWakeWord runs continuously, so printing every inference
+            # cycle would flood the console.
+
+            if max_score >= threshold:
+                with self._threshold_lock:
+                    self._wakeword_last_triggered = now
+
+                print(
+                    f"[STT] ✅ Wake word detected | "
+                    f"score={max_score:.4f} | "
+                    f"threshold={threshold:.4f}"
+                )
+
+                return True
+
+            return False
+
+        except (ValueError, TypeError, RuntimeError) as e:
+            _log_rate_limited(
+                "is_wake_word_detected",
+                "[STT] OpenWakeWord inference failed "
+                "(no passive wake): %s: %s",
+                type(e).__name__,
+                e,
+            )
+            return False
+
+        except Exception as e:
+            _log_rate_limited(
+                "is_wake_word_detected",
+                "[STT] OpenWakeWord inference raised an unexpected "
+                "error (no passive wake): %s: %s",
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
+            return False
 
     def is_user_speaking(self, duration: float = 0.3) -> bool:
         if self._closed:
@@ -1667,7 +1851,7 @@ class SpeechToText:
             f"FasterWhisper={'✓ (CPU INT8)' if self._whisper_model else '✗'} | "
             f"VAD={'✓' if _HAS_VAD else '✗'} | "
             f"AEC={'✓ (worker thread)' if (self._aec is not None and getattr(self._aec, 'enabled', False)) else '✗'} | "
-            f"WakeWord(model)={'✓' if self._wakeword_model else '✗ (using STT fallback)'} | "
+            f"WakeWord(OpenWakeWord)={'✓' if self._wakeword_model else '✗ (model unavailable)'} | "
             f"WakeWords={self._wake_variants} | WakeBeam={wake_beam} | "
             f"ForcedLang={self._resolve_forced_language()} | "
             f"threshold={self.energy_threshold:.0f}"

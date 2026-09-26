@@ -44,7 +44,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import time
-from typing import Any, Callable, Dict, FrozenSet, List, Optional
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple
 
 from .schema import (
     Plan,
@@ -352,6 +352,35 @@ def _dispatch_with_timeout(
         ) from exc
 
 
+def _group_into_batches(
+    steps: List[PlanStep],
+) -> List[List[Tuple[int, PlanStep]]]:
+    """
+    TASK B (parallel batches): groups plan.steps -- each paired with its
+    ORIGINAL index so batch-internal reordering never loses it -- into
+    batches that can be dispatched concurrently.
+
+    A new batch starts at every step marked depends_on_previous=True (or
+    at index 0); any immediately-following depends_on_previous=False
+    steps join that SAME batch, since they don't depend on anything and
+    can safely run alongside it. Every step after the first in a batch
+    is therefore guaranteed depends_on_previous=False -- only a batch's
+    first step can ever be True, which is exactly why it started a new
+    batch in the first place.
+    """
+    batches: List[List[Tuple[int, PlanStep]]] = []
+    current: List[Tuple[int, PlanStep]] = []
+    for index, step in enumerate(steps):
+        if step.depends_on_previous and current:
+            batches.append(current)
+            current = [(index, step)]
+        else:
+            current.append((index, step))
+    if current:
+        batches.append(current)
+    return batches
+
+
 def execute_plan(
     plan: Plan,
     dispatch: DispatchFn,
@@ -435,262 +464,305 @@ def execute_plan(
     # so a chain of dependent steps after one failure all skip together.
     predecessor_blocked = False
 
+    # TASK B (parallel batches): group into batches of steps that can be
+    # dispatched concurrently (see _group_into_batches()'s docstring).
+    batches = _group_into_batches(plan.steps)
+    max_batch_size = max((len(b) for b in batches), default=1)
+    # ENLARGED (was max_workers=1): must have enough workers to run every
+    # step's dispatch/correction call in the LARGEST batch concurrently --
+    # otherwise steps submitted concurrently to the per-batch executor
+    # below would still serialize their actual dispatch work on this
+    # single shared pool, silently defeating the parallelism this
+    # feature exists to add.
     step_executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix="sara-plan-step"
+        max_workers=max(1, max_batch_size), thread_name_prefix="sara-plan-step"
     )
+
+    def _run_one_step(index: int, step: PlanStep):
+        """
+        Runs ONE step to completion (first attempt + the single
+        self-correction retry, exactly as before this feature) and
+        returns (StepResult, plan_should_abort, abort_reason) instead of
+        mutating shared loop state directly -- so this can be called
+        either inline (batch of 1) or concurrently from multiple threads
+        (batch of 2+) without stepping on another step's result.
+        """
+        remaining_before_step = _remaining_budget(start, total_timeout_s)
+        this_step_timeout = min(step_timeout_s, remaining_before_step)
+
+        _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "running"})
+
+        attempts = 1
+        first_error: Optional[str] = None
+        try:
+            output = _dispatch_with_timeout(
+                dispatch, step.tool, step.arguments, this_step_timeout, step_executor
+            )
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "success"})
+            logger.info("Step %d ('%s') succeeded on first attempt.", index, step.tool)
+            return (
+                StepResult(step=step, status=StepStatus.SUCCESS, output=output, attempts=attempts),
+                False,
+                None,
+            )
+        except PlanStepRequiresConfirmation as exc:
+            # A risky/destructive step (same gate as the single-command
+            # path -- see this exception's docstring) can never be
+            # retried via self-correction or silently skipped past: the
+            # whole plan stops here so the user can be asked "are you
+            # sure?" exactly as they would be for the identical single
+            # command.
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            logger.info(
+                "Step %d ('%s') requires explicit confirmation; pausing plan.",
+                index,
+                step.tool,
+            )
+            return (
+                StepResult(
+                    step=step,
+                    status=StepStatus.FAILED,
+                    error=f"Needs confirmation: {exc.prompt}",
+                    attempts=attempts,
+                ),
+                True,
+                f"CONFIRMATION_REQUIRED::{exc.action}::{exc.target or ''}::{exc.prompt}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            first_error = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "Step %d ('%s') failed on first attempt: %s",
+                index,
+                step.tool,
+                first_error,
+            )
+
+        if not retry_enabled:
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            return (
+                StepResult(step=step, status=StepStatus.FAILED, error=first_error, attempts=attempts),
+                False,
+                None,
+            )
+
+        remaining_for_retry = _remaining_budget(start, total_timeout_s)
+        if remaining_for_retry <= 0:
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            abort_reason = (
+                "Total plan timeout reached before a retry could be "
+                f"attempted for step {index + 1}."
+            )
+            logger.warning(abort_reason)
+            return (
+                StepResult(step=step, status=StepStatus.FAILED, error=first_error, attempts=attempts),
+                True,
+                abort_reason,
+            )
+
+        if _plan_cancelled():
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            return (
+                StepResult(step=step, status=StepStatus.FAILED, error=first_error, attempts=attempts),
+                True,
+                "Stopped by user.",
+            )
+
+        correction_timeout = min(step_timeout_s, remaining_for_retry)
+        corrected_arguments = _request_step_correction(
+            step, first_error, model_name, cfg, correction_timeout
+        )
+        attempts += 1
+
+        if corrected_arguments is None:
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            return (
+                StepResult(step=step, status=StepStatus.FAILED, error=first_error, attempts=attempts),
+                False,
+                None,
+            )
+
+        try:
+            validated_corrected = validate_tool_arguments(
+                step.tool,
+                corrected_arguments,
+                allowed_apps=allowed_apps,
+                app_allowlist_enabled=app_allowlist_enabled,
+            )
+        except PlanValidationError as exc:
+            logger.warning(
+                "Step %d ('%s') retry rejected: corrected arguments "
+                "failed validation: %s",
+                index,
+                step.tool,
+                exc,
+            )
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            return (
+                StepResult(
+                    step=step,
+                    status=StepStatus.FAILED,
+                    error=f"{first_error}; retry rejected (invalid corrected arguments): {exc}",
+                    attempts=attempts,
+                ),
+                False,
+                None,
+            )
+
+        remaining_for_retry_dispatch = _remaining_budget(start, total_timeout_s)
+        if remaining_for_retry_dispatch <= 0:
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            abort_reason = (
+                "Total plan timeout reached before the retry dispatch "
+                f"could run for step {index + 1}."
+            )
+            logger.warning(abort_reason)
+            return (
+                StepResult(step=step, status=StepStatus.FAILED, error=first_error, attempts=attempts),
+                True,
+                abort_reason,
+            )
+
+        retry_dispatch_timeout = min(step_timeout_s, remaining_for_retry_dispatch)
+        try:
+            output = _dispatch_with_timeout(
+                dispatch,
+                step.tool,
+                validated_corrected,
+                retry_dispatch_timeout,
+                step_executor,
+            )
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "success"})
+            logger.info(
+                "Step %d ('%s') succeeded after 1 correction retry.",
+                index,
+                step.tool,
+            )
+            return (
+                StepResult(step=step, status=StepStatus.SUCCESS, output=output, attempts=attempts),
+                False,
+                None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            second_error = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "Step %d ('%s') failed again after retry: %s",
+                index,
+                step.tool,
+                second_error,
+            )
+            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            return (
+                StepResult(step=step, status=StepStatus.FAILED, error=second_error, attempts=attempts),
+                False,
+                None,
+            )
+
     try:
-        for index, step in enumerate(plan.steps):
+        for batch in batches:
+            # BATCH-LEVEL cancellation / total-timeout checks (replaces
+            # the per-step checks the original sequential loop made
+            # before each step -- now checked once per batch instead).
             if _plan_cancelled():
                 aborted = True
                 abort_reason = "Stopped by user."
-                logger.info("Plan cancelled by Stop before step %d.", index + 1)
+                logger.info(
+                    "Plan cancelled by Stop before batch starting at step %d.",
+                    batch[0][0] + 1,
+                )
                 break
 
-            remaining_before_step = _remaining_budget(start, total_timeout_s)
-            if remaining_before_step <= 0:
+            remaining_before_batch = _remaining_budget(start, total_timeout_s)
+            if remaining_before_batch <= 0:
                 aborted = True
                 abort_reason = (
                     f"Total plan timeout ({total_timeout_s:.1f}s) reached "
-                    f"before step {index + 1} of {len(plan.steps)} could run."
+                    f"before step {batch[0][0] + 1} of {len(plan.steps)} could run."
                 )
                 logger.warning(abort_reason)
                 break
 
-            if step.depends_on_previous and predecessor_blocked:
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.SKIPPED,
-                        error="Skipped: depended on a previous step that failed or was skipped.",
-                    )
+            batch_results: Dict[int, StepResult] = {}
+            to_run = list(batch)
+
+            # Dependency-skip check: only the batch's FIRST step can ever
+            # be depends_on_previous=True (see _group_into_batches()) --
+            # if its predecessor (the previous batch's last step, by
+            # original order) failed or was skipped, skip it WITHOUT
+            # dispatching; any independent sibling steps in this same
+            # batch are unaffected and still run normally.
+            first_index, first_step = batch[0]
+            if first_step.depends_on_previous and predecessor_blocked:
+                batch_results[first_index] = StepResult(
+                    step=first_step,
+                    status=StepStatus.SKIPPED,
+                    error="Skipped: depended on a previous step that failed or was skipped.",
                 )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "skipped"})
+                _fire_plan_event(on_event, "step", {"index": first_index, "tool": first_step.tool, "status": "skipped"})
                 logger.info(
                     "Skipping step %d ('%s'): depended on a failed/skipped predecessor.",
-                    index,
-                    step.tool,
+                    first_index,
+                    first_step.tool,
                 )
-                predecessor_blocked = True  # propagate the block down the chain
-                continue
+                to_run = to_run[1:]
 
-            this_step_timeout = min(step_timeout_s, remaining_before_step)
+            batch_aborted = False
+            batch_abort_reason: Optional[str] = None
 
-            _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "running"})
+            if len(to_run) == 1:
+                # Single step: no thread-pool overhead needed.
+                idx, st = to_run[0]
+                step_result, step_abort, step_abort_reason = _run_one_step(idx, st)
+                batch_results[idx] = step_result
+                if step_abort:
+                    batch_aborted = True
+                    batch_abort_reason = step_abort_reason
+            elif to_run:
+                # 2+ independent steps: dispatch them concurrently.
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=len(to_run), thread_name_prefix="sara-plan-batch"
+                ) as batch_executor:
+                    steps_by_index = dict(to_run)
+                    future_to_idx = {
+                        batch_executor.submit(_run_one_step, idx, st): idx
+                        for idx, st in to_run
+                    }
+                    for future in concurrent.futures.as_completed(future_to_idx):
+                        idx = future_to_idx[future]
+                        try:
+                            step_result, step_abort, step_abort_reason = future.result()
+                        except Exception as exc:  # noqa: BLE001 -- absolute safety net
+                            st = steps_by_index[idx]
+                            logger.error(
+                                "Step %d ('%s') raised unexpectedly out of the "
+                                "batch executor (treating as failed): %s",
+                                idx,
+                                st.tool,
+                                exc,
+                            )
+                            step_result = StepResult(
+                                step=st,
+                                status=StepStatus.FAILED,
+                                error=f"{type(exc).__name__}: {exc}",
+                            )
+                            step_abort, step_abort_reason = False, None
+                        batch_results[idx] = step_result
+                        if step_abort and not batch_aborted:
+                            batch_aborted = True
+                            batch_abort_reason = step_abort_reason
 
-            attempts = 1
-            first_error: Optional[str] = None
-            try:
-                output = _dispatch_with_timeout(
-                    dispatch, step.tool, step.arguments, this_step_timeout, step_executor
-                )
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.SUCCESS,
-                        output=output,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "success"})
-                predecessor_blocked = False
-                logger.info("Step %d ('%s') succeeded on first attempt.", index, step.tool)
-                continue
-            except PlanStepRequiresConfirmation as exc:
-                # A risky/destructive step (same gate as the single-command
-                # path -- see this exception's docstring) can never be
-                # retried via self-correction or silently skipped past:
-                # the whole plan stops here so the user can be asked
-                # "are you sure?" exactly as they would be for the
-                # identical single command.
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=f"Needs confirmation: {exc.prompt}",
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
+            # Preserve original plan order in `results` regardless of the
+            # order steps were dispatched/completed in.
+            for idx, _st in batch:
+                results.append(batch_results[idx])
+
+            last_index, _last_step = batch[-1]
+            predecessor_blocked = batch_results[last_index].status != StepStatus.SUCCESS
+
+            if batch_aborted:
                 aborted = True
-                abort_reason = (
-                    f"CONFIRMATION_REQUIRED::{exc.action}::{exc.target or ''}::{exc.prompt}"
-                )
-                logger.info(
-                    "Step %d ('%s') requires explicit confirmation; pausing plan.",
-                    index,
-                    step.tool,
-                )
-                predecessor_blocked = True
+                abort_reason = batch_abort_reason
                 break
-            except Exception as exc:  # noqa: BLE001
-                first_error = f"{type(exc).__name__}: {exc}"
-                logger.warning(
-                    "Step %d ('%s') failed on first attempt: %s",
-                    index,
-                    step.tool,
-                    first_error,
-                )
-
-            if not retry_enabled:
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=first_error,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
-                predecessor_blocked = True
-                continue
-
-            remaining_for_retry = _remaining_budget(start, total_timeout_s)
-            if remaining_for_retry <= 0:
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=first_error,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
-                aborted = True
-                abort_reason = (
-                    "Total plan timeout reached before a retry could be "
-                    f"attempted for step {index + 1}."
-                )
-                logger.warning(abort_reason)
-                predecessor_blocked = True
-                break
-
-            if _plan_cancelled():
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=first_error,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
-                aborted = True
-                abort_reason = "Stopped by user."
-                predecessor_blocked = True
-                break
-
-            correction_timeout = min(step_timeout_s, remaining_for_retry)
-            corrected_arguments = _request_step_correction(
-                step, first_error, model_name, cfg, correction_timeout
-            )
-            attempts += 1
-
-            if corrected_arguments is None:
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=first_error,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
-                predecessor_blocked = True
-                continue
-
-            try:
-                validated_corrected = validate_tool_arguments(
-                    step.tool,
-                    corrected_arguments,
-                    allowed_apps=allowed_apps,
-                    app_allowlist_enabled=app_allowlist_enabled,
-                )
-            except PlanValidationError as exc:
-                logger.warning(
-                    "Step %d ('%s') retry rejected: corrected arguments "
-                    "failed validation: %s",
-                    index,
-                    step.tool,
-                    exc,
-                )
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=f"{first_error}; retry rejected (invalid corrected arguments): {exc}",
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
-                predecessor_blocked = True
-                continue
-
-            remaining_for_retry_dispatch = _remaining_budget(start, total_timeout_s)
-            if remaining_for_retry_dispatch <= 0:
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.FAILED,
-                        error=first_error,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "fail"})
-                aborted = True
-                abort_reason = (
-                    "Total plan timeout reached before the retry dispatch "
-                    f"could run for step {index + 1}."
-                )
-                logger.warning(abort_reason)
-                predecessor_blocked = True
-                break
-
-            retry_dispatch_timeout = min(step_timeout_s, remaining_for_retry_dispatch)
-            try:
-                output = _dispatch_with_timeout(
-                    dispatch,
-                    step.tool,
-                    validated_corrected,
-                    retry_dispatch_timeout,
-                    step_executor,
-                )
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.SUCCESS,
-                        output=output,
-                        attempts=attempts,
-                    )
-                )
-                _fire_plan_event(on_event, "step", {"index": index, "tool": step.tool, "status": "success"})
-                predecessor_blocked = False
-                logger.info(
-                    "Step %d ('%s') succeeded after 1 correction retry.",
-                    index,
-                    step.tool,
-                )
-            except Exception as exc:  # noqa: BLE001
-                second_error = f"{type(exc).__name__}: {exc}"
-                logger.warning(
-                    "Step %d ('%s') failed again after retry: %s",
-                    index,
-                    step.tool,
-                    second_error,
-                )
-                results.append(
-                    StepResult(
-                        step=step,
-                        status=StepStatus.SUCCESS,
-                        output=output,
-                        attempts=attempts,
-                    )
-                )
-                predecessor_blocked = False
-                logger.info(
-                    "Step %d ('%s') succeeded after 1 correction retry.",
-                    index,
-                    step.tool,
-                )
+    finally:
         # CRITICAL: wait=False + cancel_futures=True. Do NOT use a `with`
         # context manager for step_executor -- ThreadPoolExecutor's
         # __exit__ defaults to shutdown(wait=True), which would block
