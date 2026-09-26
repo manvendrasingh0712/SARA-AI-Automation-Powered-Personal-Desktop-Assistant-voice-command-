@@ -122,6 +122,7 @@
   function refreshChrome() {
     const m = MODES[modeName], paused = isPausedIdle();
     const rgb = paused ? MUTED_RGB : m.rgb;
+    document.body.classList.toggle('sara-active', modeName !== 'idle' && !paused);   // ambient.css glow intensify
     document.querySelectorAll('[data-mini]').forEach(function (el) {
       el.style.background = rgbStr(rgb, 1); el.style.boxShadow = '0 0 8px ' + rgbStr(rgb, 0.9);
     });
@@ -213,9 +214,50 @@
     actTimer = setTimeout(hideActivity, state === 'start' ? ACT_STUCK_MS : ACT_LINGER_MS);
   });
 
+  /* ---- Plan progress card: live step-by-step status for a running multi-step plan ----
+     Backend push 'plan_progress' (stage: start|step|end, payload). Reuses the existing
+     #stopBtn (already visible while working) -- no separate stop control here. */
+  const planCard = $('planCard'), planTitle = $('planTitle'), planSteps = $('planSteps');
+  const PLAN_ICON = { running: '◌', success: '✓', fail: '✗', skipped: '○' };
+  let planHideTimer = 0;
+  function planStepLabel(tool) {
+    return (tool || '').split('_').map((w) => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+  }
+  SARA.on('ev:plan_progress', function (stage, payload) {
+    if (!planCard || !planTitle || !planSteps) return;
+    payload = payload || {};
+    if (stage === 'start') {
+      clearTimeout(planHideTimer);
+      const steps = payload.steps || [];
+      planSteps.innerHTML = steps.map((s) =>
+        '<li data-index="' + s.index + '"><span class="plan-step-icon">' + PLAN_ICON.running +
+        '</span><span class="plan-step-name">' + planStepLabel(s.tool) + '</span></li>').join('');
+      planTitle.textContent = 'Running plan… (' + steps.length + ' steps)';
+      planCard.hidden = false;
+    } else if (stage === 'step') {
+      const li = planSteps.querySelector('li[data-index="' + payload.index + '"]');
+      if (li) {
+        const iconEl = li.querySelector('.plan-step-icon');
+        if (iconEl) iconEl.textContent = PLAN_ICON[payload.status] || PLAN_ICON.running;
+        if (payload.status !== 'running') li.classList.add('done');
+      }
+    } else if (stage === 'end') {
+      planTitle.textContent = payload.aborted
+        ? 'Stopped'
+        : 'Done — ' + (payload.success || 0) + ' ok, ' + (payload.failed || 0) + ' failed';
+      clearTimeout(planHideTimer);
+      planHideTimer = setTimeout(function () { planCard.hidden = true; }, 2500);
+    }
+  });
+
   /* ---- wake + pause ---- */
   SARA.wake = function () {
     SARA.sound.wake();
+    if (!SARA.reduceMotion) {
+      const el = $('stage');
+      el.classList.remove('wake-flash'); void el.offsetWidth; el.classList.add('wake-flash');   // restart even if double-tapped
+      setTimeout(() => el.classList.remove('wake-flash'), 650);
+    }
     SARA.setStatus('waking');            // optimistic; the real 'status' pushes take over
     SARA.callApi('wake_now');
   };

@@ -71,7 +71,14 @@
     dot.style.background = color || 'var(--core)'; dot.style.color = color || 'var(--core)';
     const msg = document.createElement('span'); msg.textContent = message == null ? '' : String(message);
     const x = document.createElement('button'); x.type = 'button'; x.className = 't-x'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'Dismiss');
-    t.appendChild(dot); t.appendChild(msg); t.appendChild(x); stack.appendChild(t);
+    t.appendChild(dot); t.appendChild(msg); t.appendChild(x);
+    if (opts && opts.sub) {
+      const small = document.createElement('small'); small.className = 't-sub';
+      small.textContent = String(opts.sub);
+      small.style.opacity = '0.7'; small.style.fontSize = '11px'; small.style.display = 'block';
+      t.appendChild(small);
+    }
+    stack.appendChild(t);
     if (/alert|error/i.test(iconClass || '')) SARA.sound.error();
     else if (opts && opts.tone === 'notify') SARA.sound.notify();
     while (stack.children.length > 4) stack.removeChild(stack.firstChild);

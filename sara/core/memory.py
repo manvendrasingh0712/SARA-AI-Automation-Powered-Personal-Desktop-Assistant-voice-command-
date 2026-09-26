@@ -162,9 +162,20 @@ class PreferencesDB:
                 action_type TEXT    NOT NULL,
                 action_name TEXT    NOT NULL,
                 outcome     TEXT    NOT NULL,
+                reason      TEXT,
                 timestamp   TEXT    NOT NULL
             );
             """)
+        # MIGRATION (NEW): existing DBs created before the `reason` column
+        # existed won't have it -- CREATE TABLE IF NOT EXISTS above is a
+        # no-op for them. Add it via ALTER TABLE, guarded against
+        # "duplicate column" for DBs that already have it (including
+        # brand-new DBs, whose CREATE TABLE above already includes it).
+        try:
+            conn.execute("ALTER TABLE action_log ADD COLUMN reason TEXT;")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
     def _get_read_conn(self) -> sqlite3.Connection:
         """Lazily creates and caches one connection per calling thread."""
@@ -699,13 +710,25 @@ class PreferencesDB:
     # full chokepoint rationale.
 
     def log_action(
-        self, action_type: str, action_name: str, outcome: str, wait: bool = False
+        self,
+        action_type: str,
+        action_name: str,
+        outcome: str,
+        reason: Optional[str] = None,
+        wait: bool = False,
     ) -> bool:
         """
         Records one executed action. Defaults to fire-and-forget
         (wait=False) -- called right after a voice command finishes, so
         it must never add latency to the spoken response (same contract
         as log_proactive_event()/log_decision() above).
+
+        `reason` is optional (defaults to None, stored as NULL). It
+        carries the originating plan's goal text for planner-driven
+        steps (see sara/core/planning/executor.py's
+        _audit_plan_results()) -- callers that don't pass it (every
+        existing call site) log a row with a NULL reason exactly as
+        before this param existed.
 
         Also trims action_log down to the most recent
         _ACTION_LOG_MAX_ENTRIES rows on every write, via a single
@@ -721,9 +744,9 @@ class PreferencesDB:
         def _do(conn: sqlite3.Connection) -> bool:
             try:
                 conn.execute(
-                    "INSERT INTO action_log (action_type, action_name, outcome, timestamp) "
-                    "VALUES (?, ?, ?, ?)",
-                    (action_type, action_name, outcome, datetime.now().isoformat()),
+                    "INSERT INTO action_log (action_type, action_name, outcome, reason, timestamp) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (action_type, action_name, outcome, reason, datetime.now().isoformat()),
                 )
                 conn.execute(
                     "DELETE FROM action_log WHERE id <= "
@@ -750,9 +773,9 @@ class PreferencesDB:
             conn = self._get_read_conn()
             cursor = conn.execute(
                 """
-                SELECT action_type, action_name, outcome, timestamp
+                SELECT action_type, action_name, outcome, reason, timestamp
                 FROM (
-                    SELECT action_type, action_name, outcome, timestamp, id
+                    SELECT action_type, action_name, outcome, reason, timestamp, id
                     FROM action_log
                     ORDER BY id DESC
                     LIMIT ?
@@ -765,7 +788,8 @@ class PreferencesDB:
                     "action_type": r[0],
                     "action_name": r[1],
                     "outcome": r[2],
-                    "timestamp": r[3],
+                    "reason": r[3],
+                    "timestamp": r[4],
                 }
                 for r in cursor.fetchall()
             ]
@@ -773,6 +797,45 @@ class PreferencesDB:
             logger.error("get_recent_actions: %s", e)
             print(f"[Error] get_recent_actions: {e}")
             return []
+
+    def find_action_by_query(
+        self, query_text: str, limit_scan: int = 200
+    ) -> Optional[dict[str, str]]:
+        """
+        Fuzzy/substring-matches `query_text` against the action_name of
+        recent action_log entries -- same pattern as
+        find_decision_by_query() above, just scanning action_log instead
+        of decision_log. Returns the single most recent entry whose
+        action_name clears the similarity threshold, or None if nothing
+        matches confidently. Backs the "why did I do X" fallback for
+        planner-driven actions in
+        sara/orchestrator/handlers/misc.py's _h_why_decision().
+        """
+        if not query_text or not query_text.strip():
+            return None
+        recent = self.get_recent_actions(limit=limit_scan)
+        if not recent:
+            return None
+
+        normalized_query = query_text.strip().lower()
+        best_entry: Optional[dict[str, str]] = None
+        best_score = 0.0
+        # get_recent_actions() returns oldest-first; iterate reversed
+        # (newest-first) so that on a tied score, the MOST RECENT
+        # matching action wins.
+        for entry in reversed(recent):
+            name_display = entry["action_name"].replace("_", " ").replace(":", " ").lower()
+            ratio = difflib.SequenceMatcher(None, normalized_query, name_display).ratio()
+            if normalized_query in name_display or name_display in normalized_query:
+                ratio = max(ratio, 0.75)
+            if ratio > best_score:
+                best_score = ratio
+                best_entry = entry
+
+        _MATCH_THRESHOLD = 0.45
+        if best_entry is not None and best_score >= _MATCH_THRESHOLD:
+            return best_entry
+        return None
 
     # ── Daily talk streak (personality feature) ─────────────────────────
     # Backs "how many days in a row have we talked" and

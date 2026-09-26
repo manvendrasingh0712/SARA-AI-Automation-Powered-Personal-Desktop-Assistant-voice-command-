@@ -38,7 +38,7 @@
 .nav button{background:none;border:none;color:var(--muted);font-size:12.5px;letter-spacing:.02em;cursor:pointer;padding:4px 2px;white-space:nowrap;flex:none;transition:color .2s,transform .12s;position:relative;z-index:1;}
 .nav button:active{transform:scale(.94);}
 /* sliding active-page underline (positioned by js/fx.js) */
-.nav-ind{position:absolute;left:0;bottom:5px;height:2px;width:0;border-radius:2px;background:var(--core);box-shadow:0 0 8px var(--core);transition:transform .34s cubic-bezier(.3,.8,.25,1),width .34s cubic-bezier(.3,.8,.25,1);pointer-events:none;}
+.nav-ind{position:absolute;left:0;bottom:5px;height:2px;width:0;border-radius:2px;background:var(--core);box-shadow:0 0 8px var(--core);transition:transform .4s cubic-bezier(.34,1.56,.64,1),width .4s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 .nav-ind.no-anim{transition:none;}
 .nav button.active{color:var(--text);}
 .nav button:hover{color:var(--text);}

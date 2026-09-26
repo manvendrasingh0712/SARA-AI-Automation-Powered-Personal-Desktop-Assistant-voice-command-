@@ -7,6 +7,14 @@
 .home-greet{position:absolute;top:28px;right:32px;font-size:13px;color:var(--muted);}
 .stage{width:min(400px,72vw);aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;transition:transform 1.4s ease,opacity 1.4s ease;}
 canvas#org{width:100%;height:100%;display:block;}
+/* ---- wake flash: quick radial burst the instant the orb is tapped/woken (js/home.js SARA.wake) ---- */
+.stage.wake-flash::after{
+  content:'';position:absolute;inset:-6%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle, rgba(63,216,196,.55) 0%, rgba(63,216,196,0) 68%);
+  animation:wakeFlash .6s cubic-bezier(.2,.8,.2,1) forwards;
+}
+@keyframes wakeFlash{0%{opacity:0;transform:scale(.55);}25%{opacity:1;}100%{opacity:0;transform:scale(1.55);}}
+@media (prefers-reduced-motion:reduce){.stage.wake-flash::after{display:none;}}
 
 /* ---- Ambient mode (js/home.js) ----
    Tier 1: just a calmer caption + a touch less orb energy (handled in JS), no layout change.
@@ -61,6 +69,15 @@ canvas#org{width:100%;height:100%;display:block;}
 .home-actions{margin-top:10px;display:flex;gap:6px;}
 .link-btn[hidden]{display:none;}
 
+/* ---- shared glass top-highlight for the floating cards/pills below (today/next/plan/activity) ----
+   All four already establish their own positioning context (position:absolute), so this only needs
+   the pseudo-element itself -- a thin light seam along the top inner edge, like light catching glass. */
+.today-card::before,.next-card::before,.plan-card::before,.home-activity::before{
+  content:'';position:absolute;top:0;left:14%;right:14%;height:1px;border-radius:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);
+  pointer-events:none;
+}
+
 /* ---- Today card (bottom-left of Home) ---- */
 .today-card{
   position:absolute;left:32px;bottom:84px;width:250px;padding:16px 18px;border-radius:14px;
@@ -108,8 +125,8 @@ canvas#org{width:100%;height:100%;display:block;}
 }
 
 /* ---- Today sheet (expanded card) ---- */
-.sheet{width:min(560px,100%);max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px 28px 26px;transform:translateY(8px);transition:transform .22s;}
-.overlay.open .sheet{transform:translateY(0);}
+.sheet{width:min(560px,100%);max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px 28px 26px;transform:translateY(8px) scale(.98);transition:transform .28s cubic-bezier(.22,1,.36,1);}
+.overlay.open .sheet{transform:translateY(0) scale(1);}
 .sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
 .sheet-head .page-title{font-size:18px;}
 .weather-hero{display:flex;align-items:baseline;gap:14px;margin:6px 0 6px;}
@@ -152,3 +169,17 @@ canvas#org{width:100%;height:100%;display:block;}
   .home-activity{transition:opacity .01s;}
   .home-activity[data-state="start"] .act-glyph{animation:none;}
 }
+
+/* ---- Plan progress card: live step list for a running multi-step plan (js/home.js, ev:plan_progress) ---- */
+.plan-card{
+  position:absolute;left:50%;bottom:12%;transform:translateX(-50%);
+  max-width:92%;min-width:220px;padding:10px 16px;border-radius:14px;
+  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
+  font-size:12.5px;color:var(--muted);
+}
+.plan-card[hidden]{display:none;}
+.plan-card-title{font-size:12.5px;color:var(--core);margin-bottom:6px;}
+.plan-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;}
+.plan-steps li{display:flex;align-items:center;gap:8px;color:var(--text-soft);}
+.plan-steps li .plan-step-icon{flex:none;width:14px;text-align:center;}
+.plan-steps li.done{color:var(--muted);}

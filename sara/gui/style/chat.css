@@ -5,7 +5,8 @@
 #page-chat .page-body{display:flex;flex-direction:column;padding-bottom:96px;}
 .chat-log{display:flex;flex-direction:column;gap:16px;padding-bottom:10px;max-width:640px;width:100%;margin:0 auto;flex:1;}
 .chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
-.msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:pageIn .25s ease;}
+.msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:msgIn .32s cubic-bezier(.2,.8,.2,1);}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px) scale(.97);}to{opacity:1;transform:none;}}
 .msg.user{align-self:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 15px;color:var(--text);}
 .msg.sara{align-self:flex-start;color:var(--core);padding:2px 2px;}
 .msg.preview{opacity:.6;font-style:italic;}

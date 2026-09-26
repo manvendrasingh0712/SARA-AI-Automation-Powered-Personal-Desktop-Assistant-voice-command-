@@ -14,7 +14,10 @@
   const log = $('chatLog'), scroller = log.parentElement, input = $('chatInputField');
   let streaming = null, preview = null;
 
-  function scrollDown() { scroller.scrollTop = scroller.scrollHeight; }
+  function scrollDown(smooth) {
+    if (smooth && !SARA.reduceMotion) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+    else scroller.scrollTop = scroller.scrollHeight;
+  }
   const canAnimate = () => !SARA.reduceMotion && !document.hidden;
 
   /* ---- tool-result action buttons: http(s) link in Sara's reply -> compact "Open Results" button under the bubble.
@@ -84,7 +87,7 @@
     const b = { div: div, body: body, full: String(text == null ? '' : text), shown: 0, raf: 0, acc: 0, last: 0 };
     if (animate && b.full.length) startTyper(b);
     else { b.shown = b.full.length; body.textContent = b.full; }
-    scrollDown();
+    scrollDown(true);
     return b;
   }
   function finalizeStream() {
