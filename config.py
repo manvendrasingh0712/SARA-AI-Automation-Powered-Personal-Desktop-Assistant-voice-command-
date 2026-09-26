@@ -327,6 +327,7 @@ class Config:
 
     # ── Ollama ────────────────────────────────────────────────────────────
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
+    OLLAMA_FAST_MODEL: str = os.getenv("OLLAMA_FAST_MODEL", "")
     OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_TIMEOUT: int = _int(os.getenv("OLLAMA_TIMEOUT"), default=30)
     OLLAMA_NUM_CTX: int = _int(os.getenv("OLLAMA_NUM_CTX"), default=2048)
@@ -453,7 +454,8 @@ class Config:
     )
     # ── Core ──────────────────────────────────────────────────────────────
     DEBUG_MODE: bool = _bool(os.getenv("DEBUG_MODE", "False"), default=False)
-    WAKE_WORD: str = os.getenv("WAKE_WORD", "sara , sarah").lower().strip()
+    # Passive wake detection is handled exclusively by OpenWakeWord.
+    WAKE_WORD: str = os.getenv("WAKE_WORD", "hey sara").lower().strip()
     SARA_NAME: str = os.getenv("SARA_NAME", "Sara")
     SARA_TIMEZONE: str = os.getenv("SARA_TIMEZONE", "Asia/Kolkata")
     SARA_LANGUAGE: str = os.getenv("SARA_LANGUAGE", "hinglish").lower().strip()
@@ -469,34 +471,66 @@ class Config:
     # directly.
     WAKE_ACK_PHRASE: str = os.getenv("WAKE_ACK_PHRASE", "Yes?")
 
-    # ── Wake word — fallback STT-based multi-variant matching (stt.py) ─────
+    # ── OpenWakeWord-only wake detection ─────────────────────────────────
+    # Passive wake detection is handled exclusively by OpenWakeWord.
+    # Whisper/STT must never be used as a wake-word fallback.
     WAKE_WORDS: list = [
         w.strip().lower()
-        for w in os.getenv("WAKE_WORDS", "sara,sarah,hey sara,hey sarah").split(",")
+        for w in os.getenv("WAKE_WORDS", "hey sara").split(",")
         if w.strip()
     ]
 
     WAKE_WORD_ALLOW_CUSTOM_ONLY: bool = _bool(
-        os.getenv("WAKE_WORD_ALLOW_CUSTOM_ONLY", "False"), default=False
+        os.getenv("WAKE_WORD_ALLOW_CUSTOM_ONLY", "True"), default=True
     )
 
-    WAKE_WORD_MODEL_PATH: str | None = _optional_str(os.getenv("WAKE_WORD_MODEL_PATH"))
+    # Default custom OpenWakeWord model.
+    # Expected location:
+    # <project-root>/models/wakewords/hey_sara.onnx
+    WAKE_WORD_MODEL_PATH: str = (
+        os.getenv("WAKE_WORD_MODEL_PATH")
+        or str(_PROJECT_ROOT / "models" / "wakewords" / "hey_sara.onnx")
+    )
 
-    WAKE_WORD_FAST_MODEL_SIZE: str = os.getenv("WAKE_WORD_FAST_MODEL_SIZE", "tiny")
-    WAKE_LISTEN_TIMEOUT_S: float = _float(os.getenv("WAKE_LISTEN_TIMEOUT_S"), default=1.5)
+    # Legacy Whisper wake settings kept for compatibility with old .env files.
+    # They are NOT used by passive wake detection anymore.
+    WAKE_WORD_FAST_MODEL_SIZE: str = os.getenv(
+        "WAKE_WORD_FAST_MODEL_SIZE", "tiny"
+    )
+    WAKE_LISTEN_TIMEOUT_S: float = _float(
+        os.getenv("WAKE_LISTEN_TIMEOUT_S"), default=1.5
+    )
     WAKE_LISTEN_MAX_DURATION_S: float = _float(
         os.getenv("WAKE_LISTEN_MAX_DURATION_S"), default=1.8
     )
+
     WAKE_FUZZY_MATCH_ENABLED: bool = _bool(
-        os.getenv("WAKE_FUZZY_MATCH_ENABLED", "True"), default=True
+        os.getenv("WAKE_FUZZY_MATCH_ENABLED", "False"), default=False
     )
     WAKE_FUZZY_MATCH_THRESHOLD: float = _float(
         os.getenv("WAKE_FUZZY_MATCH_THRESHOLD"), default=0.75
     )
 
-    WAKE_WORD_COOLDOWN_S: float = _float(os.getenv("WAKE_WORD_COOLDOWN_S"), default=2.0)
-    WAKE_WORD_THRESHOLD: float = _float(os.getenv("WAKE_WORD_THRESHOLD"), default=0.5)
-    WAKE_WORD_BEAM_SIZE: int = _int(os.getenv("WAKE_WORD_BEAM_SIZE"), default=1)
+    WAKE_WORD_COOLDOWN_S: float = _float(
+        os.getenv("WAKE_WORD_COOLDOWN_S"), default=2.0
+    )
+    WAKE_WORD_THRESHOLD: float = _float(
+        os.getenv("WAKE_WORD_THRESHOLD"), default=0.50
+    )
+
+    # OpenWakeWord native inference frame.
+    # 16 kHz × 80 ms = 1280 samples.
+    WAKE_WORD_FRAME_MS: int = 80
+
+    # Prevent duplicate inference on the same audio window.
+    WAKE_WORD_INFERENCE_INTERVAL_S: float = _float(
+        os.getenv("WAKE_WORD_INFERENCE_INTERVAL_S"), default=0.08
+    )
+
+    # Legacy value; no longer used for wake detection.
+    WAKE_WORD_BEAM_SIZE: int = _int(
+        os.getenv("WAKE_WORD_BEAM_SIZE"), default=1
+    )
 
     # ── Mic settle time after TTS stops (echo / room-decay guard) ──────────
     STT_SETTLE_MIN_GAP_S: float = _float(os.getenv("STT_SETTLE_MIN_GAP_S"), default=1.3)
@@ -955,31 +989,65 @@ class Config:
             )
             cls.SARA_LANGUAGE = "hinglish"
 
-        # ── Wake word ─────────────────────────────────────────────────────
+        # ── Wake word: OpenWakeWord ONLY ─────────────────────────────────
         if not cls.WAKE_WORD:
-            print("[Warning] WAKE_WORD is empty, defaulting to 'sara'.")
-            cls.WAKE_WORD = "sara"
+            print("[Warning] WAKE_WORD is empty, defaulting to 'hey sara'.")
+            cls.WAKE_WORD = "hey sara"
+
+        # Only the configured wake phrase is allowed.
+        # Do NOT silently append "sara", "sarah", etc.
+        if not cls.WAKE_WORDS:
+            cls.WAKE_WORDS = ["hey sara"]
+
+        cls.WAKE_WORDS = [
+            w.strip().lower()
+            for w in cls.WAKE_WORDS
+            if w and w.strip()
+        ]
 
         if not cls.WAKE_WORDS:
-            print("[Warning] WAKE_WORDS is empty, defaulting to sara/sarah variants.")
-            cls.WAKE_WORDS = ["sara", "sarah", "hey sara", "hey sarah"]
-        elif not cls.WAKE_WORD_ALLOW_CUSTOM_ONLY:
-            for must in ("sara", "sarah", "hey sara", "hey sarah"):
-                if must not in cls.WAKE_WORDS:
-                    cls.WAKE_WORDS.append(must)
+            cls.WAKE_WORDS = ["hey sara"]
 
-        if cls.WAKE_WORD_MODEL_PATH and not Path(cls.WAKE_WORD_MODEL_PATH).exists():
+        # IMPORTANT:
+        # Missing model must NOT set WAKE_WORD_MODEL_PATH to None.
+        # None previously triggered the Whisper/STT wake fallback.
+        wake_model_path = Path(cls.WAKE_WORD_MODEL_PATH)
+
+        if not wake_model_path.is_absolute():
+            wake_model_path = _PROJECT_ROOT / wake_model_path
+
+        cls.WAKE_WORD_MODEL_PATH = str(wake_model_path.resolve())
+
+        if not wake_model_path.exists():
             print(
-                f"[Warning] WAKE_WORD_MODEL_PATH '{cls.WAKE_WORD_MODEL_PATH}' does not exist; "
-                f"falling back to STT-based wake detection."
+                f"[Warning] OpenWakeWord model not found at "
+                f"'{wake_model_path}'. "
+                f"Passive wake detection will remain disabled until "
+                f"the model is installed."
             )
-            cls.WAKE_WORD_MODEL_PATH = None
 
-        cls.WAKE_WORD_COOLDOWN_S = max(0.5, min(10.0, cls.WAKE_WORD_COOLDOWN_S))
-        cls.WAKE_WORD_THRESHOLD = max(0.1, min(0.99, cls.WAKE_WORD_THRESHOLD))
-        cls.WAKE_LISTEN_TIMEOUT_S = max(0.5, min(5.0, cls.WAKE_LISTEN_TIMEOUT_S))
-        cls.WAKE_LISTEN_MAX_DURATION_S = max(0.8, min(5.0, cls.WAKE_LISTEN_MAX_DURATION_S))
-        cls.WAKE_FUZZY_MATCH_THRESHOLD = max(0.5, min(1.0, cls.WAKE_FUZZY_MATCH_THRESHOLD))
+        cls.WAKE_WORD_COOLDOWN_S = max(
+            0.5,
+            min(10.0, cls.WAKE_WORD_COOLDOWN_S),
+        )
+
+        cls.WAKE_WORD_THRESHOLD = max(
+            0.10,
+            min(0.99, cls.WAKE_WORD_THRESHOLD),
+        )
+
+        # OpenWakeWord native frame: 80 ms @ 16 kHz = 1280 samples.
+        cls.WAKE_WORD_FRAME_MS = 80
+
+        cls.WAKE_WORD_INFERENCE_INTERVAL_S = max(
+            0.08,
+            min(0.50, cls.WAKE_WORD_INFERENCE_INTERVAL_S),
+        )
+
+        cls.WAKE_FUZZY_MATCH_THRESHOLD = max(
+            0.50,
+            min(1.00, cls.WAKE_FUZZY_MATCH_THRESHOLD),
+        )
 
         # ── STT settle-gap clamp ─────────────────────────────────────────
         cls.STT_SETTLE_MIN_GAP_S = max(

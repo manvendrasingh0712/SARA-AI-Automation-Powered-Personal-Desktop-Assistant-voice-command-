@@ -353,6 +353,8 @@ class _WakeWatcher:
                     assistant_active = True
                     if self._assistant_state is not None:
                         assistant_active = self._assistant_state.is_active()
+
+
                     wake_word_hit = (
                         assistant_active and self._ears.is_wake_word_detected()
                     )
@@ -613,7 +615,7 @@ def run_sara_logic(
             # own ack and STT could misfire on it.
             ack = getattr(Config, "WAKE_ACK_PHRASE", "Yes?")
             try:
-                tts.speak(ack, fast=True, block=not aec_active)
+                tts.speak(ack, fast=True, block=True)
             except Exception as e:
                 # Ack failing must NEVER stop the command-listening cycle.
                 print(f"[Logic] wake-ack speak failed (continuing): {e}")
@@ -658,6 +660,15 @@ def run_sara_logic(
                 # ever missing, so the new confirmation gate never fires
                 # unexpectedly.
                 stt_confidence = getattr(user_input, "confidence", 1.0)
+                # TASK A/B signal capture: read straight off the
+                # TranscriptionResult (str subclass) BEFORE any string
+                # ops below (e.g. .strip()/.lower()) risk losing the
+                # subclass attributes. Stashed into context_state so
+                # dispatcher.py can build the mood/mix hint downstream.
+                context_state["turn_signals"] = {
+                    "confidence": getattr(user_input, "confidence", None),
+                    "speech_rate": getattr(user_input, "speech_rate", None),
+                }
 
                 if stop_event.is_set():
                     break
@@ -687,6 +698,7 @@ def run_sara_logic(
                 activity_tracker.touch()
                 ui_update("transcript", "user", user_input)
                 turn_lang_mode, turn_manual_lang = lang_state.snapshot()
+                context_state["turn_lang_mode"] = turn_lang_mode
                 if turn_lang_mode == "auto":
                     detected_lang = ears.get_detected_language()
                     tts.set_language(detected_lang)
