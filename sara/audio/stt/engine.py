@@ -16,6 +16,7 @@ import difflib
 import re
 import threading
 import time
+from pathlib import Path
 from typing import Callable, List, Optional
 
 import numpy as np
@@ -690,7 +691,7 @@ class SpeechToText:
         if self._closed:
             return
         try:
-            chunks = self._wake_ring.peek_latest(n=4)
+            chunks = self._ring.peek_latest(n=4)
 
             if not chunks:
                 return

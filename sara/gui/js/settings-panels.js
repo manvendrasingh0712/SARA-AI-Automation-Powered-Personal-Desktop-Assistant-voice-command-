@@ -32,5 +32,6 @@
   $('btnMin').addEventListener('click', () => SARA.callApi('minimize_window'));
   $('btnMax').addEventListener('click', () => SARA.callApi('toggle_maximize'));
   $('btnClose').addEventListener('click', function () { if (confirm('Close SARA?')) SARA.callApi('close_window'); });
+  $('btnOpenDataFolder').addEventListener('click', () => SARA.callApi('open_data_folder'));
   $('btnWizard').addEventListener('click', () => SARA.showSetupWizard && SARA.showSetupWizard());
 })();

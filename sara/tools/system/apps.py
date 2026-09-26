@@ -629,3 +629,67 @@ def close_application(process_name: str) -> str:
         )
 
     return f"No running process found matching '{target_exe}'."
+
+
+# Background/system processes that are never useful as a "which app did
+# you mean" candidate -- excluded from list_open_app_names() regardless
+# of _PROTECTED_PROCESS_NAMES (which governs what's safe to KILL, a
+# stricter/different concern than what's worth SHOWING the user here).
+_BORING_PROCESS_NAMES = frozenset({
+    "svchost.exe", "conhost.exe", "dllhost.exe", "runtimebroker.exe",
+    "backgroundtaskhost.exe", "wmiprvse.exe", "taskhostw.exe",
+    "searchindexer.exe", "searchhost.exe", "shellexperiencehost.exe",
+    "startmenuexperiencehost.exe", "applicationframehost.exe",
+    "textinputhost.exe", "ctfmon.exe", "sihost.exe", "fontdrvhost.exe",
+    "audiodg.exe", "spoolsv.exe", "dwm.exe", "registry",
+    "system idle process", "system", "smss.exe", "csrss.exe",
+    "wininit.exe", "winlogon.exe", "services.exe", "lsass.exe", "lsm.exe",
+})
+
+# Reverse lookup (process/exe target -> the human-friendly alias key that
+# maps to it), built once at import time from _APP_ALIASES so
+# list_open_app_names() doesn't rescan the dict on every call.
+_APP_ALIASES_REVERSE: Dict[str, str] = {}
+for _alias_key, _alias_target in _APP_ALIASES.items():
+    _APP_ALIASES_REVERSE.setdefault(_alias_target.lower(), _alias_key)
+
+
+def list_open_app_names(limit: int = 8) -> List[str]:
+    """
+    Friendly display names of currently-running, user-facing
+    applications, most-instances-first -- used to offer real candidates
+    ("Chrome ya Spotify?") instead of a generic "which app?" when a
+    pronoun/reference can't be resolved. Never raises; returns [] on
+    total failure, same defensive contract as _protected_pids().
+    """
+    try:
+        protected = _protected_pids()
+        counts: Dict[str, int] = {}
+        for proc in psutil.process_iter(["pid", "name"]):
+            try:
+                pid = proc.info.get("pid")
+                name = proc.info.get("name")
+                if not name or pid in protected:
+                    continue
+                lname = name.lower()
+                if lname in _BORING_PROCESS_NAMES or _is_protected_process(lname):
+                    continue
+                alias_key = _APP_ALIASES_REVERSE.get(lname)
+                display = alias_key if alias_key is not None else _display_name(
+                    name[:-4] if lname.endswith(".exe") else name
+                )
+                counts[display] = counts.get(display, 0) + 1
+            except psutil.NoSuchProcess:
+                continue
+            except psutil.AccessDenied:
+                continue
+        ranked = sorted(counts.items(), key=lambda item: item[1], reverse=True)
+        return [name for name, _count in ranked[:limit]]
+    except psutil.Error:
+        return []
+    except Exception:
+        logger.exception(
+            "list_open_app_names: unexpected error type enumerating running "
+            "processes (this may be a bug)"
+        )
+        return []
