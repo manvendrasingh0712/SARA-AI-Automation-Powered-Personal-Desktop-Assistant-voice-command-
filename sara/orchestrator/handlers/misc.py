@@ -7,6 +7,7 @@ out of the former monolithic intent_handlers.py -- see that module's
 docstring's UNDO / ROLLBACK and MODES / PERSONAS sections.
 """
 import sqlite3
+import time
 from concurrent.futures import TimeoutError as _FutureTimeoutError
 
 from ..command_helpers import (
@@ -18,6 +19,9 @@ from ..command_helpers import (
     _MODE_CONFIRMATIONS,
 )
 from .._shared_state import logger
+from sara.tools import system as system_tools
+
+_UNDO_CLOSE_TTL_S = 300  # 5 min -- separate, longer window than the 120s follow-up TTL in context_tracking.py, since "undo" is a deliberate recall, not a quick follow-up
 
 def _h_why_proactive(match, ctx):
     """
@@ -75,13 +79,35 @@ def _h_why_decision(match, ctx):
         )
         return _quick(ctx, "Sorry, I couldn't look that up right now.")
 
-    if not entry:
-        return _quick(
-            ctx, f"I couldn't find a recent change matching '{query_text}'."
-        )
+    if entry:
+        reason = entry.get("reason") or "I don't have a specific reason recorded for that change."
+        return _quick(ctx, reason)
 
-    reason = entry.get("reason") or "I don't have a specific reason recorded for that change."
-    return _quick(ctx, reason)
+    # NEW: not a settings change -- check action_log for a planner-driven
+    # action whose plan goal matches, before falling back to "not found".
+    if db is not None and hasattr(db, "find_action_by_query"):
+        try:
+            action_entry = db.find_action_by_query(query_text)
+        except (sqlite3.Error, _FutureTimeoutError) as e:
+            print(f"[Memory] find_action_by_query failed: {e}")
+            action_entry = None
+        except Exception as e:
+            logger.exception(
+                "[Memory] find_action_by_query raised an unexpected error type "
+                "(this may be a bug): %s", e
+            )
+            action_entry = None
+
+        if action_entry:
+            action_reason = action_entry.get("reason")
+            if action_reason:
+                return _quick(
+                    ctx, f"Maine ye kiya kyunki tumne kaha tha: '{action_reason}'."
+                )
+
+    return _quick(
+        ctx, f"I couldn't find a recent change matching '{query_text}'."
+    )
 
 
 def _h_undo_setting_change(match, ctx):
@@ -122,6 +148,21 @@ def _h_undo_setting_change(match, ctx):
     write path -- it reuses log_decision() and get_last_decision()
     exactly as written.
     """
+    # CLOSE-APP UNDO (NEW, v1 scope: close only): checked first, before
+    # the settings-undo logic below -- if the user very recently closed
+    # an app (context_tracking.py's "last_closed_app" slot, set by
+    # handlers/system.py's _h_close_app()), treat "undo" as "reopen it"
+    # rather than looking at decision_log at all. Consumes the slot on
+    # success so a second "undo" right after falls through to the
+    # settings logic instead of re-reopening the same app forever.
+    recent_entities = ctx.get("context_state", {}).get("recent_entities", {})
+    closed_entry = recent_entities.get("last_closed_app")
+    if closed_entry and (time.time() - closed_entry.get("ts", 0)) <= _UNDO_CLOSE_TTL_S:
+        app_name = closed_entry["value"]
+        del recent_entities["last_closed_app"]
+        _ack(ctx)
+        return _quick(ctx, system_tools.open_application(app_name))
+
     db = ctx.get("db")
     if db is None or not hasattr(db, "get_last_decision") or not hasattr(db, "set_preference"):
         return _quick(ctx, "I don't have any change history available right now.")

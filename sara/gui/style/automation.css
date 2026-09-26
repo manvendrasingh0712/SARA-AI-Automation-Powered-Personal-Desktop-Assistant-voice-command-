@@ -3,8 +3,13 @@
    Markup: index.html #page-automation, #routineModal.  JS: js/automation.js, js/routine-builder.js.
    ========================================================================== */
 .mode-note{max-width:640px;font-size:12.5px;color:var(--muted);margin:0 0 12px;}
-.auto-card{max-width:640px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;transition:border-color .2s;}
+.auto-card{max-width:640px;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:14px;transition:border-color .2s;position:relative;}
 .auto-card:hover{border-color:rgba(63,216,196,.3);}
+.auto-card::before{
+  content:'';position:absolute;left:0;top:16%;bottom:16%;width:2px;border-radius:2px;background:var(--core);
+  box-shadow:0 0 8px var(--core);opacity:0;transform:scaleY(.4);transition:opacity .25s,transform .25s;pointer-events:none;
+}
+.auto-card:hover::before{opacity:.85;transform:scaleY(1);}
 .auto-info{min-width:0;}
 .auto-info .a-name{font-size:14.5px;font-weight:500;margin-bottom:4px;overflow-wrap:anywhere;}
 .auto-info .a-sub{font-size:12.5px;color:var(--muted);}

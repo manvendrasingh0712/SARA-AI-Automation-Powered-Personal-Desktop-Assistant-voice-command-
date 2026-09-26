@@ -58,7 +58,55 @@
     $('anTrendFrom').textContent = trend.length ? shortDate(trend[0].date) : ''; $('anTrendTo').textContent = trend.length ? shortDate(trend[trend.length - 1].date) : '';
   }
 
-  SARA.onBoot(function () { loadMemory(); loadAnalytics(); });
-  SARA.on('page', function (p) { if (p === 'settings') { loadMemory(); loadAnalytics(); } });
+  /* ---- frequently missed commands ---- */
+  async function loadFrequentMisses() {
+    const el = $('missedCommands');
+    if (!el) return;
+    try {
+      const res = await SARA.callApi('get_frequent_misses', 15, 2);
+      const data = (res && res.ok && res.data) || [];
+      if (!data.length) {
+        el.innerHTML = '<div class="recent-line">Nothing repeated yet.</div>';
+        return;
+      }
+      el.innerHTML = data.map(function (item) {
+        return '<div class="recent-line">' + esc(item.text) + ' <small>(' + item.count + '&times;)</small></div>';
+      }).join('');
+    } catch (e) {
+      el.innerHTML = '<div class="recent-line">Couldn\'t load this right now.</div>';
+    }
+  }
+
+  /* ---- action timeline ---- */
+  const ACTION_ICON = { success: '✓', fail: '✗', skipped: '○' };
+  function actionLabel(name) {
+    return (name || '').split('_').map((w) => w ? w[0].toUpperCase() + w.slice(1) : w).join(' ');
+  }
+  async function loadActionTimeline(filter) {
+    filter = filter || 'all';
+    const res = await SARA.callApi('get_action_timeline', 30, filter === 'all' ? null : filter);
+    const el = $('actionTimeline');
+    if (!el) return;
+    if (!res || !res.ok || !res.data || !res.data.length) {
+      el.innerHTML = 'No activity yet.';
+      return;
+    }
+    el.innerHTML = res.data.map((entry) => {
+      const icon = ACTION_ICON[entry.outcome] || '•';
+      const reasonHtml = entry.reason ? '<small>' + esc(entry.reason) + '</small>' : '';
+      return '<div class="recent-line"><b>' + esc(icon) + ' ' + esc(actionLabel(entry.action_name)) + '</b> · ' +
+        esc(SARA.relTime(entry.timestamp)) + reasonHtml + '</div>';
+    }).join('');
+  }
+  document.querySelectorAll('#page-settings [data-filter]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('#page-settings [data-filter]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadActionTimeline(btn.getAttribute('data-filter'));
+    });
+  });
+
+  SARA.onBoot(function () { loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); });
+  SARA.on('page', function (p) { if (p === 'settings') { loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); } });
   SARA.every(5 * 60 * 1000, function () { loadMemory(); loadAnalytics(); });
 })();

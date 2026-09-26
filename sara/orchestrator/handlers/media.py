@@ -79,7 +79,7 @@ def _h_web_search(match, ctx):
         ctx,
         _run_activity(
             ctx, "search", "Searching the web", "Search complete", "Search failed",
-            lambda: _call_with_timeout(web_tools.search_web, query),
+            lambda: _call_with_timeout(web_tools.search_web, query, ctx=ctx),
         ),
     )
 

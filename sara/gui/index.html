@@ -35,6 +35,7 @@
     <div class="home-time" id="timeVal"></div>
     <div class="home-greet" id="greetName"></div>
     <div class="stage" id="stage" title="Tap Sara to wake"><canvas id="org" width="400" height="400"></canvas><div class="home-activity" id="homeActivity" role="status" aria-live="polite" hidden><span class="act-glyph" id="actGlyph">&#9673;</span><span class="act-text" id="actText"></span></div></div>
+    <div class="plan-card" id="planCard" hidden><div class="plan-card-title" id="planTitle">Running plan…</div><ol class="plan-steps" id="planSteps"></ol></div>
     <div class="home-caption core-idle" id="homeCaption">idle</div>
     <div class="home-hint" id="homeHint">Say “Sara”, or tap the orb.</div>
     <div class="home-actions"><button class="link-btn" id="stopBtn" hidden>stop Sara</button><button class="link-btn" id="pauseBtn">pause listening</button></div>
@@ -269,6 +270,17 @@
             <div class="section-label sub">Last 14 days</div>
             <div class="trend" id="anTrend"></div>
             <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+
+            <div class="section-label sub">Recent activity</div>
+            <div class="btn-row">
+              <button class="pill-btn small active" data-filter="all">All</button>
+              <button class="pill-btn small" data-filter="success">Success</button>
+              <button class="pill-btn small" data-filter="fail">Failed</button>
+            </div>
+            <div id="actionTimeline" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
+
+            <div class="section-label sub">Frequently missed commands</div>
+            <div id="missedCommands" class="acc-note" data-skel></div>
 
             <div class="section-label">Window &amp; setup</div>
             <div class="btn-row">

@@ -51,7 +51,8 @@ else in this codebase.
 
 import threading
 import time
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from config import Config
@@ -252,7 +253,9 @@ class ProactiveEngine:
         self._check_upcoming_meetings()
         self._check_idle_break()
         self._check_streak_milestone()
+        self._check_habit_pattern()
         self._check_scheduled_routine()
+        self._check_morning_prefetch()
 
     # ------------------------------------------------------------
     # Gating — respects focus mode, pause state, and the Settings toggles
@@ -550,6 +553,21 @@ class ProactiveEngine:
         except Exception as e:
             print(f"[Proactive] set_routine_last_run_date('{name}') failed: {e}")
 
+    def _check_morning_prefetch(self) -> None:
+        if not self._trigger_enabled("morning_prefetch"):
+            return
+        if not self._cooldown_ready("morning_prefetch"):
+            return
+        hour = datetime.now().hour
+        if hour < 7 or hour > 9:  # only attempt in a morning window
+            return
+        try:
+            from sara.tools import web as web_tools
+            web_tools.get_news()  # populates both caches as a side effect
+            self._last_fired["morning_prefetch"] = time.monotonic()
+        except Exception as e:
+            print(f"[Proactive] morning news prefetch failed: {e}")
+
     def _check_idle_break(self) -> None:
         if not self._trigger_enabled("idle"):
             return
@@ -595,6 +613,56 @@ class ProactiveEngine:
             except Exception:
                 pass
 
+    def _check_habit_pattern(self) -> None:
+        if not self._trigger_enabled("habit"):
+            return
+        if not self._cooldown_ready("habit_pattern"):
+            return
+        if self._db is None or not hasattr(self._db, "get_recent_actions"):
+            return
+        try:
+            recent = self._db.get_recent_actions(limit=200)
+        except Exception as e:
+            print(f"[Proactive] get_recent_actions failed: {e}")
+            return
+        if not recent:
+            return
+
+        # Group by (action_name, hour-of-day), counting DISTINCT calendar
+        # days each combo appeared on, within the last 14 days.
+        cutoff = datetime.now() - timedelta(days=14)
+        buckets = defaultdict(set)  # (action_name, hour) -> {date strings}
+        for entry in recent:
+            try:
+                ts = datetime.fromisoformat(entry["timestamp"])
+            except Exception:
+                continue
+            if ts < cutoff:
+                continue
+            key = (entry["action_name"], ts.hour)
+            buckets[key].add(ts.date().isoformat())
+
+        # Pick the strongest pattern: >=3 distinct days, same action+hour.
+        best_key, best_days = None, 0
+        for key, days in buckets.items():
+            if len(days) >= 3 and len(days) > best_days:
+                best_key, best_days = key, len(days)
+
+        if best_key is None:
+            return
+
+        action_name, hour = best_key
+        display_name = action_name.replace("_", " ").replace(":", " ")
+        template = (
+            f"I've noticed you {display_name} around {hour % 12 or 12}"
+            f"{'AM' if hour < 12 else 'PM'} pretty often. Want to turn this into a routine? "
+            f"You can set it up from the Automation page."
+        )
+        reason = f"Same action ('{display_name}') seen on {best_days} different days around the same hour."
+        if self._speak_and_notify(template, icon="ti-repeat", color="#8B6FD8",
+                                   trigger="habit_detected", reason=reason):
+            self._last_fired["habit_pattern"] = time.monotonic()
+
     # ------------------------------------------------------------
     # Speak + notify (shared by every trigger)
     # ------------------------------------------------------------
@@ -608,7 +676,7 @@ class ProactiveEngine:
             # caller must NOT update cooldown/de-dupe state on a skip, so
             # this same trigger can retry next tick.
             try:
-                self._ui_update("proactive_notification", icon, color, text, trigger)
+                self._ui_update("proactive_notification", icon, color, text, trigger, reason)
             except Exception as e:
                 print(f"[Proactive] ui_update failed: {e}")
             return False
@@ -621,7 +689,7 @@ class ProactiveEngine:
             # Explicit tag (generic "notification" ki jagah) — taaki
             # frontend ko reliably pata chale ki ye ek unprompted nudge
             # hai, icon guess kiye bina.
-            self._ui_update("proactive_notification", icon, color, text, trigger)
+            self._ui_update("proactive_notification", icon, color, text, trigger, reason)
         except Exception as e:
             print(f"[Proactive] ui_update failed: {e}")
         try:

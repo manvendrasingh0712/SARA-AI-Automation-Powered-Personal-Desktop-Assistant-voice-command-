@@ -86,6 +86,7 @@ try:
         resolve_tool_call,
         build_fake_match,
         TOOL_NAME_TO_INTENT,
+        has_probable_tool_intent,
     )
 
     _HAS_TOOL_ROUTER = True
@@ -93,6 +94,7 @@ except Exception as _tool_router_import_err:  # noqa: BLE001
     resolve_tool_call = None
     build_fake_match = None
     TOOL_NAME_TO_INTENT = {}
+    has_probable_tool_intent = lambda _t: False
     _HAS_TOOL_ROUTER = False
     print(
         f"[Core] sara.core.tool_router unavailable, LLM tool-calling fallback "
@@ -631,11 +633,23 @@ def run_sara_logic(
                 ui_update("status", "listening")
                 ui_update("footer", "Listening...")
                 ears.wait_settle(min_gap=post_tts_settle_s)
+
+                # SPECULATIVE WARM-UP: fire ui_update("status", "thinking")
+                # the instant a partial (interim) transcript first looks
+                # tool-shaped, instead of waiting for the final transcript --
+                # shortens the perceived gap before Sara responds. No actual
+                # tool runs early; this only nudges the UI status sooner.
+                # `_signaled` default-dict is fresh every loop iteration
+                # (evaluated at def-time), so it's naturally per-turn.
+                def _on_partial_transcript(t, _signaled={"fired": False}):
+                    ui_update("transcript_partial", "user", t)
+                    if not _signaled["fired"] and has_probable_tool_intent(t):
+                        _signaled["fired"] = True
+                        ui_update("status", "thinking")
+
                 user_input = ears.listen(
                     mode="command",
-                    on_partial_transcript=lambda t: ui_update(
-                        "transcript_partial", "user", t
-                    ),
+                    on_partial_transcript=_on_partial_transcript,
                 )
                 # NEW: confidence signal riding along on the
                 # TranscriptionResult (str subclass) returned by

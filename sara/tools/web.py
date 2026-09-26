@@ -160,6 +160,13 @@ _CACHE_MAX_SIZE = 256
 _cache: dict[str, tuple[str, float]] = {}
 _cache_lock = threading.Lock()
 
+# PREDICTIVE PRE-LOADING (news only): separate, much longer-lived cache
+# so a morning prefetch (see proactive.py's _check_morning_prefetch) can
+# still serve a "same news query" hit hours later, without touching the
+# existing 60s _cache's short TTL used for normal repeat-question caching.
+_NEWS_PREFETCH_CACHE: dict = {}
+_NEWS_PREFETCH_TTL_S = 3 * 60 * 60
+
 
 # ============================================================
 # SHARED HTTP SESSION  (OPTIMIZATION 7)
@@ -766,6 +773,10 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
     if cached:
         return cached
 
+    prefetch_entry = _NEWS_PREFETCH_CACHE.get(cache_key)
+    if prefetch_entry and (time.monotonic() - prefetch_entry[1]) < _NEWS_PREFETCH_TTL_S:
+        return prefetch_entry[0]
+
     try:
         def _do_news():
             # NEW: explicit timeout — see module docstring.
@@ -783,6 +794,7 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
         ]
         summary = "\n".join(headlines)
         _cache_set(cache_key, summary)
+        _NEWS_PREFETCH_CACHE[cache_key] = (summary, time.monotonic())
         return summary
     except Exception as e:
         logger.error("Failed to fetch news for '%s': %s", query, e)

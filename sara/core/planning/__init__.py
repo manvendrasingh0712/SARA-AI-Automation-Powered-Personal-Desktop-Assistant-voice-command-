@@ -228,7 +228,7 @@ def try_plan_and_execute(
     execution_budget = max(0.5, total_timeout_s - elapsed_on_proposal)
 
     try:
-        outcome = execute_plan(
+                outcome = execute_plan(
             plan,
             dispatch,
             model_name=model_name,
@@ -238,6 +238,7 @@ def try_plan_and_execute(
             retry_enabled=retry_enabled,
             allowed_apps=allowed_apps,
             app_allowlist_enabled=app_allowlist_enabled,
+            on_event=getattr(dispatch, "on_event", None),
         )
     except Exception as exc:  # noqa: BLE001 -- absolute safety net
         logger.error(

@@ -172,7 +172,23 @@ _ACK_PHRASES = (
     "Ek second...",
     "Done-ish, hold on!",
     "Coming right up!",
+    "Ek min, karti hoon!",
+    "Ho raha hai!",
+    "Dhoondh rahi hoon...",
+    "Just a sec!",
+    "Abhi karti hoon!",
+    "Got it, working on it!",
+    "Ruko, dekh rahi hoon!",
+    "Right away!",
+    "Karti hoon, thoda wait!",
 )
+
+# ── Last-used ack phrase index (NEW) ─────────────────────────────────────
+# Best-effort, non-thread-safe module-level tracker so _ack() doesn't
+# repeat the same phrase twice in a row. Not critical-path -- a rare
+# race just means an occasional repeat, which is fine for this UX
+# nicety.
+_LAST_ACK_INDEX = None
 
 
 def _ack(ctx: dict) -> None:
@@ -181,14 +197,21 @@ def _ack(ctx: dict) -> None:
     something immediately instead of dead silence while a genuinely
     slow action (app launch, service control, network call, screen
     description, ...) runs right after it. Picks a random phrase each
-    time so it doesn't feel robotic/repetitive.
+    time (avoiding an immediate repeat of the last one used) so it
+    doesn't feel robotic/repetitive.
 
     Must NEVER raise: a TTS/UI hiccup here should never block or kill
     the actual command that follows it.
     """
+    global _LAST_ACK_INDEX
     try:
         ctx["ui_update"]("status", "working")
-        ctx["tts"].speak(random.choice(_ACK_PHRASES), fast=True, block=False)
+        choices = range(len(_ACK_PHRASES))
+        if _LAST_ACK_INDEX is not None and len(_ACK_PHRASES) > 1:
+            choices = [i for i in choices if i != _LAST_ACK_INDEX]
+        index = random.choice(list(choices))
+        _LAST_ACK_INDEX = index
+        ctx["tts"].speak(_ACK_PHRASES[index], fast=True, block=False)
     except Exception as e:
         print(f"[Core] _ack() failed (non-fatal, command continues): {e}")
 
@@ -272,7 +295,7 @@ def _run_activity(ctx: dict, icon: str, start_text: str, done_text: str, error_t
 
 
 # ── Action audit log (NEW) ───────────────────────────────────────────
-def _log_action(db, action_type: str, action_name: str, outcome: str) -> None:
+def _log_action(db, action_type: str, action_name: str, outcome: str, reason: str = None) -> None:
     """
     Fire-and-forget write to sara/core/memory.py's action_log table
     ("what did Sara actually DO"). Called from _handle_command()'s two
@@ -291,7 +314,7 @@ def _log_action(db, action_type: str, action_name: str, outcome: str) -> None:
     if db is None or not hasattr(db, "log_action"):
         return
     try:
-        db.log_action(action_type, action_name, outcome, wait=False)
+        db.log_action(action_type, action_name, outcome, reason=reason, wait=False)
     except Exception as e:  # noqa: BLE001 -- audit logging must never break dispatch
         print(f"[AuditLog] log_action('{action_type}', '{action_name}') failed (non-fatal): {e}")
 
