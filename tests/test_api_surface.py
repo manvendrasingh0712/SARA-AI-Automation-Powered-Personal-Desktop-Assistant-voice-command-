@@ -226,6 +226,7 @@ EXPECTED_METHODS = {
     "list_routines",
     "mark_setup_wizard_seen",
     "minimize_window",
+    "open_data_folder",
     "record_command_usage",
     "run_action",
     "run_routine_now",
@@ -259,8 +260,8 @@ EXPECTED_METHODS = {
     "wake_now",
 }
 
-assert len(EXPECTED_METHODS) == 67, (
-    "EXPECTED_METHODS must contain exactly 67 entries, found "
+assert len(EXPECTED_METHODS) == 68, (
+    "EXPECTED_METHODS must contain exactly 68 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 
