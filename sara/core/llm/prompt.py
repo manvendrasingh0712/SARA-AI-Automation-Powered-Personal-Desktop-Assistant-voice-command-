@@ -300,22 +300,22 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
 
 _TOD_PHRASES = {
     "english": {
-        "morning": "It is currently morning.",
+        "morning": "It is currently morning — feel free to bring a bit more energy.",
         "afternoon": "It is currently afternoon.",
         "evening": "It is currently evening.",
-        "night": "It is currently night.",
+        "night": "It's currently night — keep things calm and brief.",
     },
     "hindi": {
-        "morning": "Abhi subah ka samay hai.",
+        "morning": "Abhi subah ka samay hai — thoda zyada energetic aur upbeat raho.",
         "afternoon": "Abhi dopahar ka samay hai.",
         "evening": "Abhi shaam ka samay hai.",
-        "night": "Abhi raat ka samay hai.",
+        "night": "Abhi raat ka samay hai — shaant aur chhote jawab do.",
     },
     "hinglish": {
-        "morning": "Abhi morning hai.",
+        "morning": "Abhi morning hai — thoda zyada upbeat/energetic vibe rakh.",
         "afternoon": "Abhi afternoon hai.",
         "evening": "Abhi evening hai.",
-        "night": "Abhi raat ho gayi hai.",
+        "night": "Abhi raat ho gayi hai — chill aur chhota jawab rakh.",
     },
 }
 

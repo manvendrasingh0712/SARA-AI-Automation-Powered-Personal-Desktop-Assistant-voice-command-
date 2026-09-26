@@ -14,9 +14,11 @@ that module's docstring for the full design rationale behind each of
 these pieces, in particular "LLM ROUTING IS MUTUALLY EXCLUSIVE" and
 "ACTION AUDIT LOG".
 """
+import re
 import time
 import sqlite3
 from concurrent.futures import TimeoutError as _FutureTimeoutError
+from typing import Optional as _Optional
 
 from config import Config
 
@@ -135,6 +137,107 @@ from .handlers.misc import (
     _h_undo_setting_change,
     _h_switch_mode,
 )
+
+# ══════════════════════════════════════════════════════════════════════
+# TASK A/B: per-turn mood/mix hint (emotion+time-aware tone, dynamic
+# Hinglish mix matching) — built once per turn, right before the plain-
+# chat generate_response_stream() call below, and appended to
+# context_hint alongside whatever _route_chat_message()/the RAG
+# follow-up lookup already put there.
+# ══════════════════════════════════════════════════════════════════════
+
+_HINDI_LATIN_MARKERS = frozenset({
+    "hai", "hain", "ho", "hoon", "hoga", "hogi", "tha", "thi", "the",
+    "kya", "kyun", "kaise", "kahan", "kab", "kaun", "nahi", "nahin",
+    "haan", "yaar", "bhai", "acha", "accha", "theek", "matlab",
+})
+
+
+def _script_mix_ratio(text: str) -> _Optional[float]:
+    """
+    Approximate Latin(English)/Devanagari(Hindi) word-mix ratio for the
+    CURRENT turn's text (Task B). 1.0 = pure Latin script, 0.0 = pure
+    Devanagari. Devanagari-script words are counted directly via the
+    Unicode block; Hindi-flavoured words typed in Latin script (very
+    common in this app -- e.g. "kaise ho") are additionally caught via
+    a small transliteration wordlist so they don't get miscounted as
+    "English" just because they're not Devanagari. Still only an
+    APPROXIMATE signal, not a real language-mix classifier.
+    """
+    words = text.split()
+    if not words:
+        return None
+    devanagari = sum(1 for w in words if re.search(r"[\u0900-\u097F]", w))
+    latin_hindi = sum(
+        1 for w in words
+        if not re.search(r"[\u0900-\u097F]", w)
+        and re.sub(r"[^\w]", "", w).lower() in _HINDI_LATIN_MARKERS
+    )
+    hindi_ish = min(len(words), devanagari + latin_hindi)
+    return round(1 - (hindi_ish / len(words)), 2)
+
+
+def _time_of_day_bucket() -> str:
+    hour = time.localtime().tm_hour
+    if 5 <= hour < 12:
+        return "morning"
+    if 12 <= hour < 17:
+        return "afternoon"
+    if 17 <= hour < 21:
+        return "evening"
+    return "night"
+
+
+def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
+    """
+    Combines the STT confidence/speech_rate signals stashed by
+    core_wiring.py (Task A), the current time-of-day bucket (Task A),
+    and -- ONLY when this turn's language mode is "auto" (Task B) --
+    the current message's English/Hindi script-mix ratio, into one
+    small parenthetical hint string appended to context_hint before
+    generate_response_stream(). Never raises: any failure here just
+    means a shorter (or empty) hint, never a broken turn.
+    """
+    parts = []
+    try:
+        signals = context_state.get("turn_signals") or {}
+        confidence = signals.get("confidence")
+        speech_rate = signals.get("speech_rate")
+        rushed = (confidence is not None and confidence < 0.6) or (
+            speech_rate is not None and speech_rate > 3.0
+        )
+        if rushed:
+            parts.append(
+                "(User sounds a bit rushed/unsure — keep this reply "
+                "extra concise and clear.)"
+            )
+
+        bucket = _time_of_day_bucket()
+        if bucket == "night":
+            parts.append(
+                "(It's late at night — keep the tone calmer and the "
+                "reply shorter.)"
+            )
+        elif bucket == "morning":
+            parts.append(
+                "(It's morning — a bit more upbeat/energetic tone fits.)"
+            )
+    except Exception as e:
+        print(f"[Dispatcher] mood-hint build failed (continuing): {e}")
+
+    try:
+        if context_state.get("turn_lang_mode") == "auto":
+            ratio = _script_mix_ratio(user_input or "")
+            if ratio is not None:
+                parts.append(
+                    f"(Match roughly this English/Hindi word mix in your "
+                    f"reply: ~{int(ratio * 100)}% English-script.)"
+                )
+    except Exception as e:
+        print(f"[Dispatcher] script-mix hint build failed (continuing): {e}")
+
+    return " ".join(parts)
+
 
 _INTENT_HANDLERS = {
     "switch_mode": _h_switch_mode,
@@ -776,6 +879,9 @@ def _handle_command(
 
     ui_update("status", "thinking")
     try:
+        mood_mix_hint = _build_turn_mood_mix_hint(user_input, context_state)
+        if mood_mix_hint:
+            context_hint = f"{context_hint} {mood_mix_hint}" if context_hint else mood_mix_hint
         stream = brain.generate_response_stream(user_input, reference_context=context_hint)
         sentences = tts.speak_stream(
             stream,
