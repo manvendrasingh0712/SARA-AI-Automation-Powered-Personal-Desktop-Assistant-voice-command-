@@ -28,7 +28,7 @@ from ..command_helpers import (
     _run_activity,
     _is_risky,
 )
-from ..context_tracking import _remember_entity, _resolve_app_target
+from ..context_tracking import _build_app_clarification, _remember_entity, _resolve_app_target
 from .._shared_state import (
     _HAS_PLANNING,
     validate_tool_arguments,
@@ -153,9 +153,15 @@ def _h_open_app(match, ctx):
         # LIKELY-MISFIRE SIGNAL (NEW): unresolved pronoun/reference, not
         # a genuine failure -- see _LikelyMisfireReply for why this uses
         # _quick_likely_misfire() instead of plain _quick().
-        return _quick_likely_misfire(
-            ctx, "Which app would you like me to open?"
-        )
+        question, candidates = _build_app_clarification(ctx, "open")
+        if candidates:
+            ctx["confirm_state"]["pending"] = {
+                "action": "clarify_app_target",
+                "verb": "open_app",
+                "candidates": candidates,
+                "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+            }
+        return _quick_likely_misfire(ctx, question)
     target = resolved_target
     if _HAS_PLANNING and validate_tool_arguments is not None:
         try:
@@ -215,9 +221,15 @@ def _h_close_app(match, ctx):
     resolved_app_name = _resolve_app_target(ctx, app_name)
     if resolved_app_name is None:
         # LIKELY-MISFIRE SIGNAL (NEW): see _h_open_app() above.
-        return _quick_likely_misfire(
-            ctx, "Which app would you like me to close?"
-        )
+        question, candidates = _build_app_clarification(ctx, "close")
+        if candidates:
+            ctx["confirm_state"]["pending"] = {
+                "action": "clarify_app_target",
+                "verb": "close_app",
+                "candidates": candidates,
+                "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+            }
+        return _quick_likely_misfire(ctx, question)
     app_name = resolved_app_name
     if _HAS_PLANNING and validate_tool_arguments is not None:
         try:
@@ -382,9 +394,15 @@ def _h_restart_application(match, ctx):
     resolved_app_name = _resolve_app_target(ctx, app_name)
     if resolved_app_name is None:
         # LIKELY-MISFIRE SIGNAL (NEW): see _h_open_app() above.
-        return _quick_likely_misfire(
-            ctx, "Which app would you like me to restart?"
-        )
+        question, candidates = _build_app_clarification(ctx, "restart")
+        if candidates:
+            ctx["confirm_state"]["pending"] = {
+                "action": "clarify_app_target",
+                "verb": "restart_application",
+                "candidates": candidates,
+                "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+            }
+        return _quick_likely_misfire(ctx, question)
     app_name = resolved_app_name
     # CONTEXT TRACKING (BUGFIX): this handler never updated last_app
     # before, so a "restart chrome" followed by "close it" had nothing
@@ -415,9 +433,15 @@ def _h_switch_to_application(match, ctx):
     resolved_app_name = _resolve_app_target(ctx, app_name)
     if resolved_app_name is None:
         # LIKELY-MISFIRE SIGNAL (NEW): see _h_open_app() above.
-        return _quick_likely_misfire(
-            ctx, "Which app would you like me to switch to?"
-        )
+        question, candidates = _build_app_clarification(ctx, "switch to")
+        if candidates:
+            ctx["confirm_state"]["pending"] = {
+                "action": "clarify_app_target",
+                "verb": "switch_to_application",
+                "candidates": candidates,
+                "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+            }
+        return _quick_likely_misfire(ctx, question)
     app_name = resolved_app_name
     # CONTEXT TRACKING (BUGFIX): same rationale as
     # _h_restart_application() above -- this handler never updated

@@ -393,6 +393,7 @@ def execute_plan(
     allowed_apps: FrozenSet[str] = frozenset(),
     app_allowlist_enabled: bool = True,
     on_event: Optional[Callable[[str, dict], None]] = None,
+    plan_goal: Optional[str] = None,
 ) -> PlanOutcome:
     """
     Executes every step in `plan`, in order, subject to:

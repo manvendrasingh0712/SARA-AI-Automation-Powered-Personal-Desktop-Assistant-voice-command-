@@ -14,6 +14,7 @@ that module's docstring for the full design rationale behind each of
 these pieces, in particular "LLM ROUTING IS MUTUALLY EXCLUSIVE" and
 "ACTION AUDIT LOG".
 """
+import difflib
 import re
 import time
 import sqlite3
@@ -60,9 +61,9 @@ from .command_helpers import (
     _LikelyMisfireReply,
     _log_action,
 )
+from .context_tracking import _h_followup_query
 from .route_chat import _route_chat_message, _retry_via_tool_router
 
-from .context_tracking import _h_followup_query
 from .handlers.timers import (
     _h_reminder_add,
     _h_reminder_list,
@@ -561,6 +562,67 @@ def _handle_command(
     if pending:
         if time.time() > pending.get("expires_at", 0):
             confirm_state.pop("pending", None)
+        elif pending.get("action") == "clarify_app_target":
+            # SMART APP CLARIFICATION (NEW): Sara offered real candidate
+            # app names ("Chrome ya Spotify, kaunsa band karu?") instead
+            # of the old generic "which app?" -- this turn's job is to
+            # match the user's reply against pending["candidates"], not
+            # to be parsed as yes/no like the other pending actions
+            # below.
+            reply = (user_input or "").strip().lower()
+            candidates = pending.get("candidates", [])
+            matched = None
+            for candidate in candidates:
+                lowered = candidate.lower()
+                if lowered in reply or reply in lowered:
+                    matched = candidate
+                    break
+            if matched is None:
+                close = difflib.get_close_matches(
+                    reply, [c.lower() for c in candidates], n=1, cutoff=0.6
+                )
+                if close:
+                    for candidate in candidates:
+                        if candidate.lower() == close[0]:
+                            matched = candidate
+                            break
+            confirm_state.pop("pending", None)
+            if matched is not None:
+                verb = pending.get("verb")
+                _ack(ctx)
+                label = _activity_label(matched)
+                if verb == "open_app":
+                    result = _run_activity(
+                        ctx, "app", f"Opening {label}", f"{label} opened", f"Couldn't open {label}",
+                        lambda: _call_with_timeout(
+                            system_tools.open_application, matched, tool_name="open_application"
+                        ),
+                    )
+                elif verb == "close_app":
+                    result = _run_activity(
+                        ctx, "app", f"Closing {label}", f"{label} closed", f"Couldn't close {label}",
+                        lambda: _call_with_timeout(
+                            system_tools.close_application, matched, tool_name="close_application"
+                        ),
+                    )
+                elif verb == "restart_application":
+                    result = _run_activity(
+                        ctx, "app", f"Restarting {label}", f"{label} restarted", f"Couldn't restart {label}",
+                        lambda: _call_with_timeout(
+                            system_tools.restart_application, matched, tool_name="restart_application"
+                        ),
+                    )
+                elif verb == "switch_to_application":
+                    result = _call_with_timeout(
+                        system_tools.switch_to_application, matched, tool_name="switch_to_application"
+                    )
+                else:
+                    result = "Sorry, I lost track of what I was confirming."
+                _remember_entity(ctx, "last_app", matched)
+                return _quick(ctx, result)
+            # Not matched -- fall through to normal intent detection
+            # below (same "anything else" behavior the other pending
+            # actions already have).
         else:
             reply = (user_input or "").strip().lower()
             if reply in _CONFIRM_YES_WORDS:

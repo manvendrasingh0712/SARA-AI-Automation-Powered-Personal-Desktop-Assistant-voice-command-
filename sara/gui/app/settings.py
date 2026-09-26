@@ -4,6 +4,12 @@ ApiSettingsMixin -- mute/focus mode, generic preference updates, assistant
 active-state, mic sensitivity, speech speed, wifi toggle, language,
 notes-index status, and skills management.
 """
+import os
+import platform
+import subprocess
+
+from config import app_data_dir
+
 from .events import _push
 from .helpers import mic_sensitivity_to_threshold
 
@@ -422,3 +428,23 @@ class ApiSettingsMixin:
         except Exception as e:
             print(f"[set_skill_enabled error] {e}")
             return {"ok": False}
+
+    # ── Settings page: Open data folder ─────────────────────────────────
+    def open_data_folder(self):
+        try:
+            folder = app_data_dir()
+            if not folder.exists():
+                folder.mkdir(parents=True, exist_ok=True)
+
+            system = platform.system()
+            if system == "Windows":
+                os.startfile(str(folder))
+            elif system == "Darwin":
+                subprocess.Popen(["open", str(folder)])
+            else:
+                subprocess.Popen(["xdg-open", str(folder)])
+
+            return {"ok": True, "path": str(folder)}
+        except Exception as e:
+            print(f"[open_data_folder error] {e}")
+            return {"ok": False, "error": "Could not open data folder."}

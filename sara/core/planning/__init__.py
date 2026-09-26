@@ -239,6 +239,7 @@ def try_plan_and_execute(
             allowed_apps=allowed_apps,
             app_allowlist_enabled=app_allowlist_enabled,
             on_event=getattr(dispatch, "on_event", None),
+            plan_goal=user_input,
         )
     except Exception as exc:  # noqa: BLE001 -- absolute safety net
         logger.error(

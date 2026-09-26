@@ -118,6 +118,85 @@ def _resolve_app_target(ctx, captured_text: str):
     return entry.get("value")
 
 
+# Hinglish phrasing per verb for _build_app_clarification()'s question
+# text -- kept as its own small table (rather than string-formatting the
+# verb directly) so each phrasing reads naturally instead of just
+# gluing the English verb onto "karu".
+_APP_CLARIFY_VERB_PHRASES = {
+    "open": "kholu",
+    "close": "band karu",
+    "restart": "restart karu",
+    "switch to": "switch karu",
+}
+
+
+def _build_app_clarification(ctx, verb: str):
+    """
+    Build a smart clarifying question ("Chrome ya Spotify, kaunsa band
+    karu?") plus the candidate list backing it, for use when
+    _resolve_app_target() returns None (an unresolved pronoun/reference
+    with nothing fresh to resolve to) -- instead of the old generic
+    "Which app would you like me to <verb>?".
+
+    Candidate ranking (best first):
+      1. Any still-fresh entries in
+         ctx["context_state"]["recent_entities"] (e.g. last_app,
+         last_closed_app), most recent first, deduplicated.
+      2. Then filled from system_tools.list_open_app_names() (currently
+         running applications), skipping anything already included.
+    Capped at 3 candidates, preferring 2 unless a third genuinely
+    distinct strong candidate (from step 1) is already available.
+
+    If fewer than 2 usable candidates turn up, this deliberately does
+    NOT force a fake choice -- it falls back to the old generic
+    message, `(question, [])`, so nothing regresses for the
+    no-real-candidates case.
+
+    Pure function w.r.t. ctx -- only reads recent_entities, never
+    writes to it, same convention _resolve_app_target() above follows.
+    """
+    from sara.tools import system as system_tools
+
+    entities = (ctx.get("context_state") or {}).get("recent_entities") or {}
+    now = time.time()
+    fresh = [
+        entry for entry in entities.values()
+        if entry.get("value") and now - entry.get("ts", 0) <= _CONTEXT_TTL_S
+    ]
+    fresh.sort(key=lambda entry: entry["ts"], reverse=True)
+
+    candidates = []
+    for entry in fresh:
+        value = entry["value"]
+        if value not in candidates:
+            candidates.append(value)
+    strong_count = len(candidates)
+
+    if len(candidates) < 3:
+        try:
+            for name in system_tools.list_open_app_names():
+                if name not in candidates:
+                    candidates.append(name)
+                if len(candidates) >= 3:
+                    break
+        except Exception:
+            pass
+
+    if len(candidates) < 2:
+        return (f"Which app would you like me to {verb}?", [])
+
+    cap = 3 if strong_count >= 3 else 2
+    candidates = candidates[:cap]
+
+    verb_phrase = _APP_CLARIFY_VERB_PHRASES.get(verb, f"{verb} karu")
+    if len(candidates) == 2:
+        question = f"{candidates[0]} ya {candidates[1]}, kaunsa {verb_phrase}?"
+    else:
+        question = f"{candidates[0]}, {candidates[1]} ya {candidates[2]}, kaunsa {verb_phrase}?"
+
+    return (question, candidates)
+
+
 def _remember_context(ctx, intent_name: str, slot_value: str) -> None:
     """
     Back-compat wrapper kept so existing call sites (_h_weather(),
