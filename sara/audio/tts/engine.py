@@ -152,6 +152,7 @@ class _Seg:
     sample_rate: int = _SAMPLE_RATE
     ready: threading.Event = field(default_factory=threading.Event)
     failed: bool = False
+    on_start: Optional[Callable[[], None]] = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -575,7 +576,12 @@ class TextToSpeech:
             finally:
                self._speaking.clear()
 
-    def speak_stream(self, text_chunks: Iterator[str], fast: bool = False) -> bool:
+    def speak_stream(
+        self,
+        text_chunks: Iterator[str],
+        fast: bool = False,
+        on_playback_start: Optional[Callable[[str], None]] = None,
+    ) -> bool:
         # v13: same latch guard as speak() — see its comment above.
         if self._interrupted.is_set():
             return True
@@ -599,7 +605,7 @@ class TextToSpeech:
             play_q: queue.Queue[_Seg | None] = queue.Queue(maxsize=_PLAY_QUEUE_SIZE)
 
             self._chunker_pool.submit(self._chunker_worker, text_chunks, synth_q)
-            self._synth_pool.submit(self._synth_worker, synth_q, play_q, fast)
+            self._synth_pool.submit(self._synth_worker, synth_q, play_q, fast, on_playback_start)
 
             try:
                interrupted = self._playback_worker(play_q)
@@ -753,7 +759,11 @@ class TextToSpeech:
             synth_q.put(None)
 
     def _synth_worker(
-        self, synth_q: queue.Queue, play_q: queue.Queue, fast: bool
+        self,
+        synth_q: queue.Queue,
+        play_q: queue.Queue,
+        fast: bool,
+        on_playback_start: Optional[Callable[[str], None]] = None,
     ) -> None:
         def _put_seg(seg: _Seg) -> None:
             while True:
@@ -773,6 +783,8 @@ class TextToSpeech:
                 else _detect_lang(text)
             )
             seg = _Seg(text=text, lang=lang, sample_rate=_SAMPLE_RATE)
+            if on_playback_start is not None:
+                seg.on_start = lambda: on_playback_start(text)
             params = _build_params(lang)
             if fast:
                 params = _fast_variant(params)
@@ -867,8 +879,30 @@ class TextToSpeech:
                 break
 
             done_event = threading.Event()
-            self._player.enqueue(seg.pcm, self._volume, on_complete=done_event)
+            start_event = threading.Event() if seg.on_start else None
+            
+            self._player.enqueue(
+                seg.pcm, 
+                self._volume, 
+                on_complete=done_event,
+                on_start=start_event
+            )
             last_done_event = done_event
+            
+            if start_event is not None and seg.on_start is not None:
+                def _wait_and_call(ev: threading.Event, cb: Callable[[], None], stop_ev: threading.Event):
+                    # Only fire if it actually started (wasn't cancelled)
+                    if ev.wait(timeout=10.0) and not stop_ev.is_set():
+                        try:
+                            cb()
+                        except Exception:
+                            pass
+                
+                threading.Thread(
+                    target=_wait_and_call, 
+                    args=(start_event, seg.on_start, self._stop),
+                    daemon=True
+                ).start()
 
             if not have_next:
                 try:
