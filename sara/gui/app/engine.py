@@ -13,6 +13,7 @@ from .calendar_api import ApiCalendarMixin
 from .routines_api import ApiRoutinesMixin
 from .analytics import ApiAnalyticsMixin
 from .modes import ApiModesMixin
+from .clock_api import ApiClockMixin
 
 
 _MIXINS = (
@@ -26,6 +27,7 @@ _MIXINS = (
     ApiRoutinesMixin,
     ApiAnalyticsMixin,
     ApiModesMixin,
+    ApiClockMixin,
 )
 
 

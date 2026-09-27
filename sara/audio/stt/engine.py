@@ -278,6 +278,14 @@ class SpeechToText:
         self._wake_diag_audio_seen = False
         self._wake_diag_inference_seen = False
 
+        # TEMP DIAGNOSTIC: peak-score-per-second tracker for
+        # is_wake_word_detected() (see there). Initialized here so the
+        # elapsed-time check has a real starting timestamp on the very
+        # first call, instead of recomputing "now" as its own default
+        # every call.
+        self._wake_diag_window_start = time.monotonic()
+        self._wake_diag_window_max = 0.0
+
         self._wakeword_cooldown: float = float(
             getattr(Config, "WAKE_WORD_COOLDOWN_S", 2.0)
         )
@@ -696,7 +704,7 @@ class SpeechToText:
             if not chunks:
                 return
 
-            if not self._wake_diag_audio_seen:
+            if not getattr(self, "_wake_diag_audio_seen", False):
                 self._wake_diag_audio_seen = True
                 print(
                     f"[WakeDiag] RAW mic stream reached wake detector | "
@@ -746,6 +754,15 @@ class SpeechToText:
                 callback=self._audio_callback,
             )
             self._stream.start()
+            try:
+                _dev_idx = self._stream.device
+                _dev_info = sd.query_devices(_dev_idx)
+                print(
+                    f"[STT] Mic input device (sounddevice): index={_dev_idx} "
+                    f"name='{_dev_info.get('name', '?')}'"
+                )
+            except Exception as _dev_e:
+                print(f"[STT] Could not resolve mic device info: {_dev_e}")
             return True
         except (sd.PortAudioError, OSError, ValueError) as e:
             print(f"[STT Error] sounddevice open failed: {e}")
@@ -771,6 +788,14 @@ class SpeechToText:
                 stream_callback=self._pa_callback,
             )
             self._stream.start_stream()
+            try:
+                _dev_info = self._pa.get_default_input_device_info()
+                print(
+                    f"[STT] Mic input device (pyaudio): index={_dev_info.get('index', '?')} "
+                    f"name='{_dev_info.get('name', '?')}'"
+                )
+            except Exception as _dev_e:
+                print(f"[STT] Could not resolve mic device info: {_dev_e}")
             return True
         except (OSError, ValueError) as e:
             print(f"[STT Error] PyAudio open failed: {e}")
@@ -1619,6 +1644,18 @@ class SpeechToText:
 
         model = self._wakeword_model
 
+        if not getattr(self, "_wake_diag_gate_seen", False):
+            self._wake_diag_gate_seen = True
+            _pending_now = len(self._wake_pending) if hasattr(self, "_wake_pending") else -1
+            _ring_now = len(self._wake_ring.peek_latest(9999)) if hasattr(self, "_wake_ring") else -1
+            print(
+                "[WakeDiag] is_wake_word_detected() first call | "
+                f"model_loaded={model is not None} | "
+                f"tts_active={self._tts_active.is_set()} | "
+                f"wake_pending_bytes={_pending_now} | "
+                f"wake_ring_chunks={_ring_now}"
+            )
+
         # OpenWakeWord is the ONLY passive wake detector.
         # No Whisper fallback.
         if model is None:
@@ -1695,13 +1732,6 @@ class SpeechToText:
         try:
             scores = model.predict(frame)
 
-            if not self._wake_diag_inference_seen:
-                self._wake_diag_inference_seen = True
-                print(
-                    f"[WakeDiag] OpenWakeWord inference is running | "
-                    f"scores={scores}"
-                )
-
             threshold = float(
                 getattr(
                     Config,
@@ -1715,9 +1745,19 @@ class SpeechToText:
                 default=0.0,
             )
 
-            # Per-frame wake scores are intentionally not logged.
-            # OpenWakeWord runs continuously, so printing every inference
-            # cycle would flood the console.
+            # TEMP DIAGNOSTIC: track the PEAK score within each 1-second
+            # window (not just whichever frame happens to land on the
+            # throttle boundary) so a brief spike is never missed.
+            # Remove once detection is confirmed working.
+            if max_score > self._wake_diag_window_max:
+                self._wake_diag_window_max = max_score
+            if now - self._wake_diag_window_start >= 1.0:
+                print(
+                    f"[WakeDiag] 1s-peak score={self._wake_diag_window_max:.4f} | "
+                    f"threshold={threshold:.4f} | raw={scores}"
+                )
+                self._wake_diag_window_start = now
+                self._wake_diag_window_max = 0.0
 
             if max_score >= threshold:
                 with self._threshold_lock:

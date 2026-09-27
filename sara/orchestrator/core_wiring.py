@@ -308,6 +308,7 @@ class _WakeWatcher:
         "wake_event",
         "_session_active",
         "_thread",
+        "_wake_diag_error_seen",
     )
 
     def __init__(
@@ -366,6 +367,14 @@ class _WakeWatcher:
                 time.sleep(_WAKE_POLL_INTERVAL_S)
             except Exception as e:
                 logger.exception(f"[WakeWatcher] unexpected error (continuing): {e}")
+                if not getattr(self, "_wake_diag_error_seen", False):
+                    self._wake_diag_error_seen = True
+                    import traceback
+                    print(
+                        "[WakeDiag] WakeWatcher._run() caught an exception "
+                        f"(first occurrence, will keep repeating silently after this): {e!r}"
+                    )
+                    traceback.print_exc()
                 time.sleep(_THREAD_ERROR_BACKOFF_S)
 
     def wait_for_wake(self) -> bool:

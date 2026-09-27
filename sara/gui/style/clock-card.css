@@ -1,0 +1,117 @@
+/* ==========================================================================
+   clock-card.css -- Clock Card: compact widget on Home (top-left, replaces the
+   old plain #timeVal text) + the expanded clock/timer/stopwatch sheet it opens
+   into. Themes are scoped to [data-clock-theme] on .clock-card / .clock-sheet
+   only -- they never touch the rest of the SARA theme (see tokens.css).
+   JS: js/clock-card.js.  Markup: index.html #clockCard, #clockSheet.
+   ========================================================================== */
+
+.clock-card{
+  --clock-accent: var(--core);
+  --clock-accent-soft: rgba(63,216,196,.4);
+  --clock-glow: rgba(63,216,196,.16);
+  --clock-track: var(--line);
+  position:absolute;left:32px;top:28px;width:210px;padding:14px 18px 16px;border-radius:14px;
+  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
+  cursor:pointer;transition:border-color .2s,transform .2s,box-shadow .3s;
+  animation:pageIn .6s ease .15s both;
+}
+.clock-card:hover{border-color:var(--clock-accent-soft);transform:translateY(-2px);box-shadow:0 0 22px var(--clock-glow);}
+.clock-card:active{transform:translateY(0) scale(.985);}
+.clock-card:focus-visible{outline:2px solid var(--clock-accent-soft);outline-offset:2px;}
+
+.cc-greet{font-size:11.5px;color:var(--text-soft);letter-spacing:.02em;}
+.cc-modelabel{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--clock-accent);}
+.cc-timewrap{display:flex;align-items:baseline;gap:4px;margin:4px 0 2px;}
+.cc-time{font-size:28px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;color:var(--text);}
+.cc-ampm{font-size:12px;color:var(--muted);}
+.cc-sec{margin-left:4px;font-size:12px;color:var(--clock-accent);font-variant-numeric:tabular-nums;opacity:.85;}
+.cc-date{font-size:12px;color:var(--muted);min-height:15px;}
+.cc-status{font-size:11.5px;color:var(--clock-accent);margin-top:2px;}
+.cc-bar{margin-top:10px;height:2px;border-radius:2px;background:var(--clock-track);overflow:hidden;}
+.cc-bar-fill{height:100%;width:0%;background:var(--clock-accent);box-shadow:0 0 6px var(--clock-accent);transition:width .8s linear;}
+
+#page-home.ambient-t2 .clock-card{opacity:.2;transition:opacity 1s ease;}
+
+@media (max-width:900px){
+  .clock-card{width:auto;max-width:calc(50% - 32px);padding:9px 14px;border-radius:999px;}
+  .clock-card .cc-date,.clock-card .cc-bar{display:none;}
+  .cc-time{font-size:17px;}
+}
+
+/* ---- expanded sheet ---- */
+.clock-sheet{text-align:center;}
+.cs-modes{display:flex;gap:8px;justify-content:center;margin:14px 0 22px;}
+.cs-ring-wrap{position:relative;width:220px;height:220px;margin:0 auto;}
+.cs-ring{width:100%;height:100%;transform:rotate(-90deg);}
+.cs-ring-bg{fill:none;stroke:var(--clock-track);stroke-width:6;}
+.cs-ring-fg{
+  fill:none;stroke:var(--clock-accent);stroke-width:6;stroke-linecap:round;
+  stroke-dasharray:603;stroke-dashoffset:603;filter:drop-shadow(0 0 6px var(--clock-accent));
+  transition:stroke-dashoffset .3s linear;
+}
+.cs-ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:0 20px;}
+.cs-greet{font-size:13px;color:var(--text-soft);}
+.cs-modelabel{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--clock-accent);}
+.cs-time{font-size:42px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--text);}
+.cs-sub{font-size:12.5px;color:var(--muted);}
+.cs-status{font-size:12.5px;color:var(--clock-accent);}
+
+.cs-panel{margin-top:18px;}
+.cs-row{display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;}
+.cs-row input[type=number]{width:90px;text-align:center;}
+.cs-controls{margin-top:10px;}
+.cs-themes{justify-content:center;margin-top:10px;}
+
+.clock-sheet{animation:clockPop .28s cubic-bezier(.22,1,.36,1);}
+@keyframes clockPop{0%{opacity:0;transform:scale(.94);}100%{opacity:1;transform:scale(1);}}
+
+/* ---- timer-complete pulse (brief, not a looping animation) ---- */
+.clock-sheet.cs-pulse .cs-ring-fg{animation:csCompletePulse .9s ease-out;}
+@keyframes csCompletePulse{0%{filter:drop-shadow(0 0 6px var(--clock-accent));}40%{filter:drop-shadow(0 0 20px var(--clock-accent));}100%{filter:drop-shadow(0 0 6px var(--clock-accent));}}
+
+/* ==========================================================================
+   Themes -- isolated to .clock-card / .clock-sheet via [data-clock-theme].
+   All stay inside SARA's existing palette (tokens.css: --core/--think/--speak/
+   --text-soft) -- no new hues, per the "don't clash with the app" requirement.
+   ========================================================================== */
+
+/* Theme 2 -- Aurora: cyan/violet dual glow */
+[data-clock-theme="aurora"]{
+  --clock-accent-soft: rgba(139,111,216,.4);
+  --clock-glow: rgba(139,111,216,.18);
+}
+[data-clock-theme="aurora"] .cs-ring-fg{filter:drop-shadow(0 0 8px var(--think));}
+[data-clock-theme="aurora"] .cc-time,[data-clock-theme="aurora"] .cs-time{
+  background:linear-gradient(90deg,var(--core),var(--think));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+
+/* Theme 3 -- Midnight: minimal, low-glow, near-monochrome */
+[data-clock-theme="midnight"]{
+  --clock-accent: var(--text-soft);
+  --clock-accent-soft: rgba(143,160,157,.35);
+  --clock-glow: transparent;
+}
+[data-clock-theme="midnight"] .cs-ring-fg{filter:none;}
+[data-clock-theme="midnight"] .cc-sec{opacity:.6;}
+
+/* Theme 4 -- Glass: soft glassmorphism */
+[data-clock-theme="glass"].clock-card,
+[data-clock-theme="glass"].clock-sheet{
+  background:rgba(255,255,255,.05);backdrop-filter:blur(16px);border-color:rgba(255,255,255,.14);
+}
+[data-clock-theme="glass"] .cs-ring-bg{stroke:rgba(255,255,255,.12);}
+
+/* Theme 5 -- Pulse: same cyan accent, gentle animated glow */
+[data-clock-theme="pulse"] .cs-ring-fg{animation:csPulseGlow 2.4s ease-in-out infinite;}
+@keyframes csPulseGlow{0%,100%{filter:drop-shadow(0 0 6px var(--clock-accent));}50%{filter:drop-shadow(0 0 15px var(--clock-accent));}}
+[data-clock-theme="pulse"] .cc-sec{animation:ccPulseText 2.4s ease-in-out infinite;}
+@keyframes ccPulseText{0%,100%{opacity:.85;}50%{opacity:1;}}
+
+@media (prefers-reduced-motion:reduce){
+  .clock-card{animation:none;transition:none;}
+  .clock-sheet{animation:none;}
+  [data-clock-theme="pulse"] .cs-ring-fg,[data-clock-theme="pulse"] .cc-sec,
+  .clock-sheet.cs-pulse .cs-ring-fg{animation:none;}
+}
