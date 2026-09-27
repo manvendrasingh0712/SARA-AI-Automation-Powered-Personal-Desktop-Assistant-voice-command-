@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="style/layout.css">
 <link rel="stylesheet" href="style/components.css">
 <link rel="stylesheet" href="style/home.css">
+<link rel="stylesheet" href="style/clock-card.css">
 <link rel="stylesheet" href="style/chat.css">
 <link rel="stylesheet" href="style/notes-reminders.css">
 <link rel="stylesheet" href="style/apps.css">
@@ -32,7 +33,14 @@
 
   <!-- ================= HOME ================= -->
   <section class="page active" id="page-home">
-    <div class="home-time" id="timeVal"></div>
+    <div class="clock-card" id="clockCard" role="button" tabindex="0" title="Open clock" data-clock-theme="sara" data-mode="clock" style="position:absolute;left:32px;top:28px;width:210px;">
+      <div class="cc-greet" id="ccGreet">Good day</div>
+      <div class="cc-modelabel" id="ccModeLabel" hidden></div>
+      <div class="cc-timewrap"><span class="cc-time" id="ccTime">--:--</span><span class="cc-ampm" id="ccAmpm"></span><span class="cc-sec" id="ccSec"></span></div>
+      <div class="cc-date" id="ccDate"></div>
+      <div class="cc-status" id="ccStatus" hidden></div>
+      <div class="cc-bar"><div class="cc-bar-fill" id="ccBarFill"></div></div>
+    </div>
     <div class="home-greet" id="greetName"></div>
     <div class="stage" id="stage" title="Tap Sara to wake"><canvas id="org" width="400" height="400"></canvas><div class="home-activity" id="homeActivity" role="status" aria-live="polite" hidden><span class="act-glyph" id="actGlyph">&#9673;</span><span class="act-text" id="actText"></span></div></div>
     <div class="plan-card" id="planCard" hidden><div class="plan-card-title" id="planTitle">Running plan…</div><ol class="plan-steps" id="planSteps"></ol></div>
@@ -336,6 +344,60 @@
   </div>
 </div>
 
+<!-- Clock sheet (expanded Clock card: clock / timer / stopwatch + themes) -->
+<div class="overlay" id="clockSheet">
+  <div class="sheet clock-sheet" id="clockSheetInner" data-clock-theme="sara">
+    <div class="sheet-head"><div class="page-title">Clock</div><button class="link-btn" id="clockSheetClose">close</button></div>
+
+    <div class="cs-modes">
+      <button class="chip cs-mode-btn on" data-mode="clock">Clock</button>
+      <button class="chip cs-mode-btn" data-mode="timer">Timer</button>
+      <button class="chip cs-mode-btn" data-mode="stopwatch">Stopwatch</button>
+    </div>
+
+    <div class="cs-ring-wrap">
+      <svg class="cs-ring" viewBox="0 0 220 220" aria-hidden="true">
+        <circle class="cs-ring-bg" cx="110" cy="110" r="96"></circle>
+        <circle class="cs-ring-fg" id="csRingFg" cx="110" cy="110" r="96"></circle>
+      </svg>
+      <div class="cs-ring-center">
+        <div class="cs-greet" id="csGreet">Good day</div>
+        <div class="cs-modelabel" id="csModeLabel" hidden></div>
+        <div class="cs-time" id="csTime">--:--</div>
+        <div class="cs-sub" id="csSub"></div>
+        <div class="cs-status" id="csStatus" hidden></div>
+      </div>
+    </div>
+
+    <div class="cs-panel" id="csTimerPanel" hidden>
+      <div class="cs-row"><input type="number" id="csTimerMins" min="1" max="720" value="10" placeholder="minutes"><button class="pill-btn primary" id="csTimerStart">Start</button></div>
+      <div class="cs-row cs-controls" id="csTimerControls" hidden>
+        <button class="pill-btn small" id="csTimerPause">Pause</button>
+        <button class="pill-btn small" id="csTimerResume" hidden>Resume</button>
+        <button class="pill-btn small danger" id="csTimerCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="cs-panel" id="csStopwatchPanel" hidden>
+      <div class="cs-row cs-controls">
+        <button class="pill-btn small" id="swStart">Start</button>
+        <button class="pill-btn small" id="swPause" hidden>Pause</button>
+        <button class="pill-btn small" id="swResume" hidden>Resume</button>
+        <button class="pill-btn small danger" id="swReset">Reset</button>
+      </div>
+    </div>
+
+    <div class="section-label">Themes</div>
+    <div class="chip-row cs-themes" id="csThemes">
+      <button class="chip on" data-theme="sara">SARA</button>
+      <button class="chip" data-theme="aurora">Aurora</button>
+      <button class="chip" data-theme="midnight">Midnight</button>
+      <button class="chip" data-theme="glass">Glass</button>
+      <button class="chip" data-theme="pulse">Pulse</button>
+    </div>
+  </div>
+</div>
+
 <!-- Quick input modal (Apps > Quick tools) -->
 <div class="overlay" id="quickInputModal">
   <div class="modal">
@@ -380,6 +442,7 @@
 <script src="js/fx.js"></script>
 <script src="js/home.js"></script>
 <script src="js/today.js"></script>
+<script src="js/clock-card.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/notes-reminders.js"></script>
 <script src="js/music.js"></script>

@@ -1,5 +1,6 @@
 /* ==========================================================================
-   home.js -- Home page: clock, greeting, the canvas orb, and the ONE place Sara's live status is shown.
+   home.js -- Home page: display-name greeting, the canvas orb, and the ONE place Sara's live status is shown.
+   (The live clock card itself -- time/seconds/date/greeting + timer/stopwatch -- is js/clock-card.js.)
    Backend link: push event 'status' (sleeping|waking|listening|thinking|speaking) drives the orb colour,
    caption, and every page's mini-orb + status text.  'footer' text -> the small hint line.
    API calls: wake_now, stop_sara, get_assistant_active, set_assistant_active, get_display_name.
@@ -84,9 +85,7 @@
   SARA.every(1000, checkAmbientIdle);   // SARA.every (core.js) already skips ticks while the tab is hidden
   SARA.on('page', function (p) { if (p !== 'home') setAmbientTier(0); else lastActivity = Date.now(); });
 
-  /* ---- clock + greeting ---- */
-  function clock() { $('timeVal').textContent = SARA.fmtClockTime(new Date()); }
-  clock(); setInterval(clock, 15000);
+  /* ---- greeting (display name only -- the live clock itself now lives in js/clock-card.js) ---- */
   SARA.setDisplayName = function (name) {
     name = (name || '').trim(); if (!name) return;
     try { localStorage.setItem('sara_display_name', name); } catch (e) {}

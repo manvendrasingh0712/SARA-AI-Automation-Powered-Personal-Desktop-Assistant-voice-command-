@@ -3,7 +3,6 @@
    Markup: index.html #page-home, #todaySheet.  JS: js/home.js (orb), js/today.js (card + sheet).
    ========================================================================== */
 #page-home{align-items:center;justify-content:center;position:relative;}
-.home-time{position:absolute;top:28px;left:32px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;}
 .home-greet{position:absolute;top:28px;right:32px;font-size:13px;color:var(--muted);}
 .stage{width:min(400px,72vw);aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;transition:transform 1.4s ease,opacity 1.4s ease;}
 canvas#org{width:100%;height:100%;display:block;}
@@ -23,7 +22,7 @@ canvas#org{width:100%;height:100%;display:block;}
    even under prefers-reduced-motion (the orb's own continuous motion is separately toned down there). */
 #page-home.ambient-t2 .stage{transform:scale(.5);opacity:.55;}
 #page-home.ambient-t2 .today-card,
-#page-home.ambient-t2 .home-time,
+#page-home.ambient-t2 .clock-card,
 #page-home.ambient-t2 .home-greet,
 #page-home.ambient-t2 .home-caption,
 #page-home.ambient-t2 .home-hint{opacity:.2;transition:opacity 1s ease;}
@@ -35,7 +34,7 @@ canvas#org{width:100%;height:100%;display:block;}
 .ambient-clock{font-size:clamp(48px,9vw,80px);font-weight:300;letter-spacing:.02em;color:var(--text-soft);font-variant-numeric:tabular-nums;}
 .ambient-next{font-size:13px;color:var(--muted);min-height:16px;}
 @media (prefers-reduced-motion:reduce){
-  .stage,.ambient-panel,#page-home.ambient-t2 .today-card,#page-home.ambient-t2 .home-time,
+  .stage,.ambient-panel,#page-home.ambient-t2 .today-card,#page-home.ambient-t2 .clock-card,
   #page-home.ambient-t2 .home-greet,#page-home.ambient-t2 .home-caption,#page-home.ambient-t2 .home-hint{transition:opacity .01s,transform .01s;}
 }
 .home-caption{margin-top:2px;font-size:14.5px;color:var(--muted);letter-spacing:.01em;min-height:20px;transition:color .5s,opacity .25s,transform .25s;}
