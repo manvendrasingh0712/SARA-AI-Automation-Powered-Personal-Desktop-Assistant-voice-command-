@@ -1674,6 +1674,11 @@ class SpeechToText:
 
         # Never listen for wake word while TTS is active.
         if self._tts_active.is_set():
+            # Discard any audio accumulated while speaking to prevent an
+            # instant backlog (and false positives from her own echo)
+            # the moment she stops.
+            self._wake_ring.get_all(clear=True)
+            self._wake_pending.clear()
             return False
 
         # Do not run inference more often than configured.
@@ -1690,11 +1695,6 @@ class SpeechToText:
 
         # OpenWakeWord must consume NEW audio from the dedicated RAW
         # microphone stream.
-        #
-        # Do NOT use peek_latest() here. That repeatedly submits an
-        # overlapping/duplicated rolling window to model.predict().
-        # OpenWakeWord maintains streaming state internally, so the
-        # detector must receive sequential NEW PCM samples.
         new_chunks = self._wake_ring.get_all(clear=True)
 
         if new_chunks:
@@ -1715,34 +1715,50 @@ class SpeechToText:
         if len(self._wake_pending) < frame_bytes:
             return False
 
-        # Consume exactly one NEW 80 ms frame.
-        frame = np.frombuffer(
-            bytes(self._wake_pending[:frame_bytes]),
-            dtype=np.int16,
-        )
-        del self._wake_pending[:frame_bytes]
-
-        # IMPORTANT:
-        # Do not use the STT/barge-in energy threshold as a hard gate for
-        # OpenWakeWord. That threshold is dynamically recalibrated for
-        # speech/STT and can suppress a valid but quieter wake phrase.
-
         self._wakeword_last_inference = now
+        
+        processed_any = False
+        max_score = 0.0
+        scores = {}
+
+        # Consume ALL available 80 ms frames sequentially.
+        # This prevents unbounded accumulation and real-time drift if the
+        # polling caller is slower than the ingestion rate.
+        while len(self._wake_pending) >= frame_bytes:
+            frame = np.frombuffer(
+                bytes(self._wake_pending[:frame_bytes]),
+                dtype=np.int16,
+            )
+            del self._wake_pending[:frame_bytes]
+            
+            try:
+                frame_scores = model.predict(frame)
+                processed_any = True
+                
+                # We need the highest score across the catch-up batch
+                frame_max = max(frame_scores.values(), default=0.0)
+                if frame_max > max_score:
+                    max_score = frame_max
+                    scores = frame_scores
+            except Exception as e:
+                _log_rate_limited(
+                    "is_wake_word_detected_predict",
+                    "[STT] OpenWakeWord predict failed during catch-up: %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+                break
+                
+        if not processed_any:
+            return False
 
         try:
-            scores = model.predict(frame)
-
             threshold = float(
                 getattr(
                     Config,
                     "WAKE_WORD_THRESHOLD",
                     0.50,
                 )
-            )
-
-            max_score = max(
-                scores.values(),
-                default=0.0,
             )
 
             # TEMP DIAGNOSTIC: track the PEAK score within each 1-second

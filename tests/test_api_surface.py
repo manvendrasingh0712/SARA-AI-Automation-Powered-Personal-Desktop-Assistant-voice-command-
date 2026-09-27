@@ -258,10 +258,16 @@ EXPECTED_METHODS = {
     "toggle_wifi",
     "update_setting",
     "wake_now",
+    "cancel_timer",
+    "pause_stopwatch",
+    "reset_stopwatch",
+    "resume_stopwatch",
+    "start_stopwatch",
+    "start_timer",
 }
 
-assert len(EXPECTED_METHODS) == 68, (
-    "EXPECTED_METHODS must contain exactly 68 entries, found "
+assert len(EXPECTED_METHODS) == 74, (
+    "EXPECTED_METHODS must contain exactly 74 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 
