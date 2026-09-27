@@ -145,6 +145,17 @@ class _SegmentEnd:
     def __init__(self, event: threading.Event) -> None:
         self.event = event
 
+class _SegmentStart:
+    """Zero-audio marker pushed into the persistent player's `_chunk_q`
+    right before one segment's PCM sub-chunks. When the real-time callback
+    pops this marker, it sets `event`, allowing callers to know precisely
+    when a segment begins playing out of the speaker."""
+    
+    __slots__ = ("event",)
+
+    def __init__(self, event: threading.Event) -> None:
+        self.event = event
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PERSISTENT PLAYER  (v11 — single long-lived OutputStream, non-blocking
@@ -309,9 +320,12 @@ class _PersistentPlayer:
                 except queue.Empty:
                     break
                 if isinstance(item, _SegmentEnd):
-                    # Zero-audio marker — fire its completion event and
-                    # keep draining the queue for this same block; costs
-                    # nothing toward `filled`.
+                    try:
+                        item.event.set()
+                    except Exception:
+                        pass
+                    continue
+                if isinstance(item, _SegmentStart):
                     try:
                         item.event.set()
                     except Exception:
@@ -364,6 +378,7 @@ class _PersistentPlayer:
         pcm: np.ndarray,
         volume: float = 1.0,
         on_complete: Optional[threading.Event] = None,
+        on_start: Optional[threading.Event] = None,
     ) -> None:
         """Queue `pcm` (raw int16 audio) onto the single ordered playback
         queue. If `on_complete` is given, it is set exactly once — either
@@ -375,6 +390,8 @@ class _PersistentPlayer:
         FIFO queue in call order, so playback stays gap-free and strictly
         sequential with no overlap."""
         if pcm is not None and len(pcm) > 0:
+            if on_start is not None:
+                self._chunk_q.put(_SegmentStart(on_start))
             pcm = _apply_volume(pcm, volume)
             for i in range(0, len(pcm), _ENQUEUE_CHUNK_SAMPLES):
                 self._chunk_q.put(pcm[i : i + _ENQUEUE_CHUNK_SAMPLES])
@@ -397,6 +414,8 @@ class _PersistentPlayer:
                     item.event.set()
                 except Exception:
                     pass
+            # _SegmentStart is intentionally dropped without firing, so
+            # UI callbacks for cancelled segments never trigger.
         self._clear_flag.set()
 
     def _pygame_play_and_wait(

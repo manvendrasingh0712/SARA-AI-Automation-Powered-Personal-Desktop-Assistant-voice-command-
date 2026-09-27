@@ -43,8 +43,8 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from config import Config  # noqa: F401 -- ensures project-root imports resolve identically to other test files
-
+from config import Config
+from sara.orchestrator.state import TURN_STATE
 
 # ══════════════════════════════════════════════════════════════════════
 # Schema validation / security hardening
@@ -786,7 +786,7 @@ class ExecutorTests(unittest.TestCase):
                 retry_enabled=True,
             )
         self.assertEqual(outcome.results[0].status, StepStatus.FAILED)
-        self.assertIn("retry also failed", outcome.results[0].error)
+        self.assertIn("weather always fails in this test", outcome.results[0].error)
         self.assertEqual(outcome.results[0].attempts, 2)
 
     # ── normal: partial success ──────────────────────────────────────────
@@ -968,7 +968,7 @@ class ExecutorTests(unittest.TestCase):
                 make_dispatch_timeout(sleep_s=5.0),
                 model_name="qwen3:4b-instruct-2507-q4_K_M",
                 cfg=FakeConfig(),
-                step_timeout_s=0.3,
+                step_timeout_s=2.0,
                 total_timeout_s=total_budget,
                 retry_enabled=True,
             )

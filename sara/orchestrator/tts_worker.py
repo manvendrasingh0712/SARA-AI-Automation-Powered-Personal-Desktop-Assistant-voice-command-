@@ -61,6 +61,8 @@ class TTSWorker:
         "_thread",
         "_watch_thread",
         "_db",
+        "_epoch",
+        "_epoch_lock",
     )
 
     def __init__(self, voice: TextToSpeech, ears: SpeechToText, db=None):
@@ -74,6 +76,9 @@ class TTSWorker:
         self._barge_stop = threading.Event()
         self._speech_started_at = 0.0
         self._db = db
+        
+        self._epoch = 0
+        self._epoch_lock = threading.Lock()
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -125,7 +130,21 @@ class TTSWorker:
                     continue
                 if job is None:
                     continue
-                text, fast, gen, on_first_chunk, on_chunk, done_event, sentences_out = job
+                if len(job) == 8:
+                    text, fast, gen, on_first_chunk, on_chunk, done_event, sentences_out, job_epoch = job
+                else:
+                    # Fallback for old/legacy mock jobs in tests
+                    text, fast, gen, on_first_chunk, on_chunk, done_event, sentences_out = job
+                    job_epoch = 0
+
+                with self._epoch_lock:
+                    current_epoch = self._epoch
+
+                if job_epoch != current_epoch:
+                    if done_event is not None:
+                        done_event.set()
+                    continue
+
                 try:
                     if gen is not None:
                         sentences_out.extend(
@@ -200,50 +219,48 @@ class TTSWorker:
         sentences = []
         first_seen = False
 
-        def _collecting_gen():
+        def _on_playback_start(s: str) -> None:
             nonlocal first_seen
+            if not first_seen:
+                first_seen = True
+                if on_first_chunk is not None:
+                    try:
+                        on_first_chunk()
+                    except Exception as e:
+                        print(f"[TTSWorker] on_first_chunk callback failed: {e}")
+            if _DEBUG:
+                print(f"[LIVE-CAPTION-DEBUG] playback started @ {time.time():.3f}: {s[:30]}")
+            if on_chunk is not None:
+                try:
+                    on_chunk(s)
+                except Exception as e:
+                    print(f"[TTSWorker] on_chunk callback failed: {e}")
+
+        def _collecting_gen():
             for s in gen:
                 if self._barge_stop.is_set():
                     break
-                if not first_seen:
-                    first_seen = True
-                    if on_first_chunk is not None:
-                        try:
-                            on_first_chunk()
-                        except Exception as e:
-                            print(f"[TTSWorker] on_first_chunk callback failed: {e}")
                 sentences.append(s)
-                if _DEBUG:
-                    print(f"[LIVE-CAPTION-DEBUG] chunk fired @ {time.time():.3f}: {s[:30]}")
-                if on_chunk is not None:
-                    try:
-                        on_chunk(s)
-                    except Exception as e:
-                        print(f"[TTSWorker] on_chunk callback failed: {e}")
                 if _DEBUG:
                     print(f"[Streaming to Audio]: {s}")
                 yield s
 
         if not self._should_speak():
-            # Muted / voice_replies off: generator still gets fully
-            # consumed so on_first_chunk/on_chunk fire and `sentences`
-            # comes back complete (live captions keep working) -- but
-            # voice.speak_stream() / ears.set_tts_active() /
-            # mark_tts_stopped() are never touched, since nothing is
-            # actually producing audio.
-            for _ in _collecting_gen():
-                pass
+            # Muted / voice_replies off: we still need to consume the generator
+            # and fire UI updates, but we do it synchronously without playing audio.
+            for s in _collecting_gen():
+                _on_playback_start(s)
             return sentences
 
         ears.set_tts_active(True)
         try:
             if not Config.BARGE_IN_ENABLED:
-                voice.speak_stream(_collecting_gen())
+                voice.speak_stream(_collecting_gen(), on_playback_start=_on_playback_start)
                 return sentences
 
             self._arm_barge_in()
             try:
-                voice.speak_stream(_collecting_gen())
+                voice.speak_stream(_collecting_gen(), on_playback_start=_on_playback_start)
             finally:
                 self._disarm_barge_in()
             return sentences
@@ -254,7 +271,9 @@ class TTSWorker:
 
     def speak(self, text: str, fast: bool = False, block: bool = True, priority: int = 1) -> None:
         done_event = threading.Event() if block else None
-        job = (text, fast, None, None, None, done_event, None)
+        with self._epoch_lock:
+            current_epoch = self._epoch
+        job = (text, fast, None, None, None, done_event, None, current_epoch)
         self._q.put((priority, next(self._seq), job))
         if block and done_event is not None:
             done_event.wait()
@@ -262,7 +281,9 @@ class TTSWorker:
     def speak_stream(self, gen, block: bool = True, on_first_chunk=None, on_chunk=None) -> list:
         done_event = threading.Event()
         sentences_out: list = []
-        job = (None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out)
+        with self._epoch_lock:
+            current_epoch = self._epoch
+        job = (None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out, current_epoch)
         self._q.put((1, next(self._seq), job))
         if block:
             done_event.wait()
@@ -281,6 +302,8 @@ class TTSWorker:
             self._voice.set_speed(speed)
 
     def stop(self) -> None:
+        with self._epoch_lock:
+            self._epoch += 1
         self._voice.stop()
 
     def clear_interrupt(self) -> None:
