@@ -14,6 +14,7 @@ focused mixins instead of being one file):
     settings.py   - ApiSettingsMixin: mute/focus/settings/mic/speed/wifi/language
     notes.py      - ApiNotesMixin: Quick Notes + memory export
     media.py      - ApiMediaMixin: media player status/controls
+    clock_api.py  - ApiClockMixin: Clock Card timer/stopwatch control surface
     engine.py     - Api, composed from all the mixins above
     bootstrap.py  - main(): window creation + application entry point
 """

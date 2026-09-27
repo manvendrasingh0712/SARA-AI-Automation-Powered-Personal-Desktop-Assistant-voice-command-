@@ -93,11 +93,11 @@
   });
   SARA.openOverlay = (id) => SARA.$(id).classList.add('open');
   SARA.closeOverlay = (id) => SARA.$(id).classList.remove('open');
-  ['todaySheet', 'quickInputModal', 'routineModal'].forEach(function (id) {   // click backdrop / Esc closes
+  ['todaySheet', 'clockSheet', 'quickInputModal', 'routineModal'].forEach(function (id) {   // click backdrop / Esc closes
     SARA.$(id).addEventListener('click', function (e) { if (e.target === this) SARA.closeOverlay(id); });
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') ['todaySheet', 'quickInputModal', 'routineModal'].forEach(SARA.closeOverlay);
+    if (e.key === 'Escape') ['todaySheet', 'clockSheet', 'quickInputModal', 'routineModal'].forEach(SARA.closeOverlay);
   });
   document.querySelectorAll('[data-mini]').forEach((el) => el.addEventListener('click', () => SARA.gotoPage('home')));
 
