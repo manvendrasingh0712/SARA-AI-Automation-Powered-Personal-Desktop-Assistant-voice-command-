@@ -74,6 +74,8 @@ function makeEl(tag) {
     remove() { if (el.parentNode) el.parentNode.removeChild(el); },
     setAttribute(k, v) { el[k] = v; },
     addEventListener() { /* no-op: nothing under test needs to fire these */ },
+    closest() { return el.__closest || (el.__closest = makeEl('div')); },   // chat.js asks the input for its .chat-dock
+    getBoundingClientRect() { return { left: 0, top: 0, width: 0, height: 0 }; },
     querySelector(sel) { return queryAll(el, sel)[0] || null; },
     querySelectorAll(sel) { return queryAll(el, sel); }
   };
@@ -123,10 +125,11 @@ function loadChatModule() {
 
   const sandbox = {
     window: { SARA },
-    document: { hidden: false, createElement: makeEl },
+    document: { hidden: false, createElement: makeEl, createTextNode: (t) => ({ nodeValue: t }), addEventListener() {}, body: makeEl('body') },
     console,
     requestAnimationFrame: () => 0,
     cancelAnimationFrame() {},
+    performance: { now: () => Date.now() },
     setTimeout,
     clearTimeout
   };

@@ -25,11 +25,34 @@
 }
 .field:focus,.add-row input:focus,.modal input:focus,.modal select:focus,.set-row input[type=text]:focus{border-color:var(--core);}
 input::placeholder{color:var(--muted);}
-.pill-btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text-soft);border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;white-space:nowrap;transition:border-color .2s,color .2s,transform .12s,box-shadow .2s;}
-.pill-btn:active:not(:disabled){transform:scale(.96);}
-.pill-btn:hover:not(:disabled){box-shadow:0 0 14px rgba(63,216,196,.12);}
+.pill-btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text-soft);border-radius:8px;padding:10px 16px;font-size:13px;cursor:pointer;white-space:nowrap;transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--ease-spring,cubic-bezier(.34,1.56,.64,1)),box-shadow .2s;}
+.pill-btn:hover:not(:disabled){box-shadow:0 0 14px rgba(63,216,196,.12);transform:scale(1.02);}
+.pill-btn:active:not(:disabled){transform:scale(.97);transition-duration:.08s;}
 .pill-btn:hover{border-color:var(--core);color:var(--text);}
 .pill-btn:disabled{opacity:.45;cursor:default;}
+
+/* ---- loading / success micro-states (opt-in via class; nothing existing changes state on its own) ----
+   Usage from JS: btn.classList.add('is-loading') while a call is in flight, then either
+   remove it or swap to 'is-success' for ~900ms on a good result. Text stays in the DOM
+   (just dimmed) so button width never jumps. */
+.pill-btn.is-loading,.dock-btn.is-loading{pointer-events:none;position:relative;color:transparent !important;}
+.pill-btn.is-loading::after,.dock-btn.is-loading::after{
+  content:'';position:absolute;top:50%;left:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
+  border-radius:50%;border:2px solid rgba(255,255,255,.28);border-top-color:currentColor;color:var(--core);
+  animation:btnSpin .7s linear infinite;
+}
+.pill-btn.is-success,.dock-btn.is-success{pointer-events:none;position:relative;color:transparent !important;border-color:var(--core) !important;}
+.pill-btn.is-success::after,.dock-btn.is-success::after{
+  content:'';position:absolute;top:50%;left:50%;width:14px;height:10px;margin:-6px 0 0 -7px;
+  border-left:2px solid var(--core);border-bottom:2px solid var(--core);transform:rotate(-45deg) scale(0);
+  animation:btnCheck .35s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) forwards;
+}
+@keyframes btnSpin{to{transform:rotate(360deg);}}
+@keyframes btnCheck{to{transform:rotate(-45deg) scale(1);}}
+@media (prefers-reduced-motion:reduce){
+  .pill-btn.is-loading::after{animation:none;border-top-color:rgba(255,255,255,.28);}
+  .pill-btn.is-success::after{animation:none;transform:rotate(-45deg) scale(1);}
+}
 .pill-btn.primary{background:var(--core);color:#08110F;border:none;font-weight:600;}
 .pill-btn.primary:hover{background:#57e2d0;}
 .pill-btn.small{padding:6px 12px;font-size:12px;}
@@ -39,12 +62,20 @@ input::placeholder{color:var(--muted);}
 
 /* ---- toggle ---- */
 .toggle{width:38px;height:21px;border-radius:11px;background:var(--panel-2);border:1px solid var(--line);position:relative;cursor:pointer;flex:none;outline:none;}
-.toggle::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--muted);transition:transform .38s cubic-bezier(.34,1.56,.64,1),width .14s,background .18s,box-shadow .18s;}
-.toggle:active::after{width:19px;}
-.toggle.on:active::after{transform:translateX(13px);}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:8px;background:var(--muted);transition:transform .38s cubic-bezier(.34,1.56,.64,1),width .34s cubic-bezier(.34,1.56,.64,1),background .18s,box-shadow .18s;}
+/* liquid knob: pressing stretches it into a pill (edge that is away from the travel direction stays put), release springs back.
+   One class covers every toggle in the app (Settings, Today sheet chips use their own). */
+.toggle:active::after{width:21px;transition-duration:.38s,.14s,.18s,.18s;}
+.toggle.on:active::after{transform:translateX(11px);}
+/* keyboard (Enter/Space) has no :active phase, so js/core.js bindToggle adds .liquid for one squash-and-settle */
+.toggle.liquid::after{animation:knobStretch .38s cubic-bezier(.34,1.56,.64,1);}
+.toggle.on.liquid::after{animation-name:knobStretchOn;}
+@keyframes knobStretch{0%{width:15px;}35%{width:21px;}100%{width:15px;}}
+@keyframes knobStretchOn{0%{width:15px;}35%{width:21px;}100%{width:15px;}}
 .toggle.on{border-color:rgba(63,216,196,.4);}
 .toggle.on::after{transform:translateX(17px);background:var(--core);box-shadow:0 0 6px var(--core);}
 .toggle:focus-visible{box-shadow:0 0 0 2px rgba(63,216,196,.35);}
+@media (prefers-reduced-motion:reduce){.toggle.liquid::after{animation:none;}}
 
 /* ---- slider ---- */
 input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;background:var(--line);border-radius:2px;outline:none;}
@@ -61,9 +92,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 
 /* ---- chips (language, modes) ---- */
 .chip-row{display:flex;gap:10px;flex-wrap:wrap;}
-.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 15px;font-size:12.5px;color:var(--text-soft);cursor:pointer;transition:border-color .2s,color .2s,transform .12s,box-shadow .2s;}
-.chip:hover{box-shadow:0 0 12px rgba(63,216,196,.10);}
-.chip:active{transform:scale(.96);}
+.chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 15px;font-size:12.5px;color:var(--text-soft);cursor:pointer;transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--ease-spring,cubic-bezier(.34,1.56,.64,1)),box-shadow .2s;}
+.chip:hover{box-shadow:0 0 12px rgba(63,216,196,.10);transform:scale(1.02);}
+.chip:active{transform:scale(.97);transition-duration:.08s;}
 .chip:hover{color:var(--text);}
 .chip.on{border-color:rgba(63,216,196,.45);color:var(--core);}
 .chip.danger:hover{border-color:var(--danger);color:var(--danger);}

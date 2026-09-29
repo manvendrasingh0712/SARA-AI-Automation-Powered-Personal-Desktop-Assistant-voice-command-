@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="style/automation.css">
 <link rel="stylesheet" href="style/settings.css">
 <link rel="stylesheet" href="style/overlays.css">
+<link rel="stylesheet" href="style/motion.css">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -72,9 +73,12 @@
     <div class="page-body">
       <div class="chat-log" id="chatLog"></div>
       <div class="chat-dock">
-        <button class="dock-btn mic" id="chatMic" title="Wake Sara">
-          <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4"/></svg>
-        </button>
+        <div class="mic-group">
+          <button class="dock-btn mic" id="chatMic" title="Wake Sara">
+            <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4"/></svg>
+          </button>
+          <span class="mic-wave" id="micWave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
         <input type="text" id="chatInputField" placeholder="Message Sara…" autocomplete="off">
         <button class="dock-btn send" id="chatSend" title="Send">
           <svg viewBox="0 0 24 24"><path d="M4 12l16-7-6 16-3-7-7-2z"/></svg>
@@ -440,6 +444,7 @@
 <script src="js/mock.js"></script>
 <script src="js/core.js"></script>
 <script src="js/fx.js"></script>
+<script src="js/motion.js"></script>
 <script src="js/home.js"></script>
 <script src="js/today.js"></script>
 <script src="js/clock-card.js"></script>

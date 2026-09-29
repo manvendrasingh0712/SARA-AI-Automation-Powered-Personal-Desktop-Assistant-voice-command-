@@ -869,6 +869,13 @@ class PreferencesDB:
 
         self.set_preference("streak_last_date", today)
         self.set_preference("streak_count", str(new_streak))
+        # Longest streak ever (read by sara/skills/streak.py).
+        try:
+            longest = int(self.get_preference("streak_longest") or "0")
+        except (TypeError, ValueError):
+            longest = 0
+        if new_streak > longest:
+            self.set_preference("streak_longest", str(new_streak))
         if new_streak in self._STREAK_MILESTONES:
             self.set_preference("streak_pending_milestone", str(new_streak))
         return new_streak

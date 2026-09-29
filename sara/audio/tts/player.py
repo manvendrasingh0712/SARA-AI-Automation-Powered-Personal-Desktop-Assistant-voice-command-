@@ -62,7 +62,14 @@ _FIRST_TRIGGER = 5  # lowered from 8 — flush first micro-chunk sooner
 _QUEUE_TIMEOUT = 15.0
 
 _PLAY_BUFFER_MS = int(getattr(Config, "TTS_PLAYBACK_BUFFER_MS", 40))
-_PLAY_LATENCY = getattr(Config, "TTS_SD_LATENCY", "low")
+# CHANGED: "low" -> "high". Confirmed via real run log ("output stream
+# status: output underflow" x3 at startup) that "low" doesn't give
+# PortAudio enough OS-level buffer headroom to survive the CPU/GIL burst
+# from concurrent Whisper GPU load + Kokoro CUDA session build at boot.
+# "high" trades a small amount of extra output latency (~10-20ms) for
+# eliminating that audible underflow glitch -- a net perceived-quality
+# win. Explicit Config.TTS_SD_LATENCY (if set) still overrides this.
+_PLAY_LATENCY = getattr(Config, "TTS_SD_LATENCY", "high")
 _BLOCK_SIZE = max(256, int(_SAMPLE_RATE * _PLAY_BUFFER_MS / 1000))
 
 # Sub-chunk size used when feeding PCM into the persistent player's queue —

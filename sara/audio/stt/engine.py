@@ -18,6 +18,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable, List, Optional
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -192,6 +193,44 @@ _STATIC_TRANSCRIBE_PROMPT_EN = (
 _POST_TTS_SETTLE_WITH_AEC_S = 0.3
 
 
+def _load_whisper_model_offline_first(**kwargs) -> "WhisperModel":
+    """
+    Load a faster-whisper model without the online HF-hub revision-check
+    when the model is already cached locally (the common case after the
+    very first run). huggingface_hub normally makes a network call to
+    check for a newer revision on every single load, even when nothing
+    changed -- this adds real startup latency and, if that request is
+    still in flight when the interpreter starts tearing down (e.g. a fast
+    restart), can fail outright ("cannot schedule new futures after
+    interpreter shutdown").
+
+    Strategy: try with HF_HUB_OFFLINE=1 first (uses whatever is already
+    cached, zero network calls). If that raises (most likely because this
+    exact model/revision was never downloaded before), retry once with
+    the env var restored so the normal online download path still works
+    -- first-run behavior is completely unchanged. The env var is
+    restored to its original value (present or absent) either way, so
+    this never leaks state to any other caller in the process.
+    """
+    had_var = "HF_HUB_OFFLINE" in os.environ
+    prev_value = os.environ.get("HF_HUB_OFFLINE")
+
+    def _restore() -> None:
+        if had_var:
+            os.environ["HF_HUB_OFFLINE"] = prev_value
+        else:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    try:
+        model = WhisperModel(**kwargs)
+        _restore()
+        return model
+    except Exception:
+        _restore()
+        return WhisperModel(**kwargs)
+
+
 # ══════════════════════════════════════════════════════════════════════
 # Main STT Engine
 # ══════════════════════════════════════════════════════════════════════
@@ -259,7 +298,15 @@ class SpeechToText:
 
         self._silence_gate = _SilenceGate()
         self._noise_floor = _NoiseFloor()
-        self._vad = _VADFilter(self.SAMPLE_RATE, aggressiveness=2)
+        # BUGFIX: was hardcoding aggressiveness=2 here, which silently
+        # defeated _VADFilter's own Config.VAD_AGGRESSIVENESS fallback
+        # (see the BUGFIX comment on _VADFilter.__init__ in buffers.py) --
+        # any .env tuning of VAD_AGGRESSIVENESS had zero effect on this
+        # instance, which is the one actually used everywhere (speech
+        # collection, barge-in detection, is_user_speaking). Passing
+        # nothing lets Config.VAD_AGGRESSIVENESS (default 2, same as
+        # before) actually take effect.
+        self._vad = _VADFilter(self.SAMPLE_RATE)
 
         self._pre_buf = _PreBuffer(
             self.SAMPLE_RATE, self.CHUNK_SIZE, self.PRE_SPEECH_MS
@@ -355,46 +402,44 @@ class SpeechToText:
         self._aec_raw_q: "queue.Queue[bytes]" = queue.Queue(maxsize=_AEC_QUEUE_MAXSIZE)
         self._aec_drop_count = 0
 
-        # Load models directly into VRAM
-        self._whisper_model = self._load_faster_whisper()
-        self._wakeword_model: Optional["_OWWModel"] = self._load_wakeword()
+        # Load models directly into VRAM.
+        #
+        # TUNING (startup latency): these three loads are fully
+        # independent -- separate model objects (main Whisper, the
+        # OpenWakeWord ONNX classifier, and the small "tiny" Whisper --
+        # see its own role below), no shared state, no cross-dependency
+        # -- so they run concurrently instead of one-after-another.
+        # Previously total time-to-ready was the SUM of all three load
+        # times (each doing real disk I/O and, for the two Whisper
+        # models, a CTranslate2 session build); now it's roughly the MAX
+        # of the three, since they overlap. Assignment to self only
+        # happens AFTER all three futures resolve (via .result()), so
+        # nothing below this block (mic stream open, background threads,
+        # _log_init) ever sees a partially-loaded model set -- behavior
+        # is otherwise identical to the old sequential version, just
+        # faster to reach. The only observable side effect is that the
+        # three loaders' own print() messages may interleave in the
+        # console instead of appearing strictly in order -- cosmetic
+        # only.
+        #
+        # The tiny model loaded below is used for BOTH the STT-fallback
+        # wake-word check in is_wake_word_detected() when no custom
+        # OpenWakeWord model is configured, AND the live-caption preview
+        # in _spawn_preview_transcribe() (always, regardless of whether
+        # a custom OWW model is configured) -- see _load_fast_wake_whisper()
+        # for the full history/reasoning. Failure to load it is
+        # non-fatal: is_wake_word_detected() falls back to the main
+        # (larger, slower) self._whisper_model for its own use, while
+        # _spawn_preview_transcribe() skips preview entirely rather than
+        # falling back to the large model.
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="stt-model-load") as _pool:
+            _whisper_future = _pool.submit(self._load_faster_whisper)
+            _wakeword_future = _pool.submit(self._load_wakeword)
+            _wake_whisper_future = _pool.submit(self._load_fast_wake_whisper)
 
-        # Dedicated small/fast Whisper model, used for BOTH:
-        #   1. the STT-fallback wake-word check in
-        #      is_wake_word_detected() when no custom OpenWakeWord model
-        #      is configured, and
-        #   2. the live-caption preview in _spawn_preview_transcribe()
-        #      below, ALWAYS -- regardless of whether a custom OWW model
-        #      is configured.
-        #
-        # FIX (confirmed bug, previously): this used to be loaded ONLY
-        # when self._wakeword_model was None, since it was originally
-        # added purely for the STT-fallback wake check. But
-        # _spawn_preview_transcribe() also uses this same model via
-        # model_override, and _transcribe() silently falls back to the
-        # large/slow self._whisper_model whenever model_override is None
-        # -- so whenever a custom OWW model WAS configured, live preview
-        # was silently running on the large model every ~900ms cycle
-        # instead of the intended small one. Now always loaded so preview
-        # never depends on which wake-detection path is active.
-        #
-        # RAM/CPU trade-off: this is the "tiny" faster-whisper model by
-        # default (WAKE_WORD_FAST_MODEL_SIZE), int8 on CPU, ~75MB on
-        # disk, using only a small CPU-thread share
-        # (max(2, cpu_count // 4)) -- not GPU, not competing with
-        # Kokoro's GPU usage. There is no other already-loaded
-        # lightweight model in this architecture that could be reused
-        # instead: self._wakeword_model (when present) is an OpenWakeWord
-        # ONNX classifier that only scores "is the wake word present" and
-        # cannot transcribe arbitrary speech, so it cannot serve this
-        # purpose.
-        #
-        # Failure here is non-fatal: is_wake_word_detected() falls back
-        # to the main (larger, slower) self._whisper_model if this is
-        # None for ITS OWN use, but _spawn_preview_transcribe() below
-        # explicitly SKIPS preview entirely (rather than falling back to
-        # the large model) when this is None -- see that method.
-        self._wake_whisper_model: Optional[object] = self._load_fast_wake_whisper()
+            self._whisper_model = _whisper_future.result()
+            self._wakeword_model: Optional["_OWWModel"] = _wakeword_future.result()
+            self._wake_whisper_model: Optional[object] = _wake_whisper_future.result()
 
         self._stream = None
         self._pa = None
@@ -479,7 +524,7 @@ class SpeechToText:
         print(f"[STT] Loading Faster-Whisper '{model_size}'...")
 
         try:
-            model = WhisperModel(
+            model = _load_whisper_model_offline_first(
                 model_size_or_path=model_size,
                 device="cuda",
                 compute_type="int8_float16",
@@ -490,7 +535,7 @@ class SpeechToText:
         except Exception as gpu_error:
             print(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
             try:
-                model = WhisperModel(
+                model = _load_whisper_model_offline_first(
                     model_size_or_path=model_size,
                     device="cpu",
                     compute_type="int8",
@@ -519,7 +564,7 @@ class SpeechToText:
         cpu_threads = max(2, (os.cpu_count() or 4) // 4)
         print(f"[STT] Loading dedicated wake-word Whisper '{model_size}'...")
         try:
-            model = WhisperModel(
+            model = _load_whisper_model_offline_first(
                 model_size_or_path=model_size,
                 device="cpu",
                 compute_type="int8",
@@ -1761,19 +1806,26 @@ class SpeechToText:
                 )
             )
 
-            # TEMP DIAGNOSTIC: track the PEAK score within each 1-second
-            # window (not just whichever frame happens to land on the
-            # throttle boundary) so a brief spike is never missed.
-            # Remove once detection is confirmed working.
-            if max_score > self._wake_diag_window_max:
-                self._wake_diag_window_max = max_score
-            if now - self._wake_diag_window_start >= 1.0:
-                print(
-                    f"[WakeDiag] 1s-peak score={self._wake_diag_window_max:.4f} | "
-                    f"threshold={threshold:.4f} | raw={scores}"
-                )
-                self._wake_diag_window_start = now
-                self._wake_diag_window_max = 0.0
+            # TUNING (latency/hot-path cost): this diagnostic used to run
+            # unconditionally every ~1s for the entire time the wake loop
+            # is active (i.e. all idle runtime), doing string formatting
+            # + a blocking print() on a path that's already polled every
+            # WAKE_WORD_INFERENCE_INTERVAL_S (default 0.08s). Now gated
+            # behind DEBUG_MODE -- same peak-score-tracking output when
+            # actively debugging wake detection, zero cost otherwise.
+            if getattr(Config, "DEBUG_MODE", False):
+                # Track the PEAK score within each 1-second window (not
+                # just whichever frame happens to land on the throttle
+                # boundary) so a brief spike is never missed.
+                if max_score > self._wake_diag_window_max:
+                    self._wake_diag_window_max = max_score
+                if now - self._wake_diag_window_start >= 1.0:
+                    print(
+                        f"[WakeDiag] 1s-peak score={self._wake_diag_window_max:.4f} | "
+                        f"threshold={threshold:.4f} | raw={scores}"
+                    )
+                    self._wake_diag_window_start = now
+                    self._wake_diag_window_max = 0.0
 
             if max_score >= threshold:
                 with self._threshold_lock:

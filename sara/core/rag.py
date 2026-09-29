@@ -414,6 +414,15 @@ class LongTermMemory:
                 except Exception as e:
                     logger.error(f"[RAG] background clear failed: {e}")
                 continue
+            if isinstance(job, tuple) and job and job[0] == "__REPLACE_SOURCE__":
+                _, rep_source, rep_texts, future = job
+                try:
+                    self._replace_source_one(rep_source, rep_texts, future)
+                except Exception as e:
+                    logger.error(f"[RAG] background replace_source failed: {e}")
+                    if future is not None and not future.done():
+                        future.set_exception(e)
+                continue
             text, source, timestamp = job
             try:
                 self._write_one(text, source, timestamp)
@@ -677,6 +686,140 @@ class LongTermMemory:
 
     # ── Public API ───────────────────────────────────────────────────────
 
+    def _replace_source_one(
+        self, source: str, texts: List[str], future: Optional[Future]
+    ) -> None:
+        """
+        Writer-thread job behind replace_source(): ALL-OR-NOTHING swap of
+        every memory stored under `source` for `texts`.
+          1. Embed every new text FIRST. If any embedding is unavailable the
+             job aborts here and the OLD memories are left completely
+             untouched (a failed re-index never destroys good data).
+          2. Delete the old rows and insert the new ones in ONE SQLite
+             transaction (rolled back on error).
+          3. Update the in-memory index under _matrix_lock.
+        `texts=[]` simply deletes everything stored under `source`.
+        Result/exception is reported through `future`; never raises.
+        """
+        def _fail(exc: Exception) -> None:
+            if future is not None and not future.done():
+                future.set_exception(exc)
+
+        vecs: List[np.ndarray] = []
+        for i, t in enumerate(texts):
+            v = self._get_embedding(t)
+            if v is None:
+                _fail(RuntimeError(
+                    f"embedding unavailable for chunk {i + 1}/{len(texts)} of {source!r}"
+                ))
+                return
+            vecs.append(v)
+        if vecs and len({v.shape[0] for v in vecs}) != 1:
+            _fail(ValueError(f"inconsistent embedding dimensions for {source!r}"))
+            return
+
+        timestamp = datetime.now().isoformat()
+        try:
+            old_ids = {
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT id FROM long_term_memory WHERE source = ?", (source,)
+                ).fetchall()
+            }
+            self._conn.execute("DELETE FROM long_term_memory WHERE source = ?", (source,))
+            new_ids: List[int] = []
+            for t, v in zip(texts, vecs):
+                cur = self._conn.execute(
+                    "INSERT INTO long_term_memory (text, embedding, source, timestamp) "
+                    "VALUES (?, ?, ?, ?)",
+                    (t, v.tobytes(), source, timestamp),
+                )
+                new_ids.append(cur.lastrowid)
+            self._conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"[RAG] replace_source DB update failed: {e}")
+            try:
+                self._conn.rollback()
+            except sqlite3.Error:
+                pass
+            _fail(e)
+            return
+
+        try:
+            with self._matrix_lock:
+                keep = [i for i, rid in enumerate(self._ids) if rid not in old_ids]
+                ids = [self._ids[i] for i in keep]
+                kept_texts = [self._texts[i] for i in keep]
+                sources = [self._sources[i] for i in keep]
+                timestamps = [self._timestamps[i] for i in keep]
+                if keep and self._matrix.size:
+                    matrix = self._matrix[keep]
+                else:
+                    matrix = np.zeros((0, 0), dtype=np.float32)
+                if vecs:
+                    new_mat = np.vstack(vecs)
+                    if matrix.size == 0:
+                        matrix = new_mat
+                    elif matrix.shape[1] == new_mat.shape[1]:
+                        matrix = np.vstack([matrix, new_mat])
+                    else:
+                        raise ValueError("embedding dimension differs from stored memories")
+                    ids += new_ids
+                    kept_texts += list(texts)
+                    sources += [source] * len(texts)
+                    timestamps += [timestamp] * len(texts)
+                overflow = len(ids) - self._max_in_memory
+                if overflow > 0:
+                    ids, kept_texts = ids[overflow:], kept_texts[overflow:]
+                    sources, timestamps = sources[overflow:], timestamps[overflow:]
+                    matrix = matrix[overflow:]
+                self._ids, self._texts = ids, kept_texts
+                self._sources, self._timestamps = sources, timestamps
+                self._matrix = matrix
+        except Exception as e:
+            # DB is already correct; rebuild the RAM index from it.
+            logger.warning(f"[RAG] replace_source index update failed, reloading: {e}")
+            try:
+                self._load_into_memory()
+            except Exception as e2:
+                logger.error(f"[RAG] index reload failed: {e2}")
+
+        if future is not None and not future.done():
+            future.set_result(len(texts))
+
+    def replace_source_async(self, source: str, texts: List[str]) -> Optional[Future]:
+        """
+        Non-blocking: queues an all-or-nothing replacement of every memory
+        stored under `source` (see _replace_source_one). Returns a Future
+        (result = number of chunks stored; exception = failed, old data
+        untouched), or None if it couldn't even be queued. Jobs run in FIFO
+        order with add_memory() on the single writer thread.
+        """
+        if not self.enabled or self._closed:
+            return None
+        clean = [t.strip() for t in texts if t and t.strip()]
+        future: Future = Future()
+        try:
+            self._write_queue.put_nowait(("__REPLACE_SOURCE__", source, clean, future))
+        except Exception as e:
+            logger.error(f"[RAG] replace_source enqueue failed: {e}")
+            return None
+        return future
+
+    def replace_source(
+        self, source: str, texts: List[str], timeout: float = 120.0
+    ) -> bool:
+        """Blocking wrapper around replace_source_async(); True on success."""
+        future = self.replace_source_async(source, texts)
+        if future is None:
+            return False
+        try:
+            future.result(timeout=timeout)
+            return True
+        except Exception as e:
+            logger.error(f"[RAG] replace_source({source!r}) failed: {e}")
+            return False
+
     def add_memory(self, text: str, source: str = "conversation") -> None:
         """Fire-and-forget: enqueues `text` for background embedding +
         storage. Safe to call from the hot conversation-loop path — never
@@ -815,6 +958,7 @@ class LongTermMemory:
         min_similarity: Optional[float] = None,
         *,
         precomputed_vector: Optional[np.ndarray] = None,
+        source_prefix: Optional[str] = None,
     ) -> List[MemoryHit]:
     
         if not self.enabled or not query or not query.strip():
@@ -880,6 +1024,17 @@ class LongTermMemory:
         scores = _cosine_sim_batch(query_vec, matrix)
         if scores.size == 0:
             return []
+
+        # source_prefix: rank ONLY rows whose source starts with the prefix
+        # (e.g. "notes:"), so unrelated conversation memories can't crowd
+        # them out of the top-k. Masked rows score -1 and never clear a
+        # threshold.
+        if source_prefix:
+            mask = np.fromiter(
+                (str(s).startswith(source_prefix) for s in sources),
+                dtype=bool, count=len(sources),
+            )
+            scores = np.where(mask, scores, -1.0)
 
         # Buffer widened (was *2) to make room for lower-threshold "fact"
         # rows that might rank below the top general-conversation hits

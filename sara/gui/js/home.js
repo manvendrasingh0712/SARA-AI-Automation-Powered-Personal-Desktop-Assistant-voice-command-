@@ -271,6 +271,7 @@
   SARA.setAssistantActive = async function (active, persist) {
     SARA.state.assistantActive = !!active;
     renderPause(); refreshChrome();
+    SARA.emit('assistant_active', SARA.state.assistantActive);   // lets other pages (e.g. chat.js input state) react
     if (persist) await SARA.callApi('set_assistant_active', !!active);
   };
   $('stopBtn').addEventListener('click', async function () {   // interrupt speech / cancel the current turn

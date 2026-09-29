@@ -39,6 +39,26 @@
     if (res && res.ok) SARA.ok('Exporting memory…'); else SARA.fail('Could not start memory export');
   });
 
+  /* ---- 14-day trend draw-in: the bars are revealed left -> right ONCE, the first time the chart is really on screen
+     (Settings open + data rendered). Never on refresh or on later visits. The trend is DOM bars (not SVG/canvas), so
+     the reveal is a clip-path sweep (style/settings.css .trend.draw-in). The class is removed when the sweep ends:
+     leaving/entering the page (display:none) would otherwise restart a CSS animation that is still attached. ---- */
+  let trendDrawn = false;
+  function playTrendDraw() {
+    const el = $('anTrend');
+    if (trendDrawn || !el || !el.children.length || SARA.current !== 'settings') return;
+    trendDrawn = true;
+    if (SARA.reduceMotion) return;
+    let timer = 0;
+    const end = function () {
+      clearTimeout(timer); el.classList.remove('draw-in');
+      el.removeEventListener('animationend', end); el.removeEventListener('animationcancel', end);
+    };
+    el.addEventListener('animationend', end); el.addEventListener('animationcancel', end);
+    timer = setTimeout(end, 1400);                               // safety net if no animation event ever arrives
+    el.classList.add('draw-in');
+  }
+
   /* ---- analytics ---- */
   function shortDate(s) { const d = new Date(s + 'T00:00:00'); return isNaN(d.getTime()) ? s : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); }
   async function loadAnalytics() {
@@ -56,6 +76,7 @@
     const tmax = Math.max.apply(null, trend.map((t) => t.count).concat([1]));
     $('anTrend').innerHTML = trend.map((t) => '<span title="' + esc(t.date + ': ' + t.count) + '" style="height:' + Math.max(4, Math.round((t.count / tmax) * 100)) + '%"></span>').join('');
     $('anTrendFrom').textContent = trend.length ? shortDate(trend[0].date) : ''; $('anTrendTo').textContent = trend.length ? shortDate(trend[trend.length - 1].date) : '';
+    playTrendDraw();                                       // no-op unless this is the first time the chart is visible
   }
 
   /* ---- frequently missed commands ---- */
@@ -107,6 +128,6 @@
   });
 
   SARA.onBoot(function () { loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); });
-  SARA.on('page', function (p) { if (p === 'settings') { loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); } });
+  SARA.on('page', function (p) { if (p === 'settings') { playTrendDraw(); loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); } });
   SARA.every(5 * 60 * 1000, function () { loadMemory(); loadAnalytics(); });
 })();
