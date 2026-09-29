@@ -2,31 +2,109 @@
    chat.css  --  Chat page: message log + bottom dock (mic / input / send).
    Markup: index.html #page-chat.  JS: js/chat.js.
    ========================================================================== */
-#page-chat .page-body{display:flex;flex-direction:column;padding-bottom:96px;}
-.chat-log{display:flex;flex-direction:column;gap:16px;padding-bottom:10px;max-width:640px;width:100%;margin:0 auto;flex:1;}
+/* The log is the scroll container (not .page-body) so the sticky-looking dock can live OUTSIDE the scroll edge-fade mask
+   (js/motion.js edgeFade). It bleeds to the page edges (negative margin = --pad-x) so the scrollbar stays at the window
+   edge, and re-centres its 640px column with padding. */
+#page-chat .page-body{--pad-x:40px;display:flex;flex-direction:column;padding-bottom:96px;overflow:hidden;}
+@media (max-width:640px){#page-chat .page-body{--pad-x:20px;}}
+.chat-log{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0;overflow-y:auto;margin:0 calc(var(--pad-x) * -1);padding:0 max(var(--pad-x),calc((100% - 640px) / 2 + var(--pad-x))) 10px;}
 .chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
 .msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:msgIn .32s cubic-bezier(.2,.8,.2,1);}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px) scale(.97);}to{opacity:1;transform:none;}}
 .msg.user{align-self:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 15px;color:var(--text);}
 .msg.sara{align-self:flex-start;color:var(--core);padding:2px 2px;}
 .msg.preview{opacity:.6;font-style:italic;}
+/* ---- thinking dots (js/chat.js showThinking): 3 dots in --think (the orb's thinking colour) travelling as a sine wave ---- */
+.msg.thinking{display:flex;align-items:center;gap:5px;padding:10px 4px 8px;color:var(--think);}
+.msg.thinking .dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:thinkWave 1.1s ease-in-out infinite;}
+.msg.thinking .dot:nth-child(2){animation-delay:.15s;}
+.msg.thinking .dot:nth-child(3){animation-delay:.3s;}
+@keyframes thinkWave{0%,100%{transform:translateY(0);opacity:.5;}50%{transform:translateY(-5px);opacity:1;}}
+@media (prefers-reduced-motion:reduce){.msg.thinking .dot{animation:none;opacity:.75;}}
+/* ---- send fly-up (js/chat.js flyUp): the real bubble waits invisibly while its ghost copy travels from the dock ---- */
+.msg.flying{animation:none;}
+.msg.flying-wait{visibility:hidden;}
+.msg-ghost{position:fixed;margin:0;max-width:none;z-index:30;pointer-events:none;animation:none;will-change:transform,opacity;}
+/* ---- streaming blur-to-sharp (js/chat.js revealText): freshly revealed text fades in from a light blur ---- */
+.msg-text .new{animation:chunkIn .25s ease-out both;}
+@keyframes chunkIn{from{opacity:.4;filter:blur(3px);}to{opacity:1;filter:blur(0);}}
+@media (prefers-reduced-motion:reduce){.msg-text .new{animation:none;}}
 .msg.sara.streaming::after,.msg.sara.typing::after{content:'▍';margin-left:2px;animation:blink 1s steps(2) infinite;}
 @keyframes blink{50%{opacity:0;}}
 .msg .ts{display:block;font-size:10.5px;color:var(--muted);margin-top:5px;font-style:normal;}
+/* ==========================================================================
+   State-aware command dock. `data-state` on .chat-dock (js/chat.js) drives the
+   "real" states -- idle is the only one CSS reaches on its own, via :hover/
+   :focus-within, so an explicit state (listening/processing/...) never gets
+   visually overridden by an incidental hover.
+   States: idle -> hover (css) -> focus (css) -> listening | processing | sending
+           | disabled | error (all js-driven, always reverted back to idle/listening).
+   ========================================================================== */
 .chat-dock{
   flex:none;position:sticky;bottom:0;max-width:640px;width:100%;margin:14px auto 0;
   display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
   border-radius:14px;padding:8px 8px 8px 16px;
+  box-shadow:0 0 0 0 rgba(63,216,196,0);
+  transition:border-color var(--dur-med,.2s) var(--ease-premium,ease),box-shadow var(--dur-med,.2s) var(--ease-premium,ease),opacity .2s ease;
 }
-.chat-dock:focus-within{border-color:rgba(63,216,196,.4);}
-.chat-dock input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;}
-.dock-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:box-shadow .2s,transform .12s;}
-.dock-btn:hover{box-shadow:0 0 0 4px rgba(63,216,196,.12);}
-.dock-btn:active{transform:scale(.92);}
+.chat-dock[data-state="idle"]:hover{border-color:rgba(63,216,196,.22);}
+.chat-dock[data-state="idle"]:focus-within,.chat-dock[data-state="hover"]{border-color:rgba(63,216,196,.22);}
+.chat-dock:focus-within{border-color:rgba(63,216,196,.45);box-shadow:0 0 0 3px rgba(63,216,196,.08);}
+.chat-dock input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;transition:opacity .2s;}
+.chat-dock input::placeholder{transition:opacity .25s ease;}
+.chat-dock[data-state="listening"] input::placeholder,
+.chat-dock[data-state="processing"] input::placeholder{opacity:.45;}
+
+/* LISTENING -- mic is live; a slow teal breathing glow around the whole dock (not just the mic button) */
+.chat-dock[data-state="listening"]{border-color:rgba(63,216,196,.5);box-shadow:0 0 0 3px rgba(63,216,196,.1);animation:dockListen 2.2s ease-in-out infinite;}
+@keyframes dockListen{0%,100%{box-shadow:0 0 0 3px rgba(63,216,196,.08);}50%{box-shadow:0 0 0 5px rgba(63,216,196,.16);}}
+
+/* PROCESSING -- Sara is thinking about a reply: a very quiet shimmer sweep across the dock */
+.chat-dock[data-state="processing"]{border-color:rgba(139,111,216,.4);position:relative;overflow:hidden;}
+.chat-dock[data-state="processing"]::before{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(100deg,transparent 40%,rgba(139,111,216,.14) 50%,transparent 60%);
+  background-size:220% 100%;animation:dockShimmer 1.6s ease-in-out infinite;
+}
+@keyframes dockShimmer{0%{background-position:120% 0;}100%{background-position:-120% 0;}}
+
+/* SENDING -- the instant the send button is pressed / API call in flight (brief, real -- no fake delay) */
+.chat-dock[data-state="sending"]{border-color:rgba(63,216,196,.55);}
+.chat-dock[data-state="sending"] input{opacity:.7;}
+
+/* ERROR -- send failed; a short, low-amplitude shake + danger border, self-clears */
+.chat-dock[data-state="error"]{border-color:var(--danger);animation:dockShake .35s ease;}
+@keyframes dockShake{0%,100%{transform:translateX(0);}25%{transform:translateX(-3px);}75%{transform:translateX(3px);}}
+
+/* DISABLED -- assistant paused; dock dims and the input stops accepting focus rings */
+.chat-dock[data-state="disabled"]{opacity:.55;}
+.chat-dock[data-state="disabled"] input{cursor:not-allowed;}
+
+@media (prefers-reduced-motion:reduce){
+  .chat-dock[data-state="listening"],.chat-dock[data-state="processing"]::before,.chat-dock[data-state="error"]{animation:none;}
+}
+
+/* ---- live mic waveform (js/chat.js): 5 bars that slide open beside the mic only while the dock is 'listening' ---- */
+.mic-group{display:flex;align-items:center;flex:none;}
+.mic-wave{display:flex;align-items:center;gap:3px;height:20px;width:0;margin-left:0;overflow:hidden;opacity:0;pointer-events:none;transition:width .28s var(--ease-premium,ease),margin-left .28s var(--ease-premium,ease),opacity .2s ease;}
+.chat-dock[data-state="listening"] .mic-wave{width:27px;margin-left:10px;opacity:1;}
+.mic-wave i{flex:none;width:3px;height:18px;border-radius:2px;background:var(--core);transform:scaleY(.16);transform-origin:center;will-change:transform;}
+@media (prefers-reduced-motion:reduce){.mic-wave{display:none;}}
+
+.dock-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:box-shadow .2s,transform var(--dur-fast,.12s) var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
+.dock-btn:hover{box-shadow:0 0 0 4px rgba(63,216,196,.12);transform:scale(1.05);}
+.dock-btn:active{transform:scale(.9);}
 .dock-btn.mic{background:var(--panel-2);color:var(--core);}
 .dock-btn.mic.on{background:var(--core);color:#08110F;box-shadow:0 0 0 5px rgba(63,216,196,.15);}
+/* mic micro-animation while actually listening -- a slow pulse, reuses .on (already toggled by real status) */
+.dock-btn.mic.on svg{animation:micPulse 1.6s ease-in-out infinite;}
+@keyframes micPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.12);}}
 .dock-btn.send{background:var(--core);color:#08110F;}
-.dock-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;}
+/* .dock-btn.send already has a teal fill, so its success checkmark (components.css .is-success::after)
+   needs a dark stroke instead of the default teal one, or it would vanish against its own background. */
+.dock-btn.send.is-success::after{border-color:#08110F;}
+.dock-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;transition:transform .2s;}
+@media (prefers-reduced-motion:reduce){.dock-btn.mic.on svg{animation:none;}}
 .msg-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .msg-action{background:none;border:1px solid var(--line);color:var(--text-soft);font-size:11.5px;padding:3px 10px;border-radius:999px;cursor:pointer;transition:border-color .2s,color .2s,transform .12s;}
 .msg-action:hover{border-color:rgba(63,216,196,.45);color:var(--core);}

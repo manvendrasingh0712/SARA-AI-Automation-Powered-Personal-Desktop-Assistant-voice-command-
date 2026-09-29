@@ -62,7 +62,7 @@ from .context_tracking import _is_pronoun_reference, _describe_recent_entities
 # Upper word count for anything to be considered a command at all. Real
 # tool requests are short imperatives ("open chrome", "remind me at 6 to
 # call mom"); a long sentence is nearly always conversation.
-_TOOL_SIGNAL_MAX_WORDS = 16
+_TOOL_SIGNAL_MAX_WORDS = 22
 
 # Action verbs that signal "do something", EN + Hinglish. Matched only at
 # a word boundary so "opening hours" / "search engine kya hai" don't trip
@@ -255,4 +255,3 @@ def _retry_via_tool_router(user_input: str, ctx: dict, brain) -> Optional[str]:
     except Exception as e:
         print(f"[ToolRouter] misfire-retry resolution failed: {e}")
         return None
-

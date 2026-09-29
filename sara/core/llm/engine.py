@@ -274,6 +274,13 @@ class SaraLLM:
         self._gemini_model_name = getattr(
             self._cfg, "GEMINI_MODEL", "gemini-2.5-flash"
         )
+        # TASK A (two-tier model routing, Gemini): mirrors
+        # self._ollama_fast_model_name below -- falls back to the main
+        # Gemini model when unset/empty, so this is a fully safe no-op
+        # default until GEMINI_FAST_MODEL is actually set in .env.
+        self._gemini_fast_model_name = (
+            getattr(self._cfg, "GEMINI_FAST_MODEL", "") or self._gemini_model_name
+        )
 
         # Ollama-as-primary remains a fully supported LOCAL/OFFLINE mode
         # for users without a Gemini API key (LLM_BACKEND=ollama in
@@ -1112,11 +1119,18 @@ class SaraLLM:
         contents = self._build_contents_gemini(prompt, history, memory_context, reference_context)
 
         raw_stream = client.models.generate_content_stream(
-            model=self._gemini_model_name,
+            model=(
+                self._gemini_fast_model_name
+                if _is_simple_query(prompt)
+                else self._gemini_model_name
+            ),
             contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_instruction,
-                temperature=0.7,
+                temperature=float(getattr(self._cfg, "GEMINI_TEMPERATURE", 0.7)),
+                top_p=float(getattr(self._cfg, "GEMINI_TOP_P", 0.9)),
+                top_k=int(getattr(self._cfg, "GEMINI_TOP_K", 40)),
+                max_output_tokens=int(getattr(self._cfg, "GEMINI_MAX_OUTPUT_TOKENS", 200)),
             ),
         )
 

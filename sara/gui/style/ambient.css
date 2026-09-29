@@ -24,3 +24,22 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
   100%{transform:translate3d(-1%,2.5%,0) rotate(-2deg) scale(1.02);}
 }
 @media (prefers-reduced-motion:reduce){ body::before{animation:none;transition:none;} }
+
+/* ---- time-of-day tint (js/motion.js sets --amb-1/2/3 on :root once per ~17 min) ----
+   Only the three glow blobs shift (warm-teal morning -> neutral day -> amber evening -> blue-void night); the app's teal
+   accent (--core) is never touched. The vars are registered <color>s so the change eases over 20s instead of stepping;
+   engines without @property just apply the new colour (steps are tiny, the change is hours apart). The @supports block
+   only replaces the hard-coded blobs above when color-mix is available, so older webviews keep the original look. */
+@property --amb-1{syntax:'<color>';inherits:true;initial-value:rgb(63,216,196);}
+@property --amb-2{syntax:'<color>';inherits:true;initial-value:rgb(139,111,216);}
+@property --amb-3{syntax:'<color>';inherits:true;initial-value:rgb(232,192,143);}
+:root.tint-ready{transition:--amb-1 20s linear,--amb-2 20s linear,--amb-3 20s linear;}
+@supports (color:color-mix(in srgb,red 10%,transparent)){
+  body::before{
+    background:
+      radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), color-mix(in srgb,var(--amb-1) 7.5%,transparent), transparent 70%),
+      radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), color-mix(in srgb,var(--amb-2) 7%,transparent), transparent 70%),
+      radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), color-mix(in srgb,var(--amb-3) 3.5%,transparent), transparent 70%);
+  }
+}
+@media (prefers-reduced-motion:reduce){:root.tint-ready{transition:none;}}

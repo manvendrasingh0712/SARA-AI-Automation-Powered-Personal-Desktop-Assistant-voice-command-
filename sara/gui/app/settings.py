@@ -406,28 +406,59 @@ class ApiSettingsMixin:
 
     # ── Settings page: Skills manager ───────────────────────────────────
     # Backs the "Skills" section: lists every module sara/skills/
-    # auto-discovered at startup (loaded, user-disabled, or broken — see
-    # sara.skills._LOADED_SKILLS for the exact record shape) and lets the
-    # user flip the `skill_enabled:<name>` preference that _load_all()
-    # checks on the NEXT boot. This never re-registers anything live —
-    # registration only happens once, at import time — so the frontend
-    # is responsible for telling the user a restart is needed.
+    # auto-discovered at startup (loaded, disabled, or broken — see
+    # sara.skills._LOADED_SKILLS for the record shape: name, intent, intents,
+    # description, category, version, examples, enabled, status, error) and
+    # lets the user switch a skill on/off. The switch takes effect
+    # IMMEDIATELY (sara.skills.set_skill_enabled_live) and is also persisted as
+    # the `skill_enabled:<name>` preference so it survives a restart -- no
+    # restart notice is needed any more.
     def get_skills_list(self):
         try:
-            from sara.skills import _LOADED_SKILLS
+            try:
+                from sara.skills import get_skills_info
 
-            return {"ok": True, "data": list(_LOADED_SKILLS)}
+                data = get_skills_info()
+            except ImportError:  # older sara.skills without get_skills_info()
+                from sara.skills import _LOADED_SKILLS
+
+                data = list(_LOADED_SKILLS)
+            return {"ok": True, "data": data}
         except Exception as e:
             print(f"[get_skills_list error] {e}")
             return {"ok": False, "data": []}
 
     def set_skill_enabled(self, name, enabled):
         try:
+            enabled = bool(enabled)
             self._pref_writer.enqueue(f"skill_enabled:{name}", "1" if enabled else "0")
-            return {"ok": True}
+            live = False
+            try:
+                from sara.skills import set_skill_enabled_live
+
+                live = bool(set_skill_enabled_live(name, enabled))
+            except Exception as e:  # persisted anyway; applies on next start
+                print(f"[set_skill_enabled live-toggle error] {e}")
+            return {"ok": True, "live": live, "restart_required": not live}
         except Exception as e:
             print(f"[set_skill_enabled error] {e}")
             return {"ok": False}
+
+    # "Sync notes now" button: re-scans the notes folder and queues new/changed
+    # files for indexing (same call sara/skills/notes_qa.py's "refresh my notes"
+    # voice command makes). Indexing continues in the background.
+    def sync_notes_now(self):
+        try:
+            from sara.skills.notes_qa import get_notes_index_status, sync_notes_folder
+
+            notes_memory = getattr(self, "notes_memory", None)
+            if notes_memory is None or not bool(getattr(notes_memory, "enabled", False)):
+                return {"ok": False, "message": "Long-term memory is disabled."}
+            queued = sync_notes_folder(notes_memory, self.db)
+            return {"ok": True, "queued": queued, "status": get_notes_index_status(self.db)}
+        except Exception as e:
+            print(f"[sync_notes_now error] {e}")
+            return {"ok": False, "message": "Couldn't start the sync."}
 
     # ── Settings page: Open data folder ─────────────────────────────────
     def open_data_folder(self):
