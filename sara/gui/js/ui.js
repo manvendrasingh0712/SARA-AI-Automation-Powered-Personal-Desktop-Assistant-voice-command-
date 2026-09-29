@@ -67,6 +67,15 @@
   SARA.toast = function (iconClass, color, message, opts) {
     const stack = SARA.$('toastStack'); if (!stack) return;
     const t = document.createElement('div'); t.className = 'toast';
+    // Optional semantic variant (opts.variant: 'success'|'info'|'warning'|'error') just tints the left
+    // edge via CSS -- auto-inferred from the icon/tone when not passed, so existing callers need no changes.
+    let variant = opts && opts.variant;
+    if (!variant) {
+      if (/alert|error/i.test(iconClass || '')) variant = 'error';
+      else if (opts && opts.tone === 'notify') variant = 'info';
+      else variant = 'success';
+    }
+    t.classList.add('v-' + variant);
     const dot = document.createElement('span'); dot.className = 't-dot';
     dot.style.background = color || 'var(--core)'; dot.style.color = color || 'var(--core)';
     const msg = document.createElement('span'); msg.textContent = message == null ? '' : String(message);
@@ -82,16 +91,30 @@
     if (/alert|error/i.test(iconClass || '')) SARA.sound.error();
     else if (opts && opts.tone === 'notify') SARA.sound.notify();
     while (stack.children.length > 4) stack.removeChild(stack.firstChild);
-    let fadeTimer = 0, leaving = false;
-    function dismiss() {                       // shared by the 4.5s auto-fade and the x button
+    const AUTO_MS = 4500;
+    let fadeTimer = 0, leaving = false, pausedAt = 0, remaining = AUTO_MS;
+    function dismiss() {                       // shared by the auto-fade and the x button
       if (leaving) return; leaving = true; clearTimeout(fadeTimer);
       t.classList.add('leaving'); setTimeout(() => t.remove(), 240);
     }
+    function arm(ms) { clearTimeout(fadeTimer); fadeTimer = setTimeout(dismiss, ms); }
+    // Hover-to-pause: dismiss timer freezes on pointer-over (remaining time preserved) and resumes on
+    // pointer-out. Skipped once the leave animation has already started.
+    t.addEventListener('pointerenter', function () {
+      if (leaving) return;
+      t.classList.add('paused'); clearTimeout(fadeTimer); pausedAt = performance.now();
+    });
+    t.addEventListener('pointerleave', function () {
+      if (leaving) return;
+      t.classList.remove('paused');
+      remaining = Math.max(600, remaining - (performance.now() - pausedAt));
+      arm(remaining);
+    });
     x.addEventListener('click', dismiss);
-    fadeTimer = setTimeout(dismiss, 4500);
+    arm(AUTO_MS);
   };
-  SARA.ok = (m) => SARA.toast('ti-check', '#3FD8C4', m);
-  SARA.fail = (m) => SARA.toast('ti-alert-triangle', '#D97A6B', m);
+  SARA.ok = (m) => SARA.toast('ti-check', '#3FD8C4', m, { variant: 'success' });
+  SARA.fail = (m) => SARA.toast('ti-alert-triangle', '#D97A6B', m, { variant: 'error' });
 
   let hintShown = 0;
   SARA.proactiveHint = function () {         // one-time tip, max 3 times ever

@@ -80,11 +80,13 @@ canvas#org{width:100%;height:100%;display:block;}
 /* ---- Today card (bottom-left of Home) ---- */
 .today-card{
   position:absolute;left:32px;bottom:84px;width:250px;padding:16px 18px;border-radius:14px;
-  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
-  cursor:pointer;transition:border-color .2s,transform .2s;animation:pageIn .6s ease .3s both;
+  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  box-shadow:var(--shadow-rest);cursor:pointer;
+  transition:border-color .2s,transform var(--dur-med,.2s) var(--ease-premium,ease),box-shadow var(--dur-med,.3s) var(--ease-premium,ease);
+  animation:pageIn .6s ease .3s both;
 }
-.today-card:hover{border-color:rgba(63,216,196,.45);transform:translateY(-2px);}
-.today-card:active{transform:translateY(0) scale(.985);}
+.today-card:hover{--glow:rgba(63,216,196,.22);border-color:rgba(63,216,196,.45);transform:translateY(-3px);box-shadow:var(--shadow-hover);}
+.today-card:active{transform:translateY(-1px) scale(.985);}
 .tc-top{display:flex;align-items:center;gap:14px;}
 .tc-temp{font-size:34px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;}
 .tc-cond{font-size:13.5px;color:var(--text-soft);}
@@ -97,12 +99,14 @@ canvas#org{width:100%;height:100%;display:block;}
 /* ---- Next card (bottom-right of Home; js/today.js renderNext) ---- */
 .next-card{
   position:absolute;right:32px;bottom:84px;width:250px;padding:16px 18px;border-radius:14px;
-  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
-  cursor:pointer;transition:border-color .2s,transform .2s;animation:pageIn .6s ease .3s both;
+  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  box-shadow:var(--shadow-rest);cursor:pointer;
+  transition:border-color .2s,transform var(--dur-med,.2s) var(--ease-premium,ease),box-shadow var(--dur-med,.3s) var(--ease-premium,ease);
+  animation:pageIn .6s ease .3s both;
 }
 .next-card[hidden]{display:none;}
-.next-card:hover{border-color:rgba(63,216,196,.45);transform:translateY(-2px);}
-.next-card:active{transform:translateY(0) scale(.985);}
+.next-card:hover{--glow:rgba(63,216,196,.22);border-color:rgba(63,216,196,.45);transform:translateY(-3px);box-shadow:var(--shadow-hover);}
+.next-card:active{transform:translateY(-1px) scale(.985);}
 .nx-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
 .nx-title{font-size:14px;line-height:1.35;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
 .nx-rel{margin-top:6px;font-size:12px;color:var(--core);}
@@ -151,7 +155,8 @@ canvas#org{width:100%;height:100%;display:block;}
 .home-activity{
   position:absolute;left:50%;bottom:4%;transform:translate(-50%,6px);
   max-width:92%;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;
-  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
+  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  box-shadow:var(--shadow-rest);
   font-size:12.5px;color:var(--text-soft);white-space:nowrap;
   opacity:0;pointer-events:none;   /* never steal the orb's tap-to-wake click */
   transition:opacity .25s,transform .25s,border-color .3s,color .3s;
@@ -173,7 +178,8 @@ canvas#org{width:100%;height:100%;display:block;}
 .plan-card{
   position:absolute;left:50%;bottom:12%;transform:translateX(-50%);
   max-width:92%;min-width:220px;padding:10px 16px;border-radius:14px;
-  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
+  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  box-shadow:var(--shadow-rest);
   font-size:12.5px;color:var(--muted);
 }
 .plan-card[hidden]{display:none;}
@@ -182,3 +188,9 @@ canvas#org{width:100%;height:100%;display:block;}
 .plan-steps li{display:flex;align-items:center;gap:8px;color:var(--text-soft);}
 .plan-steps li .plan-step-icon{flex:none;width:14px;text-align:center;}
 .plan-steps li.done{color:var(--muted);}
+
+/* ---- unified card spotlight: same cursor-following soft light as the clock card (--spot-x/--spot-y set by
+   js/fx.js, rAF-throttled, not attached under reduced-motion). Decorative only; never intercepts clicks. ---- */
+.today-card::after,.next-card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s ease;
+  background:radial-gradient(150px 150px at var(--spot-x,50%) var(--spot-y,0%),rgba(255,255,255,.06),transparent 70%);}
+.today-card:hover::after,.next-card:hover::after{opacity:1;}

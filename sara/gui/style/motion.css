@@ -1,0 +1,70 @@
+/* ==========================================================================
+   motion.css  --  styles for js/motion.js (cross-page motion polish). Compositor-friendly properties only
+   (transform / opacity) wherever the effect allows it; every effect has a reduced-motion fallback.
+   Loaded after the per-page files so it can refine them.
+   ========================================================================== */
+
+/* ---- 1) wake shockwave: thin ring expanding from the orb centre (js/motion.js, added inside #stage) ---- */
+.wake-ring{
+  position:absolute;left:33%;top:33%;width:34%;height:34%;border-radius:50%;pointer-events:none;
+  border:1px solid rgba(63,216,196,.85);box-shadow:0 0 10px rgba(63,216,196,.35);
+  transform:scale(1);opacity:1;will-change:transform,opacity;
+  animation:wakeRing .6s cubic-bezier(.16,.84,.3,1) forwards;
+}
+@keyframes wakeRing{from{transform:scale(1);opacity:1;}to{transform:scale(2.2);opacity:0;}}
+@media (prefers-reduced-motion:reduce){.wake-ring{display:none;}}
+
+/* ---- 8) scroll edge fade: content softly fades at a scroll container's top/bottom edge instead of being cut off.
+   js/motion.js edgeFade() sets --fade-t / --fade-b (0..24px) from the real scroll position, so a list at rest is never
+   dimmed -- the fade grows only on the side that actually has more content. The mask is applied only while a fade is
+   non-zero (.edge-on). Never put this on an element that has a background/border or a sticky child (the mask would
+   clip them) -- that's why the chat dock lives outside the scrolling .chat-log. ---- */
+.edge-fade.edge-on{
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--fade-t,0px),#000 calc(100% - var(--fade-b,0px)),transparent 100%);
+  mask-image:linear-gradient(to bottom,transparent 0,#000 var(--fade-t,0px),#000 calc(100% - var(--fade-b,0px)),transparent 100%);
+}
+
+/* ---- 11) border beam: a light travels once around a card's border (js/motion.js M.beam adds .beam-on / .beam-glow).
+   The card's own ::after draws a 1.5px ring (border-box minus content-box via mask-composite) filled with a rotating
+   conic-gradient; only --beam-angle animates. Cards already own ::before (glass highlight) but not ::after. ---- */
+@property --beam-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
+.beam-on::after{
+  content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;
+  background:conic-gradient(from var(--beam-angle),transparent 0deg,transparent 235deg,rgba(63,216,196,.18) 262deg,rgba(63,216,196,.95) 335deg,#d2fff8 358deg,transparent 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:beamSpin 1.2s cubic-bezier(.45,.05,.35,1) forwards,beamFade 1.2s ease forwards;
+}
+@keyframes beamSpin{from{--beam-angle:0deg;}to{--beam-angle:360deg;}}
+@keyframes beamFade{0%{opacity:0;}12%{opacity:1;}82%{opacity:1;}100%{opacity:0;}}
+/* fallback where @property is unavailable (older WebKitGTK): one soft glow pulse instead of the travelling light */
+.beam-glow{animation:beamGlow 1.2s ease-out 1;}
+@keyframes beamGlow{
+  0%,100%{box-shadow:var(--shadow-rest);}
+  35%{box-shadow:var(--shadow-rest),0 0 0 1px rgba(63,216,196,.6),0 0 18px rgba(63,216,196,.35);}
+}
+@media (prefers-reduced-motion:reduce){.beam-on::after{display:none;}.beam-glow{animation:none;}}
+
+/* ---- 17) slider value bubble (js/motion.js): sits above the thumb while dragging ---- */
+.slider-wrap{position:relative;}
+.slider-bubble{
+  position:absolute;bottom:calc(50% + 12px);left:0;min-width:28px;padding:3px 7px;border-radius:8px;text-align:center;
+  background:var(--panel-2);border:1px solid rgba(63,216,196,.45);color:var(--core);font-size:11.5px;line-height:1.2;
+  font-variant-numeric:tabular-nums;pointer-events:none;z-index:2;
+  opacity:0;transform:translate(-50%,4px) scale(.9);transition:opacity .16s ease,transform .2s var(--ease-premium,ease);
+}
+.slider-bubble.show{opacity:1;transform:translate(-50%,0) scale(1);}
+@media (prefers-reduced-motion:reduce){.slider-bubble,.slider-bubble.show{transition:opacity .01s;transform:translate(-50%,0);}}
+
+/* ---- 18) sheets (Today / Clock): spring open + close. Backdrop blur is a FIXED value (components.css .overlay) on purpose:
+   animating blur is the costliest GPU effect and would fight STT/TTS/LLM for VRAM. Only transform/opacity move. ---- */
+.overlay .sheet{transform:translateY(26px) scale(.955);transition:transform .22s cubic-bezier(.4,0,1,1);will-change:transform;}
+.overlay.open .sheet{transform:translateY(0) scale(1);transition:transform .52s cubic-bezier(.34,1.42,.64,1);}
+.overlay.sheet-dragging{transition:none;}
+.overlay.sheet-dragging .sheet{transition:none;cursor:grabbing;user-select:none;}
+@media (prefers-reduced-motion:reduce){.overlay .sheet,.overlay.open .sheet{transform:none;transition:none;}}
+
+/* ---- 19) nav proximity scale (js/motion.js sets --prox per button). The :active press scale in layout.css still wins. ---- */
+.nav button{transform:scale(var(--prox,1));transition:color .2s,transform .14s ease-out;will-change:transform;}
+@media (prefers-reduced-motion:reduce){.nav button{transform:none;}}
+

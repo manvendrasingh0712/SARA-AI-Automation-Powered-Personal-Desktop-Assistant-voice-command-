@@ -110,7 +110,12 @@
     if (!el) return;
     const act = function () { const on = !el.classList.contains('on'); SARA.setToggle(el, on); SARA.sound.toggle(on); handler(on, el); };
     el.addEventListener('click', act);
-    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault(); act();
+        if (!SARA.reduceMotion) { el.classList.remove('liquid'); void el.offsetWidth; el.classList.add('liquid'); setTimeout(() => el.classList.remove('liquid'), 420); }   // keyboard squash (see components.css)
+      }
+    });
   };
 
   /* ---- boot sequence (same guard logic as the old app.js: never double-start timers) ---- */

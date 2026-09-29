@@ -215,7 +215,15 @@ def _build_planner_system_prompt(max_steps: int) -> str:
         "given above.\n"
         "- Always call propose_plan, even for a single-tool request -- "
         "do not call any other function, and do not reply with plain "
-        "text instead of a function call."
+        "text instead of a function call.\n\n"
+        "Example: for the message \"chrome kholo aur cricket ki news "
+        "batao\", propose_plan's steps argument should be:\n"
+        '[{"tool": "open_app", "arguments": {"target": "chrome"}, '
+        '"depends_on_previous": false}, '
+        '{"tool": "news", "arguments": {"topic": "cricket"}, '
+        '"depends_on_previous": false}]\n'
+        "This shows two independent steps in one ordered list, using "
+        "only tool names from the list above and real argument keys."
     )
 
 

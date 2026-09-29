@@ -330,7 +330,7 @@ class Config:
     OLLAMA_FAST_MODEL: str = os.getenv("OLLAMA_FAST_MODEL", "")
     OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     OLLAMA_TIMEOUT: int = _int(os.getenv("OLLAMA_TIMEOUT"), default=30)
-    OLLAMA_NUM_CTX: int = _int(os.getenv("OLLAMA_NUM_CTX"), default=2048)
+    OLLAMA_NUM_CTX: int = _int(os.getenv("OLLAMA_NUM_CTX"), default=4096)
     OLLAMA_SUMMARY_NUM_CTX: int = _int(
         os.getenv("OLLAMA_SUMMARY_NUM_CTX"), default=4096
     )
@@ -351,8 +351,15 @@ class Config:
     # ── Gemini ────────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    GEMINI_FAST_MODEL: str = os.getenv("GEMINI_FAST_MODEL", "")
     GEMINI_MAX_HISTORY_TOKENS: int = _int(
         os.getenv("GEMINI_MAX_HISTORY_TOKENS"), default=30_000
+    )
+    GEMINI_TEMPERATURE: float = _float(os.getenv("GEMINI_TEMPERATURE"), default=0.7)
+    GEMINI_TOP_K: int = _int(os.getenv("GEMINI_TOP_K"), default=40)
+    GEMINI_TOP_P: float = _float(os.getenv("GEMINI_TOP_P"), default=0.9)
+    GEMINI_MAX_OUTPUT_TOKENS: int = _int(
+        os.getenv("GEMINI_MAX_OUTPUT_TOKENS"), default=200
     )
 
     # ── Automatic fallback (Gemini -> Ollama) ────────────────────────────
@@ -1077,6 +1084,14 @@ class Config:
         cls.OLLAMA_REPEAT_PENALTY = max(
             _MIN_OLLAMA_REPEAT_PENALTY,
             min(_MAX_OLLAMA_REPEAT_PENALTY, cls.OLLAMA_REPEAT_PENALTY),
+        )
+
+        # ── Gemini generation-parameter clamps ───────────────────────────
+        cls.GEMINI_TEMPERATURE = max(0.0, min(2.0, cls.GEMINI_TEMPERATURE))
+        cls.GEMINI_TOP_K = max(1, min(200, cls.GEMINI_TOP_K))
+        cls.GEMINI_TOP_P = max(0.0, min(1.0, cls.GEMINI_TOP_P))
+        cls.GEMINI_MAX_OUTPUT_TOKENS = max(
+            16, min(2048, cls.GEMINI_MAX_OUTPUT_TOKENS)
         )
 
         # ── RAG / long-term memory clamps ──────────────────────────────────

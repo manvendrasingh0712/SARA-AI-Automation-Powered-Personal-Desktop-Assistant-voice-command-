@@ -71,21 +71,29 @@
     GROUPS.forEach(function (g) {
       const items = (buckets[g[0]] || []).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
       if (!items.length) return;
-      html += '<div class="section-label group-label ' + g[0] + '">' + g[1] + '</div>' + items.map(function (r) {
+      html += '<div class="section-label group-label ' + g[0] + '" data-key="g:' + g[0] + '">' + g[1] + '</div>' + items.map(function (r) {
         const showDate = g[0] === 'upcoming' || g[0] === 'overdue' || g[0] === 'done';
-        return '<div class="row' + (r.done ? ' done' : '') + '"><span class="dot" data-id="' + r.id + '" title="Mark done"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5.5"/></svg></span>' +
+        return '<div class="row' + (r.done ? ' done' : '') + '" data-key="r:' + r.id + '"><span class="dot" data-id="' + r.id + '" title="Mark done"><svg viewBox="0 0 12 12"><path d="M2.5 6.5l2.5 2.5 4.5-5.5"/></svg></span>' +
           '<span class="r-time">' + SARA.escapeHtml(SARA.fmt12h(r.time)) + '</span>' +
           '<span class="r-text"><span class="r-t">' + SARA.escapeHtml(r.text) + '</span>' + (showDate ? ' <small style="color:var(--muted)">· ' + SARA.escapeHtml(shortDate(r.date)) + '</small>' : '') + '</span>' +
           '<button class="r-del" data-del="' + r.id + '" title="Delete">×</button></div>';
       }).join('');
     });
-    $('reminderGroups').innerHTML = html || '<div class="empty">No reminders yet. Add one below, or say “remind me to…”.</div>';
+    const out = html || '<div class="empty">No reminders yet. Add one below, or say “remind me to…”.</div>';
+    const apply = function () { $('reminderGroups').innerHTML = out; };
+    if (SARA.motion && SARA.motion.flip) SARA.motion.flip($('reminderGroups'), apply); else apply();   // rows glide to their new place (js/motion.js)
   }
+  /* A row animation (check-draw + collapse) owns the list until it ends: a refresh that lands mid-animation
+     (60s poll, 'visible', a page revisit) is parked and applied right after, so the row can never vanish half-way. */
+  let rowBusy = 0, refreshQueued = false;
   async function loadReminders() {
+    if (rowBusy) { refreshQueued = true; return; }
     const res = await SARA.callApi('get_reminders');
+    if (rowBusy) { refreshQueued = true; return; }           // an animation started while the call was in flight
     const list = (res && res.data) || [];
     renderReminders(list); SARA.emit('reminders', list);
   }
+  function endRowBusy() { if (--rowBusy <= 0) { rowBusy = 0; refreshQueued = false; loadReminders(); } }
   $('reminderGroups').addEventListener('click', async function (e) {
     const dot = e.target.closest('.dot'), del = e.target.closest('[data-del]');
     if (dot) {
@@ -93,11 +101,24 @@
       if (row.classList.contains('completing')) return;                  // ignore double-clicks mid-animation
       const completing = !row.classList.contains('done');
       if (completing) { row.classList.add('completing'); SARA.sound.done(); } else SARA.sound.tap();
-      const hold = (completing && !SARA.reduceMotion) ? sleep(520) : Promise.resolve();   // let the check-draw finish before the list re-renders
-      await SARA.callApi('toggle_reminder', parseInt(dot.dataset.id, 10));
-      await hold; loadReminders();
+      rowBusy++;
+      try {
+        const call = SARA.callApi('toggle_reminder', parseInt(dot.dataset.id, 10));
+        if (completing && !SARA.reduceMotion) { await sleep(520); await SARA.motion.collapse(row); }   // check-draw + strike, then dim + collapse
+        await call;
+      } finally { endRowBusy(); }
     }
-    else if (del) { await SARA.callApi('delete_reminder', parseInt(del.dataset.del, 10)); loadReminders(); }
+    else if (del) {
+      const row = del.closest('.row');
+      if (row && row.classList.contains('removing')) return;
+      rowBusy++;
+      try {
+        if (row) row.classList.add('removing');
+        const call = SARA.callApi('delete_reminder', parseInt(del.dataset.del, 10));
+        if (row) await SARA.motion.collapse(row);
+        await call;
+      } finally { endRowBusy(); }
+    }
   });
   function resetReminderForm() {
     $('newReminderText').value = '';

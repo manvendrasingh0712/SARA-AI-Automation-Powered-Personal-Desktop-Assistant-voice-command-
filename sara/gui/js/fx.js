@@ -33,6 +33,12 @@
     const page = $('page-' + name); if (!page) return;
     const dir = order.indexOf(name) >= order.indexOf(prev) ? 'slide-r' : 'slide-l';
     page.classList.remove('slide-r', 'slide-l'); page.classList.add(dir);
+    // staggered card/row entrance window (style/layout.css .stagger-in) -- only right after a page switch,
+    // so periodic list refreshes never replay it. Timer is per-page and cleared on re-entry.
+    if (!SARA.reduceMotion) {
+      clearTimeout(page._stg); page.classList.add('stagger-in');
+      page._stg = setTimeout(function () { page.classList.remove('stagger-in'); }, 450);
+    }
     prev = name;
   });
 
@@ -41,6 +47,19 @@
     document.querySelectorAll('[data-skel]').forEach(function (el) { if (el.querySelector('.skel')) el.textContent = 'Unavailable right now.'; });
     document.querySelectorAll('.skel-inline').forEach((el) => el.replaceWith(document.createTextNode('—')));
   }, 25000);
+
+  /* ---- 3b) unified card spotlight (today/next cards; clock-card.js does its own) ---- */
+  if (!SARA.reduceMotion) {
+    ['.today-card', '.next-card'].forEach(function (sel) {
+      const c = document.querySelector(sel); if (!c) return;
+      let raf = 0, x = 50, y = 0;
+      c.addEventListener('pointermove', function (e) {
+        const r = c.getBoundingClientRect();
+        x = (e.clientX - r.left) / r.width * 100; y = (e.clientY - r.top) / r.height * 100;
+        if (!raf) raf = requestAnimationFrame(function () { raf = 0; c.style.setProperty('--spot-x', x.toFixed(1) + '%'); c.style.setProperty('--spot-y', y.toFixed(1) + '%'); });
+      }, { passive: true });
+    });
+  }
 
   /* ---- 4) cursor parallax (skipped entirely under reduced-motion) ---- */
   if (!SARA.reduceMotion) {

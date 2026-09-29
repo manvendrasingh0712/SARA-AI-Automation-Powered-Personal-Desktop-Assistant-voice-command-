@@ -44,7 +44,30 @@
   $('csThemes').addEventListener('click', function (e) {
     const b = e.target.closest('.chip[data-theme]'); if (!b) return;
     SARA.sound.tap(); applyTheme(b.dataset.theme);
+    if (!SARA.reduceMotion) { b.classList.remove('just-picked'); void b.offsetWidth; b.classList.add('just-picked'); }
   });
+
+  /* ---- hover spotlight (Home card only -- the expanded sheet doesn't need it): a soft radial
+     highlight that tracks the pointer, same rAF-throttle idea as fx.js's ambient parallax.
+     Fully skipped under reduced-motion (listener never attached). ---- */
+  if (!SARA.reduceMotion) {
+    let sx = 50, sy = 0, raf = 0;
+    function applySpot() { raf = 0; card.style.setProperty('--spot-x', sx.toFixed(1) + '%'); card.style.setProperty('--spot-y', sy.toFixed(1) + '%'); }
+    card.addEventListener('pointermove', function (e) {
+      const r = card.getBoundingClientRect();
+      sx = ((e.clientX - r.left) / r.width) * 100; sy = ((e.clientY - r.top) / r.height) * 100;
+      if (!raf) raf = requestAnimationFrame(applySpot);
+    }, { passive: true });
+  }
+
+  /* ---- date/status sub-line reveal: a brief fade whenever the visible text actually changes
+     (mode switch, day rollover) -- not on every 1s tick. ---- */
+  function revealIfChanged(el, text) {
+    if (el.textContent === text) return;
+    el.textContent = text;
+    if (SARA.reduceMotion) return;
+    el.classList.remove('reveal'); void el.offsetWidth; el.classList.add('reveal');
+  }
 
   /* ---- state machine: clock | timer | stopwatch (only one is ever dominant) ---- */
   let mode = 'clock';
@@ -69,6 +92,8 @@
     if (!isClock) { el.ccModeLabel.textContent = el.csModeLabel.textContent = mode.toUpperCase(); }
     el.timerPanel.hidden = mode !== 'timer';
     el.swPanel.hidden = mode !== 'stopwatch';
+    if (mode !== 'stopwatch') sheetInner.dataset.swRunning = '0';
+    if (mode !== 'timer') sheetInner.dataset.urgent = '0';
     document.querySelectorAll('.cs-mode-btn').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
     card.dataset.mode = mode;
     tick();
@@ -82,8 +107,8 @@
     el.csTime.textContent = t + ' ' + ap;
     const day = now.toLocaleDateString(undefined, { weekday: 'long' });
     const date = now.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
-    el.ccDate.textContent = day + ', ' + date;
-    el.csSub.textContent = pad2(s) + ' sec \u00b7 ' + day + ', ' + date;
+    revealIfChanged(el.ccDate, day + ', ' + date);
+    el.csSub.textContent = pad2(s) + ' sec \u00b7 ' + day + ', ' + date;   // ticks every second on purpose -- no reveal here
     const greet = greetingText(now);
     if (el.ccGreet.textContent !== greet) { el.ccGreet.textContent = greet; el.csGreet.textContent = greet; }
     const frac = s / 60;
@@ -100,10 +125,13 @@
     el.ccTime.textContent = text; el.ccAmpm.textContent = ''; el.ccSec.textContent = '';
     el.csTime.textContent = text;
     const label = timer.completed ? 'Timer complete' : (timer.paused ? 'Timer paused' : 'Timer running');
-    el.ccDate.textContent = label; el.csSub.textContent = label;
+    revealIfChanged(el.ccDate, label); el.csSub.textContent = label;
     const frac = timer.duration > 0 ? Math.max(0, Math.min(1, remaining / (timer.duration * 1000))) : 0;
     el.ccBarFill.style.width = (frac * 100).toFixed(1) + '%';
     el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+    // Urgency: last 15% of the countdown gets the danger-tinted ring (see style/clock-card.css).
+    // Cleared as soon as it's no longer true -- never sticks around after a pause/resume/cancel.
+    sheetInner.dataset.urgent = (!timer.completed && frac > 0 && frac <= 0.15) ? '1' : '0';
     if (!timer.paused && remaining <= 0 && !timer.completed) {
       timer.completed = true;
       el.ccStatus.hidden = false; el.csStatus.hidden = false;
@@ -123,7 +151,8 @@
     el.ccTime.textContent = text; el.ccAmpm.textContent = ''; el.ccSec.textContent = '';
     el.csTime.textContent = text;
     const label = stopwatch.running ? 'Stopwatch running' : 'Stopwatch paused';
-    el.ccDate.textContent = label; el.csSub.textContent = label;
+    revealIfChanged(el.ccDate, label); el.csSub.textContent = label;
+    sheetInner.dataset.swRunning = stopwatch.running ? '1' : '0';
   }
 
   function tick() {
@@ -166,7 +195,7 @@
   el.timerCancel.addEventListener('click', async function () {
     await SARA.callApi('cancel_timer');
     if (timer && timer.timeoutBackToClock) clearTimeout(timer.timeoutBackToClock);
-    timer = null; el.timerControls.hidden = true; setMode('clock');
+    timer = null; el.timerControls.hidden = true; sheetInner.dataset.urgent = '0'; setMode('clock');
   });
 
   /* ---- stopwatch controls ---- */
@@ -201,7 +230,7 @@
     if (state.status === 'started' && state.duration) beginTimer(state.duration);
     else if (state.status === 'cancelled') {
       if (timer && timer.timeoutBackToClock) clearTimeout(timer.timeoutBackToClock);
-      timer = null; el.timerControls.hidden = true; setMode('clock');
+      timer = null; el.timerControls.hidden = true; sheetInner.dataset.urgent = '0'; setMode('clock');
     } else tick();
   });
   SARA.on('ev:stopwatch_state', function (state) {

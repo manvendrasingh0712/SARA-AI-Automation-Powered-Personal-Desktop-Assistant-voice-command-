@@ -101,7 +101,7 @@ _TOOL_CATEGORY_KEYWORDS: Dict[str, FrozenSet[str]] = {
     "clipboard_write": frozenset({"clipboard"}),
     "open_app": frozenset({"open ", "launch ", "start ", "kholo", "chalao", "chalu karo"}),
     "close_app": frozenset({"close ", "quit ", "exit ", "terminate ", "band karo", "band kro"}),
-    "calculator": frozenset({"calculate", "what is", "how much", "jod", "ghata", "guna", "bhaag"}),
+    "calculator": frozenset({"calculate", "jod", "ghata", "guna", "bhaag"}),
     "reminder_add": frozenset({"remind", "reminder", "yaad dila", "yaad dilana"}),
     "set_timer": frozenset({"timer", "countdown"}),
     "take_note": frozenset({"note down", "jot down", "note karo", "note kar lo"}),
@@ -163,6 +163,32 @@ _MIN_DISTINCT_CATEGORIES_FOR_AUTO_TRIGGER = 2
 _UNUSUALLY_LONG_INPUT_CHARS = 500
 
 
+# BUGFIX (mirrors sara.core.tool_router's _has_math_signal fix):
+# "what is"/"what's"/"how much" are too ambiguous to count as a bare
+# calculator keyword on their own (e.g. "what is my dog's name" is not
+# a math question) -- they only count as a calculator signal when the
+# message ALSO contains an actual digit/operator/spelled-out math
+# keyword. Kept separate from _TOOL_CATEGORY_KEYWORDS above (which is
+# pure substring scanning) since this needs a regex check.
+_MATH_SIGNAL_RE = re.compile(
+    r"\d"
+    r"|\d\s*[%+\-*/^]|[%+\-*/^]\s*\d"
+    r"|\b(plus|minus|times|divided|multiplied|"
+    r"squared|cubed|square\s*root|cube\s*root|"
+    r"percent|percentage|sum\s+of|product\s+of|"
+    r"average\s+of)\b",
+    re.IGNORECASE,
+)
+_MATH_QUESTION_PHRASES: Tuple[str, ...] = ("what is", "what's", "how much", "kitna")
+
+
+def _has_math_signal(text: str) -> bool:
+    """True if `text` contains a digit, a digit-adjacent operator, or a
+    spelled-out arithmetic keyword. See module note above
+    _MATH_SIGNAL_RE for why this exists as its own check."""
+    return bool(_MATH_SIGNAL_RE.search(text or ""))
+
+
 def _matched_categories(lowered_text: str) -> FrozenSet[str]:
     """
     Returns the set of tool-category names whose keyword gate has at
@@ -183,6 +209,15 @@ def _matched_categories(lowered_text: str) -> FrozenSet[str]:
                 break
         if len(hits) >= _MIN_DISTINCT_CATEGORIES_FOR_AUTO_TRIGGER:
             return frozenset(hits)
+
+    # BUGFIX: "what is"/"what's"/"how much"/"kitna" only count as a
+    # calculator signal when the message ALSO looks math-shaped -- see
+    # _has_math_signal() above.
+    if "calculator" not in hits and any(
+        phrase in lowered_text for phrase in _MATH_QUESTION_PHRASES
+    ) and _has_math_signal(lowered_text):
+        hits.add("calculator")
+
     return frozenset(hits)
 
 

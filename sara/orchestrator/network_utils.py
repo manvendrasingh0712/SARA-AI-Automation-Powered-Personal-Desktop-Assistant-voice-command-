@@ -85,44 +85,64 @@ def _wait_cancellable(future, timeout: float, cancel_event, ctx=None, filler_aft
                     pass
 
 
-def _call_with_timeout(
+def _call_with_status(
     fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, tool_name: str = None,
     ctx=None, filler_after: float = 4.0, **kwargs
 ):
+    """
+    Same behaviour as _call_with_timeout(), but returns (status, value)
+    instead of hiding failures inside a friendly string:
+        ("ok", <fn's real return value>)
+        ("cancelled", "Okay, stopped.")       -- user pressed Stop
+        ("failed", "<friendly message>")      -- breaker open / timeout / error
+    Callers that must not confuse an error message with real data (e.g. the
+    daily briefing) use this; everything else keeps using _call_with_timeout().
+    """
     name = tool_name or getattr(fn, "__name__", "unknown_tool")
 
     with _breaker_lock:
         open_until = _breaker_open_until.get(name, 0.0)
         if time.time() < open_until:
             remaining = int(open_until - time.time())
-            return (
+            return "failed", (
                 f"Sorry, that's not responding right now -- give it about "
                 f"{max(remaining, 1)} seconds and try again."
             )
 
     cancel_event = TURN_STATE.current_event()
     if cancel_event.is_set():
-        return "Okay, stopped."
+        return "cancelled", "Okay, stopped."
 
     future = _NETWORK_EXECUTOR.submit(fn, *args, **kwargs)
     try:
         result = _wait_cancellable(future, timeout, cancel_event, ctx=ctx, filler_after=filler_after)
     except _TurnCancelled:
         future.cancel()  # no-op if already running; see KNOWN LIMITATION
-        return "Okay, stopped."  # a Stop is not a tool failure: no breaker hit
+        return "cancelled", "Okay, stopped."  # a Stop is not a tool failure: no breaker hit
     except FutureTimeoutError:
         future.cancel()  # no-op if fn is already running; see note above
         _record_breaker_failure(name)
-        return (
+        return "failed", (
             "Sorry, that's taking longer than expected. Please try again in a moment."
         )
     except Exception as e:
         _record_breaker_failure(name)
         logger.error(f"[NetworkTimeout] '{name}' failed: {e}")
-        return "Sorry, that ran into a problem \u2014 please try again."
+        return "failed", "Sorry, that ran into a problem \u2014 please try again."
     else:
         _record_breaker_success(name)
-        return result
+        return "ok", result
+
+
+def _call_with_timeout(
+    fn, *args, timeout: float = _NETWORK_TOOL_TIMEOUT_S, tool_name: str = None,
+    ctx=None, filler_after: float = 4.0, **kwargs
+):
+    """Unchanged public behaviour: returns fn's result, or a friendly string on failure."""
+    return _call_with_status(
+        fn, *args, timeout=timeout, tool_name=tool_name, ctx=ctx,
+        filler_after=filler_after, **kwargs
+    )[1]
 
 
 def _record_breaker_failure(name: str) -> None:

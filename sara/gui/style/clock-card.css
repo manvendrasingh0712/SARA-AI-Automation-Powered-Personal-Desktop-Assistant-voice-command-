@@ -13,12 +13,22 @@
   --clock-track: var(--line);
   position:absolute;left:32px;top:28px;width:210px;padding:14px 18px 16px;border-radius:14px;
   background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
-  cursor:pointer;transition:border-color .2s,transform .2s,box-shadow .3s;
+  cursor:pointer;overflow:hidden;
+  transition:border-color .2s,transform .2s,box-shadow .3s,background-color .4s ease;
   animation:pageIn .6s ease .15s both;
 }
 .clock-card:hover{border-color:var(--clock-accent-soft);transform:translateY(-2px);box-shadow:0 0 22px var(--clock-glow);}
 .clock-card:active{transform:translateY(0) scale(.985);}
 .clock-card:focus-visible{outline:2px solid var(--clock-accent-soft);outline-offset:2px;}
+/* ---- hover spotlight: a soft light following the cursor, set via --spot-x/--spot-y (js/clock-card.js,
+   pointermove, same rAF-throttle pattern as fx.js's ambient parallax). Purely decorative overlay,
+   never intercepts clicks, and skipped entirely under reduced-motion (no listener attached there). ---- */
+.clock-card::after{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s ease;
+  background:radial-gradient(160px 160px at var(--spot-x,50%) var(--spot-y,0%), rgba(255,255,255,.07), transparent 70%);
+}
+.clock-card:hover::after{opacity:1;}
+@media (prefers-reduced-motion:reduce){.clock-card::after{display:none;}}
 
 .cc-greet{font-size:11.5px;color:var(--text-soft);letter-spacing:.02em;}
 .cc-modelabel{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--clock-accent);}
@@ -70,6 +80,28 @@
 .clock-sheet.cs-pulse .cs-ring-fg{animation:csCompletePulse .9s ease-out;}
 @keyframes csCompletePulse{0%{filter:drop-shadow(0 0 6px var(--clock-accent));}40%{filter:drop-shadow(0 0 20px var(--clock-accent));}100%{filter:drop-shadow(0 0 6px var(--clock-accent));}}
 
+/* ---- timer countdown urgency: js/clock-card.js adds data-urgent="1" to .clock-sheet (and .clock-card)
+   once remaining time drops under 15%. Colour intentionally reuses --danger (never a new hue), and the
+   pulse is gentle/slow -- this is an ambient cue, not an alarm. ---- */
+.clock-sheet[data-urgent="1"] .cs-ring-fg{stroke:var(--danger);filter:drop-shadow(0 0 8px var(--danger));animation:csUrgentPulse 1.1s ease-in-out infinite;}
+.clock-sheet[data-urgent="1"] .cs-time{color:var(--danger);}
+@keyframes csUrgentPulse{0%,100%{filter:drop-shadow(0 0 6px var(--danger));}50%{filter:drop-shadow(0 0 16px var(--danger));}}
+
+/* ---- stopwatch active "breathing" ring: a slow, low-amplitude opacity/glow cycle while running only
+   (paused = static, no animation -- matches the rest of the app's "state actually reflects reality" rule). ---- */
+.clock-sheet[data-sw-running="1"] .cs-ring-bg{animation:csBreathe 3.2s ease-in-out infinite;}
+@keyframes csBreathe{0%,100%{opacity:1;}50%{opacity:.55;}}
+
+/* ---- date reveal: brief fade/slide whenever the sub-line's text changes (mode switch, day rollover).
+   Toggled by js/clock-card.js adding/removing '.reveal' -- CSS only supplies the motion. ---- */
+.cc-date.reveal,.cs-sub.reveal{animation:dateReveal .45s var(--ease-premium,ease) both;}
+@keyframes dateReveal{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:none;}}
+
+/* ---- theme chip: small confirm-pop the instant a theme is picked (js/clock-card.js toggles '.just-picked'
+   off again after ~260ms) -- separate from the chip's normal hover/press motion in components.css. ---- */
+#csThemes .chip.just-picked{animation:themePick .32s var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
+@keyframes themePick{0%{transform:scale(1);}45%{transform:scale(1.14);}100%{transform:scale(1);}}
+
 /* ==========================================================================
    Themes -- isolated to .clock-card / .clock-sheet via [data-clock-theme].
    All stay inside SARA's existing palette (tokens.css: --core/--think/--speak/
@@ -109,9 +141,20 @@
 [data-clock-theme="pulse"] .cc-sec{animation:ccPulseText 2.4s ease-in-out infinite;}
 @keyframes ccPulseText{0%,100%{opacity:.85;}50%{opacity:1;}}
 
+/* ---- smooth theme transition: colour/shadow-bearing properties that change when [data-clock-theme]
+   switches now ease instead of snapping (.clock-card's own background-color transition was added
+   above; this adds the matching ones for the expanded sheet + the ring + the gradient clock-face text,
+   without touching the ring's existing linear countdown transition). ---- */
+.clock-sheet{transition:background-color .4s ease,border-color .3s ease;}
+.cc-time,.cs-time{transition:color .4s ease;}
+.cs-ring-fg{transition:stroke-dashoffset .3s linear,stroke .4s ease,filter .4s ease;}
+
 @media (prefers-reduced-motion:reduce){
   .clock-card{animation:none;transition:none;}
   .clock-sheet{animation:none;}
   [data-clock-theme="pulse"] .cs-ring-fg,[data-clock-theme="pulse"] .cc-sec,
   .clock-sheet.cs-pulse .cs-ring-fg{animation:none;}
+  .clock-sheet[data-urgent="1"] .cs-ring-fg,.clock-sheet[data-sw-running="1"] .cs-ring-bg,
+  #csThemes .chip.just-picked{animation:none;}
+  .cc-date.reveal,.cs-sub.reveal{animation:none;}
 }
