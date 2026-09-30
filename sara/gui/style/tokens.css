@@ -1,37 +1,105 @@
 /* ==========================================================================
-   tokens.css  --  colors, font, resets, body background. (Visual source: terrarium mockup)
-   Loaded FIRST. Every other style/*.css file reads these CSS variables.
-   To retheme the whole app, change only the variables in :root below.
+   tokens.css  --  ALL colours live here. Loaded FIRST; every other style/*.css reads these variables.
+   RETHEME = change (or add) a block below. Rules:
+     * colours that need transparency are stored as space-separated RGB triplets (--core-rgb: 63 216 196)
+       and used as  rgb(var(--core-rgb) / .35)  -- never hardcode rgba(63,216,196,.35) in another file.
+     * --core / --think / --speak are derived from those triplets, so they always match.
+     * a theme = one  :root[data-theme="name"]  block (js/theme.js sets data-theme + the accent-hue override).
+   Themes: sara (default) | ember | violet | slate | rose | paper (light)
    ========================================================================== */
-:root{
-  --void:#080C0D;
-  --deep:#0E1D1C;
-  --panel:#101917;
-  --panel-2:#152321;
-  --line:#1D2C29;
-  --core:#3FD8C4;
-  --think:#8B6FD8;
-  --speak:#E8C08F;
-  --text:#CBD8D6;
-  --text-soft:#8FA09D;
-  --muted:#556260;
-  --danger:#D97A6B;
-  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
 
-  /* ---- premium-polish tokens (glass / shadow / motion) ----
-     Additive only -- nothing above this line changed. Kept lightweight on purpose:
-     one blur value, two shadow levels, a couple of shared easings/durations so every
-     file that adds hover/press/transition motion stays visually consistent. */
-  --glass-bg: rgba(16,25,23,.72);
-  --glass-border: rgba(255,255,255,.08);
-  --glass-blur: 10px;
-  --shadow-rest: 0 1px 2px rgba(0,0,0,.22), 0 8px 20px -12px rgba(0,0,0,.45);
-  --shadow-hover: 0 2px 4px rgba(0,0,0,.24), 0 14px 32px -14px rgba(0,0,0,.55), 0 0 26px -6px var(--glow, rgba(63,216,196,.22));
+/* ---- shared, theme-independent tokens ---- */
+:root{
+  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --shine-rgb:255 255 255;                       /* white sheen used by spotlights / shimmers in every theme */
   --ease-premium: cubic-bezier(.22,1,.36,1);
   --ease-spring: cubic-bezier(.34,1.56,.64,1);
   --dur-fast: .16s;
   --dur-med: .28s;
+  --glass-blur: 10px;
 }
+
+/* ---- derived tokens (recomputed automatically per theme, incl. the accent-hue override) ---- */
+:root, :root[data-theme]{
+  --core:rgb(var(--core-rgb));
+  --think:rgb(var(--think-rgb));
+  --speak:rgb(var(--speak-rgb));
+  --core-hover:color-mix(in srgb,var(--core) 82%,white);
+  --glass-bg:rgb(var(--panel-rgb) / .72);
+  --glass-border:rgb(var(--fg-rgb) / .08);
+  --glow:rgb(var(--core-rgb) / .22);
+  --scrim:rgb(var(--void-rgb,4 8 8) / .72);
+  /* skill cards (js/skill_cards.js reads these) follow the theme */
+  --sara-card-bg:var(--panel-2); --sara-text:var(--text); --sara-accent:var(--core);
+}
+
+/* ---- 1. SARA (default dark) ---- */
+:root{
+  --void:#080C0D; --deep:#0E1D1C; --panel:#101917; --panel-rgb:16 25 23; --panel-2:#152321; --line:#1D2C29;
+  --core-rgb:63 216 196; --think-rgb:139 111 216; --speak-rgb:232 192 143;
+  --text:#CBD8D6; --text-soft:#8FA09D; --muted:#7A8B88; --faint:#4B5957;
+  --danger:#D97A6B; --danger-rgb:217 122 107; --on-core:#08110F;
+  --fg-rgb:255 255 255; color-scheme:dark;
+  --void-rgb:8 12 13; --vignette:rgba(0,0,0,.5);
+  --shadow-rest: 0 1px 2px rgba(0,0,0,.22), 0 8px 20px -12px rgba(0,0,0,.45);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.24), 0 14px 32px -14px rgba(0,0,0,.55), 0 0 26px -6px var(--glow);
+}
+
+/* ---- 2. EMBER ---- */
+:root[data-theme="ember"]{
+  --void:#0D0A09; --deep:#1B120E; --panel:#1A1310; --panel-rgb:26 19 16; --panel-2:#251B16; --line:#35261E;
+  --core-rgb:255 159 90; --think-rgb:201 123 216; --speak-rgb:242 210 139;
+  --text:#E6D8CE; --text-soft:#B09F94; --muted:#8C7B71; --faint:#5A4D45;
+  --danger:#EC6A5C; --danger-rgb:236 106 92; --on-core:#1A0D05;
+  --fg-rgb:255 255 255; color-scheme:dark;
+  --void-rgb:13 10 9; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- 3. VIOLET ---- */
+:root[data-theme="violet"]{
+  --void:#0A0812; --deep:#15102A; --panel:#14101F; --panel-rgb:20 16 31; --panel-2:#1C1730; --line:#2A2342;
+  --core-rgb:157 140 255; --think-rgb:90 200 250; --speak-rgb:255 155 210;
+  --text:#D9D5EE; --text-soft:#A29CC4; --muted:#8A84AE; --faint:#524C74;
+  --danger:#F07682; --danger-rgb:240 118 130; --on-core:#0C0820;
+  --fg-rgb:255 255 255; color-scheme:dark;
+  --void-rgb:10 8 18; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- 4. SLATE ---- */
+:root[data-theme="slate"]{
+  --void:#0B0E13; --deep:#131A24; --panel:#121720; --panel-rgb:18 23 32; --panel-2:#19202C; --line:#252E3D;
+  --core-rgb:138 180 255; --think-rgb:179 157 255; --speak-rgb:230 237 247;
+  --text:#D5DEEB; --text-soft:#9AA8BC; --muted:#7F8DA3; --faint:#4D586B;
+  --danger:#F07A7A; --danger-rgb:240 122 122; --on-core:#08111F;
+  --fg-rgb:255 255 255; color-scheme:dark;
+  --void-rgb:11 14 19; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- 5. ROSE ---- */
+:root[data-theme="rose"]{
+  --void:#0E080B; --deep:#1D1016; --panel:#1B1015; --panel-rgb:27 16 21; --panel-2:#26161D; --line:#382029;
+  --core-rgb:255 126 168; --think-rgb:155 124 255; --speak-rgb:255 211 168;
+  --text:#EBD6DD; --text-soft:#B79AA6; --muted:#937A85; --faint:#5F4A53;
+  --danger:#F07866; --danger-rgb:240 120 102; --on-core:#200812;
+  --fg-rgb:255 255 255; color-scheme:dark;
+  --void-rgb:14 8 11; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- 6. PAPER (light) -- glass, shadow, vignette and scrim are re-done for a light surface ---- */
+:root[data-theme="paper"]{
+  --void:#F4F1EA; --deep:#ECE7DC; --panel:#FBF9F4; --panel-rgb:251 249 244; --panel-2:#F1EDE3; --line:#DDD5C6;
+  --core-rgb:15 157 138; --think-rgb:107 84 201; --speak-rgb:181 118 58;
+  --text:#26302E; --text-soft:#4B5856; --muted:#5E6A67; --faint:#98A19E;
+  --danger:#BE4637; --danger-rgb:190 70 55; --on-core:#04201C;
+  --fg-rgb:38 48 46; color-scheme:light;
+  --void-rgb:244 241 234; --vignette:rgba(120,100,60,.10);
+  --glass-bg:rgb(var(--panel-rgb) / .82); --glass-border:rgb(var(--fg-rgb) / .10);
+  --shadow-rest: 0 1px 2px rgba(70,55,25,.10), 0 8px 20px -12px rgba(70,55,25,.28);
+  --shadow-hover: 0 2px 4px rgba(70,55,25,.12), 0 14px 32px -14px rgba(70,55,25,.34), 0 0 26px -8px var(--glow);
+  --scrim:rgb(236 231 220 / .78);
+}
+
+/* ---- reset + body ---- */
 *{box-sizing:border-box;}
 html,body{height:100%;}
 body{
@@ -46,16 +114,18 @@ body{
 body::after{ /* soft vignette */
   content:'';
   position:fixed; inset:0;
-  background:radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, rgba(0,0,0,0.5) 100%);
+  background:radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, var(--vignette) 100%);
   pointer-events:none;
   z-index:1;
 }
 button{font-family:inherit;}
 input,select,textarea{font-family:inherit;}
-::selection{background:var(--core);color:#08110F;}
+::selection{background:var(--core);color:var(--on-core);}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
+/* colour changes glide when the theme is switched (class is added by js/theme.js for ~600ms only) */
+:root.theme-anim, :root.theme-anim *{transition:background-color .45s ease,border-color .45s ease,color .45s ease,fill .45s ease,stroke .45s ease,box-shadow .45s ease !important;}
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important;}
 }

@@ -10,9 +10,9 @@
 body::before{
   content:'';position:fixed;inset:-25%;z-index:0;pointer-events:none;
   background:
-    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgba(63,216,196,.075), transparent 70%),
-    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgba(139,111,216,.07), transparent 70%),
-    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgba(232,192,143,.035), transparent 70%);
+    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgb(var(--core-rgb) / .075), transparent 70%),
+    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgb(var(--think-rgb) / .07), transparent 70%),
+    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgb(var(--speak-rgb) / .035), transparent 70%);
   animation:nebulaDrift 80s ease-in-out infinite alternate;
   will-change:transform;
   transition:filter .8s ease;

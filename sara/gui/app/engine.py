@@ -14,6 +14,7 @@ from .routines_api import ApiRoutinesMixin
 from .analytics import ApiAnalyticsMixin
 from .modes import ApiModesMixin
 from .clock_api import ApiClockMixin
+from .ui_prefs import ApiUiPrefsMixin
 
 
 _MIXINS = (
@@ -28,6 +29,7 @@ _MIXINS = (
     ApiAnalyticsMixin,
     ApiModesMixin,
     ApiClockMixin,
+    ApiUiPrefsMixin,
 )
 
 

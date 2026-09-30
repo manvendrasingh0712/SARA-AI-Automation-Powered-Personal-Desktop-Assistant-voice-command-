@@ -10,9 +10,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SARA AI</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style/fonts.css">
 <link rel="stylesheet" href="style/tokens.css">
+<link rel="stylesheet" href="style/palette.css">
 <link rel="stylesheet" href="style/ambient.css">
 <link rel="stylesheet" href="style/layout.css">
 <link rel="stylesheet" href="style/components.css">
@@ -104,6 +104,7 @@
         <div class="add-row">
           <input type="text" id="newNoteText" placeholder="Write a note…" autocomplete="off">
           <button class="pill-btn primary" id="saveNoteBtn">Save</button>
+          <button class="pill-btn" id="syncNotesBtn" title="Re-index class notes">Sync</button>
         </div>
         <div id="notesList" style="margin-top:8px;"></div>
       </div>
@@ -135,6 +136,7 @@
           <span class="mc-chev"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>
         </div>
         <div class="mc-body"><div class="mc-body-inner">
+          <div id="mcSessions" class="session-switcher"></div>
           <div class="seek-wrap">
             <input type="range" class="seek" id="seek" min="0" max="1" step="1" value="0" disabled>
             <div class="seek-times"><span id="curTime">0:00</span><span id="durTime">0:00</span></div>
@@ -150,6 +152,16 @@
           <div class="volume-row">
             <svg id="mcVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>
             <input type="range" id="mcVolume" class="volume" min="0" max="100" value="60" disabled>
+          </div>
+          <div class="volume-row system">
+            <svg id="mcSysVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
+            <span class="vol-label">SYSTEM</span>
+            <input type="range" id="mcSysVolume" class="volume" min="0" max="100" value="50">
+          </div>
+          <div class="sleep-row">
+            <button type="button" id="sleepBtn" class="sleep-btn"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>Sleep timer</button>
+            <span id="sleepBadge" class="sleep-badge"></span>
+            <div id="sleepMenu" class="sleep-menu"><button type="button" data-min="15">15m</button><button type="button" data-min="30">30m</button><button type="button" data-min="45">45m</button><button type="button" data-min="60">60m</button></div>
           </div>
           <div class="spectrum" id="spectrum"></div>
         </div></div>
@@ -257,6 +269,15 @@
             </div>
             <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button></div>
             <div class="acc-note">Export saves your recent conversation to memory_export.json next to the app.</div>
+          </div>
+        </section>
+
+        <section class="set-card" id="grp-appearance">
+          <div class="set-card-head"><div class="set-card-title">Appearance</div><div class="set-card-sub">theme &amp; accent colour</div></div>
+          <div class="set-card-body">
+            <div class="theme-grid" id="themeGrid"></div>
+            <div class="section-label">Accent hue</div>
+            <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset</button></div>
           </div>
         </section>
 
@@ -443,6 +464,9 @@
 <script src="js/ui.js"></script>
 <script src="js/mock.js"></script>
 <script src="js/core.js"></script>
+<script src="js/prefs.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/skill_cards.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/motion.js"></script>
 <script src="js/home.js"></script>
@@ -460,6 +484,7 @@
 <script src="js/settings-data.js"></script>
 <script src="js/settings-skills.js"></script>
 <script src="js/setup-wizard.js"></script>
+<script src="js/palette.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

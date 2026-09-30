@@ -11,7 +11,7 @@
 .boot-overlay .boot-orb{width:26px;height:26px;border-radius:50%;background:var(--core);box-shadow:0 0 28px var(--core);animation:orbPulse 2.2s ease-in-out infinite;}
 .boot-overlay .boot-track{width:220px;height:3px;border-radius:2px;background:var(--line);overflow:hidden;}
 .boot-overlay .boot-fill{height:100%;width:0;background:var(--core);box-shadow:0 0 8px var(--core);position:relative;overflow:hidden;}  /* width is eased in JS (ui.js) */
-.boot-overlay .boot-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);transform:translateX(-100%);animation:fillShine 1.4s ease-in-out infinite;}
+.boot-overlay .boot-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgb(var(--shine-rgb) / .5),transparent);transform:translateX(-100%);animation:fillShine 1.4s ease-in-out infinite;}
 .boot-overlay .boot-msg{animation:msgBreath 2.4s ease-in-out infinite;}
 @keyframes fillShine{to{transform:translateX(100%);}}
 @keyframes msgBreath{0%,100%{opacity:.6;}50%{opacity:1;}}
@@ -19,8 +19,8 @@
 .setup-modal{width:min(560px,100%);}
 .setup-check{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--line);}
 .setup-check .sc-icon{width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-size:12px;border:1px solid var(--line);color:var(--muted);}
-.setup-check.ready .sc-icon{border-color:rgba(63,216,196,.5);color:var(--core);box-shadow:0 0 8px rgba(63,216,196,.25);}
-.setup-check.error .sc-icon{border-color:rgba(217,122,107,.6);color:var(--danger);}
+.setup-check.ready .sc-icon{border-color:rgb(var(--core-rgb) / .5);color:var(--core);box-shadow:0 0 8px rgb(var(--core-rgb) / .25);}
+.setup-check.error .sc-icon{border-color:rgb(var(--danger-rgb) / .6);color:var(--danger);}
 .setup-check .sc-text{flex:1;min-width:0;}
 .setup-check .sc-text b{display:block;font-weight:500;font-size:14px;color:var(--text);}
 .setup-check .sc-text span{font-size:12px;color:var(--muted);}

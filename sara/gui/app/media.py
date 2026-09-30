@@ -3,9 +3,18 @@ sara.gui.app.media
 ApiMediaMixin -- media-player status/controls surfaced to the GUI's media widget.
 """
 import base64
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+
+
+def _dbg(where, exc):
+    """Report an exception that is deliberately swallowed (a media session that vanished mid-poll, a property a
+    player doesn't expose, ...). Silent by default because get_media_status polls every ~2s; set the environment
+    variable SARA_GUI_DEBUG=1 to print them while investigating."""
+    if os.environ.get("SARA_GUI_DEBUG") == "1":
+        print(f"[media:{where}] swallowed {type(exc).__name__}: {exc}")
 
 
 # ── module-level session identity cache: keeps the media widget's
@@ -73,7 +82,8 @@ async def _pick_active_session(mgr):
     """
     try:
         sessions = _sessions_list(mgr)
-    except Exception:
+    except Exception as _e:
+        _dbg("_pick_active_session", _e)
         sessions = []
 
     cached_id = _session_cache.get("app_id")
@@ -84,7 +94,8 @@ async def _pick_active_session(mgr):
                     s.get_playback_info()  # confirm it's still alive/queryable
                     _session_cache["session"] = s
                     return s
-            except Exception:
+            except Exception as _e:
+                _dbg("_pick_active_session", _e)
                 continue
         # Cached app's session is gone -- invalidate and fall through to
         # a fresh discovery below.
@@ -98,7 +109,8 @@ async def _pick_active_session(mgr):
             if pb and int(pb.playback_status) == 4:  # Playing
                 picked = s
                 break
-        except Exception:
+        except Exception as _e:
+            _dbg("_pick_active_session", _e)
             continue
 
     if picked is None:
@@ -110,7 +122,8 @@ async def _pick_active_session(mgr):
             current = mgr.get_current_session()
             if current is not None:
                 picked = current
-        except Exception:
+        except Exception as _e:
+            _dbg("_pick_active_session", _e)
             pass
         if picked is None and sessions:
             picked = sessions[0]
@@ -118,7 +131,8 @@ async def _pick_active_session(mgr):
     if picked is not None:
         try:
             _session_cache["app_id"] = getattr(picked, "source_app_user_model_id", None) or None
-        except Exception:
+        except Exception as _e:
+            _dbg("_pick_active_session", _e)
             _session_cache["app_id"] = None
         _session_cache["session"] = picked
     return picked
@@ -363,7 +377,8 @@ def _pycaw_session_for(aumid, title=None, artist=None):
             proc = session.Process
             if proc is not None:
                 name, pid = proc.name(), proc.pid
-        except Exception:
+        except Exception as _e:
+            _dbg("_pycaw_session_for", _e)
             pass
         rows.append((session, pid, name, _session_display_name(session)))
 
@@ -390,6 +405,13 @@ def _pycaw_session_for(aumid, title=None, artist=None):
         session, pid, name, disp = tier2_candidates[0]
         print(f"[volume-match] TIER2 exe-name match aumid={aumid!r} -> proc_name={proc_name!r} pid={pid} MATCHED")
         return session
+
+    # ---- Tier 2b: installed web-app (PWA) -> its audio lives in the host browser ----
+    if aumid and (aumid.endswith("!App") or (proc_name or "").lower() == "app.exe"):
+        _hosts = ("msedge.exe", "chrome.exe", "brave.exe", "firefox.exe", "opera.exe", "vivaldi.exe")
+        _active = [r for r in rows if (r[2] or "").lower() in _hosts and getattr(r[0], "State", 0) == 1]
+        if len(_active) == 1:
+            return _active[0][0]
 
     # ---- Tier 3: browser-tab display-name disambiguation ------------
     # Reached either because Tier 2 found >1 same-named session (the
@@ -534,7 +556,8 @@ class ApiMediaMixin:
                 def _safe_seconds(val, fallback=0.0):
                     try:
                         secs = val.total_seconds() if val else fallback
-                    except Exception:
+                    except Exception as _e:
+                        _dbg("_safe_seconds", _e)
                         return fallback
                     if secs != secs or secs in (float("inf"), float("-inf")):  # NaN/Infinity
                         return fallback
@@ -572,7 +595,8 @@ class ApiMediaMixin:
                 last_updated = getattr(tl, "last_updated_time", None)
                 try:
                     timeline_updated_at = last_updated.timestamp() if last_updated is not None else time.time()
-                except Exception:
+                except Exception as _e:
+                    _dbg("_safe_seconds", _e)
                     timeline_updated_at = time.time()
 
                 art_key = (props.title or "", props.artist or "", props.album_title or "", source_app)
@@ -672,7 +696,8 @@ class ApiMediaMixin:
                             "playing": status == 4,
                             "current": aumid == cached_id,
                         })
-                    except Exception:
+                    except Exception as _e:
+                        _dbg("_fetch", _e)
                         continue
                 return out
 
@@ -702,7 +727,8 @@ class ApiMediaMixin:
                         if (getattr(s, "source_app_user_model_id", None) or "") == app_id:
                             s.get_playback_info()  # confirm it's alive/queryable
                             return s
-                    except Exception:
+                    except Exception as _e:
+                        _dbg("_do", _e)
                         continue
                 return None
 
@@ -759,7 +785,8 @@ class ApiMediaMixin:
                         title = (props.title if props else "") or None
                         artist = (props.artist if props else "") or None
                         return title, artist
-                    except Exception:
+                    except Exception as _e:
+                        _dbg("_lookup_title_artist", _e)
                         continue
                 return None, None
 

@@ -8,11 +8,10 @@
 
 .clock-card{
   --clock-accent: var(--core);
-  --clock-accent-soft: rgba(63,216,196,.4);
-  --clock-glow: rgba(63,216,196,.16);
+  --clock-accent-soft: rgb(var(--core-rgb) / .4);
+  --clock-glow: rgb(var(--core-rgb) / .16);
   --clock-track: var(--line);
   position:absolute;left:32px;top:28px;width:210px;padding:14px 18px 16px;border-radius:14px;
-  background:rgba(16,25,23,.72);border:1px solid var(--line);backdrop-filter:blur(4px);
   cursor:pointer;overflow:hidden;
   transition:border-color .2s,transform .2s,box-shadow .3s,background-color .4s ease;
   animation:pageIn .6s ease .15s both;
@@ -25,7 +24,7 @@
    never intercepts clicks, and skipped entirely under reduced-motion (no listener attached there). ---- */
 .clock-card::after{
   content:'';position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s ease;
-  background:radial-gradient(160px 160px at var(--spot-x,50%) var(--spot-y,0%), rgba(255,255,255,.07), transparent 70%);
+  background:radial-gradient(160px 160px at var(--spot-x,50%) var(--spot-y,0%), rgb(var(--shine-rgb) / .07), transparent 70%);
 }
 .clock-card:hover::after{opacity:1;}
 @media (prefers-reduced-motion:reduce){.clock-card::after{display:none;}}
@@ -110,8 +109,8 @@
 
 /* Theme 2 -- Aurora: cyan/violet dual glow */
 [data-clock-theme="aurora"]{
-  --clock-accent-soft: rgba(139,111,216,.4);
-  --clock-glow: rgba(139,111,216,.18);
+  --clock-accent-soft: rgb(var(--think-rgb) / .4);
+  --clock-glow: rgb(var(--think-rgb) / .18);
 }
 [data-clock-theme="aurora"] .cs-ring-fg{filter:drop-shadow(0 0 8px var(--think));}
 [data-clock-theme="aurora"] .cc-time,[data-clock-theme="aurora"] .cs-time{
@@ -122,7 +121,7 @@
 /* Theme 3 -- Midnight: minimal, low-glow, near-monochrome */
 [data-clock-theme="midnight"]{
   --clock-accent: var(--text-soft);
-  --clock-accent-soft: rgba(143,160,157,.35);
+  --clock-accent-soft: rgb(var(--text-soft-rgb) / .35);
   --clock-glow: transparent;
 }
 [data-clock-theme="midnight"] .cs-ring-fg{filter:none;}
@@ -131,9 +130,9 @@
 /* Theme 4 -- Glass: soft glassmorphism */
 [data-clock-theme="glass"].clock-card,
 [data-clock-theme="glass"].clock-sheet{
-  background:rgba(255,255,255,.05);backdrop-filter:blur(16px);border-color:rgba(255,255,255,.14);
+  background:rgb(var(--fg-rgb) / .05);backdrop-filter:blur(16px);border-color:rgb(var(--fg-rgb) / .14);
 }
-[data-clock-theme="glass"] .cs-ring-bg{stroke:rgba(255,255,255,.12);}
+[data-clock-theme="glass"] .cs-ring-bg{stroke:rgb(var(--fg-rgb) / .12);}
 
 /* Theme 5 -- Pulse: same cyan accent, gentle animated glow */
 [data-clock-theme="pulse"] .cs-ring-fg{animation:csPulseGlow 2.4s ease-in-out infinite;}

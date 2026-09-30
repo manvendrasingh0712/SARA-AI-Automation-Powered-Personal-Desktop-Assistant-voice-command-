@@ -7,7 +7,7 @@
 /* ---- 1) wake shockwave: thin ring expanding from the orb centre (js/motion.js, added inside #stage) ---- */
 .wake-ring{
   position:absolute;left:33%;top:33%;width:34%;height:34%;border-radius:50%;pointer-events:none;
-  border:1px solid rgba(63,216,196,.85);box-shadow:0 0 10px rgba(63,216,196,.35);
+  border:1px solid rgb(var(--core-rgb) / .85);box-shadow:0 0 10px rgb(var(--core-rgb) / .35);
   transform:scale(1);opacity:1;will-change:transform,opacity;
   animation:wakeRing .6s cubic-bezier(.16,.84,.3,1) forwards;
 }
@@ -30,7 +30,7 @@
 @property --beam-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
 .beam-on::after{
   content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;
-  background:conic-gradient(from var(--beam-angle),transparent 0deg,transparent 235deg,rgba(63,216,196,.18) 262deg,rgba(63,216,196,.95) 335deg,#d2fff8 358deg,transparent 360deg);
+  background:conic-gradient(from var(--beam-angle),transparent 0deg,transparent 235deg,rgb(var(--core-rgb) / .18) 262deg,rgb(var(--core-rgb) / .95) 335deg,color-mix(in srgb,var(--core) 25%,white) 358deg,transparent 360deg);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
   animation:beamSpin 1.2s cubic-bezier(.45,.05,.35,1) forwards,beamFade 1.2s ease forwards;
@@ -41,7 +41,7 @@
 .beam-glow{animation:beamGlow 1.2s ease-out 1;}
 @keyframes beamGlow{
   0%,100%{box-shadow:var(--shadow-rest);}
-  35%{box-shadow:var(--shadow-rest),0 0 0 1px rgba(63,216,196,.6),0 0 18px rgba(63,216,196,.35);}
+  35%{box-shadow:var(--shadow-rest),0 0 0 1px rgb(var(--core-rgb) / .6),0 0 18px rgb(var(--core-rgb) / .35);}
 }
 @media (prefers-reduced-motion:reduce){.beam-on::after{display:none;}.beam-glow{animation:none;}}
 
@@ -49,7 +49,7 @@
 .slider-wrap{position:relative;}
 .slider-bubble{
   position:absolute;bottom:calc(50% + 12px);left:0;min-width:28px;padding:3px 7px;border-radius:8px;text-align:center;
-  background:var(--panel-2);border:1px solid rgba(63,216,196,.45);color:var(--core);font-size:11.5px;line-height:1.2;
+  background:var(--panel-2);border:1px solid rgb(var(--core-rgb) / .45);color:var(--core);font-size:11.5px;line-height:1.2;
   font-variant-numeric:tabular-nums;pointer-events:none;z-index:2;
   opacity:0;transform:translate(-50%,4px) scale(.9);transition:opacity .16s ease,transform .2s var(--ease-premium,ease);
 }

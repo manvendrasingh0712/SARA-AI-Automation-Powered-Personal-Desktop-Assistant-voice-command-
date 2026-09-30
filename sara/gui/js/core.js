@@ -124,7 +124,7 @@
   const run = (f) => { try { f(); } catch (e) { console.error('[boot]', e); } };
   SARA.onBoot = (f) => bootFns.push(f);          // runs on every boot (again when the real bridge appears late)
   SARA.onFirstBoot = (f) => firstFns.push(f);    // runs once
-  SARA.every = (ms, f) => timers.push([ms, f]); // polling, skipped while window hidden
+  SARA.every = (ms, f, opts) => timers.push([ms, f, opts && opts.pages]); // polling; skipped while hidden, and (opts.pages) off its pages
   SARA.boot = function () {
     const bridge = SARA.isConnected();
     if (realBooted) return;
@@ -133,7 +133,7 @@
     bootFns.forEach(run);
     if (first) {
       firstFns.forEach(run);
-      timers.forEach(function (t) { setInterval(function () { if (!document.hidden) run(t[1]); }, t[0]); });
+      timers.forEach(function (t) { setInterval(function () { if (!document.hidden && (!t[2] || t[2].indexOf(SARA.current || 'home') >= 0)) run(t[1]); }, t[0]); });
       setInterval(SARA.refreshConnection, 2000);
       document.addEventListener('visibilitychange', function () { if (!document.hidden) SARA.emit('visible'); });
     }

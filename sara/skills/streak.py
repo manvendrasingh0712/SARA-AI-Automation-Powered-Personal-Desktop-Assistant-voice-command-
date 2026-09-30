@@ -59,7 +59,7 @@ def streak_stats(count: int, longest: int, milestones=_DEFAULT_MILESTONES) -> di
         r"how many days in a row",
         r"(?:mera |apna )?streak (?:kya hai|batao|kitna hai)",
     ],
-    gate=("streak",),
+    gate=("streak", "in a row"),
     description="Tells you how many days in a row you've talked to Sara",
     category="social",
     examples=("what's my streak", "how many days in a row", "mera streak kya hai"),
