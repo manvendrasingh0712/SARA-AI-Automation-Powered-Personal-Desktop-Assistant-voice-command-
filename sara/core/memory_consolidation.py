@@ -113,8 +113,13 @@ def _extract_facts(brain, conversation_text: str, max_facts: int) -> List[str]:
     facts: List[str] = []
     for line in raw.strip().splitlines():
         cleaned = _BULLET_PREFIX_RE.sub("", line).strip()
-        if cleaned and cleaned.upper() != "NONE":
-            facts.append(cleaned)
+        if not cleaned or cleaned.upper() == "NONE":
+            continue
+        # drop truncated/garbage facts like "User's name is"
+        _w = cleaned.rstrip(" .:;,").split()
+        if len(_w) < 4 or _w[-1].lower() in ("is", "are", "was", "has", "the", "a", "an", "of", "to", "in"):
+            continue
+        facts.append(cleaned)
     return facts[:max_facts]
 
 

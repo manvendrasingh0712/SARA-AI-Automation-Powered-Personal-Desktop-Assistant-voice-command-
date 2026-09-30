@@ -9,7 +9,7 @@ canvas#org{width:100%;height:100%;display:block;}
 /* ---- wake flash: quick radial burst the instant the orb is tapped/woken (js/home.js SARA.wake) ---- */
 .stage.wake-flash::after{
   content:'';position:absolute;inset:-6%;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle, rgba(63,216,196,.55) 0%, rgba(63,216,196,0) 68%);
+  background:radial-gradient(circle, rgb(var(--core-rgb) / .55) 0%, rgb(var(--core-rgb) / 0) 68%);
   animation:wakeFlash .6s cubic-bezier(.2,.8,.2,1) forwards;
 }
 @keyframes wakeFlash{0%{opacity:0;transform:scale(.55);}25%{opacity:1;}100%{opacity:0;transform:scale(1.55);}}
@@ -43,7 +43,7 @@ canvas#org{width:100%;height:100%;display:block;}
 .core-thinking{color:var(--think);} .core-speaking{color:var(--speak);}
 /* working = halfway between --think and --speak (same mix js/home.js uses for the orb); hex is the fallback for old webviews */
 .core-working{color:#ba98b4;color:color-mix(in srgb,var(--think) 50%,var(--speak));}
-.home-hint{margin-top:6px;font-size:11.5px;color:#3a4744;min-height:16px;max-width:60vw;text-align:center;opacity:0;animation:fadeIn 1.8s ease forwards 1.1s;}
+.home-hint{margin-top:6px;font-size:11.5px;color:var(--faint);min-height:16px;max-width:60vw;text-align:center;opacity:0;animation:fadeIn 1.8s ease forwards 1.1s;}
 .home-hint.muted{visibility:hidden;}   /* hidden while the live caption uses its spot */
 @keyframes fadeIn{to{opacity:1;}}
 
@@ -73,19 +73,19 @@ canvas#org{width:100%;height:100%;display:block;}
    the pseudo-element itself -- a thin light seam along the top inner edge, like light catching glass. */
 .today-card::before,.next-card::before,.plan-card::before,.home-activity::before{
   content:'';position:absolute;top:0;left:14%;right:14%;height:1px;border-radius:1px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.16),transparent);
+  background:linear-gradient(90deg,transparent,rgb(var(--shine-rgb) / .16),transparent);
   pointer-events:none;
 }
 
 /* ---- Today card (bottom-left of Home) ---- */
 .today-card{
   position:absolute;left:32px;bottom:84px;width:250px;padding:16px 18px;border-radius:14px;
-  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  
   box-shadow:var(--shadow-rest);cursor:pointer;
   transition:border-color .2s,transform var(--dur-med,.2s) var(--ease-premium,ease),box-shadow var(--dur-med,.3s) var(--ease-premium,ease);
   animation:pageIn .6s ease .3s both;
 }
-.today-card:hover{--glow:rgba(63,216,196,.22);border-color:rgba(63,216,196,.45);transform:translateY(-3px);box-shadow:var(--shadow-hover);}
+.today-card:hover{--glow:rgb(var(--core-rgb) / .22);border-color:rgb(var(--core-rgb) / .45);transform:translateY(-3px);box-shadow:var(--shadow-hover);}
 .today-card:active{transform:translateY(-1px) scale(.985);}
 .tc-top{display:flex;align-items:center;gap:14px;}
 .tc-temp{font-size:34px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;}
@@ -99,13 +99,13 @@ canvas#org{width:100%;height:100%;display:block;}
 /* ---- Next card (bottom-right of Home; js/today.js renderNext) ---- */
 .next-card{
   position:absolute;right:32px;bottom:84px;width:250px;padding:16px 18px;border-radius:14px;
-  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  
   box-shadow:var(--shadow-rest);cursor:pointer;
   transition:border-color .2s,transform var(--dur-med,.2s) var(--ease-premium,ease),box-shadow var(--dur-med,.3s) var(--ease-premium,ease);
   animation:pageIn .6s ease .3s both;
 }
 .next-card[hidden]{display:none;}
-.next-card:hover{--glow:rgba(63,216,196,.22);border-color:rgba(63,216,196,.45);transform:translateY(-3px);box-shadow:var(--shadow-hover);}
+.next-card:hover{--glow:rgb(var(--core-rgb) / .22);border-color:rgb(var(--core-rgb) / .45);transform:translateY(-3px);box-shadow:var(--shadow-hover);}
 .next-card:active{transform:translateY(-1px) scale(.985);}
 .nx-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
 .nx-title{font-size:14px;line-height:1.35;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
@@ -138,15 +138,15 @@ canvas#org{width:100%;height:100%;display:block;}
 .weather-meta{font-size:12.5px;color:var(--muted);margin-bottom:18px;}
 .qa-row{display:flex;gap:10px;margin:4px 0 6px;flex-wrap:wrap;}
 .qa-btn{display:flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:8px 14px;font-size:12.5px;color:var(--text-soft);cursor:pointer;transition:border-color .2s,color .2s,transform .12s,box-shadow .2s;}
-.qa-btn:hover{box-shadow:0 0 12px rgba(63,216,196,.10);}
+.qa-btn:hover{box-shadow:0 0 12px rgb(var(--core-rgb) / .10);}
 .qa-btn:active{transform:scale(.96);}
 .qa-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;}
-.qa-btn.on{border-color:rgba(63,216,196,.45);color:var(--core);}
+.qa-btn.on{border-color:rgb(var(--core-rgb) / .45);color:var(--core);}
 .notice-row{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line);font-size:13.5px;}
 .notice-row .n-dot{width:7px;height:7px;border-radius:50%;flex:none;}
-.notice-row.warn .n-dot{background:var(--danger);box-shadow:0 0 6px rgba(217,122,107,.6);}
-.notice-row.info .n-dot{background:var(--core);box-shadow:0 0 6px rgba(63,216,196,.5);}
-.notice-row.think .n-dot{background:var(--think);box-shadow:0 0 6px rgba(139,111,216,.5);}
+.notice-row.warn .n-dot{background:var(--danger);box-shadow:0 0 6px rgb(var(--danger-rgb) / .6);}
+.notice-row.info .n-dot{background:var(--core);box-shadow:0 0 6px rgb(var(--core-rgb) / .5);}
+.notice-row.think .n-dot{background:var(--think);box-shadow:0 0 6px rgb(var(--think-rgb) / .5);}
 .notice-row .n-text{flex:1;color:var(--text-soft);}
 .notice-row .n-when{font-size:11px;color:var(--muted);flex:none;}
 .sheet .row{max-width:none;}
@@ -155,7 +155,7 @@ canvas#org{width:100%;height:100%;display:block;}
 .home-activity{
   position:absolute;left:50%;bottom:4%;transform:translate(-50%,6px);
   max-width:92%;display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;
-  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  
   box-shadow:var(--shadow-rest);
   font-size:12.5px;color:var(--text-soft);white-space:nowrap;
   opacity:0;pointer-events:none;   /* never steal the orb's tap-to-wake click */
@@ -166,8 +166,8 @@ canvas#org{width:100%;height:100%;display:block;}
 .act-glyph{flex:none;font-size:11px;line-height:1;}
 .act-text{min-width:0;overflow:hidden;text-overflow:ellipsis;}
 .home-activity[data-state="start"] .act-glyph{color:var(--core);animation:actPulse 1.2s ease-in-out infinite;}
-.home-activity[data-state="done"]{border-color:rgba(63,216,196,.45);color:var(--core);}
-.home-activity[data-state="error"]{border-color:rgba(217,122,107,.5);color:var(--danger);}
+.home-activity[data-state="done"]{border-color:rgb(var(--core-rgb) / .45);color:var(--core);}
+.home-activity[data-state="error"]{border-color:rgb(var(--danger-rgb) / .5);color:var(--danger);}
 @keyframes actPulse{50%{opacity:.3;}}
 @media (prefers-reduced-motion:reduce){
   .home-activity{transition:opacity .01s;}
@@ -178,7 +178,7 @@ canvas#org{width:100%;height:100%;display:block;}
 .plan-card{
   position:absolute;left:50%;bottom:12%;transform:translateX(-50%);
   max-width:92%;min-width:220px;padding:10px 16px;border-radius:14px;
-  background:var(--glass-bg,rgba(16,25,23,.72));border:1px solid var(--glass-border,var(--line));backdrop-filter:blur(var(--glass-blur,4px));
+  
   box-shadow:var(--shadow-rest);
   font-size:12.5px;color:var(--muted);
 }
@@ -192,5 +192,5 @@ canvas#org{width:100%;height:100%;display:block;}
 /* ---- unified card spotlight: same cursor-following soft light as the clock card (--spot-x/--spot-y set by
    js/fx.js, rAF-throttled, not attached under reduced-motion). Decorative only; never intercepts clicks. ---- */
 .today-card::after,.next-card::after{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s ease;
-  background:radial-gradient(150px 150px at var(--spot-x,50%) var(--spot-y,0%),rgba(255,255,255,.06),transparent 70%);}
+  background:radial-gradient(150px 150px at var(--spot-x,50%) var(--spot-y,0%),rgb(var(--shine-rgb) / .06),transparent 70%);}
 .today-card:hover::after,.next-card:hover::after{opacity:1;}

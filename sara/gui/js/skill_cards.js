@@ -26,11 +26,11 @@
     "@keyframes sk-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}",
     ".sk-title{font-weight:600;margin-bottom:8px}.sk-muted{color:var(--sara-muted,#9aa)}",
     ".sk-row{display:flex;align-items:center;gap:10px;margin:6px 0}",
-    ".sk-week{display:flex;gap:6px;margin-top:8px}.sk-day{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.1)}.sk-day.on{background:var(--sara-accent,#ff8a3d)}",
+    ".sk-week{display:flex;gap:6px;margin-top:8px}.sk-day{width:22px;height:22px;border-radius:6px;background:rgb(var(--fg-rgb,255 255 255) / .1)}.sk-day.on{background:var(--sara-accent,#ff8a3d)}",
     ".sk-chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}.sk-chip{border:1px solid var(--sara-accent,#7c9cff);background:transparent;color:var(--sara-accent,#7c9cff);border-radius:999px;padding:5px 12px;cursor:pointer;font:13px system-ui}.sk-chip:hover{background:var(--sara-accent,#7c9cff);color:#111}",
-    ".sk-src{display:inline-block;background:rgba(255,255,255,.1);border-radius:8px;padding:2px 8px;margin:2px 4px 2px 0;font-size:12px}",
+    ".sk-src{display:inline-block;background:rgb(var(--fg-rgb,255 255 255) / .1);border-radius:8px;padding:2px 8px;margin:2px 4px 2px 0;font-size:12px}",
     ".sk-dot{width:10px;height:10px;border-radius:50%;flex:none}.sk-ok{background:#3ecf6e}.sk-warn{background:#f5c542}.sk-fail{background:#ef5350}.sk-skip,.sk-unknown{background:#8894a5}",
-    ".sk-flip{cursor:pointer;background:rgba(255,255,255,.07);border-radius:10px;padding:10px;margin:6px 0}",
+    ".sk-flip{cursor:pointer;background:rgb(var(--fg-rgb,255 255 255) / .07);border-radius:10px;padding:10px;margin:6px 0}",
     ".sk-punch{transition:opacity .6s ease;opacity:0;margin-top:8px;font-weight:600}.sk-punch.show{opacity:1}"
   ].join("\n");
 
@@ -59,7 +59,7 @@
     var svg = root.document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", size); svg.setAttribute("height", size);
     svg.setAttribute("viewBox", "0 0 64 64");
-    [["rgba(255,255,255,.12)", c], ["var(--sara-accent,#ff8a3d)", c * (1 - Math.max(0, Math.min(1, progress)))]].forEach(function (p) {
+    [["rgb(var(--fg-rgb,255 255 255) / .12)", c], ["var(--sara-accent,#ff8a3d)", c * (1 - Math.max(0, Math.min(1, progress)))]].forEach(function (p) {
       var circle = root.document.createElementNS(SVG_NS, "circle");
       circle.setAttribute("cx", 32); circle.setAttribute("cy", 32); circle.setAttribute("r", r);
       circle.setAttribute("fill", "none"); circle.setAttribute("stroke", p[0]); circle.setAttribute("stroke-width", 6);

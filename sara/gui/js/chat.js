@@ -299,6 +299,14 @@
     if (s === 'thinking') showThinking(); else hideThinking();
     applyDockState();
   });
+  SARA.on('ev:skill_card', function (name, card) {
+    if (!window.SaraSkillCards) return;
+    log.appendChild(window.SaraSkillCards.render(card)); scrollDown(true);
+  });
+  SARA.on('ev:skill_chips', function (name, chips) {
+    if (!window.SaraSkillCards) return;
+    log.appendChild(window.SaraSkillCards.renderChips(chips, function (t) { SARA.callApi('send_text_command', t); })); scrollDown(true);
+  });
   SARA.on('assistant_active', function (active) { paused = !active; applyDockState(); });
   SARA.on('page', function (p) { if (p === 'chat') { scrollDown(); setTimeout(() => input.focus(), 60); } syncWave(); });
 })();

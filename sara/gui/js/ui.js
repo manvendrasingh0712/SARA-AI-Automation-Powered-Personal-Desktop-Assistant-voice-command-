@@ -62,6 +62,23 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   };
 
+  /* ---- toast icon glyphs (tabler-style names, prefix optional) ---- */
+  const ICON_PATHS = {
+    'alarm': '<circle cx="12" cy="13" r="7"/><path d="M12 10v3l2 2M5 4L3 6M19 4l2 2"/>',
+    'alert-triangle': '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+    'bell': '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21h4"/>',
+    'check': '<path d="M5 12l5 5L20 7"/>',
+    'battery': '<rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/>',
+    'calendar': '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
+    'clock': '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    'info-circle': '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>'
+  };
+  SARA.iconSvg = function (name) {
+    if (!name) return '';
+    const p = ICON_PATHS[String(name).replace(/^ti-/, '')];
+    return p ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>' : '';
+  };
+
   /* ---- toasts ---- */
   // opts.tone === 'notify' plays the notification chime; alert-type icons play the soft error tone.
   SARA.toast = function (iconClass, color, message, opts) {

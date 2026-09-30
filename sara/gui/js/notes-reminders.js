@@ -50,6 +50,13 @@
     else SARA.fail('Could not save note');
   }
   $('saveNoteBtn').addEventListener('click', saveNote);
+  $('syncNotesBtn').addEventListener('click', async function () {
+    const b = this; b.disabled = true;
+    const res = await SARA.callApi('sync_notes_now');
+    b.disabled = false;
+    if (res && res.ok) { SARA.ok('Notes sync started'); loadNotesStatus(); }
+    else SARA.fail((res && res.message) || "Couldn't sync notes.");
+  });
   $('newNoteText').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveNote(); });
 
   /* ---- reminders ---- */

@@ -1313,6 +1313,7 @@ class SaraLLM:
                 last_pair is not None
                 and last_pair[0] == prompt
                 and not self._is_fallback_reply(last_pair[1])
+                and not last_pair[0].lstrip().startswith("You are extracting durable")
             ):
                 exchange_text = (
                     f"User said: {last_pair[0]}\nSara replied: {last_pair[1]}"
