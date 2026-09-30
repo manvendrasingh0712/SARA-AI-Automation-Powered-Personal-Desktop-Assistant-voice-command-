@@ -108,7 +108,7 @@
     // DEBUG (Task 1, item 2c): confirms whether real colors or a (null,
     // null) reset actually reached here, and prints exactly which DOM
     // elements got the CSS custom properties set on them.
-    console.log('[accent] applyAccentColors', c1, c2, 'targets:', [card, mini].map((el) => el && el.id));
+    
     [card, mini].forEach(function (el) {
       if (!el) return;
       if (c1 && c2) { el.style.setProperty('--music-accent-1', c1); el.style.setProperty('--music-accent-2', c2); }
@@ -122,8 +122,8 @@
       const img = new Image();
       img.onload = function () {
         // DEBUG (Task 1, item 2a): confirms the image itself decoded.
-        console.log('[accent] img.onload fired, naturalSize=', img.naturalWidth, 'x', img.naturalHeight);
-        if (token !== artColorToken) { console.log('[accent] stale token, discarding'); return; }  // a newer track already arrived; discard this stale result
+        
+        if (token !== artColorToken) { return; }  // a newer track already arrived; discard this stale result
         try {
           const SIZE = 48;
           const cv = document.createElement('canvas'); cv.width = SIZE; cv.height = SIZE;
@@ -131,7 +131,7 @@
           ctx.drawImage(img, 0, 0, SIZE, SIZE);
           const data = ctx.getImageData(0, 0, SIZE, SIZE).data;  // throws on a canvas-taint (cross-origin) image
           // DEBUG (Task 1, item 2b): confirms getImageData did NOT throw.
-          console.log('[accent] getImageData ok, bytes=', data.length);
+          
           const buckets = new Map(); const STEP = 24;
           for (let i = 0; i < data.length; i += 4) {
             if (data[i + 3] < 128) continue;                      // skip transparent pixels
@@ -144,7 +144,7 @@
           }
           let best = null;
           buckets.forEach(function (v) { if (!best || v.n > best.n) best = v; });
-          if (!best) { console.log('[accent] no eligible bucket (art may be all near-black/white/grey)'); applyAccentColors(null, null); return; }
+          if (!best) { applyAccentColors(null, null); return; }
           const r1 = Math.round(best.r / best.n), g1 = Math.round(best.g / best.n), b1 = Math.round(best.b / best.n);
           const [c1, c2] = boostAccentPair(r1, g1, b1);
           applyAccentColors(c1, c2);
@@ -329,16 +329,16 @@
       volDragging = true; setVolFill(volSlider.value);
       // DEBUG (Task 1): confirms the slider's own 'input' handler fires
       // on drag. Remove once Problem 1 is confirmed fixed.
-      console.log('[volume] input event, value=', volSlider.value);
+      
     });
     volSlider.addEventListener('change', async function () {
       const level = Math.max(0, Math.min(100, parseFloat(volSlider.value) || 0)) / 100;
       // DEBUG (Task 1): confirms 'change' fires and set_media_volume is
       // genuinely called with the expected level. Remove once Problem 1
       // is confirmed fixed.
-      console.log('[volume] change event, calling set_media_volume with level=', level);
+      
       const res = await SARA.callApi('set_media_volume', level);
-      console.log('[volume] set_media_volume result:', res);
+      
       if (!res || !res.ok) console.warn('[volume] set_media_volume failed:', res && res.error);
       volDragging = false;
     });

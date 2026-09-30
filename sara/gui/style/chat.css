@@ -6,7 +6,6 @@
    (js/motion.js edgeFade). It bleeds to the page edges (negative margin = --pad-x) so the scrollbar stays at the window
    edge, and re-centres its 640px column with padding. */
 #page-chat .page-body{--pad-x:40px;display:flex;flex-direction:column;padding-bottom:96px;overflow:hidden;}
-@media (max-width:640px){#page-chat .page-body{--pad-x:20px;}}
 .chat-log{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0;overflow-y:auto;margin:0 calc(var(--pad-x) * -1);padding:0 max(var(--pad-x),calc((100% - 640px) / 2 + var(--pad-x))) 10px;}
 .chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
 .msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:msgIn .32s cubic-bezier(.2,.8,.2,1);}
@@ -44,32 +43,32 @@
   flex:none;position:sticky;bottom:0;max-width:640px;width:100%;margin:14px auto 0;
   display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
   border-radius:14px;padding:8px 8px 8px 16px;
-  box-shadow:0 0 0 0 rgba(63,216,196,0);
+  box-shadow:0 0 0 0 rgb(var(--core-rgb) / 0);
   transition:border-color var(--dur-med,.2s) var(--ease-premium,ease),box-shadow var(--dur-med,.2s) var(--ease-premium,ease),opacity .2s ease;
 }
-.chat-dock[data-state="idle"]:hover{border-color:rgba(63,216,196,.22);}
-.chat-dock[data-state="idle"]:focus-within,.chat-dock[data-state="hover"]{border-color:rgba(63,216,196,.22);}
-.chat-dock:focus-within{border-color:rgba(63,216,196,.45);box-shadow:0 0 0 3px rgba(63,216,196,.08);}
+.chat-dock[data-state="idle"]:hover{border-color:rgb(var(--core-rgb) / .22);}
+.chat-dock[data-state="idle"]:focus-within,.chat-dock[data-state="hover"]{border-color:rgb(var(--core-rgb) / .22);}
+.chat-dock:focus-within{border-color:rgb(var(--core-rgb) / .45);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .08);}
 .chat-dock input{flex:1;background:none;border:none;outline:none;color:var(--text);font-size:14px;font-family:inherit;transition:opacity .2s;}
 .chat-dock input::placeholder{transition:opacity .25s ease;}
 .chat-dock[data-state="listening"] input::placeholder,
 .chat-dock[data-state="processing"] input::placeholder{opacity:.45;}
 
 /* LISTENING -- mic is live; a slow teal breathing glow around the whole dock (not just the mic button) */
-.chat-dock[data-state="listening"]{border-color:rgba(63,216,196,.5);box-shadow:0 0 0 3px rgba(63,216,196,.1);animation:dockListen 2.2s ease-in-out infinite;}
-@keyframes dockListen{0%,100%{box-shadow:0 0 0 3px rgba(63,216,196,.08);}50%{box-shadow:0 0 0 5px rgba(63,216,196,.16);}}
+.chat-dock[data-state="listening"]{border-color:rgb(var(--core-rgb) / .5);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .1);animation:dockListen 2.2s ease-in-out infinite;}
+@keyframes dockListen{0%,100%{box-shadow:0 0 0 3px rgb(var(--core-rgb) / .08);}50%{box-shadow:0 0 0 5px rgb(var(--core-rgb) / .16);}}
 
 /* PROCESSING -- Sara is thinking about a reply: a very quiet shimmer sweep across the dock */
-.chat-dock[data-state="processing"]{border-color:rgba(139,111,216,.4);position:relative;overflow:hidden;}
+.chat-dock[data-state="processing"]{border-color:rgb(var(--think-rgb) / .4);position:relative;overflow:hidden;}
 .chat-dock[data-state="processing"]::before{
   content:'';position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(100deg,transparent 40%,rgba(139,111,216,.14) 50%,transparent 60%);
+  background:linear-gradient(100deg,transparent 40%,rgb(var(--think-rgb) / .14) 50%,transparent 60%);
   background-size:220% 100%;animation:dockShimmer 1.6s ease-in-out infinite;
 }
 @keyframes dockShimmer{0%{background-position:120% 0;}100%{background-position:-120% 0;}}
 
 /* SENDING -- the instant the send button is pressed / API call in flight (brief, real -- no fake delay) */
-.chat-dock[data-state="sending"]{border-color:rgba(63,216,196,.55);}
+.chat-dock[data-state="sending"]{border-color:rgb(var(--core-rgb) / .55);}
 .chat-dock[data-state="sending"] input{opacity:.7;}
 
 /* ERROR -- send failed; a short, low-amplitude shake + danger border, self-clears */
@@ -92,21 +91,21 @@
 @media (prefers-reduced-motion:reduce){.mic-wave{display:none;}}
 
 .dock-btn{width:36px;height:36px;border-radius:50%;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:box-shadow .2s,transform var(--dur-fast,.12s) var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
-.dock-btn:hover{box-shadow:0 0 0 4px rgba(63,216,196,.12);transform:scale(1.05);}
+.dock-btn:hover{box-shadow:0 0 0 4px rgb(var(--core-rgb) / .12);transform:scale(1.05);}
 .dock-btn:active{transform:scale(.9);}
 .dock-btn.mic{background:var(--panel-2);color:var(--core);}
-.dock-btn.mic.on{background:var(--core);color:#08110F;box-shadow:0 0 0 5px rgba(63,216,196,.15);}
+.dock-btn.mic.on{background:var(--core);color:var(--on-core);box-shadow:0 0 0 5px rgb(var(--core-rgb) / .15);}
 /* mic micro-animation while actually listening -- a slow pulse, reuses .on (already toggled by real status) */
 .dock-btn.mic.on svg{animation:micPulse 1.6s ease-in-out infinite;}
 @keyframes micPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.12);}}
-.dock-btn.send{background:var(--core);color:#08110F;}
+.dock-btn.send{background:var(--core);color:var(--on-core);}
 /* .dock-btn.send already has a teal fill, so its success checkmark (components.css .is-success::after)
    needs a dark stroke instead of the default teal one, or it would vanish against its own background. */
-.dock-btn.send.is-success::after{border-color:#08110F;}
+.dock-btn.send.is-success::after{border-color:var(--on-core);}
 .dock-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;transition:transform .2s;}
 @media (prefers-reduced-motion:reduce){.dock-btn.mic.on svg{animation:none;}}
 .msg-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
 .msg-action{background:none;border:1px solid var(--line);color:var(--text-soft);font-size:11.5px;padding:3px 10px;border-radius:999px;cursor:pointer;transition:border-color .2s,color .2s,transform .12s;}
-.msg-action:hover{border-color:rgba(63,216,196,.45);color:var(--core);}
+.msg-action:hover{border-color:rgb(var(--core-rgb) / .45);color:var(--core);}
 .msg-action:active{transform:scale(.95);}
 .msg-action:disabled{opacity:.5;cursor:default;}

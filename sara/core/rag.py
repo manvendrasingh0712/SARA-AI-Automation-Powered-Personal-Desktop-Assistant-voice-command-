@@ -559,6 +559,15 @@ class LongTermMemory:
                     print(f"[RAG] Skipped duplicate fact: {text[:80]!r}")
                 return True
 
+            # New fact carries no new info (its words are all in the old one,
+            # e.g. "User's name is Manvindra" vs "...Manvindra Singh") -> keep old.
+            _nw = set(re.findall(r"\w+", text.lower()))
+            _ow = set(re.findall(r"\w+", hit.text.lower()))
+            if _nw and _nw <= _ow:
+                if self._debug:
+                    print(f"[RAG] Skipped less-informative fact: {text[:80]!r}")
+                return True
+
             if self._debug:
                 print(
                     f"[RAG] Superseding old fact id={hit.id} "
