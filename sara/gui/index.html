@@ -131,37 +131,44 @@
       <div class="music-card" id="musicCard">
         <div class="mc-head" id="mcHead">
           <div class="art-block" id="artBlock"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></div>
-          <div class="track-meta"><div class="t-title" id="trackTitle">Nothing playing</div><div class="t-artist" id="trackArtist">Play something in Spotify or Chrome</div></div>
-          <button class="mc-play" id="mcPlay" title="Play / Pause"><svg id="mcPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
-          <span class="mc-chev"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></span>
+          <div class="track-meta">
+            <div class="t-title" id="trackTitle">Nothing playing</div>
+            <div class="t-sub">
+              <div class="t-artist" id="trackArtist">Play something in Spotify or Chrome</div>
+              <span class="src-badge" id="trackSource" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/></svg><span class="src-name" id="trackSourceName"></span></span>
+            </div>
+          </div>
+          <button class="mc-play" id="mcPlay" type="button" title="Play / Pause" aria-label="Play / Pause"><svg id="mcPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+          <button class="mc-chev" id="mcChev" type="button" aria-label="Expand player" aria-expanded="false" aria-controls="mcBody"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
         </div>
-        <div class="mc-body"><div class="mc-body-inner">
+        <div class="mc-body" id="mcBody"><div class="mc-body-inner">
           <div id="mcSessions" class="session-switcher"></div>
-          <div class="seek-wrap">
-            <input type="range" class="seek" id="seek" min="0" max="1" step="1" value="0" disabled>
+          <div class="seek-wrap" id="seekWrap">
+            <div class="seek-box">
+              <input type="range" class="seek" id="seek" min="0" max="1" step="1" value="0" disabled aria-label="Seek">
+              <div class="seek-rail" aria-hidden="true"><div class="seek-fill"></div><div class="seek-thumb"></div></div>
+            </div>
+            <div class="seek-tip" id="seekTip" aria-hidden="true">0:00</div>
             <div class="seek-times"><span id="curTime">0:00</span><span id="durTime">0:00</span></div>
           </div>
           <div class="transport">
-            <button id="ppShuffle" title="Shuffle"><svg viewBox="0 0 24 24"><path d="M4 6h4l9 12h3M4 18h4l3-4M17 6h3M17 6l-2-2M17 6l-2 2"/></svg></button>
-            <button id="ppPrev" title="Previous"><svg viewBox="0 0 24 24"><path d="M19 5v14L8 12z"/><path d="M6 5v14"/></svg></button>
-            <button class="t-play" id="ppPlay" title="Play / Pause"><svg id="ppPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
-            <button id="ppNext" title="Next"><svg viewBox="0 0 24 24"><path d="M5 5v14l11-7z"/><path d="M18 5v14"/></svg></button>
-            <button id="ppRepeat" title="Repeat"><svg viewBox="0 0 24 24"><path d="M4 7h13l-2-2M20 17H7l2 2"/></svg></button>
-            <button id="ppStop" title="Stop"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
-          </div>
-          <div class="volume-row">
-            <svg id="mcVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>
-            <input type="range" id="mcVolume" class="volume" min="0" max="100" value="60" disabled>
-          </div>
-          <div class="volume-row system">
-            <svg id="mcSysVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>
-            <span class="vol-label">SYSTEM</span>
-            <input type="range" id="mcSysVolume" class="volume" min="0" max="100" value="50">
+            <button id="ppShuffle" type="button" title="Shuffle" aria-label="Shuffle" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 6h4l9 12h3M4 18h4l3-4M17 6h3M17 6l-2-2M17 6l-2 2"/></svg></button>
+            <button id="ppPrev" type="button" title="Previous" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M19 5v14L8 12z"/><path d="M6 5v14"/></svg></button>
+            <button class="t-play" id="ppPlay" type="button" title="Play / Pause" aria-label="Play / Pause"><svg id="ppPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+            <button id="ppNext" type="button" title="Next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M5 5v14l11-7z"/><path d="M18 5v14"/></svg></button>
+            <button id="ppRepeat" type="button" title="Repeat" aria-label="Repeat" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 7h13l-2-2M20 17H7l2 2"/></svg></button>
+            <button id="ppStop" type="button" title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
           </div>
           <div class="sleep-row">
-            <button type="button" id="sleepBtn" class="sleep-btn"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>Sleep timer</button>
+            <button type="button" id="sleepBtn" class="sleep-btn" aria-label="Sleep timer off. Set a timer"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>Sleep timer<span id="sleepState" class="sleep-state">Off</span></button>
             <span id="sleepBadge" class="sleep-badge"></span>
-            <div id="sleepMenu" class="sleep-menu"><button type="button" data-min="15">15m</button><button type="button" data-min="30">30m</button><button type="button" data-min="45">45m</button><button type="button" data-min="60">60m</button></div>
+            <button type="button" id="sleepCancel" class="sleep-cancel" title="Cancel timer" aria-label="Cancel sleep timer" hidden><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button type="button" class="audio-btn" id="audioBtn" title="Volume" aria-haspopup="dialog" aria-expanded="false" aria-controls="audioModal"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>Audio</button>
+            <div id="sleepMenu" class="sleep-menu" role="group" aria-label="Sleep timer">
+              <div class="sleep-menu-head"><span class="sleep-menu-title">Sleep timer</span><span class="sleep-menu-hint">Fades out, then pauses</span></div>
+              <div class="sleep-options"><button type="button" data-min="15">15m</button><button type="button" data-min="30">30m</button><button type="button" data-min="45">45m</button><button type="button" data-min="60">60m</button></div>
+              <button type="button" id="sleepOff" class="sleep-off" data-min="0" hidden>Cancel timer</button>
+            </div>
           </div>
           <div class="spectrum" id="spectrum"></div>
         </div></div>
@@ -343,11 +350,38 @@
 
   <!-- ================= floating bits ================= -->
   <div class="mini-player" id="miniPlayer">
+    <span class="mp-grip" aria-hidden="true"></span>
     <div class="mp-art" id="mpArt"></div>
     <div class="mp-meta"><div class="mp-title" id="mpTitle">Nothing playing</div><div class="mp-artist" id="mpArtist"></div></div>
+    <span class="mp-eq" aria-hidden="true"><i></i><i></i><i></i></span>
     <button class="mp-btn" id="mpPlay" title="Play / Pause"><svg id="mpPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
   </div>
 
+  <div class="audio-modal" id="audioModal" aria-hidden="true">
+    <div class="audio-backdrop" data-close></div>
+    <div class="audio-card" role="dialog" aria-modal="true" aria-labelledby="audioModalTitle" tabindex="-1">
+      <div class="audio-card-head">
+        <span class="audio-card-title" id="audioModalTitle">Audio</span>
+        <button type="button" class="audio-close" id="audioClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="volume-row app" title="Media volume">
+        <button type="button" class="vol-btn" id="mcVolumeBtn" title="Mute app audio" aria-label="Mute app audio" aria-pressed="false" disabled>
+          <svg id="mcVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path class="vol-wave" d="M16.5 8.5a5 5 0 0 1 0 7"/><path class="vol-wave" d="M19 6a8 8 0 0 1 0 12"/><path class="vol-x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+        </button>
+        <span class="vol-label">Media</span>
+        <input type="range" id="mcVolume" class="volume" min="0" max="100" value="60" disabled aria-label="Media volume">
+        <span class="vol-val" id="mcVolumeVal">—</span>
+      </div>
+      <div class="volume-row system" title="System volume">
+        <button type="button" class="vol-btn" id="mcSysVolumeBtn" title="Mute system audio" aria-label="Mute system audio" aria-pressed="false">
+          <svg id="mcSysVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path class="vol-wave" d="M16.5 8.5a5 5 0 0 1 0 7"/><path class="vol-x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+        </button>
+        <span class="vol-label">System</span>
+        <input type="range" id="mcSysVolume" class="volume" min="0" max="100" value="50" aria-label="System volume">
+        <span class="vol-val" id="mcSysVolumeVal">50%</span>
+      </div>
+    </div>
+  </div>
   <nav class="nav" id="navBar">
     <span class="nav-ind" id="navInd"></span>
     <button class="active" data-page="home">home</button>

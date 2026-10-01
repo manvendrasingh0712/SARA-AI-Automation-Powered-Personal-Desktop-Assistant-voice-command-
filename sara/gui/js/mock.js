@@ -22,6 +22,9 @@
       { name: 'winddown', label: 'Wind-down', trigger_time: null, steps: [{ type: 'simple_action', key: 'dark_mode' }] }],
     tracks: [{ title: 'Weightless', artist: 'Marconi Union', dur: 490 }, { title: 'An Ending (Ascent)', artist: 'Brian Eno', dur: 272 }, { title: 'Experience', artist: 'Ludovico Einaudi', dur: 315 }],
     ti: 0, playing: true, active: true, pos: 112, posTs: Date.now(), shuffle: false, repeat: 'none',
+    appVol: 0.6, appMuted: false, sysVol: 0.5, sysMuted: false,
+    session: 'preview', mutedSessions: {},
+    sessions: [{ app_id: 'preview', app_name: 'Preview player' }, { app_id: 'browser', app_name: 'Chrome', title: 'Background tab' }],
     skills: [
       { name: 'daily_briefing', intent: 'daily_briefing', description: 'Weather + reminders + a headline, spoken as one summary', enabled: true, status: 'loaded' },
       { name: 'notes_qa', intent: 'notes_qa', description: 'Answers questions from your notes via RAG', enabled: true, status: 'loaded' },
@@ -29,11 +32,24 @@
   };
   const ok = (o) => Object.assign({ ok: true }, o || {});
   const ev = (kind, ...args) => window.saraEvent({ kind, args });
+  // Generated cover art (SVG data URI, no network) so artwork, hover effects and accent extraction work in preview mode.
+  const ART_HUES = [[188, 222], [338, 18], [32, 350]];
+  function mockArt(i) {
+    const h = ART_HUES[i % ART_HUES.length];
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">' +
+      '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(' + h[0] + ',70%,52%)"/><stop offset="1" stop-color="hsl(' + h[1] + ',65%,34%)"/></linearGradient></defs>' +
+      '<rect width="200" height="200" fill="url(#g)"/>' +
+      '<circle cx="62" cy="136" r="74" fill="hsl(' + h[1] + ',70%,60%)" fill-opacity=".28"/>' +
+      '<circle cx="150" cy="58" r="46" fill="hsl(' + h[0] + ',80%,70%)" fill-opacity=".3"/></svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  function curSession() { return S.sessions.find(x => x.app_id === S.session) || S.sessions[0]; }
+  const clamp01 = (v) => Math.max(0, Math.min(1, +v || 0));
   function curPos() { return S.playing ? Math.min(S.tracks[S.ti].dur, S.pos + (Date.now() - S.posTs) / 1000) : S.pos; }
   function mediaStatus() {
     if (!S.active) return ok({ active: false });
     const t = S.tracks[S.ti];
-    return ok({ active: true, status: S.playing ? 'playing' : 'paused', title: t.title, artist: t.artist, album: '', app: 'Preview player',
+    return ok({ active: true, status: S.playing ? 'playing' : 'paused', title: t.title, artist: t.artist, album: '', app: curSession().app_name, art: mockArt(S.ti),
       track_id: 't' + S.ti, position_sec: curPos(), duration_sec: t.dur, playback_rate: 1, timeline_updated_at: Date.now() / 1000,
       shuffle: S.shuffle, shuffle_supported: true, repeat: S.repeat, caps: { can_next: true, can_prev: true, can_seek: true, can_shuffle: true, can_repeat: true } });
   }
@@ -94,6 +110,17 @@
       case 'check_setup_status': return { llm_backend: 'ollama', gemini_key_set: null, ollama_installed: true, ollama_running: true, llm_model_pulled: true, llm_model_name: 'qwen3:4b', rag_enabled: true, embedding_model_pulled: true, embedding_model_name: 'gemini-embedding-001', kokoro_model_present: true, kokoro_voices_present: true, all_ready: true };
       case 'run_setup_fix': return ok({ started: a[0] });
       case 'get_media_status': return mediaStatus();
+      case 'get_media_volume': return ok({ volume: S.appVol, muted: S.appMuted });
+      case 'set_media_volume': S.appVol = clamp01(a[0]); return ok({ volume: S.appVol });
+      case 'toggle_media_mute': S.appMuted = !S.appMuted; return ok({ muted: S.appMuted });
+      case 'get_master_volume': return ok({ volume: S.sysVol, muted: S.sysMuted });
+      case 'set_master_volume': S.sysVol = clamp01(a[0]); return ok({ volume: S.sysVol });
+      case 'toggle_master_mute': S.sysMuted = !S.sysMuted; return ok({ muted: S.sysMuted });
+      case 'list_media_sessions': return ok({ sessions: S.sessions.map(x => ({
+        app_id: x.app_id, app_name: x.app_name, current: x.app_id === S.session,
+        playing: x.app_id === S.session ? S.playing : false, title: x.app_id === S.session ? S.tracks[S.ti].title : x.title })) });
+      case 'select_media_session': if (S.sessions.some(x => x.app_id === a[0])) S.session = a[0]; return ok();
+      case 'toggle_session_mute': S.mutedSessions[a[0]] = !S.mutedSessions[a[0]]; return ok({ muted: !!S.mutedSessions[a[0]] });
       case 'toggle_music_playback': setPos(curPos()); S.active = true; S.playing = !!a[0]; return ok();
       case 'stop_music': S.active = false; S.playing = false; setPos(0); return ok();
       case 'skip_next_track': S.ti = (S.ti + 1) % S.tracks.length; setPos(0); return ok();

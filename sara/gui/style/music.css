@@ -2,58 +2,111 @@
    music.css  --  Music card (lives on the Apps page; click head to expand into full player)
    + the floating mini-player above the nav + the VU spectrum.
    Markup: index.html #musicCard, #miniPlayer, plus optional feature markup:
-   #mcVolume/#mcVolumeIcon (per-app volume), #mcSessions (session switcher,
-   each chip also holds a .chip-mute per-app mute button), #mcSysVolume/
-   #mcSysVolumeIcon (system volume), #sleepBtn/#sleepMenu/#sleepBadge
-   (sleep timer). JS: js/music.js.
+   #trackSource/#trackSourceName (source badge), #seekWrap/#seek/#seekTip (seek bar),
+   .audio-panel with #mcVolume/#mcVolumeIcon/#mcVolumeBtn (per-app volume) and
+   #mcSysVolume/#mcSysVolumeIcon/#mcSysVolumeBtn (system volume),
+   #mcSessions (session switcher, each chip also holds a .chip-mute per-app mute button),
+   #sleepBtn/#sleepState/#sleepBadge/#sleepCancel/#sleepMenu (sleep timer). JS: js/music.js.
+   Card state classes (set by JS): .expanded, .has-track (a track/session is active),
+   .playing, .paused (active but not playing), .reduce-motion (mirrors SARA.reduceMotion).
+   Idle = none of has-track/playing/paused.
    ========================================================================== */
 .music-card{
   --music-accent-1:var(--core);--music-accent-2:var(--think); /* feature: album-art theming overrides these two inline via JS; default = old look */
-  max-width:720px;background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:6px;transition:border-color .25s;overflow:hidden;
+  /* accent tints at fixed strengths (fallback = --core for engines without color-mix) */
+  --mc-a08:rgb(var(--core-rgb) / .08);--mc-a14:rgb(var(--core-rgb) / .14);--mc-a22:rgb(var(--core-rgb) / .22);
+  --mc-a35:rgb(var(--core-rgb) / .35);--mc-a50:rgb(var(--core-rgb) / .5);--mc-a65:rgb(var(--core-rgb) / .65);
+  --mc-ease:cubic-bezier(.2,.8,.2,1);
+  --seek-thumb:14px; /* keep in sync with SEEK_THUMB_PX in js/music.js */
+  position:relative;max-width:720px;background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:6px;overflow:hidden;
+  transition:border-color .25s var(--mc-ease),box-shadow .4s var(--mc-ease);
 }
-.music-card.expanded,.music-card:hover{
-  border-color:rgb(var(--core-rgb) / .45); /* fallback for engines without color-mix() -- brightened from .35 so the border reads clearly against a dark panel */
-  border-color:color-mix(in srgb, var(--music-accent-1) 45%, transparent);
+@supports (color:color-mix(in srgb, red, blue)){
+  .music-card{
+    --mc-a08:color-mix(in srgb, var(--music-accent-1) 8%, transparent);--mc-a14:color-mix(in srgb, var(--music-accent-1) 14%, transparent);
+    --mc-a22:color-mix(in srgb, var(--music-accent-1) 22%, transparent);--mc-a35:color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+    --mc-a50:color-mix(in srgb, var(--music-accent-1) 50%, transparent);--mc-a65:color-mix(in srgb, var(--music-accent-1) 65%, transparent);
+  }
 }
-.mc-head{display:flex;align-items:center;gap:16px;padding:14px 16px;cursor:pointer;}
+.music-card.expanded,.music-card:hover{border-color:var(--mc-a50);}
+.music-card.playing{box-shadow:0 16px 40px -30px var(--mc-a65);}
+/* ambient accent wash behind the head: fades in while playing, half-strength paused, gone when idle */
+.music-card::before{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0;
+  background:radial-gradient(110% 130px at 0% 0%, var(--mc-a14), transparent 70%);
+  transition:opacity .5s ease;
+}
+.music-card.has-track::before{opacity:.5;}
+.music-card.playing::before{opacity:1;}
+/* keyboard focus: one consistent accent ring for every control inside the card */
+.music-card :focus-visible{outline:2px solid var(--mc-a65);outline-offset:2px;}
+.music-card input:focus-visible{outline:none;}
+
+.mc-head{position:relative;z-index:1;display:flex;align-items:center;gap:16px;padding:14px 16px;cursor:pointer;}
+
+/* ---- interactive album art ----
+   idle = dim/inactive, playing = softly alive (breathing ring, no spin), paused = calm, hover = lifts a little */
 .art-block{
   width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,var(--music-accent-1),var(--music-accent-2)) center/cover;
-  box-shadow:0 0 26px rgb(var(--core-rgb) / .32); /* brightened from .2 -- felt dull against the dark panel */
-  box-shadow:0 0 26px color-mix(in srgb, var(--music-accent-1) 32%, transparent);
-  flex:none;display:flex;align-items:center;justify-content:center;transition:box-shadow .4s,background-image .6s ease;
-  position:relative;
+  box-shadow:0 0 0 1px rgb(var(--fg-rgb) / .06),0 4px 14px -6px rgb(0 0 0 / .5);
+  filter:saturate(.7) brightness(.92);opacity:.85;
+  flex:none;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;will-change:transform;
+  transition:transform .24s var(--mc-ease),box-shadow .4s var(--mc-ease),filter .4s ease,opacity .4s ease,background-image .6s ease;
 }
 .art-block svg{width:24px;height:24px;stroke:var(--on-core);fill:none;stroke-width:1.8;}
 .art-block.has-art svg{display:none;}
-.music-card.playing .art-block{
-  box-shadow:0 0 38px rgb(var(--core-rgb) / .55); /* brightened from .4 */
-  box-shadow:0 0 38px color-mix(in srgb, var(--music-accent-1) 55%, transparent);
+.music-card.has-track .art-block{filter:none;opacity:1;box-shadow:0 0 0 1px var(--mc-a22),0 6px 18px -8px var(--mc-a35);}
+.music-card.playing .art-block{box-shadow:0 0 0 1px var(--mc-a35),0 8px 26px -8px var(--mc-a50);}
+.art-block:hover{
+  transform:translateY(-1px) scale(1.035);filter:saturate(.9) brightness(1);opacity:1;
+  box-shadow:0 0 0 1px var(--mc-a35),0 12px 28px -8px var(--mc-a50),0 4px 10px -4px rgb(0 0 0 / .5);
 }
-/* ---- rotating accent ring while a track is actually playing (paused = no rotation, no clutter) ---- */
-.music-card.playing .art-block::after{
-  content:'';position:absolute;inset:-4px;border-radius:14px;pointer-events:none;
-  background:conic-gradient(from 0deg, transparent, color-mix(in srgb, var(--music-accent-1) 55%, transparent) 22%, transparent 45%);
-  animation:artSpin 3.2s linear infinite;
+.art-block:active{transform:scale(.98);transition-duration:.1s;}
+/* soft ring: faint when a track is loaded, gently breathing (scale only) while playing; fades back out on pause */
+.art-block::after{
+  content:'';position:absolute;inset:-4px;border-radius:16px;border:1px solid var(--music-accent-1);
+  opacity:0;pointer-events:none;transition:opacity .4s ease,border-color .6s;
 }
-@keyframes artSpin{to{transform:rotate(360deg);}}
-@media (prefers-reduced-motion:reduce){.music-card.playing .art-block::after{animation:none;display:none;}}
+.music-card.has-track .art-block::after{opacity:.16;}
+.music-card.playing .art-block::after{opacity:.5;animation:artBreathe 3.6s ease-in-out infinite;}
+@keyframes artBreathe{0%,100%{transform:scale(1);}50%{transform:scale(1.045);}}
+
 .track-meta{flex:1;min-width:0;}
-.t-title{font-size:15.5px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.t-artist{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.mc-play{width:38px;height:38px;border-radius:50%;background:var(--music-accent-1);border:none;color:var(--on-core);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .12s,box-shadow .2s,background-color .6s;}
-.mc-play:hover{
-  box-shadow:0 0 18px rgb(var(--core-rgb) / .5); /* brightened from .35 */
-  box-shadow:0 0 18px color-mix(in srgb, var(--music-accent-1) 50%, transparent);
+.t-title{font-size:15.5px;font-weight:500;line-height:1.25;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.t-sub{display:flex;align-items:center;gap:8px;min-width:0;}
+.t-artist{flex:0 1 auto;min-width:0;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.t-artist:empty{display:none;}
+
+/* ---- source badge (app/source reported by the media session; hidden when unknown or idle) ---- */
+.src-badge{
+  flex:0 1 auto;min-width:0;max-width:48%;display:inline-flex;align-items:center;gap:5px;padding:2px 8px 2px 6px;
+  border-radius:999px;font-size:10.5px;line-height:1.5;letter-spacing:.02em;color:var(--text-soft);
+  background:var(--mc-a08);border:1px solid var(--mc-a22);
+  transition:border-color .3s ease,background-color .3s ease,color .3s ease,opacity .3s ease;
 }
+.src-badge[hidden]{display:none;}
+.src-badge svg{width:11px;height:11px;flex:none;stroke:var(--music-accent-1);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;transition:stroke .6s;}
+.src-name{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.music-card.playing .src-badge{border-color:var(--mc-a35);}
+.music-card.paused .src-badge{opacity:.8;}
+
+.mc-play{width:38px;height:38px;border-radius:50%;background:var(--music-accent-1);border:none;color:var(--on-core);cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;transition:transform .18s var(--mc-ease),box-shadow .25s ease,background-color .6s;}
+.mc-play:hover{box-shadow:0 0 18px var(--mc-a50);transform:scale(1.04);}
 .mc-play:active{transform:scale(.92);}
 .mc-play svg{width:14px;height:14px;fill:currentColor;stroke:none;}
 .mc-play:disabled{opacity:.35;cursor:default;}
-.mc-chev{color:var(--muted);transition:transform .2s,color .2s;flex:none;}
+.mc-chev{
+  background:none;border:none;padding:6px;margin:-6px -6px -6px -10px;border-radius:8px;cursor:pointer;display:flex;
+  color:var(--muted);transition:transform .25s var(--mc-ease),color .2s;flex:none;
+}
+.mc-chev:hover{color:var(--text);}
 .mc-chev svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;}
 .music-card.expanded .mc-chev{transform:rotate(90deg);color:var(--music-accent-1);}
-.mc-body{max-height:0;overflow:hidden;transition:max-height .35s ease;}
-.music-card.expanded .mc-body{max-height:560px;} /* raised from 360px to fit the session switcher, system-volume row and sleep-timer controls below */
-.mc-body-inner{padding:4px 20px 22px;}
+
+/* collapsed body is also removed from the tab order (visibility flips after the collapse finishes) */
+.mc-body{position:relative;z-index:1;max-height:0;overflow:hidden;visibility:hidden;transition:max-height .35s var(--mc-ease),visibility 0s linear .35s;}
+.music-card.expanded .mc-body{max-height:720px;visibility:visible;transition-delay:0s;} /* raised to fit the audio panel and the sleep-timer row */
+.mc-body-inner{padding:14px 20px 20px;}
 
 /* ---- session switcher (Feature: pick which app's session to control;
    markup: <div id="mcSessions" class="session-switcher"> with JS-injected
@@ -70,15 +123,10 @@
   max-width:180px;transition:border-color .2s,color .2s,background-color .2s;
 }
 .session-chip .chip-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.session-chip:hover{color:var(--text);}
+.session-chip:hover{color:var(--text);border-color:var(--mc-a35);}
 .session-chip.playing .chip-name::before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--music-accent-1);margin-right:5px;}
-.session-chip.active{
-  color:var(--text);border-color:rgb(var(--core-rgb) / .6); /* brightened from .5 */
-  border-color:color-mix(in srgb, var(--music-accent-1) 60%, transparent);
-  background:rgb(var(--core-rgb) / .14); /* brightened from .1 */
-  background:color-mix(in srgb, var(--music-accent-1) 14%, transparent);
-}
-/* per-app mute toggle (new: silence one app's session without switching
+.session-chip.active{color:var(--text);border-color:var(--mc-a65);background:var(--mc-a14);}
+/* per-app mute toggle (silence one app's session without switching
    to it -- e.g. mute a background YouTube tab while Spotify keeps
    playing). Nested inside the chip; stopPropagation in JS keeps a click
    here from also triggering the chip's own "switch to this app" handler. */
@@ -93,87 +141,381 @@
 .chip-mute.muted{color:var(--music-accent-1);opacity:.85;}
 .chip-mute.muted .mute-x{display:block;}
 
-.seek-wrap{margin-bottom:16px;}
-input.seek,input.volume{
-  -webkit-appearance:none;appearance:none;display:block;height:3px;border-radius:2px;
-  outline:none;cursor:pointer;background-color:transparent;
+/* ---- premium seek bar ----
+   The native <input type=range id="seek"> stays the real control (drag / click / keyboard / disabled state) but is
+   visually transparent; .seek-rail draws the track, fill and thumb from --seek-p (0..1, set by JS from the exact
+   interpolated position, so the bar glides between the 2s polls instead of stepping in 1s increments). Rail height
+   and thumb size change via transforms/absolute centering only, so hover/focus never moves the layout. */
+.seek-wrap{position:relative;margin:6px 0 14px;}
+.seek-box{position:relative;height:18px;}
+input.seek{
+  position:relative;z-index:1;-webkit-appearance:none;appearance:none;display:block;width:100%;height:18px;margin:0;padding:0;
+  background:transparent;outline:none;cursor:pointer;
 }
-input.seek{width:100%;background:linear-gradient(to right,var(--music-accent-1) var(--fill,0%),var(--line) var(--fill,0%));}
-input.seek::-webkit-slider-thumb,input.volume::-webkit-slider-thumb{
-  -webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--music-accent-1);
-  box-shadow:0 0 0 4px rgb(var(--core-rgb) / .28); /* brightened + slightly wider ring, from 3px/.2 */
-  box-shadow:0 0 0 4px color-mix(in srgb, var(--music-accent-1) 28%, transparent);
-  transition:background-color .3s,box-shadow .3s;
+input.seek::-webkit-slider-runnable-track{height:18px;background:transparent;border:none;}
+input.seek::-webkit-slider-thumb{-webkit-appearance:none;width:var(--seek-thumb);height:var(--seek-thumb);margin-top:2px;background:transparent;border:none;box-shadow:none;}
+input.seek::-moz-range-track{height:18px;background:transparent;border:none;}
+input.seek::-moz-range-thumb{width:var(--seek-thumb);height:var(--seek-thumb);background:transparent;border:none;}
+input.seek:disabled{cursor:default;}
+.seek-rail{
+  position:absolute;left:0;right:0;top:50%;height:4px;margin-top:-2px;border-radius:999px;background:var(--line);pointer-events:none;
+  transition:height .2s var(--mc-ease),margin-top .2s var(--mc-ease),opacity .25s ease;
 }
-input.seek::-moz-range-thumb,input.volume::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--music-accent-1);border:none;transition:background-color .3s;}
-input.seek::-moz-range-track,input.volume::-moz-range-track{background:transparent;height:3px;}
-input.seek:disabled,input.volume:disabled{opacity:.4;cursor:default;}
-.seek-times{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-top:8px;font-variant-numeric:tabular-nums;}
-.transport{display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:16px;}
-.transport button{background:none;border:none;color:var(--text-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:color .2s,transform .12s;}
-.transport button:hover:not(:disabled){color:var(--text);}
+.seek-fill{
+  position:absolute;left:0;top:50%;height:18px;margin-top:-9px;overflow:hidden;
+  width:calc(var(--seek-thumb) / 2 + (100% - var(--seek-thumb)) * var(--seek-p,0));
+  filter:drop-shadow(0 0 4px var(--mc-a65));
+  transition:width .5s linear;
+}
+/* played portion = a gentle sine "snake": one 80px wave period tiled as a mask over the accent gradient.
+   The layer is one period wider than the fill and slides exactly one period, so the loop is seamless.
+   It drifts only while playing (and the card is open); paused = frozen calm wave. */
+.seek-fill::before{
+  content:'';position:absolute;top:0;bottom:0;left:-80px;right:0;
+  background:linear-gradient(90deg,var(--music-accent-2),var(--music-accent-1));
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='12' viewBox='0 0 80 12'%3E%3Cpath d='M0 6C14 2 26 2 40 6S66 10 80 6' fill='none' stroke='%23000' stroke-width='3'/%3E%3C/svg%3E") 0 50% / 80px 12px repeat-x;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='12' viewBox='0 0 80 12'%3E%3Cpath d='M0 6C14 2 26 2 40 6S66 10 80 6' fill='none' stroke='%23000' stroke-width='3'/%3E%3C/svg%3E") 0 50% / 80px 12px repeat-x;
+  animation:seekWave 3.2s linear infinite;animation-play-state:paused;
+}
+.music-card.playing.expanded .seek-fill::before{animation-play-state:running;}
+@keyframes seekWave{to{transform:translateX(80px);}}
+.seek-thumb{
+  position:absolute;top:50%;width:var(--seek-thumb);height:var(--seek-thumb);border-radius:50%;background:var(--music-accent-1);
+  left:calc(var(--seek-thumb) / 2 + (100% - var(--seek-thumb)) * var(--seek-p,0));
+  transform:translate(-50%,-50%) scale(.72);
+  box-shadow:0 0 0 3px var(--mc-a22),0 0 10px var(--mc-a35);
+  transition:left .5s linear,transform .2s var(--mc-ease),box-shadow .25s ease,background-color .3s,opacity .25s ease;
+}
+input.seek:not(:disabled):hover ~ .seek-rail,input.seek:focus-visible ~ .seek-rail,.seek-wrap.dragging .seek-rail{height:6px;margin-top:-3px;}
+input.seek:not(:disabled):hover ~ .seek-rail .seek-thumb,input.seek:focus-visible ~ .seek-rail .seek-thumb,.seek-wrap.dragging .seek-thumb{
+  transform:translate(-50%,-50%) scale(1);box-shadow:0 0 0 4px var(--mc-a22),0 0 14px var(--mc-a50);
+}
+input.seek:focus-visible ~ .seek-rail .seek-thumb{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--mc-a65),0 0 14px var(--mc-a50);}
+.seek-wrap.dragging .seek-fill,.seek-wrap.dragging .seek-thumb{transition:transform .2s var(--mc-ease),box-shadow .25s ease;} /* follow the pointer 1:1 while dragging */
+input.seek:disabled ~ .seek-rail{opacity:.4;}
+input.seek:disabled ~ .seek-rail .seek-thumb{opacity:0;}
+/* hover / drag / keyboard time preview (absolutely positioned, never affects layout) */
+.seek-tip{
+  position:absolute;left:0;top:-20px;padding:2px 7px;border-radius:6px;font-size:11px;line-height:1.4;color:var(--text);
+  font-variant-numeric:tabular-nums;white-space:nowrap;background:var(--panel);border:1px solid var(--mc-a35);
+  box-shadow:0 4px 12px -4px rgb(0 0 0 / .55);opacity:0;transform:translate(-50%,3px);pointer-events:none;z-index:2;
+  transition:opacity .15s ease,transform .15s ease;
+}
+.seek-tip.show{opacity:1;transform:translate(-50%,0);}
+.seek-times{display:flex;justify-content:space-between;font-size:11.5px;letter-spacing:.01em;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums;}
+.seek-times #curTime{color:var(--text-soft);}
+
+.transport{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:16px;}
+.transport button{
+  width:36px;height:36px;border-radius:50%;background:none;border:none;color:var(--text-soft);cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;
+  transition:color .18s,transform .12s,background-color .18s;
+}
+.transport button:hover:not(:disabled){color:var(--text);background:rgb(var(--fg-rgb) / .06);}
 .transport button:active:not(:disabled){transform:scale(.9);}
 .transport button:disabled{opacity:.3;cursor:default;}
 .transport button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
-.transport .t-play{width:46px;height:46px;border-radius:50%;background:var(--music-accent-1);color:var(--on-core);transition:color .2s,transform .12s,background-color .6s;}
+.transport .t-play{width:48px;height:48px;background:var(--music-accent-1);color:var(--on-core);box-shadow:0 6px 18px -8px var(--mc-a65);transition:color .2s,transform .12s,box-shadow .25s,background-color .6s;}
+.transport .t-play:hover:not(:disabled){background:var(--music-accent-1);color:var(--on-core);box-shadow:0 8px 22px -6px var(--mc-a65);transform:scale(1.04);}
+.transport .t-play:active:not(:disabled){transform:scale(.92);}
 .transport .t-play svg{width:16px;height:16px;stroke:none;fill:currentColor;}
-.transport button.active{color:var(--music-accent-1);}
-.transport button.repeat-track::after{content:'1';position:absolute;top:-4px;right:-5px;font-size:9px;color:var(--music-accent-1);}
-/* ---- per-app volume (Task 2; markup: .volume-row > #mcVolumeIcon svg + #mcVolume input) ---- */
-.volume-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
-.volume-row svg{width:16px;height:16px;stroke:var(--text-soft);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:stroke .2s;}
-.volume-row svg.muted{stroke:var(--muted);}
-input.volume{flex:1;min-width:0;background:linear-gradient(to right,var(--music-accent-1) var(--vol-fill,60%),var(--line) var(--vol-fill,60%));}
+.transport button.active{color:var(--music-accent-1);background:var(--mc-a14);}
+.transport button.repeat-track::after{content:'1';position:absolute;top:3px;right:3px;font-size:9px;color:var(--music-accent-1);}
+/* ---- neon glow on prev / next / shuffle / repeat (play + stop keep their own look) ---- */
+.transport #ppPrev,.transport #ppNext,.transport #ppShuffle,.transport #ppRepeat{
+  --neon-core:var(--music-accent-1);
+  color:var(--neon-core);background-color:var(--mc-a08);
+  box-shadow:0 0 16px 1px var(--mc-a22),inset 0 0 10px var(--mc-a08);
+  transition:color .2s,transform .12s,background-color .3s ease,box-shadow .3s ease;
+}
+@supports (color:color-mix(in srgb, red, blue)){
+  .transport #ppPrev,.transport #ppNext,.transport #ppShuffle,.transport #ppRepeat{--neon-core:color-mix(in srgb, var(--music-accent-1) 72%, #fff);}
+}
+.transport #ppPrev svg,.transport #ppNext svg,.transport #ppShuffle svg,.transport #ppRepeat svg{
+  filter:drop-shadow(0 0 2px var(--neon-core)) drop-shadow(0 0 7px var(--music-accent-1));
+  transition:filter .3s ease;
+}
+.transport #ppPrev:hover:not(:disabled),.transport #ppNext:hover:not(:disabled),.transport #ppShuffle:hover:not(:disabled),.transport #ppRepeat:hover:not(:disabled){
+  color:var(--text);background-color:var(--mc-a14);
+  box-shadow:0 0 24px 4px var(--mc-a35),inset 0 0 12px var(--mc-a14);
+}
+.transport #ppPrev:hover:not(:disabled) svg,.transport #ppNext:hover:not(:disabled) svg,.transport #ppShuffle:hover:not(:disabled) svg,.transport #ppRepeat:hover:not(:disabled) svg{
+  filter:drop-shadow(0 0 2px var(--neon-core)) drop-shadow(0 0 8px var(--music-accent-1)) drop-shadow(0 0 16px var(--mc-a65));
+}
+.transport #ppShuffle.active,.transport #ppRepeat.active{
+  background-color:var(--mc-a14);
+  box-shadow:0 0 22px 3px var(--mc-a35),inset 0 0 12px var(--mc-a14);
+}
+.transport #ppShuffle.active svg,.transport #ppRepeat.active svg{
+  filter:drop-shadow(0 0 2px var(--neon-core)) drop-shadow(0 0 8px var(--music-accent-1)) drop-shadow(0 0 14px var(--mc-a65));
+}
+.transport #ppPrev:disabled,.transport #ppNext:disabled,.transport #ppShuffle:disabled,.transport #ppRepeat:disabled{background-color:transparent;box-shadow:none;}
+.transport #ppPrev:disabled svg,.transport #ppNext:disabled svg,.transport #ppShuffle:disabled svg,.transport #ppRepeat:disabled svg{filter:none;}
 
-/* ---- system (master) volume (Feature; markup: .volume-row.system >
-   #mcSysVolumeIcon svg (also doubles as a mute button) + #mcSysVolume
-   input). Same row styling as the per-app volume above, distinguished by
-   a small "SYSTEM" label so the two are never confused. ---- */
-.volume-row.system{margin-bottom:16px;}
-.volume-row.system .vol-label{font-size:9.5px;letter-spacing:.06em;color:var(--muted);flex:none;text-transform:uppercase;}
-.volume-row.system svg{cursor:pointer;}
+/* ---- combined audio panel (per-app volume + system volume as one section) ----
+   markup: .audio-panel > .audio-head + two .volume-row (.app / .system), each: .vol-btn(svg icon, doubles as
+   mute) + .vol-label + input.volume + .vol-val. The two sliders stay fully independent; the app slider carries
+   the music accent, the system slider stays neutral so they are never confused. */
+.audio-panel{
+  margin-bottom:14px;padding:10px 14px 8px;border:1px solid var(--line);border-radius:12px;background:rgb(var(--fg-rgb) / .025);
+  transition:border-color .24s ease;
+}
+.audio-panel:hover,.audio-panel:focus-within{border-color:var(--mc-a22);}
+.audio-head{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+.volume-row{display:grid;grid-template-columns:26px 54px minmax(0,1fr) 34px;align-items:center;gap:8px;height:30px;}
+.vol-btn{
+  width:26px;height:26px;padding:0;border:none;border-radius:8px;background:none;color:var(--text-soft);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:color .2s,background-color .2s;
+}
+.vol-btn:hover{color:var(--text);background:rgb(var(--fg-rgb) / .06);}
+.vol-btn:disabled{opacity:.4;cursor:default;}
+.volume-row svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none;transition:stroke .2s,color .2s;}
+.volume-row .vol-wave{transition:opacity .2s;}
+.volume-row .vol-x{opacity:0;transition:opacity .2s;}
+.volume-row.muted .vol-btn,.volume-row svg.muted{color:var(--muted);}
+.volume-row.muted .vol-wave{opacity:0;}
+.volume-row.muted .vol-x{opacity:1;}
+.vol-label{font-size:10px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.vol-val{font-size:11px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;}
+.volume-row.muted .vol-val{opacity:.6;}
+input.volume{
+  --vol-color:var(--music-accent-1);--vol-thumb:12px;--vol-p:.6;
+  -webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;height:18px;margin:0;padding:0;background:transparent;outline:none;cursor:pointer;
+}
+input.volume::-webkit-slider-runnable-track{
+  height:4px;border-radius:999px;
+  background:linear-gradient(to right,var(--vol-color) 0,var(--vol-color) calc(var(--vol-thumb) / 2 + (100% - var(--vol-thumb)) * var(--vol-p)),var(--line) 0);
+}
+input.volume::-webkit-slider-thumb{
+  -webkit-appearance:none;width:var(--vol-thumb);height:var(--vol-thumb);margin-top:-4px;border-radius:50%;border:none;background:var(--vol-thumb-color,var(--vol-color));
+  box-shadow:0 0 0 3px var(--mc-a14);transform:scale(.75);
+  transition:transform .18s var(--mc-ease),box-shadow .2s ease,background-color .3s;
+}
+input.volume::-moz-range-track{height:4px;border-radius:999px;background:var(--line);}
+input.volume::-moz-range-progress{height:4px;border-radius:999px;background:var(--vol-color);}
+input.volume::-moz-range-thumb{width:var(--vol-thumb);height:var(--vol-thumb);border:none;border-radius:50%;background:var(--vol-thumb-color,var(--vol-color));transition:transform .18s var(--mc-ease);}
+input.volume:not(:disabled):hover::-webkit-slider-thumb,input.volume:focus-visible::-webkit-slider-thumb{transform:scale(1);box-shadow:0 0 0 4px var(--mc-a22);}
+input.volume:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--mc-a65);}
+input.volume:disabled{opacity:.4;cursor:default;}
+.volume-row.system input.volume{--vol-color:rgb(var(--fg-rgb) / .5);--vol-thumb-color:var(--text-soft);}
+.volume-row.muted input.volume{--vol-color:rgb(var(--fg-rgb) / .22);--vol-thumb-color:var(--muted);}
 
-/* ---- sleep timer (Feature; markup: #sleepBtn button, #sleepMenu chip
-   row with data-min buttons, optional #sleepBadge countdown). The menu
-   is a plain inline row (not an absolutely-positioned popover) so it is
-   never clipped by .mc-body's overflow:hidden. ---- */
-.sleep-row{display:flex;align-items:center;gap:10px;margin-bottom:16px;}
+/* ---- audio button (sits at the right of the sleep row) + audio modal (media + system volume) ---- */
+.audio-btn{
+  margin-left:auto;display:flex;align-items:center;gap:7px;padding:4px 12px 4px 10px;background:none;border:1px solid var(--line);border-radius:999px;
+  color:var(--text-soft);font-size:11.5px;cursor:pointer;transition:color .2s,border-color .24s ease,background-color .24s ease;
+}
+.audio-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
+.audio-btn:hover,.audio-btn[aria-expanded="true"]{color:var(--text);border-color:var(--mc-a50);background:var(--mc-a08);}
+.audio-modal{
+  --music-accent-1:var(--core);--music-accent-2:var(--think); /* JS (applyAccentColors) overrides these inline, same as .music-card */
+  --mc-a08:rgb(var(--core-rgb) / .08);--mc-a14:rgb(var(--core-rgb) / .14);--mc-a22:rgb(var(--core-rgb) / .22);
+  --mc-a35:rgb(var(--core-rgb) / .35);--mc-a50:rgb(var(--core-rgb) / .5);--mc-a65:rgb(var(--core-rgb) / .65);
+  --mc-ease:cubic-bezier(.2,.8,.2,1);
+  position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;
+  visibility:hidden;pointer-events:none;transition:visibility 0s linear .26s;
+}
+@supports (color:color-mix(in srgb, red, blue)){
+  .audio-modal{
+    --mc-a08:color-mix(in srgb, var(--music-accent-1) 8%, transparent);--mc-a14:color-mix(in srgb, var(--music-accent-1) 14%, transparent);
+    --mc-a22:color-mix(in srgb, var(--music-accent-1) 22%, transparent);--mc-a35:color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+    --mc-a50:color-mix(in srgb, var(--music-accent-1) 50%, transparent);--mc-a65:color-mix(in srgb, var(--music-accent-1) 65%, transparent);
+  }
+}
+.audio-modal.show{visibility:visible;pointer-events:auto;transition-delay:0s;}
+.audio-backdrop{position:absolute;inset:0;background:rgb(0 0 0 / .5);opacity:0;transition:opacity .24s ease;}
+.audio-modal.show .audio-backdrop{opacity:1;}
+.audio-card{
+  position:relative;width:min(340px,100%);padding:14px 18px 10px;border:1px solid var(--mc-a35);border-radius:16px;background:var(--panel);
+  box-shadow:0 24px 60px -20px rgb(0 0 0 / .8),0 0 40px -22px var(--mc-a65);outline:none;
+  opacity:0;transform:translateY(10px) scale(.97);transition:opacity .2s ease,transform .26s var(--mc-ease);
+}
+.audio-modal.show .audio-card{opacity:1;transform:none;}
+.audio-card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.audio-card-title{font-size:12px;font-weight:500;letter-spacing:.09em;text-transform:uppercase;color:var(--text-soft);}
+.audio-close{
+  width:24px;height:24px;padding:0;border:none;border-radius:50%;background:none;color:var(--muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:color .2s,background-color .2s;
+}
+.audio-close:hover{color:var(--text);background:rgb(var(--fg-rgb) / .08);}
+.audio-close svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;}
+.audio-card .volume-row{height:38px;}
+.audio-modal :focus-visible{outline:2px solid var(--mc-a65);outline-offset:2px;}
+.audio-modal input:focus-visible,.audio-card:focus-visible{outline:none;}
+@media (prefers-reduced-motion:reduce){.audio-modal,.audio-modal *{transition-duration:.01ms !important;transition-delay:0s !important;}}
+.audio-modal.reduce-motion,.audio-modal.reduce-motion *{transition-duration:.01ms !important;transition-delay:0s !important;}
+
+/* ---- sleep timer (Feature; markup: #sleepBtn button with #sleepState "Off/On" pill, #sleepBadge live
+   countdown, #sleepCancel quick-cancel, #sleepMenu popover with data-min duration buttons + #sleepOff).
+   The popover is absolutely positioned INSIDE the card body (opens upward over the audio panel), so it can
+   neither be clipped by .mc-body's overflow:hidden nor push the layout around. ---- */
+.sleep-row{position:relative;display:flex;align-items:center;gap:10px;margin-bottom:16px;min-height:30px;}
 .sleep-btn{
   background:none;border:1px solid var(--line);color:var(--text-soft);border-radius:999px;
-  padding:5px 12px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:color .2s,border-color .2s;
+  padding:4px 5px 4px 11px;font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:7px;
+  transition:color .2s,border-color .24s ease,background-color .24s ease;
 }
 .sleep-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
-.sleep-btn:hover{color:var(--text);}
-.sleep-btn.active{
-  color:var(--music-accent-1);border-color:rgb(var(--core-rgb) / .6); /* brightened from .5 */
-  border-color:color-mix(in srgb, var(--music-accent-1) 60%, transparent);
+.sleep-btn:hover{color:var(--text);border-color:var(--mc-a35);}
+.sleep-state{
+  font-size:9.5px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:999px;
+  background:rgb(var(--fg-rgb) / .06);color:var(--muted);transition:background-color .24s ease,color .24s ease;
 }
-.sleep-badge{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
-.sleep-menu{display:none;flex-wrap:wrap;gap:6px;}
-.sleep-menu.show{display:flex;}
-.sleep-menu button{
+.sleep-btn.active{color:var(--text);border-color:var(--mc-a50);background:var(--mc-a08);}
+.sleep-btn.active .sleep-state{background:var(--music-accent-1);color:var(--on-core);}
+.sleep-badge{font-size:12px;color:var(--music-accent-1);font-variant-numeric:tabular-nums;letter-spacing:.02em;}
+.sleep-cancel{
+  width:22px;height:22px;padding:0;border:none;border-radius:50%;background:none;color:var(--muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:color .2s,background-color .2s;
+}
+.sleep-cancel[hidden]{display:none;}
+.sleep-cancel:hover{color:var(--text);background:rgb(var(--fg-rgb) / .08);}
+.sleep-cancel svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;}
+/* thin remaining-time line under the row while the timer is armed (--sleep-p = remaining fraction, set by JS each tick) */
+.sleep-row::after{
+  content:'';position:absolute;left:0;right:0;bottom:-8px;height:2px;border-radius:2px;pointer-events:none;opacity:0;
+  background:linear-gradient(to right,var(--mc-a50) calc(var(--sleep-p,0) * 100%),transparent 0);transition:opacity .3s ease;
+}
+.sleep-row.active::after{opacity:1;}
+.sleep-row.fading .sleep-badge{opacity:.75;}
+.sleep-menu{
+  position:absolute;left:0;bottom:calc(100% + 8px);z-index:6;min-width:236px;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);
+  box-shadow:0 14px 32px -12px rgb(0 0 0 / .7);
+  opacity:0;visibility:hidden;pointer-events:none;transform:translateY(6px) scale(.97);transform-origin:left bottom;
+  transition:opacity .2s ease,transform .24s var(--mc-ease),visibility 0s linear .24s;
+}
+.sleep-menu.show{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition-delay:0s;}
+.sleep-menu-head{display:flex;flex-direction:column;gap:1px;margin-bottom:8px;}
+.sleep-menu-title{font-size:12px;color:var(--text);}
+.sleep-menu-hint{font-size:10.5px;color:var(--muted);}
+.sleep-options{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+.sleep-options button{
   background:var(--bg2,rgb(var(--fg-rgb) / .04));border:1px solid var(--line);color:var(--text-soft);
-  font-size:11px;padding:4px 9px;border-radius:999px;cursor:pointer;transition:color .2s,border-color .2s;
+  font-size:11.5px;padding:6px 0;border-radius:8px;cursor:pointer;font-variant-numeric:tabular-nums;
+  transition:color .2s,border-color .2s,background-color .2s,transform .12s;
 }
-.sleep-menu button:hover{color:var(--text);border-color:rgb(var(--core-rgb) / .5);border-color:color-mix(in srgb, var(--music-accent-1) 50%, transparent);} /* brightened from .4 */
+.sleep-options button:hover{color:var(--text);border-color:var(--mc-a50);}
+.sleep-options button:active{transform:scale(.95);}
+.sleep-options button.selected{color:var(--text);border-color:var(--mc-a65);background:var(--mc-a14);}
+.sleep-off{
+  display:block;width:100%;margin-top:8px;padding:6px 0;border:1px solid var(--line);border-radius:8px;background:none;
+  color:var(--muted);font-size:11.5px;cursor:pointer;transition:color .2s,border-color .2s;
+}
+.sleep-off[hidden]{display:none;}
+.sleep-off:hover{color:var(--text);border-color:var(--mc-a50);}
 
-.spectrum{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:32px;}
+.spectrum{display:flex;align-items:flex-end;justify-content:center;gap:3px;height:32px;transition:opacity .4s ease;}
+.music-card:not(.has-track) .spectrum{opacity:.55;}
 .spectrum span{width:3px;height:3px;background:var(--music-accent-1);border-radius:2px;opacity:.3;will-change:height;transition:background-color .6s;} /* base opacity brightened from .25 */
+
+/* ---- reduced motion: card follows both the OS setting and SARA.reduceMotion (JS adds .reduce-motion) ---- */
+@media (prefers-reduced-motion:reduce){
+  .music-card *,.music-card *::before,.music-card *::after{transition-duration:.01ms !important;transition-delay:0s !important;animation:none !important;}
+  .music-card::before{transition:none;}
+  .music-card .art-block:hover{transform:none;}
+}
+.music-card.reduce-motion *,.music-card.reduce-motion *::before,.music-card.reduce-motion *::after{transition-duration:.01ms !important;transition-delay:0s !important;animation:none !important;}
+.music-card.reduce-motion::before{transition:none;}
+.music-card.reduce-motion .art-block:hover{transform:none;}
 
 /* ---- mini-player (fixed above nav; hidden on Apps where the full card is visible) ---- */
 .mini-player{
   --music-accent-1:var(--core);--music-accent-2:var(--think); /* same override point as .music-card; JS sets both */
-  position:fixed;bottom:82px;left:50%;transform:translateX(-50%) translateY(8px);
+  --mp-a22:rgb(var(--core-rgb) / .22);--mp-a35:rgb(var(--core-rgb) / .35);--mp-a65:rgb(var(--core-rgb) / .65);
+  --mp-spring:cubic-bezier(.34,1.42,.64,1);
+  /* --mp-dx/--mp-dy = drag offset from the default spot, --mp-rise = entrance rise, --mp-tilt/--mp-scale = drag feel,
+     --mp-p = playback progress (0..1). All written by js/music.js. */
+  --mp-dx:0px;--mp-dy:0px;--mp-rise:8px;--mp-tilt:0deg;--mp-scale:1;--mp-p:0;
+  position:fixed;bottom:82px;left:50%;
+  translate:calc(-50% + var(--mp-dx)) calc(var(--mp-dy) + var(--mp-rise));rotate:var(--mp-tilt);scale:var(--mp-scale);
   display:flex;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);
-  border-radius:12px;padding:8px 10px 8px 8px;opacity:0;pointer-events:none;
-  transition:opacity .25s, transform .25s;z-index:9;max-width:300px;cursor:pointer;
+  border-radius:12px;padding:8px 10px 8px 8px;opacity:0;pointer-events:none;touch-action:none;-webkit-user-select:none;user-select:none;
+  transition:opacity .25s,translate .5s var(--mp-spring),rotate .45s var(--mp-spring),scale .3s var(--mp-spring),border-color .25s,box-shadow .3s ease;
+  z-index:9;max-width:300px;cursor:grab;
 }
-.mini-player.show{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0);}
+@supports (color:color-mix(in srgb, red, blue)){
+  .mini-player{
+    --mp-a22:color-mix(in srgb, var(--music-accent-1) 22%, transparent);--mp-a35:color-mix(in srgb, var(--music-accent-1) 35%, transparent);
+    --mp-a65:color-mix(in srgb, var(--music-accent-1) 65%, transparent);
+  }
+}
+.mini-player.show{opacity:1;pointer-events:auto;--mp-rise:0px;}
+.mini-player.show:hover{
+  border-color:rgb(var(--core-rgb) / .4);
+  border-color:color-mix(in srgb, var(--music-accent-1) 40%, transparent);
+}
 body[data-page="apps"] .mini-player{opacity:0;pointer-events:none;}
-.mini-player .mp-art{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--music-accent-1),var(--music-accent-2)) center/cover;flex:none;transition:background-image .6s ease;}
+.mini-player .mp-art{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--music-accent-1),var(--music-accent-2)) center/cover;flex:none;transition:background-image .6s ease,filter .3s ease;}
 .mini-player .mp-meta{min-width:0;}
 .mini-player .mp-title{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
 .mini-player .mp-artist{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
 .mini-player .mp-btn{background:none;border:none;color:var(--music-accent-1);cursor:pointer;flex:none;margin-left:2px;transition:color .6s;}
 .mini-player .mp-btn svg{width:16px;height:16px;fill:currentColor;stroke:none;}
 .mini-player.paused{opacity:.7;}
+.mini-player.paused .mp-art{filter:saturate(.8);}
+.mini-player.reduce-motion,.mini-player.reduce-motion *{transition-duration:.01ms !important;}
+@media (prefers-reduced-motion:reduce){.mini-player,.mini-player *{transition-duration:.01ms !important;}}
+
+/* ---- draggable + animated mini-player (position / tilt / lift are driven by js/music.js through the --mp-* variables) ---- */
+@property --mp-angle{syntax:'<angle>';inherits:false;initial-value:0deg;}
+/* while held or flung: the position follows 1:1 (no translate transition); tilt and lift stay smooth */
+.mini-player.dragging,.mini-player.gliding{
+  transition:opacity .25s,translate 0s,rotate .15s ease-out,scale .25s var(--mp-spring),border-color .25s,box-shadow .3s ease;
+}
+.mini-player.show:hover:not(.dragging){--mp-scale:1.02;}
+.mini-player.show.dragging{
+  --mp-scale:1.05;cursor:grabbing;border-color:var(--mp-a65);
+  box-shadow:0 18px 40px -14px rgb(0 0 0 / .75),0 0 0 1px var(--mp-a22),0 0 34px -6px var(--mp-a35);
+}
+.mini-player:focus-visible{outline:2px solid var(--mp-a65);outline-offset:2px;}
+/* one-shot shockwave when it lands after a drag / reset */
+.mini-player.landed{animation:mpLand .7s ease-out;}
+@keyframes mpLand{
+  0%{box-shadow:0 0 0 0 var(--mp-a35),0 0 28px -4px var(--mp-a35);}
+  100%{box-shadow:0 0 0 22px transparent,0 0 28px -4px transparent;}
+}
+/* grip dots: dim hint that it can be moved, brighter on hover / focus / drag */
+.mini-player .mp-grip{
+  width:8px;height:18px;flex:none;margin-right:-4px;opacity:.3;transition:opacity .25s ease;
+  background:radial-gradient(circle,var(--muted) 1px,transparent 1.4px) 0 0/4px 6px;
+}
+.mini-player:hover .mp-grip,.mini-player:focus-visible .mp-grip,.mini-player.dragging .mp-grip{opacity:.75;}
+/* sonar ripple around the artwork while playing */
+.mini-player .mp-art{position:relative;}
+.mini-player .mp-art::after{
+  content:'';position:absolute;inset:0;border-radius:inherit;border:1px solid var(--music-accent-1);opacity:0;pointer-events:none;
+}
+.mini-player.show:not(.paused) .mp-art::after{animation:mpRipple 2.8s ease-out infinite;}
+@keyframes mpRipple{0%{opacity:.55;transform:scale(1);}100%{opacity:0;transform:scale(1.55);}}
+/* tiny equalizer (transform-only animation) */
+.mini-player .mp-eq{display:flex;align-items:flex-end;gap:2px;height:14px;flex:none;opacity:.4;transition:opacity .3s ease;}
+.mini-player .mp-eq i{display:block;width:2.5px;height:100%;border-radius:2px;background:var(--music-accent-1);transform-origin:bottom;transform:scaleY(.3);transition:background-color .6s;}
+.mini-player.show:not(.paused) .mp-eq{opacity:1;}
+.mini-player.show:not(.paused) .mp-eq i{animation:mpEq 1.1s ease-in-out infinite;}
+.mini-player.show:not(.paused) .mp-eq i:nth-child(2){animation-delay:-.4s;}
+.mini-player.show:not(.paused) .mp-eq i:nth-child(3){animation-delay:-.75s;}
+@keyframes mpEq{0%,100%{transform:scaleY(.25);}50%{transform:scaleY(1);}}
+/* hairline playback progress along the bottom edge (--mp-p is set from the same interpolated position as the seek bar) */
+.mini-player::after{
+  content:'';position:absolute;left:12px;bottom:3px;height:2px;border-radius:2px;pointer-events:none;
+  width:calc((100% - 24px) * var(--mp-p));
+  background:linear-gradient(90deg,var(--music-accent-2),var(--music-accent-1));
+  box-shadow:0 0 6px var(--mp-a65);transition:width .5s linear;
+}
+/* slow aurora ring around the border while playing */
+.mini-player::before{
+  content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1.5px;pointer-events:none;opacity:0;
+  background:conic-gradient(from var(--mp-angle),transparent 0deg,var(--mp-a65) 50deg,transparent 120deg,transparent 200deg,var(--mp-a35) 250deg,transparent 320deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  transition:opacity .5s ease;
+}
+.mini-player.show:not(.paused)::before{opacity:1;animation:mpSpin 6s linear infinite;}
+@keyframes mpSpin{to{--mp-angle:360deg;}}
+/* nothing animates while the full card is on screen (the mini-player is hidden there) */
+body[data-page="apps"] .mini-player::before,
+body[data-page="apps"] .mini-player *,
+body[data-page="apps"] .mini-player *::after{animation-play-state:paused !important;}
+.mini-player.reduce-motion,.mini-player.reduce-motion *,.mini-player.reduce-motion::before,.mini-player.reduce-motion *::after{animation:none !important;}
+@media (prefers-reduced-motion:reduce){.mini-player,.mini-player *,.mini-player::before,.mini-player *::after{animation:none !important;}}
