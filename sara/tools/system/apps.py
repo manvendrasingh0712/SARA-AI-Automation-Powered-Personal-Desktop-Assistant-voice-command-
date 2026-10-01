@@ -20,6 +20,12 @@ voice or keyboard. That text is UNTRUSTED. The rules are:
    resolved, we simply say "couldn't find/open" — nothing is run.
 4. Destructive actions (close / restart) refuse critical Windows system
    processes and never touch SARA's own process tree.
+5. OPEN-ONLY Windows Search fallback: a name that passed rule 2b but is
+   NOT on the trusted list (_APP_ALIASES / Config.APP_LAUNCH_ALLOWLIST) is
+   not launched by us at all. It is pasted as plain text into the Windows
+   Search box (Win+S) and the first result is opened, exactly as a person
+   would do by hand. The name is never turned into a process, path or shell
+   command, and close / restart never use this path.
 """
 from ._shared import _ensure_windows
 
@@ -31,8 +37,9 @@ import shutil
 import time
 import subprocess
 import platform
+import threading
 
-from typing import Dict, List, NamedTuple, Optional, Set, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import psutil
 
@@ -163,6 +170,39 @@ _ERROR_ELEVATION_REQUIRED = 740
 _LAUNCH_OK = "ok"
 _LAUNCH_NOT_FOUND = "not_found"
 _LAUNCH_ERROR = "error"
+
+# ------------------------------------------------------------
+# Windows Search fallback for UNLISTED applications (open only)
+# ------------------------------------------------------------
+# WHY THIS EXISTS: _APP_ALIASES / Config.APP_LAUNCH_ALLOWLIST are the apps
+# SARA launches through the trusted direct path. Anything else (Blender,
+# Figma, Android Studio, ...) used to be refused outright. open_application()
+# now hands such names to Windows Search instead: Win+S, paste the name,
+# open the FIRST result. The name only ever travels as pasted plain text,
+# after passing _SAFE_APP_NAME_RE. close/restart never use this.
+
+# Processes that host the Windows Search UI. Keys are only sent while one of
+# these owns the foreground window, so nothing is ever typed into SARA's GUI
+# or some other app if Search fails to open.
+_SEARCH_HOST_PROCESSES = frozenset({
+    "searchhost.exe", "searchapp.exe", "searchui.exe",
+    "startmenuexperiencehost.exe",
+})
+
+# Timing (seconds). The first two can be overridden in Config and are clamped.
+_SEARCH_FOCUS_TIMEOUT_DEFAULT_S = 2.0   # max wait for Search to take focus
+_SEARCH_FOCUS_TIMEOUT_LIMITS_S = (0.5, 5.0)
+_SEARCH_SETTLE_DEFAULT_S = 0.8          # wait for results after pasting
+_SEARCH_SETTLE_LIMITS_S = (0.2, 3.0)
+_SEARCH_POLL_INTERVAL_S = 0.05
+_SEARCH_INPUT_READY_S = 0.15            # Search box accepts input
+_SEARCH_CLOSE_WAIT_S = 1.5              # Search should close after Enter
+_SEARCH_LOCK_WAIT_S = 5.0
+
+# The keyboard is one shared resource: two overlapping searches would
+# interleave keystrokes, so they are serialised.
+_SEARCH_LOCK = threading.Lock()
+_MODIFIER_KEYS = ("ctrl", "shift", "alt", "windows")
 
 
 class _Resolved(NamedTuple):
@@ -445,7 +485,180 @@ def _wait_and_kill(procs: List["psutil.Process"], grace: float) -> None:
 # ============================================================
 
 
-def open_application(app_name: str) -> str:
+def _config_seconds(name: str, default: float, limits: Tuple[float, float]) -> float:
+    """Timing option from Config, defaulted and clamped to `limits`."""
+    try:
+        value = float(getattr(Config, name, default))
+    except (TypeError, ValueError):
+        value = default
+    if value != value:  # NaN
+        value = default
+    low, high = limits
+    return max(low, min(high, value))
+
+
+def _search_fallback_applies(key: str) -> bool:
+    """True when `key` (a validated plain name that is not in
+    _APP_ALIASES) should go to Windows Search instead of the direct path.
+    Names on Config.APP_LAUNCH_ALLOWLIST stay on the trusted direct path;
+    so does everything if the installation switched the allowlist off."""
+    if not getattr(Config, "APP_UNLISTED_SEARCH_FALLBACK_ENABLED", True):
+        return False
+    if not getattr(Config, "APP_LAUNCH_ALLOWLIST_ENABLED", True):
+        return False
+    configured = getattr(Config, "APP_LAUNCH_ALLOWLIST", None) or ()
+    trusted = {str(item).strip().lower() for item in configured}
+    return key not in trusted
+
+
+def _foreground_process_name() -> Optional[str]:
+    """Lower-cased image name of the process owning the foreground window,
+    or None if it cannot be determined."""
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return None
+    pid = wintypes.DWORD(0)
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if not pid.value:
+        return None
+    try:
+        return psutil.Process(pid.value).name().lower()
+    except psutil.Error:
+        return None
+
+
+def _wait_for_search_state(visible: bool, timeout_s: float) -> bool:
+    """Poll (short, bounded) until the Search UI is / is not foreground."""
+    deadline = time.monotonic() + timeout_s
+    while True:
+        if (_foreground_process_name() in _SEARCH_HOST_PROCESSES) == visible:
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_SEARCH_POLL_INTERVAL_S)
+
+
+def _release_modifiers(keyboard: Any) -> None:
+    """Make sure no modifier key is left pressed (stuck-key protection)."""
+    for name in _MODIFIER_KEYS:
+        try:
+            if keyboard.is_pressed(name):
+                keyboard.release(name)
+        except (ValueError, OSError):
+            continue
+
+
+def _run_search_keys(keyboard: Any) -> bool:
+    """Win+S -> (Search focused?) -> Ctrl+A -> Ctrl+V -> Enter.
+    The query is already on the clipboard. Ctrl+A makes the paste REPLACE
+    any old text; changing the query makes Search pre-select its top result,
+    so Enter opens the FIRST result. Returns True only if Search closed
+    after Enter (i.e. something was actually opened)."""
+    focus_timeout = _config_seconds(
+        "WINDOWS_SEARCH_TIMEOUT_S",
+        _SEARCH_FOCUS_TIMEOUT_DEFAULT_S,
+        _SEARCH_FOCUS_TIMEOUT_LIMITS_S,
+    )
+    settle = _config_seconds(
+        "WINDOWS_SEARCH_SETTLE_S", _SEARCH_SETTLE_DEFAULT_S, _SEARCH_SETTLE_LIMITS_S
+    )
+
+    keyboard.send("windows+s")
+    if not _wait_for_search_state(True, focus_timeout):
+        logger.warning(
+            "Windows Search did not take focus (foreground process: %r); "
+            "nothing was typed.", _foreground_process_name()
+        )
+        return False
+
+    time.sleep(_SEARCH_INPUT_READY_S)
+    keyboard.send("ctrl+a")
+    keyboard.send("ctrl+v")
+    time.sleep(settle)
+
+    if _foreground_process_name() not in _SEARCH_HOST_PROCESSES:
+        logger.warning("Windows Search lost focus before Enter; aborting.")
+        return False
+
+    keyboard.send("enter")
+    if _wait_for_search_state(False, _SEARCH_CLOSE_WAIT_S):
+        return True
+    keyboard.send("esc")  # still open -> nothing matched; close it again
+    return False
+
+
+def _drive_windows_search(query: str) -> bool:
+    """Put `query` (already validated plain text) on the clipboard, run the
+    Search key sequence, and restore the clipboard. Always releases
+    modifier keys and the keyboard lock."""
+    try:
+        import keyboard
+        import pyperclip
+    except ImportError:
+        logger.error(
+            "Windows Search fallback unavailable: the 'keyboard' and "
+            "'pyperclip' packages are required."
+        )
+        return False
+
+    if not _SEARCH_LOCK.acquire(timeout=_SEARCH_LOCK_WAIT_S):
+        logger.warning("Windows Search fallback busy; skipping this request.")
+        return False
+
+    saved_clip: Optional[str] = None
+    try:
+        try:
+            saved_clip = pyperclip.paste()
+        except pyperclip.PyperclipException:
+            saved_clip = None
+        pyperclip.copy(query)
+        _release_modifiers(keyboard)
+        return _run_search_keys(keyboard)
+    finally:
+        _release_modifiers(keyboard)
+        if isinstance(saved_clip, str) and saved_clip:
+            try:
+                pyperclip.copy(saved_clip)
+            except pyperclip.PyperclipException:
+                pass
+        _SEARCH_LOCK.release()
+
+
+def _open_via_windows_search(query: str, label: str) -> str:
+    """User-facing wrapper: never raises, never exposes a traceback."""
+    failure = f"Sorry, I couldn't open '{label}'."
+    if not _IS_WINDOWS:
+        logger.warning("Windows Search fallback requested on a non-Windows platform.")
+        return failure
+    try:
+        opened = _drive_windows_search(query)
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.error(f"Windows Search fallback failed for {label!r}: {e}")
+        return failure
+    except Exception as e:
+        logger.exception(
+            "Windows Search fallback for %r raised an unexpected error type "
+            "(this may be a bug): %s", label, e
+        )
+        return failure
+
+    if opened:
+        logger.debug("open_application: opened %r via Windows Search", label)
+        return f"Opened {label}."
+    logger.info(f"open_application: Windows Search fallback did not open {label!r}")
+    return failure
+
+
+def open_application(app_name: str, *, allow_search_fallback: bool = True) -> str:
+    """Open an application by (untrusted) name. Trusted names launch
+    directly; other valid plain names use the Windows Search fallback
+    unless `allow_search_fallback` is False (restart passes False)."""
     _ensure_windows()
 
     if not app_name or not app_name.strip():
@@ -462,6 +675,15 @@ def open_application(app_name: str) -> str:
         return f"Sorry, I couldn't find or open '{label}'."
 
     target = resolved.target
+
+    # Unlisted-but-safe name -> Windows Search (open only, see top of file).
+    if (
+        allow_search_fallback
+        and resolved.source == "raw"
+        and _search_fallback_applies(target)
+    ):
+        return _open_via_windows_search(target, label)
+
     status, err = _try_launch(target)
 
     # Not found as typed -> try a confident typo / mishearing correction
@@ -552,7 +774,7 @@ def restart_application(app_name: str) -> str:
                 f"It may need administrator rights."
             )
         # Wasn't running -> a restart is just a normal open.
-        return open_application(raw_name)
+        return open_application(raw_name, allow_search_fallback=False)
 
     # Wait for a real exit (instead of a blind sleep), force-kill stragglers.
     _wait_and_kill(result.procs, grace=3.0)

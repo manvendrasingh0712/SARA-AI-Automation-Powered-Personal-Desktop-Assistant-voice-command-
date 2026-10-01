@@ -318,12 +318,32 @@ _WHITESPACE_COLLAPSE_RE = re.compile(r"\s+")
 # through substring matching against every allowlist entry.
 _MAX_APP_TARGET_LENGTH = 80
 
+# Plain-text application name accepted by the open_app Windows Search
+# fallback. Keep in step with _SAFE_APP_NAME_RE in sara.tools.system.apps.
+# Applied to the lower-cased, whitespace-collapsed name: must start with a
+# letter/digit, then only letters, digits, space, '.', '_', '+', '-'.
+# Shell metacharacters, quotes, slashes, ':' (drive letters / URI schemes),
+# '%', '$', '`', brackets and control characters can never match.
+_SAFE_PLAIN_APP_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9 ._+\-]*$")
+
+
+def _unlisted_search_fallback_enabled() -> bool:
+    """Config.APP_UNLISTED_SEARCH_FALLBACK_ENABLED (default True). Read here
+    so every caller of validate_tool_arguments() (fast path, planner,
+    executor retry) gets the same policy without extra plumbing."""
+    try:
+        from config import Config
+    except ImportError:
+        return True
+    return bool(getattr(Config, "APP_UNLISTED_SEARCH_FALLBACK_ENABLED", True))
+
 
 def validate_app_target(
     target: Any,
     allowed_apps: FrozenSet[str],
     *,
     enabled: bool = True,
+    allow_unlisted_safe: bool = False,
 ) -> str:
     """
     Validates an application-name argument destined for the open_app (or
@@ -362,7 +382,18 @@ def validate_app_target(
     if not enabled:
         return normalized
 
-    if not allowed_apps:
+    # open_app only: an unlisted name is acceptable (it goes to the Windows
+    # Search fallback) but ONLY if it is a safe plain-text application name.
+    # Trailing ".,!?" is ignored, mirroring apps._normalize_app_name().
+    if allow_unlisted_safe and not _SAFE_PLAIN_APP_NAME_RE.match(
+        normalized.rstrip(".,!?").strip()
+    ):
+        logger.info("Blocked open_app request with an unsafe application name %r.", target)
+        raise PlanValidationError(
+            "That doesn't look like a plain application name, so I won't open it."
+        )
+
+    if not allowed_apps and not allow_unlisted_safe:
         raise PlanValidationError(
             "The application allowlist is enabled but empty, so no "
             "application launch can be validated. Configure "
@@ -375,6 +406,9 @@ def validate_app_target(
             continue
         if alias == normalized or alias in normalized or normalized in alias:
             return normalized
+
+    if allow_unlisted_safe:
+        return normalized
 
     logger.info("Blocked app-launch request for unlisted target %r.", target)
     raise PlanValidationError(
@@ -401,6 +435,7 @@ def validate_tool_arguments(
     *,
     allowed_apps: FrozenSet[str] = frozenset(),
     app_allowlist_enabled: bool = True,
+    app_unlisted_search_fallback: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Validates (and, where needed, normalizes) the arguments for one tool
@@ -429,10 +464,21 @@ def validate_tool_arguments(
 
     if tool_name in _APP_ARG_TOOLS:
         validated = dict(arguments)
+        # Only open_app has the Windows Search fallback; close_app keeps the
+        # strict allowlist. None -> use Config.APP_UNLISTED_SEARCH_FALLBACK_ENABLED.
+        if tool_name == "open_app":
+            allow_unlisted = (
+                app_unlisted_search_fallback
+                if app_unlisted_search_fallback is not None
+                else _unlisted_search_fallback_enabled()
+            )
+        else:
+            allow_unlisted = False
         validated["target"] = validate_app_target(
             arguments.get("target", ""),
             allowed_apps,
             enabled=app_allowlist_enabled,
+            allow_unlisted_safe=allow_unlisted,
         )
         return validated
 
