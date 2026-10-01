@@ -282,6 +282,13 @@ _MAX_PLANNING_STEP_TIMEOUT_S = 15.0
 _MIN_PLANNING_TOTAL_TIMEOUT_S = 2.0
 _MAX_PLANNING_TOTAL_TIMEOUT_S = 30.0
 
+# ── Bounds for the open_app Windows Search fallback (apps.py) ───────────
+_MIN_WINDOWS_SEARCH_TIMEOUT_S = 0.5
+_MAX_WINDOWS_SEARCH_TIMEOUT_S = 5.0
+
+_MIN_WINDOWS_SEARCH_SETTLE_S = 0.2
+_MAX_WINDOWS_SEARCH_SETTLE_S = 3.0
+
 # ── New bounds for memory management (decision memory / consolidation) ───
 _MIN_MEMORY_CONSOLIDATION_INTERVAL_S = 60
 _MAX_MEMORY_CONSOLIDATION_INTERVAL_S = 86400
@@ -705,6 +712,10 @@ class Config:
     # backends' model catalogs don't overlap.
     OLLAMA_EMBEDDING_MODEL: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
+    EMBEDDING_MAX_RETRIES: int = _int(os.getenv("EMBEDDING_MAX_RETRIES"), default=2)
+    EMBEDDING_RETRY_BASE_DELAY_S: float = _float(
+        os.getenv("EMBEDDING_RETRY_BASE_DELAY_S"), default=0.5
+    )
     RAG_TOP_K: int = _int(os.getenv("RAG_TOP_K"), default=6)
     RAG_MIN_SIMILARITY: float = _float(os.getenv("RAG_MIN_SIMILARITY"), default=0.40)
     # NEW: durable, explicitly-stated facts ("my babe's name is
@@ -757,6 +768,22 @@ class Config:
     # ── Application launch allowlist (sara/core/planning/schema.py) ─────────
     APP_LAUNCH_ALLOWLIST_ENABLED: bool = _bool(
         os.getenv("APP_LAUNCH_ALLOWLIST_ENABLED", "True"), default=True
+    )
+    # open_app ONLY: when True, a safely-formatted application name that is
+    # NOT on the allowlist/aliases is opened through Windows Search (first
+    # result) instead of being refused. The allowlist stays the trusted
+    # direct-launch list. close_app / restart_application never use this.
+    # Set to False to restore the old "unlisted app = rejected" behaviour.
+    APP_UNLISTED_SEARCH_FALLBACK_ENABLED: bool = _bool(
+        os.getenv("APP_UNLISTED_SEARCH_FALLBACK_ENABLED", "True"), default=True
+    )
+    # Max seconds to wait for the Windows Search box to take focus.
+    WINDOWS_SEARCH_TIMEOUT_S: float = _float(
+        os.getenv("WINDOWS_SEARCH_TIMEOUT_S"), default=2.0
+    )
+    # Seconds to let results settle after the name is pasted, before Enter.
+    WINDOWS_SEARCH_SETTLE_S: float = _float(
+        os.getenv("WINDOWS_SEARCH_SETTLE_S"), default=0.8
     )
     APP_LAUNCH_ALLOWLIST: list = [
         w.strip().lower()
@@ -1096,6 +1123,10 @@ class Config:
 
         # ── RAG / long-term memory clamps ──────────────────────────────────
         cls.EMBEDDING_TIMEOUT_S = max(1.0, min(15.0, cls.EMBEDDING_TIMEOUT_S))
+        cls.EMBEDDING_MAX_RETRIES = max(0, min(5, cls.EMBEDDING_MAX_RETRIES))
+        cls.EMBEDDING_RETRY_BASE_DELAY_S = max(
+            0.1, min(5.0, cls.EMBEDDING_RETRY_BASE_DELAY_S)
+        )
         cls.RAG_TOP_K = max(1, min(20, cls.RAG_TOP_K))
         cls.RAG_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_MIN_SIMILARITY))
         cls.RAG_FACT_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_FACT_MIN_SIMILARITY))
@@ -1153,6 +1184,15 @@ class Config:
                     seen.add(normalized_entry)
                     deduped.append(normalized_entry)
             cls.APP_LAUNCH_ALLOWLIST = deduped
+
+        cls.WINDOWS_SEARCH_TIMEOUT_S = max(
+            _MIN_WINDOWS_SEARCH_TIMEOUT_S,
+            min(_MAX_WINDOWS_SEARCH_TIMEOUT_S, cls.WINDOWS_SEARCH_TIMEOUT_S),
+        )
+        cls.WINDOWS_SEARCH_SETTLE_S = max(
+            _MIN_WINDOWS_SEARCH_SETTLE_S,
+            min(_MAX_WINDOWS_SEARCH_SETTLE_S, cls.WINDOWS_SEARCH_SETTLE_S),
+        )
 
         if cls.APP_LAUNCH_ALLOWLIST_ENABLED and not cls.APP_LAUNCH_ALLOWLIST:
             print(
@@ -1327,7 +1367,8 @@ class Config:
             )
             print(
                 f"[Debug] App allowlist: enabled={cls.APP_LAUNCH_ALLOWLIST_ENABLED} | "
-                f"{len(cls.APP_LAUNCH_ALLOWLIST)} entries"
+                f"{len(cls.APP_LAUNCH_ALLOWLIST)} entries | "
+                f"search_fallback={cls.APP_UNLISTED_SEARCH_FALLBACK_ENABLED}"
             )
             print(
                 f"[Debug] Proactive    : enabled={cls.PROACTIVE_ENABLED} | "

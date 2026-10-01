@@ -456,11 +456,12 @@ class LongTermMemory:
             # Embedding backend unavailable for this item — skip it rather
             # than storing a memory with no vector (would be unsearchable
             # and would corrupt the in-memory matrix's row width anyway).
-            if self._debug:
-                print(
-                    f"[RAG] Skipped storing memory -- embedding unavailable "
-                    f"for text: {text[:80]!r} (source={source})"
-                )
+            logger.warning(
+                "[RAG] Memory NOT stored -- embedding unavailable (source=%s, "
+                "model=%s): %r. See the preceding [Embeddings] log lines for "
+                "the underlying error.",
+                source, self._embed_model, text[:80],
+            )
             return
 
         try:

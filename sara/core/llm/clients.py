@@ -6,7 +6,12 @@ from __future__ import annotations
 
 
 
+import logging
+import random
 import threading
+import time
+
+logger = logging.getLogger(__name__)
 
 # ══════════════════════════════════════════════════════════════════════
 # Lazy backend client accessors
@@ -101,18 +106,45 @@ def _get_embedding_vector(cfg, text: str):
         print(f"[Embeddings] per-call timeout unsupported by this SDK, continuing without it: {e}")
         embed_config = None
 
-    try:
-        if embed_config is not None:
-            result = client.models.embed_content(
-                model=model, contents=text, config=embed_config
+    max_retries = max(0, int(getattr(cfg, "EMBEDDING_MAX_RETRIES", 2)))
+    base_delay_s = float(getattr(cfg, "EMBEDDING_RETRY_BASE_DELAY_S", 0.5))
+    max_delay_s = 4.0
+    result = None
+    for attempt in range(max_retries + 1):
+        try:
+            if embed_config is not None:
+                result = client.models.embed_content(
+                    model=model, contents=text, config=embed_config
+                )
+            else:
+                result = client.models.embed_content(model=model, contents=text)
+            break
+        except Exception as e:
+            status = getattr(e, "code", None)
+            transient = isinstance(status, int) and 500 <= status <= 599
+            if transient and attempt < max_retries:
+                delay_s = min(max_delay_s, base_delay_s * (2 ** attempt))
+                delay_s += random.uniform(0, delay_s * 0.25)
+                logger.warning(
+                    "[Embeddings] Gemini embed_content() HTTP %s on attempt %d/%d "
+                    "(model=%s, chars=%d); retrying in %.2fs: %s",
+                    status, attempt + 1, max_retries + 1, model, len(text), delay_s, e,
+                )
+                time.sleep(delay_s)
+                continue
+            logger.error(
+                "[Embeddings] Gemini embed_content() FAILED after %d attempt(s) "
+                "(model=%s, chars=%d, status=%s): %s: %s",
+                attempt + 1, model, len(text), status, type(e).__name__, e,
+                exc_info=True,
             )
-        else:
-            result = client.models.embed_content(model=model, contents=text)
-    except Exception as e:
-        print(f"[Embeddings] Gemini embed_content() call failed: {e}")
-        return None
+            return None
     embeddings = getattr(result, "embeddings", None)
     if not embeddings:
+        logger.warning(
+            "[Embeddings] Gemini returned no embeddings (model=%s, chars=%d).",
+            model, len(text),
+        )
         return None
     return embeddings[0].values
 
