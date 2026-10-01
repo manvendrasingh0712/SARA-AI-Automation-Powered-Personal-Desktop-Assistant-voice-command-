@@ -43,17 +43,19 @@
 
 /* ---- bottom nav (persistent) ---- */
 .nav{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
-  display:flex;gap:22px;padding:10px 22px;border-radius:999px;
-  background:rgb(var(--fg-rgb) / 0.02);opacity:.5;transition:opacity .25s, background .25s;
+  position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+  display:flex;gap:2px;padding:5px;border-radius:999px;
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-rest);
+  backdrop-filter:blur(var(--glass-blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.6);
+  opacity:.85;transition:opacity .25s;
   z-index:10;max-width:92vw;overflow-x:auto;scrollbar-width:none;
 }
 .nav::-webkit-scrollbar{display:none;}
-.nav:hover{opacity:1;background:rgb(var(--fg-rgb) / 0.04);}
-.nav button{background:none;border:none;color:var(--muted);font-size:12.5px;letter-spacing:.02em;cursor:pointer;padding:4px 2px;white-space:nowrap;flex:none;transition:color .2s,transform .12s;position:relative;z-index:1;}
+.nav:hover{opacity:1;}
+.nav button{background:none;border:none;color:var(--muted);font-size:12.5px;letter-spacing:.02em;cursor:pointer;padding:7px 14px;border-radius:999px;white-space:nowrap;flex:none;transition:color .2s,transform .12s;position:relative;z-index:1;}
 .nav button:active{transform:scale(.94);}
-/* sliding active-page underline (positioned by js/fx.js) */
-.nav-ind{position:absolute;left:0;bottom:5px;height:2px;width:0;border-radius:2px;background:var(--core);box-shadow:0 0 8px var(--core);transition:transform .4s cubic-bezier(.34,1.56,.64,1),width .4s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
+/* sliding active-page pill (positioned by js/fx.js) */
+.nav-ind{position:absolute;left:0;top:5px;bottom:5px;width:0;border-radius:999px;background:rgb(var(--core-rgb) / .16);box-shadow:inset 0 0 0 1px rgb(var(--core-rgb) / .30);transition:transform .4s cubic-bezier(.34,1.56,.64,1),width .4s cubic-bezier(.34,1.56,.64,1);pointer-events:none;}
 .nav-ind.no-anim{transition:none;}
 .nav button.active{color:var(--text);}
 .nav button:hover{color:var(--text);}
