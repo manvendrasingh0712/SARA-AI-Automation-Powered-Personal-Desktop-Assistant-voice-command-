@@ -37,9 +37,9 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
 @supports (color:color-mix(in srgb,red 10%,transparent)){
   body::before{
     background:
-      radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), color-mix(in srgb,var(--amb-1) 7.5%,transparent), transparent 70%),
-      radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), color-mix(in srgb,var(--amb-2) 7%,transparent), transparent 70%),
-      radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), color-mix(in srgb,var(--amb-3) 3.5%,transparent), transparent 70%);
+      radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--core) 75%,var(--amb-1)) 10%,transparent), transparent 70%),
+      radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--think) 75%,var(--amb-2)) 9%,transparent), transparent 70%),
+      radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--speak) 75%,var(--amb-3)) 6%,transparent), transparent 70%);
   }
 }
 @media (prefers-reduced-motion:reduce){:root.tint-ready{transition:none;}}

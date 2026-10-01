@@ -132,7 +132,8 @@ function themeTests() {
   section('theme.js');
   let env = bootEnv(['core.js', 'prefs.js', 'theme.js']), S = env.win.SARA, T = S.theme;
   eq(env.root.dataset.theme, 'sara', 'default theme applied on load');
-  eq(T.list.map((t) => t.id), ['sara', 'ember', 'violet', 'slate', 'rose', 'paper'], 'theme list');
+  eq(T.list.map((t) => t.id), ['sara', 'paper', 'arctic', 'emerald', 'rose', 'violet', 'slate', 'ember', 'cyber', 'aurora'], 'theme list');
+  ok(T.list.every((t) => t.name && t.description && T.categories.some((c) => c.id === t.category)), 'every theme has name, description, valid category');
   const emitted = []; S.on('theme', (id) => emitted.push(id));
   T.apply('paper'); eq(env.root.dataset.theme, 'paper', 'apply() sets data-theme'); eq(emitted, ['paper'], "'theme' event emitted");
   ok(env.calls.some((c) => c[0] === 'set_ui_pref' && c[1] === 'theme' && c[2] === 'paper'), 'apply() persists to backend');

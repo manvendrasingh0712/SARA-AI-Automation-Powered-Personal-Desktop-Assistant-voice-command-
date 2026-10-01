@@ -288,6 +288,17 @@
 
   /* ---- the orb (canvas; drawing code carried over from the mockup) ---- */
   const canvas = $('org'), ctx = canvas.getContext ? canvas.getContext('2d') : null, stage = $('stage');
+  /* orb + status colours follow the active theme (--core / --think / --speak, incl. the accent-hue override).
+     The arrays are updated in place, so the eased colour blend in draw() glides to the new theme instead of snapping. */
+  function syncOrbColours() {
+    if (!SARA.theme) return;
+    const c = SARA.theme.rgb('--core-rgb', MODES.idle.rgb), t = SARA.theme.rgb('--think-rgb', THINK_RGB), s = SARA.theme.rgb('--speak-rgb', SPEAK_RGB);
+    [[MODES.idle.rgb, c], [MODES.listening.rgb, c], [THINK_RGB, t], [SPEAK_RGB, s], [MODES.working.rgb, mixRGB(t, s, 0.5)]].forEach(function (p) {
+      for (let i = 0; i < 3; i++) p[0][i] = p[1][i];
+    });
+  }
+  syncOrbColours();
+  SARA.on('theme', function () { syncOrbColours(); refreshChrome(); });
   const orb = SARA.orb = { t: 0, energy: MODES.idle.energy };
   let curRGB = MODES.idle.rgb.slice(), lisW = 0, spkW = 0, wrkW = 0;   // lisW/spkW/wrkW = eased 0..1 weights of the listening/speaking/working effects
   // Real mic/TTS amplitude (0..1), pushed by the backend as 'audio_level' (source, level).

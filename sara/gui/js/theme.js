@@ -4,22 +4,34 @@
    overrides --core-rgb on <html>.  Everything else (CSS, orb canvas, ambient glow) reads those variables.
    Persistence: SARA.prefs ('theme', 'accent_hue') -> backend DB, localStorage cache.
    Exposes: SARA.theme { list, current(), apply(id), setHue(0..360|null), rgb(varName) }; emits 'theme' (id).
-   Settings UI: #themeGrid (swatches), #hueSlider, #hueReset, #hueVal in index.html (Appearance card).
+   Settings UI (Appearance card): #themeFilters (category chips), #themeGrid (mini-UI cards), #hueSlider, #hueVal, #hueReset, #accentPv.
+   Theme cards render a real mini-UI: each card carries data-theme-preview="id", and tokens.css matches that attribute too.
    ========================================================================== */
 (function () {
   'use strict';
   const SARA = window.SARA, $ = SARA.$;
   const root = document.documentElement;
 
+  /* colours live in style/tokens.css; an entry here is only id / label / category */
+  const CATEGORIES = [
+    { id: 'all', name: 'All' }, { id: 'signature', name: 'Signature' }, { id: 'futuristic', name: 'Futuristic' },
+    { id: 'dark', name: 'Dark' }, { id: 'warm', name: 'Warm' }, { id: 'minimal', name: 'Minimal' }, { id: 'light', name: 'Light' }
+  ];
   const LIST = [
-    { id: 'sara',   name: 'Terrarium', dots: ['#080C0D', '#3FD8C4', '#8B6FD8', '#E8C08F'] },
-    { id: 'ember',  name: 'Ember',     dots: ['#0D0A09', '#FF9F5A', '#C97BD8', '#F2D28B'] },
-    { id: 'violet', name: 'Violet',    dots: ['#0A0812', '#9D8CFF', '#5AC8FA', '#FF9BD2'] },
-    { id: 'slate',  name: 'Slate',     dots: ['#0B0E13', '#8AB4FF', '#B39DFF', '#E6EDF7'] },
-    { id: 'rose',   name: 'Rose',      dots: ['#0E080B', '#FF7EA8', '#9B7CFF', '#FFD3A8'] },
-    { id: 'paper',  name: 'Paper',     dots: ['#F4F1EA', '#0F9D8A', '#6B54C9', '#B5763A'] }
+    { id: 'sara',    name: 'Terrarium',  description: 'Signature',       category: 'signature',  tags: ['dark'] },
+    { id: 'paper',   name: 'Paper',      description: 'Warm light',      category: 'light',      tags: ['minimal'] },
+    { id: 'arctic',  name: 'Sky',        description: 'iOS blue',        category: 'light' },
+    { id: 'emerald', name: 'Mint',       description: 'Fresh & airy',    category: 'light' },
+    { id: 'rose',    name: 'Blush',      description: 'Soft pink',       category: 'light',      tags: ['warm'] },
+    { id: 'violet',  name: 'Lilac',      description: 'Indigo glow',     category: 'light',      tags: ['futuristic'] },
+    { id: 'slate',   name: 'Midnight',   description: 'iOS dark',        category: 'minimal',    tags: ['dark'] },
+    { id: 'ember',   name: 'Ember',      description: 'Molten warm',     category: 'warm',       tags: ['dark'] },
+    { id: 'cyber',   name: 'Cyber Blue', description: 'Electric',        category: 'futuristic', tags: ['dark'] },
+    { id: 'aurora',  name: 'Aurora',     description: 'Northern lights', category: 'futuristic', tags: ['dark'] }
   ];
   const ids = LIST.map((t) => t.id);
+  const DANGER_GUARD = 30;                                   // deg: accent hue never lands this close to the theme's danger red
+  let filter = 'all';
 
   /* ---- colour helpers (pure) ---- */
   function rgbToHsl(r, g, b) {
@@ -45,19 +57,34 @@
     return parseTriplet(getComputedStyle(root).getPropertyValue(varName)) || fallback || [128, 128, 128];
   }
 
-  let current = 'sara', hue = null;
+  let current = 'sara', hue = null, baseHue = 170;
+  /* keep the accent away from the danger red so "accent" can never read as "error" (status colours themselves are never touched) */
+  function guardHue(h) {
+    const d = rgb('--danger-rgb', [217, 122, 107]), dh = rgbToHsl(d[0], d[1], d[2])[0];
+    const diff = ((h - dh + 540) % 360) - 180;                     // signed distance -180..180
+    if (Math.abs(diff) >= DANGER_GUARD) return h;
+    return ((dh + (diff < 0 ? -DANGER_GUARD : DANGER_GUARD)) % 360 + 360) % 360;
+  }
   function applyHue() {
-    if (hue === null) { root.style.removeProperty('--core-rgb'); return; }
     root.style.removeProperty('--core-rgb');                       // read the THEME's own accent first
     const base = rgb('--core-rgb', [63, 216, 196]), hsl = rgbToHsl(base[0], base[1], base[2]);
+    baseHue = hsl[0];
+    if (hue === null) return;
+    hue = guardHue(hue);
     root.style.setProperty('--core-rgb', hslToRgb(hue, hsl[1], hsl[2]).join(' '));
   }
   function paintUi() {
     const g = $('themeGrid');
-    if (g) g.querySelectorAll('.theme-swatch').forEach((b) => b.classList.toggle('on', b.dataset.theme === current));
-    const s = $('hueSlider'), v = $('hueVal');
-    if (s && hue !== null) s.value = String(Math.round(hue));
+    if (g) g.querySelectorAll('.theme-card').forEach((b) => { const on = b.dataset.theme === current; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+    const s = $('hueSlider'), v = $('hueVal'), r = $('hueReset');
+    if (s) s.value = String(Math.round(hue === null ? baseHue : hue));
     if (v) v.textContent = hue === null ? 'theme default' : Math.round(hue) + '°';
+    if (r) r.disabled = hue === null;
+  }
+  function paintFilters() {
+    const f = $('themeFilters'), g = $('themeGrid');
+    if (f) f.querySelectorAll('.chip').forEach((c) => { const on = c.dataset.cat === filter; c.classList.toggle('on', on); c.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    if (g) g.querySelectorAll('.theme-card').forEach((b) => { b.hidden = filter !== 'all' && (' ' + b.dataset.cat + ' ').indexOf(' ' + filter + ' ') < 0; });
   }
   function animateSwitch() {
     if (SARA.reduceMotion) return;
@@ -73,7 +100,7 @@
   function normHue(v) { if (v === null || v === undefined || v === '') return null; const n = Number(v); return isNaN(n) ? null : ((n % 360) + 360) % 360; }
 
   SARA.theme = {
-    list: LIST, rgb: rgb, _rgbToHsl: rgbToHsl, _hslToRgb: hslToRgb, _parse: parseTriplet,
+    list: LIST, categories: CATEGORIES, rgb: rgb, _rgbToHsl: rgbToHsl, _hslToRgb: hslToRgb, _parse: parseTriplet,
     current: () => current,
     hue: () => hue,
     apply: function (id, persist) {
@@ -98,14 +125,30 @@
   /* ---- Settings > Appearance ---- */
   const grid = $('themeGrid');
   if (grid) {
+    /* mini SARA UI per card: bar (logo + clock), ACTIVE pill, panel + accent block, palette dots -- all coloured by the card's own data-theme-preview tokens */
     grid.innerHTML = LIST.map((t) =>
-      '<button type="button" class="theme-swatch" data-theme="' + t.id + '" aria-label="' + t.name + ' theme"><span class="ts-dots">' +
-      t.dots.map((c) => '<i style="background:' + c + '"></i>').join('') + '</span>' + t.name + '</button>').join('');
+      '<button type="button" class="theme-card" role="radio" aria-checked="false" data-theme="' + t.id + '" data-cat="' + [t.category].concat(t.tags || []).join(' ') + '" aria-label="' + t.name + ' theme, ' + t.description + '">' +
+      '<span class="tc-pv" data-theme-preview="' + t.id + '" aria-hidden="true">' +
+      '<span class="tc-bar"><b>SARA</b><em>12:42</em></span>' +
+      '<span class="tc-active"><i></i>ACTIVE</span>' +
+      '<span class="tc-row"><span class="tc-panel"><i></i><i></i></span><span class="tc-accent"></span></span>' +
+      '<span class="tc-dots"><i class="p"></i><i class="s"></i><i class="h"></i></span>' +
+      '</span>' +
+      '<span class="tc-meta"><b>' + t.name + '</b><small>' + t.description + '</small></span>' +
+      '<span class="tc-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span></button>').join('');
     grid.addEventListener('click', function (e) {
-      const b = e.target.closest('.theme-swatch'); if (!b) return;
+      const b = e.target.closest('.theme-card'); if (!b) return;
       SARA.sound.tap(); SARA.theme.apply(b.dataset.theme);
     });
-    paintUi();
+    const fbar = $('themeFilters');
+    if (fbar) {
+      fbar.innerHTML = CATEGORIES.map((c) => '<button type="button" class="chip" data-cat="' + c.id + '" aria-pressed="false">' + c.name + '</button>').join('');
+      fbar.addEventListener('click', function (e) {
+        const c = e.target.closest('.chip'); if (!c) return;
+        SARA.sound.tap(); filter = c.dataset.cat; paintFilters();
+      });
+    }
+    paintFilters(); paintUi();
   }
   const slider = $('hueSlider');
   if (slider) {

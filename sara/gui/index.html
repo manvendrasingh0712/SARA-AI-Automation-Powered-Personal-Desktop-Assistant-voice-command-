@@ -275,9 +275,16 @@
         <section class="set-card" id="grp-appearance">
           <div class="set-card-head"><div class="set-card-title">Appearance</div><div class="set-card-sub">theme &amp; accent colour</div></div>
           <div class="set-card-body">
-            <div class="theme-grid" id="themeGrid"></div>
+            <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
+            <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
             <div class="section-label">Accent hue</div>
-            <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset</button></div>
+            <div class="hue-block">
+              <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170" aria-label="Accent hue"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset to Theme Default</button></div>
+              <div class="accent-pv" id="accentPv" aria-hidden="true">
+                <span class="ap-chip"></span><span class="ap-btn">Accent</span><span class="ap-link">Link</span>
+                <span class="ap-status"><span class="ok"><i></i>OK</span><span class="wn"><i></i>Warn</span><span class="er"><i></i>Error</span><span class="in"><i></i>Info</span></span>
+              </div>
+            </div>
           </div>
         </section>
 
