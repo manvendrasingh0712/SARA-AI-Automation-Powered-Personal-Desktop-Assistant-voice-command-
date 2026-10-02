@@ -82,6 +82,22 @@
       case 'set_assistant_active': S.active = !!a[0]; return ok();
       case 'get_assistant_active': return ok({ active: S.active });
       case 'get_ui_settings': return ok({ data: {} });
+      case 'get_perf_summary': return ok({ data: { count: 42, ttfa_p50: 1420, ttfa_p95: 3180, by_route: {
+        regex: { count: 20, ttfa_p50: 620, ttfa_p95: 1100, llm_ttft_p50: null },
+        llm: { count: 16, ttfa_p50: 1900, ttfa_p95: 3300, llm_ttft_p50: 780 },
+        tool_router: { count: 6, ttfa_p50: 1350, ttfa_p95: 2100, llm_ttft_p50: null } },
+        stage_avg: { stt: 310, route: 45, llm_ttft: 720, tool: 260, tts_start: 190 }, dropped_traces: 0, enabled: S.prefs.telemetry !== false } });
+      case 'get_recent_turns': {
+        const routes = ['regex', 'llm', 'tool_router', 'regex', 'llm', 'planner', 'regex', 'llm', 'control', 'regex'];
+        const n = Math.max(1, Math.min(50, +a[0] || 10));
+        return ok({ data: Array.from({ length: n }, function (_, i) {
+          const route = routes[i % routes.length], fast = route === 'regex' || route === 'control';
+          return { turn_id: 'a1b2c3d4e5' + (10 + i), ts: Date.now() / 1000 - i * 90, source: i % 4 === 3 ? 'typed' : 'voice', route: route, intent: null,
+            outcome: i === 4 ? 'error' : (i === 7 ? 'barge_in' : 'ok'), stt_ms: 300 + i * 12, route_ms: 40, llm_ttft_ms: fast ? null : 760 + i * 20,
+            llm_total_ms: fast ? null : 2100, tool_ms: route === 'tool_router' ? 240 : null, tts_start_ms: 180, ttfa_ms: fast ? 600 + i * 15 : 1800 + i * 40, total_ms: fast ? 2200 : 4300 };
+        }) });
+      }
+      case 'set_telemetry_enabled': S.prefs.telemetry = !!a[0]; return ok({ enabled: !!a[0] });
       case 'get_notes_status': return ok({ enabled: true, count: 128, last_synced: new Date(Date.now() - 3600000).toISOString() });
       case 'get_skills_list': return ok({ data: S.skills });
       case 'set_skill_enabled': S.skills.forEach(s => { if (s.name === a[0]) s.enabled = !!a[1]; }); return ok();

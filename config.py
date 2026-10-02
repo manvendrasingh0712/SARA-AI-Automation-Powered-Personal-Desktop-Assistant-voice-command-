@@ -143,6 +143,12 @@ except ImportError:
     _ORT_AVAILABLE_PROVIDERS = []
 
 
+_MIN_TRACE_RETENTION_DAYS = 1
+_MAX_TRACE_RETENTION_DAYS = 365
+_MIN_TRACE_RING_SIZE = 50
+_MAX_TRACE_RING_SIZE = 5000
+
+
 def _bool(val: str | None, default: bool = False) -> bool:
     if not val:
         return default
@@ -726,6 +732,20 @@ class Config:
     RAG_FACT_MIN_SIMILARITY: float = _float(os.getenv("RAG_FACT_MIN_SIMILARITY"), default=0.30)
     RAG_MAX_IN_MEMORY: int = _int(os.getenv("RAG_MAX_IN_MEMORY"), default=5000)
 
+    # ── Telemetry: per-turn latency tracing ──────────────────────────────
+    TELEMETRY_ENABLED: bool = _bool(
+        os.getenv("TELEMETRY_ENABLED", "True"), default=True
+    )
+    TRACE_STORE_TEXT: bool = _bool(
+        os.getenv("TRACE_STORE_TEXT", "False"), default=False
+    )
+    TRACE_RETENTION_DAYS: int = _int(
+        os.getenv("TRACE_RETENTION_DAYS"), default=30
+    )
+    TRACE_RING_SIZE: int = _int(
+        os.getenv("TRACE_RING_SIZE"), default=500
+    )
+
     # ── Memory Management: decision memory & consolidation ──────────────
     MEMORY_CONSOLIDATION_ENABLED: bool = _bool(
         os.getenv("MEMORY_CONSOLIDATION_ENABLED", "True"), default=True
@@ -1131,6 +1151,16 @@ class Config:
         cls.RAG_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_MIN_SIMILARITY))
         cls.RAG_FACT_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_FACT_MIN_SIMILARITY))
         cls.RAG_MAX_IN_MEMORY = max(100, min(50_000, cls.RAG_MAX_IN_MEMORY))
+
+        # ── Telemetry clamps ─────────────────────────────────────────────
+        cls.TRACE_RETENTION_DAYS = max(
+            _MIN_TRACE_RETENTION_DAYS,
+            min(_MAX_TRACE_RETENTION_DAYS, cls.TRACE_RETENTION_DAYS),
+        )
+        cls.TRACE_RING_SIZE = max(
+            _MIN_TRACE_RING_SIZE,
+            min(_MAX_TRACE_RING_SIZE, cls.TRACE_RING_SIZE),
+        )
 
         # ── Memory consolidation / decision-memory clamps ────────────────
         cls.MEMORY_CONSOLIDATION_INTERVAL_S = max(

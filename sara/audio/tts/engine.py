@@ -25,7 +25,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import Callable, Iterator, Optional
 
 import numpy as np
 

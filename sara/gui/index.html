@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="style/music.css">
 <link rel="stylesheet" href="style/automation.css">
 <link rel="stylesheet" href="style/settings.css">
+<link rel="stylesheet" href="style/perf.css">
 <link rel="stylesheet" href="style/overlays.css">
 <link rel="stylesheet" href="style/motion.css">
 </head>
@@ -305,6 +306,20 @@
             <div class="info-row"><span>Disk</span><b id="sysDisk"><span class="skel skel-inline"></span></b></div>
             <div class="info-row"><span>Network</span><b id="sysNet"><span class="skel skel-inline"></span></b></div>
 
+            <div class="section-label">Response speed</div>
+            <div class="perf-block" id="perfBlock">
+              <div class="perf-nums">
+                <div class="perf-num"><b id="perfP50">-</b><span>TTFA p50 (s)</span></div>
+                <div class="perf-num"><b id="perfP95">-</b><span>TTFA p95 (s)</span></div>
+              </div>
+              <div class="acc-note" id="perfNote" hidden></div>
+              <div class="perf-bar" id="perfBar" role="img" aria-label="Average stage split: no data"></div>
+              <div class="perf-legend" id="perfLegend"></div>
+              <div class="section-label sub">Last 10 turns</div>
+              <div class="perf-recent" id="perfRecent"></div>
+              <div class="info-row tog"><span>Collect timing data</span><div class="toggle on" id="perfToggle" role="switch" tabindex="0" aria-checked="true"></div></div>
+            </div>
+
             <div class="section-label">Calendar</div>
             <div class="info-row"><span>Google Calendar</span><b id="calStatus"><span class="skel skel-inline"></span></b></div>
             <div id="calEvents" class="acc-note" data-skel><span class="skel skel-line"></span></div>
@@ -523,6 +538,7 @@
 <script src="js/settings.js"></script>
 <script src="js/settings-panels.js"></script>
 <script src="js/settings-data.js"></script>
+<script src="js/perf.js"></script>
 <script src="js/settings-skills.js"></script>
 <script src="js/setup-wizard.js"></script>
 <script src="js/palette.js"></script>
