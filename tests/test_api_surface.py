@@ -264,10 +264,16 @@ EXPECTED_METHODS = {
     "resume_stopwatch",
     "start_stopwatch",
     "start_timer",
+    "get_ui_prefs",
+    "set_ui_pref",
+    "sync_notes_now",
+    "get_perf_summary",
+    "get_recent_turns",
+    "set_telemetry_enabled",
 }
 
-assert len(EXPECTED_METHODS) == 74, (
-    "EXPECTED_METHODS must contain exactly 74 entries, found "
+assert len(EXPECTED_METHODS) == 80, (
+    "EXPECTED_METHODS must contain exactly 80 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 
