@@ -5,6 +5,7 @@ Notes and to-dos. Split out of the former monolithic
 intent_handlers.py -- see that module's docstring.
 """
 from sara.tools import system as system_tools
+from sara.core.security.untrusted import guard_spoken
 
 from ..command_helpers import _quick
 
@@ -15,7 +16,7 @@ def _h_take_note(match, ctx):
 
 
 def _h_read_notes(match, ctx):
-    return _quick(ctx, system_tools.read_notes())
+    return _quick(ctx, guard_spoken(system_tools.read_notes(), "notes"))
 
 
 def _h_clear_notes(match, ctx):

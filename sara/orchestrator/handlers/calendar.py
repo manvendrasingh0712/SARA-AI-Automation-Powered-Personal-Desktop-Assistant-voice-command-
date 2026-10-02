@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import dateparser
 
 from sara.tools import calendar as calendar_tools
+from sara.core.security.untrusted import guard_spoken
 
 from ..command_helpers import _quick, _ack
 from .._shared_state import _CALENDAR_DATEPARSER_LANGUAGES, _DEFAULT_MEETING_DURATION_MINUTES
@@ -43,7 +44,10 @@ def _h_calendar_today(match, ctx):
             when = ""
         lines.append(f"{summary}{f' at {when}' if when else ''}")
 
-    return _quick(ctx, "Here's today's schedule: " + "; ".join(lines) + ".")
+    return _quick(
+        ctx,
+        guard_spoken("Here's today's schedule: " + "; ".join(lines) + ".", "calendar"),
+    )
 
 
 def _h_calendar_create(match, ctx):

@@ -39,7 +39,10 @@ from .._shared_state import (
 )
 
 def _h_clipboard_read(match, ctx):
-    return _quick(ctx, f"Your clipboard contains: {read_clipboard()}")
+    from sara.core.security.untrusted import guard_spoken
+
+    content = read_clipboard()
+    return _quick(ctx, guard_spoken(f"Your clipboard contains: {content}", "clipboard"))
 
 
 def _h_clipboard_write(match, ctx):

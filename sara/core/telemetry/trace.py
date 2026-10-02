@@ -147,7 +147,7 @@ def _record(turn: _Turn) -> dict[str, Any]:
     wake = s.get("wake")
     typed = turn.source == "text"
     tts_from = next(
-        (s[k] for k in ("llm_first_token", "route_done", "tool_end") if k in s), None
+        (s[k] for k in ("llm_first_token", "tool_end", "route_done") if k in s), None
     )
     return {
         "turn_id": turn.turn_id,

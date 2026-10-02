@@ -32,6 +32,12 @@ import numpy as np
 from config import Config
 
 try:
+    from sara.core.telemetry import mark as _t_mark
+except Exception:  # telemetry is optional: fall back to a no-op
+    def _t_mark(*args, **kwargs) -> None:
+        return None
+
+try:
     import sounddevice as sd
 
     _SD_OK = True
@@ -568,6 +574,7 @@ class TextToSpeech:
                        _phrase_cache_put(cache_key, pcm.copy())
 
                if pcm is not None and len(pcm) > 0:
+                   _t_mark("tts_first_audio")
                    self._player.play_and_wait(pcm, self._stop, self._volume)
                elif getattr(Config, "DEBUG_MODE", False):
                    print(

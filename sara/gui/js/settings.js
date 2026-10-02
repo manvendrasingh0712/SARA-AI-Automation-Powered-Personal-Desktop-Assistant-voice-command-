@@ -80,4 +80,143 @@
   }
   SARA.onBoot(restore);
   SARA.setToggle($('setSounds'), SARA.sound.on);
+
+  /* ---- Settings control-center layer: section rail, quick controls, spotlight, one-shot feedback ----
+     Settings-only. Quick-control tiles never hold state of their own: a tile click clicks the real toggle, and a
+     MutationObserver on those 5 real toggles mirrors their on/off back onto the tiles. */
+  (function () {
+    const page = $('page-settings'), cards = page && page.querySelector('.set-cards'), rail = $('setRail');
+    if (!page || !cards) return;
+    const reduce = function () { return !!SARA.reduceMotion; };
+    function once(el, cls, ms) {
+      if (!el || reduce()) return;
+      el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+      clearTimeout(el['_t' + cls]); el['_t' + cls] = setTimeout(function () { el.classList.remove(cls); }, ms);
+    }
+    const all = Array.prototype.slice.call(cards.querySelectorAll('.set-card'));
+    all.forEach(function (c) {
+      const g = document.createElement('span'); g.className = 'set-glow'; g.setAttribute('aria-hidden', 'true');
+      c.insertBefore(g, c.firstChild); c._g = g;
+    });
+
+    /* ---- section rail ---- */
+    const links = rail ? Array.prototype.slice.call(rail.querySelectorAll('[data-target]')) : [];
+    const ind = rail && rail.querySelector('.set-rail-ind');
+    links.forEach(function (l, i) { const c = $(l.dataset.target); if (c) c.style.setProperty('--i', i); });
+    let active = links.length ? links[0].dataset.target : '', pinned = false;
+    function place() {
+      const a = rail && rail.querySelector('.on');
+      if (!a || !ind || !a.offsetWidth) return;
+      ind.style.setProperty('--x', a.offsetLeft + 'px'); ind.style.setProperty('--y', a.offsetTop + 'px');
+      ind.style.setProperty('--w', a.offsetWidth + 'px'); ind.style.setProperty('--h', a.offsetHeight + 'px');
+      if (rail.scrollWidth > rail.clientWidth + 2) rail.scrollTo({ left: a.offsetLeft - (rail.clientWidth - a.offsetWidth) / 2, behavior: reduce() ? 'auto' : 'smooth' });
+    }
+    function setActive(id) {
+      if (id === active && rail.querySelector('.on')) return;
+      active = id;
+      links.forEach(function (l) {
+        const on = l.dataset.target === id; l.classList.toggle('on', on);
+        if (on) l.setAttribute('aria-current', 'true'); else l.removeAttribute('aria-current');
+      });
+      place();
+    }
+    links.forEach(function (l) {
+      l.addEventListener('click', function () {
+        const t = $(l.dataset.target); if (!t) return;
+        SARA.sound.tap(); pinned = true; setActive(l.dataset.target);
+        t.scrollIntoView({ behavior: reduce() ? 'auto' : 'smooth', block: 'start' });
+        once(t, 'set-flash', 1000);
+      });
+    });
+    ['wheel', 'touchstart', 'keydown'].forEach(function (n) { page.addEventListener(n, function () { pinned = false; }, { passive: true }); });
+    if (links.length && 'IntersectionObserver' in window) {
+      const seen = new Set();
+      const io = new IntersectionObserver(function (es) {
+        es.forEach(function (e) { if (e.isIntersecting) seen.add(e.target.id); else seen.delete(e.target.id); });
+        if (pinned) return;
+        for (let i = 0; i < links.length; i++) if (seen.has(links[i].dataset.target)) { setActive(links[i].dataset.target); break; }
+      }, { rootMargin: '-12% 0px -62% 0px' });
+      links.forEach(function (l) { const t = $(l.dataset.target); if (t) io.observe(t); });
+    }
+    let rz = 0;
+    window.addEventListener('resize', function () { if (rz) return; rz = requestAnimationFrame(function () { rz = 0; place(); }); });
+
+    /* ---- quick controls (mirror the real toggles) ---- */
+    const proxies = Array.prototype.slice.call(page.querySelectorAll('[data-proxy]'));
+    function realOf(p) {
+      const k = p.dataset.proxy;
+      return k.indexOf('setting:') === 0 ? page.querySelector('[data-setting="' + k.slice(8) + '"]') : $(k);
+    }
+    function sync() {
+      proxies.forEach(function (p) {
+        const r = realOf(p); if (!r) return;
+        const on = r.classList.contains('on'); p.classList.toggle('on', on); p.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+    }
+    if (proxies.length && window.MutationObserver) {
+      const mo = new MutationObserver(sync);
+      proxies.forEach(function (p) { const r = realOf(p); if (r) mo.observe(r, { attributes: true, attributeFilter: ['class', 'aria-checked'] }); });
+    }
+    page.addEventListener('click', function (e) {
+      const p = e.target.closest('[data-proxy]'); if (!p) return;
+      const r = realOf(p); if (!r) return;
+      once(p.querySelector('.qc-sw'), 'fx-halo', 600); r.click();
+    });
+    sync(); SARA.onBoot(function () { setTimeout(sync, 400); });
+
+    /* ---- one-shot feedback: toggle halo + card flash ---- */
+    function toggleFx(t) { once(t, 'fx-halo', 600); once(t.closest('.set-card'), 'set-flash', 900); }
+    cards.addEventListener('click', function (e) {
+      const t = e.target.closest('.toggle'); if (t) toggleFx(t);
+      const ch = e.target.closest('#langChips .chip'); if (ch) once(ch.closest('.set-card'), 'set-flash', 900);
+    });
+    cards.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const t = e.target.closest && e.target.closest('.toggle'); if (t) toggleFx(t);
+    });
+
+    /* ---- pointer spotlight (mouse only, one rAF-throttled handler) ---- */
+    if (!reduce() && window.matchMedia && window.matchMedia('(hover:hover)').matches) {
+      let pend = null, raf = 0;
+      cards.addEventListener('pointermove', function (e) {
+        if (e.pointerType !== 'mouse') return;
+        pend = e;
+        if (raf) return;
+        raf = requestAnimationFrame(function () {
+          raf = 0;
+          const c = pend && pend.target.closest ? pend.target.closest('.set-card') : null;
+          if (!c || !c._g) return;
+          const r = c.getBoundingClientRect();
+          c._g.style.setProperty('--smx', (pend.clientX - r.left).toFixed(0) + 'px');
+          c._g.style.setProperty('--smy', (pend.clientY - r.top).toFixed(0) + 'px');
+        });
+      }, { passive: true });
+    }
+
+    /* ---- sliders: track fill ---- */
+    const sliders = [$('micSlider'), $('speedSlider')].filter(Boolean);
+    function fill(s) { s.style.setProperty('--fill', (((s.value - s.min) / ((s.max - s.min) || 1)) * 100).toFixed(1)); }
+    sliders.forEach(function (s) {
+      fill(s); s.addEventListener('input', function () { fill(s); });
+      s.addEventListener('change', function () { once(s.closest('.set-card'), 'set-flash', 900); });
+    });
+    const hs = $('hueSlider'); if (hs) hs.addEventListener('change', function () { once($('grp-appearance'), 'set-flash', 900); });
+
+    /* ---- theme bloom ---- */
+    const tg = $('themeGrid'), ap = $('grp-appearance');
+    if (tg && ap) tg.addEventListener('click', function (e) {
+      const b = e.target.closest('.theme-card'); if (!b || reduce()) return;
+      const r = ap.getBoundingClientRect(), br = b.getBoundingClientRect();
+      ap.style.setProperty('--bx', (br.left + br.width / 2 - r.left).toFixed(0) + 'px');
+      ap.style.setProperty('--by', (br.top + br.height / 2 - r.top).toFixed(0) + 'px');
+      requestAnimationFrame(function () { once(ap, 'set-bloom', 950); });
+    });
+
+    /* ---- page open: staggered entrance, re-sync ---- */
+    SARA.on('page', function (p) {
+      if (p !== 'settings') return;
+      sliders.forEach(fill); sync(); once(page, 'set-enter', 1100);
+      requestAnimationFrame(place);
+    });
+  })();
 })();
