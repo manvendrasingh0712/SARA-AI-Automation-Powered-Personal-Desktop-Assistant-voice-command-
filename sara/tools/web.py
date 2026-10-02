@@ -746,6 +746,9 @@ def search_web(query: str, max_results: int = 3) -> str:
             for i, r in enumerate(results, start=1)
         ]
         summary = "\n".join(summary_lines)
+        from sara.core.security.untrusted import guard_spoken
+
+        summary = guard_spoken(summary, "web_search")
         _cache_set(cache_key, summary)
         logger.debug("Web search for '%s' returned %d results.", query, len(results))
         return summary
@@ -793,6 +796,9 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
             for i, r in enumerate(results, start=1)
         ]
         summary = "\n".join(headlines)
+        from sara.core.security.untrusted import guard_spoken
+
+        summary = guard_spoken(summary, "news")
         _cache_set(cache_key, summary)
         _NEWS_PREFETCH_CACHE[cache_key] = (summary, time.monotonic())
         return summary
@@ -913,6 +919,9 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
     cached = _cache_get(cache_key)
     if cached:
         logger.debug("Page cache hit for '%s'.", url)
+        from sara.core.security.untrusted import note_untrusted
+
+        note_untrusted(cached, "web_page")
         return cached
 
     unsafe_reason, pinned_ip = _validate_url_and_pin(url)
@@ -980,6 +989,15 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
                          "aside", "form", "noscript"]):
             tag.decompose()
 
+        from sara.core.security.untrusted import strip_hidden_elements
+
+        strip_hidden_elements(soup)
+
+        container = soup.find("article") or soup.find("main") or soup.body or soup        
+        from sara.core.security.untrusted import strip_hidden_elements
+
+        strip_hidden_elements(soup)
+
         container = soup.find("article") or soup.find("main") or soup.body or soup
 
         paragraphs = [p.get_text(" ", strip=True) for p in container.find_all("p")]
@@ -998,6 +1016,9 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
         if len(text) > max_chars:
             truncated += "..."
 
+        from sara.core.security.untrusted import note_untrusted
+
+        note_untrusted(truncated, "web_page")
         _cache_set(cache_key, truncated)
         logger.debug("Extracted %d chars from '%s'.", len(truncated), url)
         return truncated

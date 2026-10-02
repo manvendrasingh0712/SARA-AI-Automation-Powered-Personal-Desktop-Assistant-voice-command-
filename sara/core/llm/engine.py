@@ -20,6 +20,15 @@ from typing import Iterator, List, Optional, Tuple
 
 from config import Config
 
+try:
+    from sara.core.telemetry import annotate as _t_annotate, mark as _t_mark
+except Exception:  # telemetry is optional: fall back to no-ops
+    def _t_annotate(*args, **kwargs) -> None:
+        return None
+
+    def _t_mark(*args, **kwargs) -> None:
+        return None
+
 # ══════════════════════════════════════════════════════════════════════
 # Module-level compiled regexes
 # ══════════════════════════════════════════════════════════════════════
@@ -837,6 +846,8 @@ class SaraLLM:
                             # served the (partial) reply.
                             with self._last_stage_lock:
                                 self._last_stage_used = stage_name
+                            _t_mark("llm_first_token")
+                            _t_annotate(model=stage_name)
 
                         buffer_str += piece
                         reply_parts.append(piece)
@@ -989,6 +1000,15 @@ class SaraLLM:
         # of reusing whatever cap the primary (Gemini) backend used.
         if not hits:
             return None, 0
+        try:
+            from sara.core.security.untrusted import drop_flagged_hits
+
+            hits = drop_flagged_hits(hits, "memory", cfg=self._cfg)
+        except Exception:
+            logger.exception("[security] memory hit filter failed; omitting memory context")
+            return None, 0
+        if not hits:
+            return None, 0
         if cap is None:
             cap = self._rag_context_budget()
         wrapper_overhead = 40  # short fixed wrapper sentence, both backends
@@ -1006,7 +1026,16 @@ class SaraLLM:
 
         if not kept_lines:
             return None, 0
-        return "\n".join(kept_lines), used + wrapper_overhead
+        context = "\n".join(kept_lines)
+        try:
+            from sara.core.security.untrusted import wrap_untrusted
+
+            wrapped = wrap_untrusted(context, "memory", cfg=self._cfg)
+        except Exception:
+            logger.exception("[security] memory wrap failed; omitting memory context")
+            return None, 0
+        extra = max(0, _estimate_tokens(wrapped) - _estimate_tokens(context))
+        return wrapped, used + wrapper_overhead + extra
 
     def _get_fact_extract_pool(self) -> ThreadPoolExecutor:
         # LIFECYCLE FIX: double-checked locking — the fast path (executor
@@ -1020,6 +1049,18 @@ class SaraLLM:
                         max_workers=1, thread_name_prefix="sara-fact-extract"
                     )
         return self._fact_executor
+
+    def _secure_reference(self, reference_context: Optional[str]) -> Optional[str]:
+        """Wrap caller-supplied reference text as untrusted data (T5)."""
+        if not reference_context:
+            return reference_context
+        try:
+            from sara.core.security.untrusted import wrap_untrusted
+
+            return wrap_untrusted(reference_context, "reference", cfg=self._cfg)
+        except Exception:
+            logger.exception("[security] failed to wrap reference_context; dropping it")
+            return None
 
     def _safe_extract_fact(self, prompt: str) -> None:
         # Runs on the background pool thread, not the hot path. Wrapped
@@ -1073,6 +1114,7 @@ class SaraLLM:
             # from a transient one — see _ClientUnavailableError above.
             raise _ClientUnavailableError("Ollama client not loaded.")
 
+        reference_context = self._secure_reference(reference_context)
         messages = self._build_messages_ollama(prompt, history, memory_context, reference_context)
         raw_stream = client.chat(
             model=(
@@ -1116,6 +1158,7 @@ class SaraLLM:
 
         from google.genai import types
 
+        reference_context = self._secure_reference(reference_context)
         contents = self._build_contents_gemini(prompt, history, memory_context, reference_context)
 
         raw_stream = client.models.generate_content_stream(
@@ -1179,6 +1222,8 @@ class SaraLLM:
         # timeout on whatever happens to be the first real user command.
         if _current_cancel_event().is_set():
             return
+
+        _t_mark("llm_req")
 
         warm_wait_s = float(getattr(self._cfg, "LLM_WARMUP_WAIT_S", 20.0))
         warm = self.wait_until_warm(timeout=warm_wait_s)
@@ -1296,6 +1341,7 @@ class SaraLLM:
             stages.append((_FALLBACK_STAGE_LABEL, _open_ollama_fallback))
 
         yield from self._stream_generic(prompt, stages)
+        _t_mark("llm_done")
 
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): ingest this exchange
         # into long-term memory AFTER it completes, so future turns (even
@@ -1344,9 +1390,25 @@ class SaraLLM:
         if len(words) > max_words:
             text = " ".join(words[:max_words]) + "..."
 
+        try:
+            from sara.core.security.untrusted import prepare_for_llm
+
+            prepared = prepare_for_llm(
+                text, "summary_input", cfg=self._cfg, lang=self._lang
+            )
+        except Exception:
+            logger.exception("[security] summarize_text guard failed")
+            return _SUMMARY_FAIL_MESSAGES.get(
+                self._lang, _SUMMARY_FAIL_MESSAGES["english"]
+            )
+        if prepared.blocked:
+            return prepared.prefix
+
         if getattr(self._cfg, "LLM_BACKEND", "ollama") == "ollama":
-            return self._summarize_ollama(text)
-        return self._summarize_gemini(text)
+            summary = self._summarize_ollama(prepared.text)
+        else:
+            summary = self._summarize_gemini(prepared.text)
+        return f"{prepared.prefix}{summary}" if prepared.prefix else summary
 
     def _summarize_ollama(self, text: str) -> str:
         client = _get_ollama_client(self._cfg)

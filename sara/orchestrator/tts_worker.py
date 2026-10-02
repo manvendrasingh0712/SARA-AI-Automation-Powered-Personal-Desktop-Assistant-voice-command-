@@ -12,6 +12,15 @@ import itertools
 
 from config import Config
 
+try:
+    from sara.core.telemetry import end_turn as _t_end, mark as _t_mark
+except Exception:  # telemetry is optional: fall back to no-ops
+    def _t_end(*args, **kwargs) -> None:
+        return None
+
+    def _t_mark(*args, **kwargs) -> None:
+        return None
+
 from sara.audio.tts import TextToSpeech
 from sara.audio.stt import SpeechToText
 
@@ -116,6 +125,7 @@ class TTSWorker:
                     # outcome.
                     self._ears.capture_barge_in_audio()
                     self._barge_stop.set()
+                    _t_end("barge_in")
                 time.sleep(_BARGE_IN_POLL_S)
             except Exception as e:
                 logger.exception(f"[TTSWorker] watch_loop error (continuing): {e}")
@@ -155,6 +165,7 @@ class TTSWorker:
                 except Exception as e:
                     logger.exception(f"[TTSWorker] playback error: {e}")
                 finally:
+                    _t_mark("tts_done")
                     if done_event is not None:
                         done_event.set()
             except Exception as e:
@@ -223,6 +234,7 @@ class TTSWorker:
             nonlocal first_seen
             if not first_seen:
                 first_seen = True
+                _t_mark("tts_first_audio")
                 if on_first_chunk is not None:
                     try:
                         on_first_chunk()

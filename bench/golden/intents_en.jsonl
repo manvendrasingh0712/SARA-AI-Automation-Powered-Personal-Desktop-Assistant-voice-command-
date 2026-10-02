@@ -1,0 +1,141 @@
+{"_defaults":{"lang":"en","kind":"positive","style":"casual"}}
+{"t":"switch to study mode","i":"switch_mode","g":["study"]}
+{"t":"undo my last change","i":"undo_setting_change"}
+{"t":"remind me to call mom at 6 pm","i":"reminder_add","g":["call mom","6 pm"]}
+{"t":"what are my reminders","i":"reminder_list"}
+{"t":"cancel all my reminders","i":"reminder_cancel"}
+{"t":"set a timer for 10 minutes","i":"set_timer","g":["10 minutes"]}
+{"t":"set an alarm for 7 am","i":"set_alarm","g":["7 am"]}
+{"t":"start the stopwatch","i":"start_stopwatch"}
+{"t":"lap","i":"lap_stopwatch","s":"short"}
+{"t":"stop the stopwatch","i":"stop_stopwatch"}
+{"t":"take a note: buy milk and eggs","i":"take_note","g":["buy milk and eggs"]}
+{"t":"read my notes","i":"read_notes"}
+{"t":"delete all my notes","i":"clear_notes"}
+{"t":"add a todo: finish the physics assignment","i":"add_todo","g":["finish the physics assignment"]}
+{"t":"show my to-dos","i":"list_todos"}
+{"t":"mark buy groceries as done","i":"complete_todo","g":["buy groceries"]}
+{"t":"delete the todo: call the bank","i":"delete_todo","g":["call the bank"]}
+{"t":"what's on my clipboard","i":"clipboard_read"}
+{"t":"copy this for me: the meeting is at noon","i":"clipboard_write","g":["the meeting is at noon"]}
+{"t":"what's on my screen","i":"screenshot_describe"}
+{"t":"what's the weather in Jaipur","i":"weather","g":["jaipur"]}
+{"t":"latest news about electric vehicles","i":"news","g":["electric vehicles"]}
+{"t":"what about tomorrow","i":"followup_query","g":["tomorrow"]}
+{"t":"play lofi beats on youtube","i":"play_youtube","g":["lofi beats"]}
+{"t":"play arijit singh on spotify","i":"play_spotify","g":["arijit singh"]}
+{"t":"search for best budget laptops","i":"web_search","g":["best budget laptops"]}
+{"t":"summarize this article https://example.com/post","i":"summarize_url","g":["https://example.com/post"]}
+{"t":"open github.com","i":"open_url","s":"short","g":["github.com"]}
+{"t":"calculate 245 * 12","i":"calculator","g":["245 * 12"]}
+{"t":"system status","i":"system_info","s":"short"}
+{"t":"set the volume to 40","i":"set_volume","g":["40"]}
+{"t":"mute the volume","i":"mute"}
+{"t":"unmute the sound","i":"unmute"}
+{"t":"lock my laptop","i":"lock_pc"}
+{"t":"put the computer to sleep","i":"sleep_system"}
+{"t":"hibernate my pc","i":"hibernate_system"}
+{"t":"log off","i":"log_off","s":"short"}
+{"t":"shut down the pc","i":"shutdown_system"}
+{"t":"restart my computer","i":"restart_system"}
+{"t":"cancel the shutdown","i":"cancel_shutdown"}
+{"t":"max volume","i":"max_volume","s":"short"}
+{"t":"minimum volume","i":"min_volume","s":"short"}
+{"t":"set brightness to 70","i":"set_brightness","g":["70"]}
+{"t":"increase the screen brightness","i":"increase_brightness"}
+{"t":"dim the screen brightness","i":"decrease_brightness"}
+{"t":"full brightness","i":"max_brightness","s":"short"}
+{"t":"minimum brightness","i":"min_brightness","s":"short"}
+{"t":"what's the current brightness","i":"get_brightness_status"}
+{"t":"show me the desktop","i":"show_desktop"}
+{"t":"minimize all windows","i":"minimize_all_windows"}
+{"t":"restore my minimized windows","i":"restore_windows"}
+{"t":"maximize this window","i":"maximize_active_window"}
+{"t":"minimize the current window","i":"minimize_active_window"}
+{"t":"close this window","i":"close_active_window"}
+{"t":"snap this window to the left","i":"snap_window_left"}
+{"t":"snap the window to the right","i":"snap_window_right"}
+{"t":"switch to the next window","i":"switch_window"}
+{"t":"restart chrome","i":"restart_application","g":["chrome"]}
+{"t":"switch to spotify","i":"switch_to_application","g":["spotify"]}
+{"t":"move notepad window to the left half","i":"move_window","g":["notepad","left half"]}
+{"t":"resize chrome window to the right half","i":"resize_window","g":["chrome","right half"]}
+{"t":"make calculator always on top","i":"always_on_top","g":["calculator"]}
+{"t":"make vlc fullscreen","i":"toggle_fullscreen","g":["vlc"]}
+{"t":"pause the music","i":"play_pause_media"}
+{"t":"next song","i":"next_track","s":"short"}
+{"t":"go back a track","i":"previous_track"}
+{"t":"stop the music","i":"stop_media"}
+{"t":"type this: see you tomorrow","i":"typing_text","g":["see you tomorrow"]}
+{"t":"press the enter key","i":"press_key","g":["enter"]}
+{"t":"copy selected text","i":"copy_selection"}
+{"t":"paste it here","i":"paste_clipboard"}
+{"t":"select all","i":"select_all","s":"short"}
+{"t":"undo that","i":"undo","s":"short"}
+{"t":"redo","i":"redo","s":"short"}
+{"t":"open a new tab","i":"new_tab"}
+{"t":"close this tab","i":"close_tab"}
+{"t":"go to the next tab","i":"next_tab"}
+{"t":"switch to the previous tab","i":"prev_tab"}
+{"t":"refresh the page","i":"reload_page"}
+{"t":"zoom in","i":"zoom_in","s":"short"}
+{"t":"zoom out","i":"zoom_out","s":"short"}
+{"t":"reset zoom","i":"zoom_reset","s":"short"}
+{"t":"scroll up a bit","i":"scroll_up"}
+{"t":"scroll down","i":"scroll_down","s":"short"}
+{"t":"scroll to the top of the page","i":"scroll_top"}
+{"t":"go to the bottom of the page","i":"scroll_bottom"}
+{"t":"turn on the wifi","i":"wifi_on"}
+{"t":"disable wi-fi","i":"wifi_off"}
+{"t":"enable the bluetooth","i":"bluetooth_on"}
+{"t":"turn off bluetooth","i":"bluetooth_off"}
+{"t":"switch to dark mode","i":"dark_mode"}
+{"t":"turn on light mode","i":"light_mode"}
+{"t":"find the file named resume final","i":"find_file","g":["resume final"]}
+{"t":"empty the recycle bin","i":"empty_recycle_bin"}
+{"t":"tell me when the download is finished","i":"notify_on_file"}
+{"t":"open my downloads folder","i":"open_downloads"}
+{"t":"open my documents","i":"open_documents"}
+{"t":"open my desktop folder","i":"open_desktop_folder"}
+{"t":"open my pictures","i":"open_pictures"}
+{"t":"open my music folder","i":"open_music"}
+{"t":"open my videos","i":"open_videos"}
+{"t":"open this pc","i":"open_this_pc","s":"short"}
+{"t":"open the recycle bin","i":"open_recycle_bin"}
+{"t":"open file explorer","i":"open_file_explorer","s":"short"}
+{"t":"open control panel","i":"open_control_panel","s":"short"}
+{"t":"open task manager","i":"open_task_manager","s":"short"}
+{"t":"open display settings","i":"open_display_settings"}
+{"t":"open sound settings","i":"open_sound_settings"}
+{"t":"open bluetooth settings","i":"open_bluetooth_settings"}
+{"t":"open network settings","i":"open_network_settings"}
+{"t":"open windows update settings","i":"open_update_settings"}
+{"t":"open apps and features settings","i":"open_apps_settings"}
+{"t":"open personalization settings","i":"open_personalization_settings"}
+{"t":"open privacy settings","i":"open_privacy_settings"}
+{"t":"open storage settings","i":"open_storage_settings"}
+{"t":"open power settings","i":"open_power_settings"}
+{"t":"open about settings","i":"open_about_settings"}
+{"t":"turn on night light","i":"open_nightlight_settings"}
+{"t":"enable airplane mode","i":"open_airplane_mode_settings"}
+{"t":"check disk usage","i":"disk_usage"}
+{"t":"pc uptime","i":"uptime","s":"short"}
+{"t":"what's my local ip address","i":"local_ip"}
+{"t":"gpu usage","i":"gpu_status","s":"short"}
+{"t":"cpu temperature","i":"temperature_status","s":"short"}
+{"t":"show running processes","i":"process_list"}
+{"t":"list windows services","i":"list_services"}
+{"t":"start the print spooler service","i":"start_service","g":["print spooler"]}
+{"t":"stop the bluetooth service","i":"stop_service","g":["bluetooth"]}
+{"t":"what's the time","i":"time_query"}
+{"t":"what is today's date","i":"date_query"}
+{"t":"what's on my calendar today","i":"calendar_today"}
+{"t":"schedule a meeting called project review for 4 pm tomorrow","i":"calendar_create","g":["project review","4 pm tomorrow"]}
+{"t":"why did you say that","i":"why_proactive"}
+{"t":"why did i change the volume","i":"why_decision","g":["the volume"]}
+{"t":"forget everything you know about me","i":"memory_forget_all"}
+{"t":"forget that i like cricket","i":"memory_forget_specific","g":["cricket"]}
+{"t":"what do you remember about me","i":"memory_recall"}
+{"t":"run my morning routine","i":"run_routine","g":["morning"]}
+{"t":"open notepad","i":"open_app","g":["notepad"]}
+{"t":"close chrome","i":"close_app","g":["chrome"]}

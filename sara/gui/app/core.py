@@ -49,6 +49,15 @@ from sara.orchestrator.intent_handlers import _handle_command
 # thread (e.g. the session_control "sleep" path calling stop_sara()).
 from sara.orchestrator.state import STATE_LOCK, TURN_STATE
 
+try:
+    from sara.core.telemetry import begin_turn as _t_begin, end_turn as _t_end
+except Exception:  # telemetry is optional: fall back to no-ops
+    def _t_begin(*args, **kwargs) -> str:
+        return ""
+
+    def _t_end(*args, **kwargs) -> None:
+        return None
+
 # How many typed commands may sit waiting while one is being processed.
 # Small on purpose: this is a human typing, not a job queue. Beyond this the
 # call is rejected with a "busy" reply instead of spawning more work.
@@ -435,6 +444,7 @@ class ApiCoreMixin:
         #   3. clears whatever's already queued on the audio device.
         try:
             TURN_STATE.cancel()
+            _t_end("cancelled")
         except Exception as e:
             print(f"[stop_sara cancel error] {e}")
         try:
@@ -497,6 +507,7 @@ class ApiCoreMixin:
 
         # Cancellation: new generation + fresh cancel event for this command.
         turn_gen, turn_cancel = TURN_STATE.begin()
+        _t_begin("text", text=text)
 
         # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X"
         # used to only be checked in the voice loop (run_sara_logic),
@@ -539,6 +550,7 @@ class ApiCoreMixin:
         except Exception as e:
             print(f"[send_text_command _handle_command error] {e}")
             reply = "Sorry, something went wrong handling that. Please try again."
+            _t_end("error")
             try:
                 _push("status", "sleeping")
             except Exception as e2:

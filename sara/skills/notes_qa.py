@@ -657,6 +657,13 @@ def _unique_sources(hits) -> list:
     return out
 
 
+from sara.core.security.untrusted import (
+    drop_flagged_hits as _drop_flagged_hits,
+    guard_spoken as _guard_spoken,
+    wrap_untrusted as _wrap_untrusted,
+)
+
+
 def _retrieve(ctx: SkillContext, query: str, top_k: int) -> list:
     rag = ctx.notes_memory
     fetch = top_k * 3
@@ -669,6 +676,7 @@ def _retrieve(ctx: SkillContext, query: str, top_k: int) -> list:
         logger.error("search failed: %s", e)
         return []
     hits = [h for h in hits if str(getattr(h, "source", "")).startswith("notes:")]
+    hits = _drop_flagged_hits(hits, "notes")
     return rerank(query, hits, top_k)
 
 
@@ -690,7 +698,8 @@ def _lang_rule(ctx: SkillContext) -> str:
 
 
 def _excerpts(hits) -> str:
-    return "\n\n".join(f"[{i}] ({pretty_source(h.source)}) {h.text}" for i, h in enumerate(hits, 1))
+    raw = "\n\n".join(f"[{i}] ({pretty_source(h.source)}) {h.text}" for i, h in enumerate(hits, 1))
+    return _wrap_untrusted(raw, "notes")
 
 
 def _query(match, ctx: SkillContext) -> str:
@@ -744,7 +753,7 @@ def handle(match, ctx: SkillContext):
         "If the excerpts don't actually answer it, say so. "
         f"{_lang_rule(ctx)}\n\nNotes excerpts:\n{_excerpts(hits)}\n\nQuestion: {query}"
     )
-    answer = _llm(ctx, prompt) or hits[0].text[:400]
+    answer = _llm(ctx, prompt) or _guard_spoken(hits[0].text[:400], "notes", lang=ctx.lang)
     sources = _unique_sources(hits)
     cite = ctx.t("From your notes: ", "Aapke notes se: ") + ", ".join(sources) + "."
     short = query[:40]
@@ -786,7 +795,9 @@ def handle_summary(match, ctx: SkillContext):
         f"bullet points, using ONLY the excerpts. {_lang_rule(ctx)}\n\n"
         f"Topic: {topic}\n\nExcerpts:\n{_excerpts(hits)}"
     )
-    summary = _llm(ctx, prompt) or " ".join(h.text[:200] for h in hits[:2])
+    summary = _llm(ctx, prompt) or _guard_spoken(
+        " ".join(h.text[:200] for h in hits[:2]), "notes", lang=ctx.lang
+    )
     sources = _unique_sources(hits)
     spoken = re.sub(r"^\s*[-*\u2022]\s*", "", summary, flags=re.M)
     return SkillResult(

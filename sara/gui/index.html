@@ -27,6 +27,7 @@
 <link rel="stylesheet" href="style/perf.css">
 <link rel="stylesheet" href="style/overlays.css">
 <link rel="stylesheet" href="style/motion.css">
+<link rel="stylesheet" href="style/settings-fx.css">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -213,7 +214,32 @@
       <div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div>
     </div>
     <div class="page-body">
+      <div class="set-layout">
+      <nav class="set-rail" id="setRail" aria-label="Settings sections">
+        <span class="set-rail-ind" aria-hidden="true"></span>
+        <button type="button" class="on" aria-current="true" data-target="grp-quick">Quick controls</button>
+        <button type="button" data-target="grp-assistant">Assistant</button>
+        <button type="button" data-target="grp-voice">Voice</button>
+        <button type="button" data-target="grp-appearance">Appearance</button>
+        <button type="button" data-target="grp-skills">Skills</button>
+        <button type="button" data-target="grp-calendar">Calendar</button>
+        <button type="button" data-target="grp-memory">Memory</button>
+        <button type="button" data-target="grp-system">Performance</button>
+        <button type="button" data-target="grp-analytics">Analytics</button>
+        <button type="button" data-target="grp-advanced">Advanced</button>
+      </nav>
       <div class="set-cards">
+
+        <section class="set-card" id="grp-quick">
+          <div class="set-card-head"><div class="set-card-title">Quick controls</div><div class="set-card-sub">the switches you reach for most</div></div>
+          <div class="qc-grid">
+            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setActive"><span class="qc-name">Listening</span><span class="qc-sub">wake word</span><i class="qc-sw" aria-hidden="true"></i></button>
+            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setFocus"><span class="qc-name">Focus mode</span><span class="qc-sub">fewer interruptions</span><i class="qc-sw" aria-hidden="true"></i></button>
+            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:show_notifications"><span class="qc-name">Notifications</span><span class="qc-sub">on-screen alerts</span><i class="qc-sw" aria-hidden="true"></i></button>
+            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:voice_replies"><span class="qc-name">Voice replies</span><span class="qc-sub">Sara speaks</span><i class="qc-sw" aria-hidden="true"></i></button>
+            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setMute"><span class="qc-name">Mute</span><span class="qc-sub">silence Sara now</span><i class="qc-sw" aria-hidden="true"></i></button>
+          </div>
+        </section>
 
         <!-- 1. ASSISTANT -->
         <section class="set-card" id="grp-assistant">
@@ -262,10 +288,19 @@
           </div>
         </section>
 
+        <section class="set-card" id="grp-calendar">
+          <div class="set-card-head"><div class="set-card-title">Calendar</div><div class="set-card-sub">Google integration</div></div>
+          <div class="set-card-body">
+            <div class="info-row"><span>Google Calendar</span><b id="calStatus"><span class="skel skel-inline"></span></b></div>
+            <div id="calEvents" class="acc-note" data-skel><span class="skel skel-line"></span></div>
+          </div>
+        </section>
+
         <!-- 4. MEMORY -->
         <section class="set-card" id="grp-memory">
           <div class="set-card-head"><div class="set-card-title">Memory</div><div class="set-card-sub">how much Sara remembers</div></div>
           <div class="set-card-body">
+            <div class="mem-ring" id="memRing" style="--p:0" aria-hidden="true"><svg viewBox="0 0 36 36"><circle class="mr-bg" cx="18" cy="18" r="15.9"/><circle class="mr-fg" cx="18" cy="18" r="15.9" pathLength="100"/></svg><b id="memRingTxt">–</b></div>
             <div class="stat-grid">
               <div class="stat"><b id="memExchanges"><span class="skel skel-inline"></span></b><span>Exchanges stored</span></div>
               <div class="stat"><b id="memSize"><span class="skel skel-inline"></span></b><span>Memory size</span></div>
@@ -298,7 +333,7 @@
 
         <!-- 6. SYSTEM (analytics, calendar, system stats, window controls, setup check) -->
         <section class="set-card" id="grp-system">
-          <div class="set-card-head"><div class="set-card-title">System</div><div class="set-card-sub">connection, usage &amp; window</div></div>
+          <div class="set-card-head"><div class="set-card-title">Performance</div><div class="set-card-sub">live system &amp; response speed</div></div>
           <div class="set-card-body">
             <div class="section-label">Performance</div>
             <div class="info-row"><span>Backend</span><b id="sysBackend">—</b></div>
@@ -320,10 +355,12 @@
               <div class="info-row tog"><span>Collect timing data</span><div class="toggle on" id="perfToggle" role="switch" tabindex="0" aria-checked="true"></div></div>
             </div>
 
-            <div class="section-label">Calendar</div>
-            <div class="info-row"><span>Google Calendar</span><b id="calStatus"><span class="skel skel-inline"></span></b></div>
-            <div id="calEvents" class="acc-note" data-skel><span class="skel skel-line"></span></div>
+          </div>
+        </section>
 
+        <section class="set-card" id="grp-analytics">
+          <div class="set-card-head"><div class="set-card-title">Analytics</div><div class="set-card-sub">how you use Sara</div></div>
+          <div class="set-card-body">
             <div class="section-label">Analytics</div>
             <div class="info-row"><span>Total commands</span><b id="anTotal"><span class="skel skel-inline"></span></b></div>
             <div class="info-row"><span>Busiest day</span><b id="anBusiest"><span class="skel skel-inline"></span></b></div>
@@ -344,6 +381,12 @@
             <div class="section-label sub">Frequently missed commands</div>
             <div id="missedCommands" class="acc-note" data-skel></div>
 
+          </div>
+        </section>
+
+        <section class="set-card" id="grp-advanced">
+          <div class="set-card-head"><div class="set-card-title">Advanced</div><div class="set-card-sub">data, window &amp; setup</div></div>
+          <div class="set-card-body">
             <div class="section-label">Data</div>
             <div class="btn-row">
               <button class="pill-btn small" id="btnOpenDataFolder">Open data folder</button>
@@ -354,11 +397,15 @@
               <button class="pill-btn small" id="btnWizard">Re-run setup check</button>
               <button class="pill-btn small" id="btnMin">Minimize</button>
               <button class="pill-btn small" id="btnMax">Maximize</button>
+            </div>
+            <div class="danger-zone">
+              <div><div class="s-name">Danger zone</div><div class="s-sub">closes Sara completely</div></div>
               <button class="pill-btn small danger" id="btnClose">Close SARA</button>
             </div>
           </div>
         </section>
 
+      </div>
       </div>
     </div>
   </section>
@@ -540,6 +587,7 @@
 <script src="js/settings-data.js"></script>
 <script src="js/perf.js"></script>
 <script src="js/settings-skills.js"></script>
+<script src="js/settings-fx.js"></script>
 <script src="js/setup-wizard.js"></script>
 <script src="js/palette.js"></script>
 <script src="js/main.js"></script>

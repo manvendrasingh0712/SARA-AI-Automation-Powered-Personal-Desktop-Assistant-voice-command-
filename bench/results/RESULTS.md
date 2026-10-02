@@ -1,7 +1,7 @@
 # SARA-Bench results
 
-- Timestamp (UTC): 2026-10-02T08:16:51+00:00
-- Git commit: a6734bc
+- Timestamp (UTC): 2026-10-02T08:38:43+00:00
+- Git commit: 2417f4b
 - Python: 3.11.9 | OS: Windows-10-10.0.26300-SP0 | CPU: AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD
 - Mode: router | Rows: 310
 - Baseline: commit a6734bc, 2026-10-02T08:16:50+00:00
@@ -16,8 +16,8 @@
 | False-trigger rate | 6.0% |
 | Gate false-open rate | 3.6% |
 | Group accuracy | n/a (0 rows) |
-| Latency p95 | 1.0956 ms |
-| Composite | 0.6195 |
+| Latency p95 | 1.0295 ms |
+| Composite | 0.6196 |
 
 ## Per language
 
@@ -66,10 +66,10 @@
 
 | Percentile | Latency |
 | --- | --- |
-| p50 | 0.3540 ms |
-| p95 | 1.0956 ms |
-| p99 | 1.4775 ms |
-| score | 0.9945 |
+| p50 | 0.3397 ms |
+| p95 | 1.0295 ms |
+| p99 | 1.3251 ms |
+| score | 0.9949 |
 
 ## Changes vs baseline
 
@@ -80,9 +80,9 @@
 | False-trigger rate | 6.0% | 6.0% | = +0.0 pts |
 | Gate false-open rate | 3.6% | 3.6% | = +0.0 pts |
 | Group accuracy | n/a | n/a | - |
-| Latency p50 | 0.3474 ms | 0.3540 ms | ▲ +0.0066 ms (+1.9%) |
-| Latency p95 | 1.0048 ms | 1.0956 ms | ▲ +0.0908 ms (+9.0%) |
-| Latency p99 | 1.2767 ms | 1.4775 ms | ▲ +0.2008 ms (+15.7%) |
-| Composite | 0.6196 | 0.6195 | ▼ -0.0001 |
+| Latency p50 | 0.3474 ms | 0.3397 ms | ▼ -0.0077 ms (-2.2%) |
+| Latency p95 | 1.0048 ms | 1.0295 ms | ▲ +0.0247 ms (+2.5%) |
+| Latency p99 | 1.2767 ms | 1.3251 ms | ▲ +0.0484 ms (+3.8%) |
+| Composite | 0.6196 | 0.6196 | ▼ -0.0000 |
 
 ▲ increased, ▼ decreased, = unchanged.

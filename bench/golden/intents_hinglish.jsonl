@@ -1,0 +1,141 @@
+{"_defaults":{"lang":"hinglish","kind":"positive","style":"casual"}}
+{"t":"gaming mode me switch kar do","i":"switch_mode"}
+{"t":"meri last setting change wapas kar do","i":"undo_setting_change"}
+{"t":"mujhe 6 baje doodh lene ka reminder laga do","i":"reminder_add"}
+{"t":"mere saare reminders dikhao","i":"reminder_list"}
+{"t":"saare reminders cancel kar do","i":"reminder_cancel"}
+{"t":"10 minute ka timer laga do","i":"set_timer"}
+{"t":"kal subah 7 baje alarm laga do","i":"set_alarm"}
+{"t":"stopwatch start karo","i":"start_stopwatch"}
+{"t":"stopwatch pe lap lo","i":"lap_stopwatch"}
+{"t":"stopwatch band kar do","i":"stop_stopwatch"}
+{"t":"note kar lo ki kal doodh lana hai","i":"take_note"}
+{"t":"meri notes padh ke sunao","i":"read_notes"}
+{"t":"saare notes delete kar do","i":"clear_notes"}
+{"t":"todo me add karo bijli ka bill bharna hai","i":"add_todo"}
+{"t":"mere pending kaam batao","i":"list_todos"}
+{"t":"bijli bill wala kaam complete kar diya","i":"complete_todo"}
+{"t":"grocery wala kaam todo se hata do","i":"delete_todo"}
+{"t":"clipboard me kya hai batao","i":"clipboard_read"}
+{"t":"ye clipboard me copy kar do: hello world","i":"clipboard_write"}
+{"t":"screen pe kya chal raha hai batao","i":"screenshot_describe"}
+{"t":"Jaipur ka weather kaisa hai","i":"weather"}
+{"t":"cricket ki latest news batao","i":"news"}
+{"t":"aur Mumbai ka kaisa hai","i":"followup_query"}
+{"t":"youtube pe arijit singh ke gaane chalao","i":"play_youtube"}
+{"t":"spotify pe lofi beats bajao","i":"play_spotify"}
+{"t":"google pe python tutorial search karo","i":"web_search"}
+{"t":"is article ka summary batao example.com/news","i":"summarize_url"}
+{"t":"wikipedia.org website kholo","i":"open_url"}
+{"t":"25 * 4 kitna hota hai","i":"calculator"}
+{"t":"mere pc ka system status batao","i":"system_info"}
+{"t":"volume 40 kar do","i":"set_volume"}
+{"t":"awaaz mute kar do","i":"mute"}
+{"t":"sound unmute kar do","i":"unmute"}
+{"t":"pc lock kar do","i":"lock_pc"}
+{"t":"laptop ko sleep me daal do","i":"sleep_system"}
+{"t":"computer hibernate kar do","i":"hibernate_system"}
+{"t":"mujhe sign out kar do","i":"log_off"}
+{"t":"pc shutdown kar do","i":"shutdown_system"}
+{"t":"laptop restart kar do","i":"restart_system"}
+{"t":"shutdown cancel kar do","i":"cancel_shutdown"}
+{"t":"volume full kar do","i":"max_volume"}
+{"t":"volume bilkul zero kar do","i":"min_volume"}
+{"t":"brightness 70 kar do","i":"set_brightness"}
+{"t":"brightness thodi badha do","i":"increase_brightness"}
+{"t":"brightness kam kar do","i":"decrease_brightness"}
+{"t":"brightness full kar do","i":"max_brightness"}
+{"t":"brightness sabse kam kar do","i":"min_brightness"}
+{"t":"abhi brightness kitni hai","i":"get_brightness_status"}
+{"t":"desktop dikhao","i":"show_desktop"}
+{"t":"saari windows minimize kar do","i":"minimize_all_windows"}
+{"t":"minimize ki hui windows wapas laao","i":"restore_windows"}
+{"t":"ye window maximize kar do","i":"maximize_active_window"}
+{"t":"is window ko minimize karo","i":"minimize_active_window"}
+{"t":"ye window band kar do","i":"close_active_window"}
+{"t":"window ko left me snap kar do","i":"snap_window_left"}
+{"t":"window ko right side snap karo","i":"snap_window_right"}
+{"t":"dusri window pe switch karo","i":"switch_window"}
+{"t":"chrome ko restart karo","i":"restart_application"}
+{"t":"vscode pe jao","i":"switch_to_application"}
+{"t":"chrome ko left half me move karo","i":"move_window"}
+{"t":"notepad ka size right half karo","i":"resize_window"}
+{"t":"calculator ko always on top kar do","i":"always_on_top"}
+{"t":"vlc ko fullscreen karo","i":"toggle_fullscreen"}
+{"t":"gaana pause kar do","i":"play_pause_media"}
+{"t":"agla gaana chalao","i":"next_track"}
+{"t":"pichla gaana lagao","i":"previous_track"}
+{"t":"music band kar do","i":"stop_media"}
+{"t":"type karo: main kal aaunga","i":"typing_text"}
+{"t":"enter key dabao","i":"press_key"}
+{"t":"ye selected text copy kar do","i":"copy_selection"}
+{"t":"yahan paste kar do","i":"paste_clipboard"}
+{"t":"sab kuch select kar lo","i":"select_all"}
+{"t":"wo undo kar do","i":"undo"}
+{"t":"redo kar do","i":"redo"}
+{"t":"naya tab kholo","i":"new_tab"}
+{"t":"ye tab band karo","i":"close_tab"}
+{"t":"agle tab pe jao","i":"next_tab"}
+{"t":"pichle tab pe jao","i":"prev_tab"}
+{"t":"page refresh kar do","i":"reload_page"}
+{"t":"zoom in karo","i":"zoom_in"}
+{"t":"thoda zoom out kar do","i":"zoom_out"}
+{"t":"zoom reset kar do","i":"zoom_reset"}
+{"t":"thoda upar scroll karo","i":"scroll_up"}
+{"t":"neeche scroll kar do","i":"scroll_down"}
+{"t":"page ke top pe jao","i":"scroll_top"}
+{"t":"page ke bottom tak scroll karo","i":"scroll_bottom"}
+{"t":"wifi on kar do","i":"wifi_on"}
+{"t":"wifi band kar do","i":"wifi_off"}
+{"t":"bluetooth chalu karo","i":"bluetooth_on"}
+{"t":"bluetooth off kar do","i":"bluetooth_off"}
+{"t":"dark mode laga do","i":"dark_mode"}
+{"t":"light mode on karo","i":"light_mode"}
+{"t":"resume naam ki file dhundo","i":"find_file"}
+{"t":"recycle bin khali kar do","i":"empty_recycle_bin"}
+{"t":"download ho jaye to mujhe batana","i":"notify_on_file"}
+{"t":"downloads folder kholo","i":"open_downloads"}
+{"t":"documents folder khol do","i":"open_documents"}
+{"t":"desktop folder kholo","i":"open_desktop_folder"}
+{"t":"pictures folder dikhao","i":"open_pictures"}
+{"t":"music folder kholo","i":"open_music"}
+{"t":"videos folder khol do","i":"open_videos"}
+{"t":"this pc kholo","i":"open_this_pc"}
+{"t":"recycle bin kholo","i":"open_recycle_bin"}
+{"t":"file explorer kholo","i":"open_file_explorer"}
+{"t":"control panel khol do","i":"open_control_panel"}
+{"t":"task manager kholo","i":"open_task_manager"}
+{"t":"display settings kholo","i":"open_display_settings"}
+{"t":"sound settings khol do","i":"open_sound_settings"}
+{"t":"bluetooth settings kholo","i":"open_bluetooth_settings"}
+{"t":"network settings dikhao","i":"open_network_settings"}
+{"t":"windows update check karo","i":"open_update_settings"}
+{"t":"koi app uninstall karna hai","i":"open_apps_settings"}
+{"t":"wallpaper change karo","i":"open_personalization_settings"}
+{"t":"privacy settings kholo","i":"open_privacy_settings"}
+{"t":"storage settings kholo","i":"open_storage_settings"}
+{"t":"power settings khol do","i":"open_power_settings"}
+{"t":"mere windows ka version kaunsa hai","i":"open_about_settings"}
+{"t":"night light chalu karo","i":"open_nightlight_settings"}
+{"t":"airplane mode on karo","i":"open_airplane_mode_settings"}
+{"t":"disk space kitna bacha hai","i":"disk_usage"}
+{"t":"pc ka uptime batao","i":"uptime"}
+{"t":"mera ip address batao","i":"local_ip"}
+{"t":"gpu ka status batao","i":"gpu_status"}
+{"t":"pc kitna garam hai","i":"temperature_status"}
+{"t":"running processes dikhao","i":"process_list"}
+{"t":"services ki list dikhao","i":"list_services"}
+{"t":"print spooler service chalu karo","i":"start_service"}
+{"t":"windows update service band karo","i":"stop_service"}
+{"t":"abhi time kya hua hai","i":"time_query"}
+{"t":"aaj ki date kya hai","i":"date_query"}
+{"t":"aaj ka schedule batao","i":"calendar_today"}
+{"t":"kal 4 baje team sync naam ki meeting schedule karo","i":"calendar_create"}
+{"t":"tumne ye kyu bola","i":"why_proactive"}
+{"t":"maine brightness kyu change ki thi","i":"why_decision"}
+{"t":"mere baare me sab kuch bhool jao","i":"memory_forget_all"}
+{"t":"ye bhool jao ki mujhe chai pasand hai","i":"memory_forget_specific"}
+{"t":"mere baare me tumhe kya yaad hai","i":"memory_recall"}
+{"t":"meri morning routine chalao","i":"run_routine"}
+{"t":"chrome khol do","i":"open_app"}
+{"t":"notepad band kar do","i":"close_app"}

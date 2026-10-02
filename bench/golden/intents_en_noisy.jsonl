@@ -1,0 +1,141 @@
+{"_defaults":{"lang":"en","kind":"positive","style":"noisy"}}
+{"t":"switch two study mode","i":"switch_mode","g":["study"],"n":"noisy from intents_en-0002"}
+{"t":"please undo my last change","i":"undo_setting_change","n":"noisy from intents_en-0003"}
+{"t":"uh remind me to call mom at 6 pm","i":"reminder_add","g":["call mom","6 pm"],"n":"noisy from intents_en-0004"}
+{"t":"what are reminders","i":"reminder_list","n":"noisy from intents_en-0005"}
+{"t":"um cancel all my reminders","i":"reminder_cancel","n":"noisy from intents_en-0006"}
+{"t":"please set a timer for 10 minutes","i":"set_timer","g":["10 minutes"],"n":"noisy from intents_en-0007"}
+{"t":"set alarm for 7 am","i":"set_alarm","g":["7 am"],"n":"noisy from intents_en-0008"}
+{"t":"please start the stopwatch","i":"start_stopwatch","n":"noisy from intents_en-0009"}
+{"t":"please lap","i":"lap_stopwatch","n":"noisy from intents_en-0010"}
+{"t":"stop stopwatch","i":"stop_stopwatch","n":"noisy from intents_en-0011"}
+{"t":"please take note: buy milk and eggs","i":"take_note","g":["buy milk and eggs"],"n":"noisy from intents_en-0012"}
+{"t":"read notes","i":"read_notes","n":"noisy from intents_en-0013"}
+{"t":"delete all notes","i":"clear_notes","n":"noisy from intents_en-0014"}
+{"t":"um add a todo: finish the physics assignment","i":"add_todo","g":["finish the physics assignment"],"n":"noisy from intents_en-0015"}
+{"t":"show to-dos","i":"list_todos","n":"noisy from intents_en-0016"}
+{"t":"please mark buy groceries as done","i":"complete_todo","g":["buy groceries"],"n":"noisy from intents_en-0017"}
+{"t":"please delete the todo: call the bank","i":"delete_todo","g":["call the bank"],"n":"noisy from intents_en-0018"}
+{"t":"what's on clipboard","i":"clipboard_read","n":"noisy from intents_en-0019"}
+{"t":"please copy this four me: the meeting is at noon","i":"clipboard_write","g":["the meeting is at noon"],"n":"noisy from intents_en-0020"}
+{"t":"what's on screen","i":"screenshot_describe","n":"noisy from intents_en-0021"}
+{"t":"what's weather in jaipur","i":"weather","g":["jaipur"],"n":"noisy from intents_en-0022"}
+{"t":"uh latest news about electric vehicles","i":"news","g":["electric vehicles"],"n":"noisy from intents_en-0023"}
+{"t":"please what about tomorrow","i":"followup_query","g":["tomorrow"],"n":"noisy from intents_en-0024"}
+{"t":"um play lofi beats on youtube","i":"play_youtube","g":["lofi beats"],"n":"noisy from intents_en-0025"}
+{"t":"please play arijit singh on spotify","i":"play_spotify","g":["arijit singh"],"n":"noisy from intents_en-0026"}
+{"t":"uh search four best budget laptops","i":"web_search","g":["best budget laptops"],"n":"noisy from intents_en-0027"}
+{"t":"uh summarize this article https://example.com/post","i":"summarize_url","g":["https://example.com/post"],"n":"noisy from intents_en-0028"}
+{"t":"um open github.com","i":"open_url","g":["github.com"],"n":"noisy from intents_en-0029"}
+{"t":"um calculate 245 * 12","i":"calculator","g":["245 * 12"],"n":"noisy from intents_en-0030"}
+{"t":"please system status","i":"system_info","n":"noisy from intents_en-0031"}
+{"t":"uh set the volume to 40","i":"set_volume","g":["40"],"n":"noisy from intents_en-0032"}
+{"t":"um mute the volume","i":"mute","n":"noisy from intents_en-0033"}
+{"t":"unmute sound","i":"unmute","n":"noisy from intents_en-0034"}
+{"t":"um lock my laptop","i":"lock_pc","n":"noisy from intents_en-0035"}
+{"t":"um put computer to sleep","i":"sleep_system","n":"noisy from intents_en-0036"}
+{"t":"hibernate pc","i":"hibernate_system","n":"noisy from intents_en-0037"}
+{"t":"please log off","i":"log_off","n":"noisy from intents_en-0038"}
+{"t":"shut down pc","i":"shutdown_system","n":"noisy from intents_en-0039"}
+{"t":"restart computer","i":"restart_system","n":"noisy from intents_en-0040"}
+{"t":"cancel shutdown","i":"cancel_shutdown","n":"noisy from intents_en-0041"}
+{"t":"uh max volume","i":"max_volume","n":"noisy from intents_en-0042"}
+{"t":"uh minimum volume","i":"min_volume","n":"noisy from intents_en-0043"}
+{"t":"set brightness two 70","i":"set_brightness","g":["70"],"n":"noisy from intents_en-0044"}
+{"t":"please increase screen brightness","i":"increase_brightness","n":"noisy from intents_en-0045"}
+{"t":"dim screen brightness","i":"decrease_brightness","n":"noisy from intents_en-0046"}
+{"t":"uh full brightness","i":"max_brightness","n":"noisy from intents_en-0047"}
+{"t":"please minimum brightness","i":"min_brightness","n":"noisy from intents_en-0048"}
+{"t":"please what's the current brightness","i":"get_brightness_status","n":"noisy from intents_en-0049"}
+{"t":"show the desktop","i":"show_desktop","n":"noisy from intents_en-0050"}
+{"t":"uh minimize all windows","i":"minimize_all_windows","n":"noisy from intents_en-0051"}
+{"t":"restore minimized windows","i":"restore_windows","n":"noisy from intents_en-0052"}
+{"t":"uh maximize this window","i":"maximize_active_window","n":"noisy from intents_en-0053"}
+{"t":"uh minimize the current window","i":"minimize_active_window","n":"noisy from intents_en-0054"}
+{"t":"close window","i":"close_active_window","n":"noisy from intents_en-0055"}
+{"t":"snap window two the left","i":"snap_window_left","n":"noisy from intents_en-0056"}
+{"t":"snap the window to the write","i":"snap_window_right","n":"noisy from intents_en-0057"}
+{"t":"switch to next window","i":"switch_window","n":"noisy from intents_en-0058"}
+{"t":"um restart chrome","i":"restart_application","g":["chrome"],"n":"noisy from intents_en-0059"}
+{"t":"uh switch to spotify","i":"switch_to_application","g":["spotify"],"n":"noisy from intents_en-0060"}
+{"t":"move notepad window to left half","i":"move_window","g":["notepad","left half"],"n":"noisy from intents_en-0061"}
+{"t":"um resize chrome window to the right half","i":"resize_window","g":["chrome","right half"],"n":"noisy from intents_en-0062"}
+{"t":"please make calculator always on top","i":"always_on_top","g":["calculator"],"n":"noisy from intents_en-0063"}
+{"t":"please make vlc fullscreen","i":"toggle_fullscreen","g":["vlc"],"n":"noisy from intents_en-0064"}
+{"t":"pause music","i":"play_pause_media","n":"noisy from intents_en-0065"}
+{"t":"uh next song","i":"next_track","n":"noisy from intents_en-0066"}
+{"t":"um go back a track","i":"previous_track","n":"noisy from intents_en-0067"}
+{"t":"uh stop the music","i":"stop_media","n":"noisy from intents_en-0068"}
+{"t":"type see you tomorrow","i":"typing_text","g":["see you tomorrow"],"n":"noisy from intents_en-0069"}
+{"t":"um press the enter key","i":"press_key","g":["enter"],"n":"noisy from intents_en-0070"}
+{"t":"uh copy selected text","i":"copy_selection","n":"noisy from intents_en-0071"}
+{"t":"paste it hear","i":"paste_clipboard","n":"noisy from intents_en-0072"}
+{"t":"please select all","i":"select_all","n":"noisy from intents_en-0073"}
+{"t":"uh undo that","i":"undo","n":"noisy from intents_en-0074"}
+{"t":"please redo","i":"redo","n":"noisy from intents_en-0075"}
+{"t":"open new tab","i":"new_tab","n":"noisy from intents_en-0076"}
+{"t":"um close tab","i":"close_tab","n":"noisy from intents_en-0077"}
+{"t":"go to next tab","i":"next_tab","n":"noisy from intents_en-0078"}
+{"t":"switch two previous tab","i":"prev_tab","n":"noisy from intents_en-0079"}
+{"t":"refresh page","i":"reload_page","n":"noisy from intents_en-0080"}
+{"t":"um zoom in","i":"zoom_in","n":"noisy from intents_en-0081"}
+{"t":"please zoom out","i":"zoom_out","n":"noisy from intents_en-0082"}
+{"t":"um reset zoom","i":"zoom_reset","n":"noisy from intents_en-0083"}
+{"t":"scroll up bit","i":"scroll_up","n":"noisy from intents_en-0084"}
+{"t":"uh scroll down","i":"scroll_down","n":"noisy from intents_en-0085"}
+{"t":"scroll to top of the page","i":"scroll_top","n":"noisy from intents_en-0086"}
+{"t":"go two bottom of the page","i":"scroll_bottom","n":"noisy from intents_en-0087"}
+{"t":"turn on wifi","i":"wifi_on","n":"noisy from intents_en-0088"}
+{"t":"please disable wi-fi","i":"wifi_off","n":"noisy from intents_en-0089"}
+{"t":"uh enable the bluetooth","i":"bluetooth_on","n":"noisy from intents_en-0090"}
+{"t":"uh turn off bluetooth","i":"bluetooth_off","n":"noisy from intents_en-0091"}
+{"t":"switch two dark mode","i":"dark_mode","n":"noisy from intents_en-0092"}
+{"t":"uh turn on light mode","i":"light_mode","n":"noisy from intents_en-0093"}
+{"t":"find file named resume final","i":"find_file","g":["resume final"],"n":"noisy from intents_en-0094"}
+{"t":"empty recycle bin","i":"empty_recycle_bin","n":"noisy from intents_en-0095"}
+{"t":"tell me when download is finished","i":"notify_on_file","n":"noisy from intents_en-0096"}
+{"t":"open downloads folder","i":"open_downloads","n":"noisy from intents_en-0097"}
+{"t":"please open my documents","i":"open_documents","n":"noisy from intents_en-0098"}
+{"t":"open desktop folder","i":"open_desktop_folder","n":"noisy from intents_en-0099"}
+{"t":"um open my pictures","i":"open_pictures","n":"noisy from intents_en-0100"}
+{"t":"open music folder","i":"open_music","n":"noisy from intents_en-0101"}
+{"t":"uh open my videos","i":"open_videos","n":"noisy from intents_en-0102"}
+{"t":"uh open pc","i":"open_this_pc","n":"noisy from intents_en-0103"}
+{"t":"open recycle bin","i":"open_recycle_bin","n":"noisy from intents_en-0104"}
+{"t":"please open file explorer","i":"open_file_explorer","n":"noisy from intents_en-0105"}
+{"t":"uh open control panel","i":"open_control_panel","n":"noisy from intents_en-0106"}
+{"t":"please open task manager","i":"open_task_manager","n":"noisy from intents_en-0107"}
+{"t":"um open display settings","i":"open_display_settings","n":"noisy from intents_en-0108"}
+{"t":"please open sound settings","i":"open_sound_settings","n":"noisy from intents_en-0109"}
+{"t":"um open bluetooth settings","i":"open_bluetooth_settings","n":"noisy from intents_en-0110"}
+{"t":"um open network settings","i":"open_network_settings","n":"noisy from intents_en-0111"}
+{"t":"please open windows update settings","i":"open_update_settings","n":"noisy from intents_en-0112"}
+{"t":"uh open apps and features settings","i":"open_apps_settings","n":"noisy from intents_en-0113"}
+{"t":"um open personalization settings","i":"open_personalization_settings","n":"noisy from intents_en-0114"}
+{"t":"uh open privacy settings","i":"open_privacy_settings","n":"noisy from intents_en-0115"}
+{"t":"please open storage settings","i":"open_storage_settings","n":"noisy from intents_en-0116"}
+{"t":"uh open power settings","i":"open_power_settings","n":"noisy from intents_en-0117"}
+{"t":"please open about settings","i":"open_about_settings","n":"noisy from intents_en-0118"}
+{"t":"uh turn on night light","i":"open_nightlight_settings","n":"noisy from intents_en-0119"}
+{"t":"uh enable airplane mode","i":"open_airplane_mode_settings","n":"noisy from intents_en-0120"}
+{"t":"please check disk usage","i":"disk_usage","n":"noisy from intents_en-0121"}
+{"t":"please pc uptime","i":"uptime","n":"noisy from intents_en-0122"}
+{"t":"what's local ip address","i":"local_ip","n":"noisy from intents_en-0123"}
+{"t":"uh gpu usage","i":"gpu_status","n":"noisy from intents_en-0124"}
+{"t":"um cpu temperature","i":"temperature_status","n":"noisy from intents_en-0125"}
+{"t":"uh show running processes","i":"process_list","n":"noisy from intents_en-0126"}
+{"t":"uh list windows services","i":"list_services","n":"noisy from intents_en-0127"}
+{"t":"start print spooler service","i":"start_service","g":["print spooler"],"n":"noisy from intents_en-0128"}
+{"t":"stop bluetooth service","i":"stop_service","g":["bluetooth"],"n":"noisy from intents_en-0129"}
+{"t":"what's time","i":"time_query","n":"noisy from intents_en-0130"}
+{"t":"uh what is today's date","i":"date_query","n":"noisy from intents_en-0131"}
+{"t":"what's on calendar today","i":"calendar_today","n":"noisy from intents_en-0132"}
+{"t":"schedule meeting called project review for 4 pm tomorrow","i":"calendar_create","g":["project review","4 pm tomorrow"],"n":"noisy from intents_en-0133"}
+{"t":"why did you say","i":"why_proactive","n":"noisy from intents_en-0134"}
+{"t":"uh why did i change the volume","i":"why_decision","g":["the volume"],"n":"noisy from intents_en-0135"}
+{"t":"forget everything you no about me","i":"memory_forget_all","n":"noisy from intents_en-0136"}
+{"t":"uh forget that i like cricket","i":"memory_forget_specific","g":["cricket"],"n":"noisy from intents_en-0137"}
+{"t":"please what do you remember about me","i":"memory_recall","n":"noisy from intents_en-0138"}
+{"t":"please run my morning routine","i":"run_routine","g":["morning"],"n":"noisy from intents_en-0139"}
+{"t":"please open notepad","i":"open_app","g":["notepad"],"n":"noisy from intents_en-0140"}
+{"t":"please close chrome","i":"close_app","g":["chrome"],"n":"noisy from intents_en-0141"}
