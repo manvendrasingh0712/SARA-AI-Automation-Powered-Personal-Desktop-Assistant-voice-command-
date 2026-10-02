@@ -9,6 +9,30 @@
   'use strict';
   const SARA = window.SARA, $ = SARA.$, esc = SARA.escapeHtml;
 
+  /* ---- first-view count-up: runs once per number, the first time Settings is on screen; later refreshes only swap the text ---- */
+  const COUNT_IDS = ['memPct', 'memExchanges', 'memSize', 'shStreak', 'shMessages', 'shDays', 'shNudges', 'anTotal'];
+  function reveal(el) {
+    if (el._cu === 'done') return; el._cu = 'done';
+    const m = /^(-?\d+(?:\.(\d+))?)(.*)$/.exec(el.textContent);
+    if (!m || SARA.reduceMotion) return;
+    const end = parseFloat(m[1]), dec = m[2] ? m[2].length : 0, tail = m[3], tok = el._tok = (el._tok || 0) + 1;
+    if (!(end > 0)) return;
+    const t0 = performance.now();
+    (function step(now) {
+      if (el._tok !== tok) return;
+      const k = Math.min(1, (now - t0) / 700);
+      el.textContent = (end * (1 - Math.pow(1 - k, 3))).toFixed(dec) + tail;
+      if (k < 1) requestAnimationFrame(step);
+    })(t0);
+  }
+  function put(el, text) {
+    if (!el) return;
+    el._tok = (el._tok || 0) + 1; el.textContent = String(text);
+    if (el._cu === 'done') return;
+    el._cu = 'wait';
+    if (SARA.current === 'settings') reveal(el);
+  }
+
   /* ---- proactive stats ---- */
   const TRIGGERS = { battery: 'Battery', reminder: 'Reminders', idle_break: 'Breaks', streak: 'Streaks', meeting: 'Meetings', routine: 'Routines' };
   SARA.on('proactive', function (s) {
@@ -25,13 +49,15 @@
   async function loadMemory() {
     const mem = await SARA.callApi('get_memory_stats');
     if (mem && mem.ok) {
-      $('memPct').textContent = mem.pct + '%'; $('memExchanges').textContent = mem.exchange_count + ' / ' + mem.max_exchanges; $('memSize').textContent = mem.approx_mb + ' MB';
+      put($('memPct'), mem.pct + '%'); put($('memExchanges'), mem.exchange_count + ' / ' + mem.max_exchanges); put($('memSize'), mem.approx_mb + ' MB');
+      const ring = $('memRing'), pv = Math.max(0, Math.min(100, parseFloat(mem.pct) || 0));
+      if (ring) { ring.style.setProperty('--p', pv); $('memRingTxt').textContent = Math.round(pv) + '%'; }
     }
     const sh = await SARA.callApi('get_share_card_data');
     if (sh && sh.ok) {
-      $('shStreak').textContent = sh.streak + (sh.streak === 1 ? ' day' : ' days');
-      $('shMessages').textContent = sh.total_messages; $('shDays').textContent = sh.days_used != null ? sh.days_used : '—';
-      $('shNudges').textContent = sh.proactive_nudges != null ? sh.proactive_nudges : '—';
+      put($('shStreak'), sh.streak + (sh.streak === 1 ? ' day' : ' days'));
+      put($('shMessages'), sh.total_messages); put($('shDays'), sh.days_used != null ? sh.days_used : '—');
+      put($('shNudges'), sh.proactive_nudges != null ? sh.proactive_nudges : '—');
     }
   }
   $('exportMemoryBtn').addEventListener('click', async function () {
@@ -65,7 +91,7 @@
     const res = await SARA.callApi('get_analytics_dashboard');
     if (!res || !res.ok) return;
     const d = res.data || {};
-    $('anTotal').textContent = d.total_commands || 0;
+    put($('anTotal'), d.total_commands || 0);
     const top = (d.top_commands || []).slice(0, 5), max = top.length ? Math.max.apply(null, top.map((c) => c.count)) : 1;
     $('anTop').innerHTML = top.length ? top.map((c) =>
       '<div class="bar-row"><span class="b-name" title="' + esc(c.name) + '">' + esc(c.name) + '</span><span class="b-track"><span class="b-fill" style="display:block;width:' +
@@ -128,6 +154,11 @@
   });
 
   SARA.onBoot(function () { loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); });
-  SARA.on('page', function (p) { if (p === 'settings') { playTrendDraw(); loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses(); } });
+  SARA.on('page', function (p) {
+    if (p === 'settings') {
+      COUNT_IDS.forEach(function (id) { const el = $(id); if (el && el._cu === 'wait') reveal(el); });
+      playTrendDraw(); loadMemory(); loadAnalytics(); loadActionTimeline('all'); loadFrequentMisses();
+    }
+  });
   SARA.every(5 * 60 * 1000, function () { loadMemory(); loadAnalytics(); });
 })();

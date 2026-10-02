@@ -20,6 +20,12 @@ from pathlib import Path
 from typing import Callable, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
+try:
+    from sara.core.telemetry import mark_pending as _t_pending
+except Exception:  # telemetry is optional: fall back to a no-op
+    def _t_pending(*args, **kwargs) -> None:
+        return None
+
 import numpy as np
 
 
@@ -1247,6 +1253,7 @@ class SpeechToText:
                                 _push_preview_chunk(_c)
                             silence_count = 0
                             speech_start = time.monotonic()
+                            _t_pending("speech_start")
                             last_preview_time = speech_start
                             state = _CollectState.SPEAKING
                             break
@@ -1654,6 +1661,9 @@ class SpeechToText:
             if not audio:
                 return TranscriptionResult("", 0.0)
 
+            if mode == "command":
+                _t_pending("speech_end")
+
             beam_override = (
                 int(getattr(Config, "WAKE_WORD_BEAM_SIZE", 1))
                 if mode == "wake"
@@ -1665,6 +1675,9 @@ class SpeechToText:
                 beam_size_override=beam_override,
                 model_override=model_override,
             )
+
+            if mode == "command":
+                _t_pending("stt_done")
 
             print(
                 f"[STTDiag] listen completed | "

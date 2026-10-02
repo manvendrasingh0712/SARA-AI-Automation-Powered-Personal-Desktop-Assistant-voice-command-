@@ -110,6 +110,13 @@ _STREAM_INTERRUPTED_MESSAGES = {
 # ══════════════════════════════════════════════════════════════════════
 
 
+def _security_rule() -> str:
+    """Untrusted-content rule block (T5); empty when SECURITY_MODE=off."""
+    from sara.core.security.untrusted import security_rule
+
+    return security_rule()
+
+
 def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str]) -> str:
     no_markdown = (
         "Never use markdown — no asterisks, hashtags, bullet points, "
@@ -166,6 +173,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
                 "Use their name occasionally when it feels natural — not "
                 "every single turn."
             )
+        base += _security_rule()
         return base
 
     if lang == "hindi":
@@ -213,6 +221,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
                 f" User ka naam {user_name} hai. "
                 "Kabhi kabhi naam lo — har baar nahi."
             )
+        base += _security_rule()
         return base
 
     # Hinglish
@@ -263,6 +272,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
     # weight recent instructions more heavily than ones buried earlier in a
     # long system prompt, and this is the single most-violated rule at low
     # parameter counts — full drift into pure English or pure Hindi.
+    base += _security_rule()
     base += (
         " Reminder, ye sabse important rule hai: hamesha Hindi-English mix "
         "(Hinglish) mein hi jawab de, chahe user pura English mein bole ya "

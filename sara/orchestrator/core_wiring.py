@@ -9,6 +9,22 @@ from .lazy import _debug_log, _Lazy
 from .state import LanguageState, AssistantState
 from .ui_bridge import _UICoalescer
 from .tts_worker import TTSWorker
+
+try:
+    from sara.core.telemetry import (
+        begin_turn as _t_begin,
+        end_turn as _t_end,
+        mark_pending as _t_pending,
+    )
+except Exception:  # telemetry is optional: fall back to no-ops
+    def _t_begin(*args, **kwargs) -> str:
+        return ""
+
+    def _t_end(*args, **kwargs) -> None:
+        return None
+
+    def _t_pending(*args, **kwargs) -> None:
+        return None
 from .db_writer import AsyncDBWriter
 from .history import _apply_saved_preferences, _finish_brain_setup
 from .intent_handlers import _handle_command
@@ -599,6 +615,7 @@ def run_sara_logic(
             if stop_event.is_set() or not woke:
                 break
 
+            _t_pending("wake")
             wake_watcher.begin_session()
 
             activity_tracker.touch()
@@ -763,6 +780,11 @@ def run_sara_logic(
                 session_control: dict = {}
                 with STATE_LOCK:
                     turn_gen, turn_cancel = TURN_STATE.begin()
+                    _t_begin(
+                        "voice",
+                        text=user_input,
+                        lang=getattr(brain, "get_language", lambda: None)(),
+                    )
                     reply_text = _handle_command(
                         user_input,
                         brain,
@@ -781,6 +803,7 @@ def run_sara_logic(
                         session_control=session_control,
                     )
 
+                _t_end("cancelled" if turn_cancel.is_set() else "ok")
                 if turn_cancel.is_set():
                     logger.info("[Logic] turn cancelled by Stop; dropping late result")
                     continue
