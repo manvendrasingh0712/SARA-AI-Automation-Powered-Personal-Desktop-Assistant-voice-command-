@@ -34,6 +34,15 @@ from .state import TURN_STATE
 from .tts_worker import TTSWorker
 from ._constants import _SLEEP_WORDS, _FORGET_WORDS
 
+try:
+    from sara.core.telemetry import annotate as _t_annotate, mark as _t_mark
+except Exception:  # telemetry is optional: fall back to no-ops
+    def _t_annotate(*args, **kwargs) -> None:
+        return None
+
+    def _t_mark(*args, **kwargs) -> None:
+        return None
+
 from ._shared_state import (
     _HAS_RAG,
     resolve_tool_call,
@@ -61,7 +70,7 @@ from .command_helpers import (
     _LikelyMisfireReply,
     _log_action,
 )
-from .context_tracking import _h_followup_query
+from .context_tracking import _h_followup_query, _remember_entity
 from .route_chat import _route_chat_message, _retry_via_tool_router
 
 from .handlers.timers import (
@@ -628,6 +637,9 @@ def _handle_command(
             if reply in _CONFIRM_YES_WORDS:
                 confirm_state.pop("pending", None)
                 action, target = pending["action"], pending["target"]
+                _t_annotate(route="confirm", intent=action)
+                _t_mark("route_done")
+                _t_mark("tool_start")
                 _ack(ctx)
                 if action == "close_app":
                     label = _activity_label(target)
@@ -679,6 +691,7 @@ def _handle_command(
                             _log_action(db, "system_action", action, "fail")
                 else:
                     result = "Sorry, I lost track of what I was confirming."
+                _t_mark("tool_end")
                 return _quick(ctx, result)
             if reply in _CONFIRM_NO_WORDS:
                 confirm_state.pop("pending", None)
@@ -715,6 +728,9 @@ def _handle_command(
 
     handler = _INTENT_HANDLERS.get(intent)
     if handler is not None:
+        _t_annotate(route="regex", intent=intent)
+        _t_mark("route_done")
+        _t_mark("tool_start")
         try:
             result = handler(match, ctx)
         except Exception as e:
@@ -732,6 +748,7 @@ def _handle_command(
             # one of the two dispatch chokepoints action_log is written from.
             _log_action(db, "intent", intent, "fail")
             return result
+        _t_mark("tool_end")
         if cancel_event.is_set():
             return ""
         if result is not None:
@@ -773,8 +790,12 @@ def _handle_command(
         _log_action(db, "intent", intent, "skipped")
 
     if intent in system_tools.SIMPLE_ACTIONS:
+        _t_annotate(route="regex", intent=intent)
+        _t_mark("route_done")
+        _t_mark("tool_start")
         try:
             result = _quick(ctx, system_tools.SIMPLE_ACTIONS[intent]())
+            _t_mark("tool_end")
             # AUDIT LOG (NEW): zero-arg system action executed successfully.
             _log_action(db, "system_action", intent, "success")
             # HISTORY FIX (NEW): same gap as the fast-path handler block
@@ -818,12 +839,15 @@ def _handle_command(
         chat_route, context_hint = _route_chat_message(user_input, context_state)
 
         if chat_route == "plan":
+            _t_annotate(route="planner", intent=intent)
+            _t_mark("route_done")
             # try_plan_and_execute() NEVER raises (see its own docstring);
             # this try/except is a second, redundant safety net purely so a
             # hypothetical future bug in that contract can never escalate
             # into killing the whole voice loop thread.
             try:
                 allowed_apps = frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", []))
+                _t_mark("tool_start")
                 plan_outcome = try_plan_and_execute(
                     user_input,
                     brain.model_name,
@@ -831,6 +855,7 @@ def _handle_command(
                     Config,
                     allowed_apps=allowed_apps,
                 )
+                _t_mark("tool_end")
                 if cancel_event.is_set():
                     return ""
                 if plan_outcome is not None:
@@ -884,10 +909,14 @@ def _handle_command(
                 tool_args = resolved.get("arguments", {})
                 mapped_intent = TOOL_NAME_TO_INTENT.get(tool_name)
                 if mapped_intent:
+                    _t_annotate(route="tool_router", intent=mapped_intent)
+                    _t_mark("route_done")
                     fake_match = build_fake_match(tool_name, tool_args)
                     tool_handler = _INTENT_HANDLERS.get(mapped_intent)
                     if tool_handler is not None:
+                        _t_mark("tool_start")
                         tool_result = tool_handler(fake_match, ctx)
+                        _t_mark("tool_end")
                         if cancel_event.is_set():
                             return ""
                         if tool_result is not None:
@@ -939,6 +968,8 @@ def _handle_command(
         except Exception as e:
             print(f"[RAG] follow-up context lookup failed (continuing): {e}")
 
+    _t_annotate(route="llm", intent=intent)
+    _t_mark("route_done")
     ui_update("status", "thinking")
     try:
         mood_mix_hint = _build_turn_mood_mix_hint(user_input, context_state)
