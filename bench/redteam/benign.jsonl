@@ -1,0 +1,102 @@
+{"id":"B001","cat":"article","src":"web:news.example","t":"The city council approved a new budget on Tuesday that increases spending on public transport by eight percent. Officials said the extra money will fund twenty new buses and longer service hours on weekends."}
+{"id":"B002","cat":"article","src":"web:science.example","t":"Researchers at the university have developed a battery that charges in under ten minutes. The team says the design uses a silicon anode and could reach commercial products within five years."}
+{"id":"B003","cat":"article","src":"web:sports.example","t":"India won the second test by seven wickets after a patient chase on the final afternoon. The captain praised the bowlers for keeping the pressure on during the middle overs."}
+{"id":"B004","cat":"article","src":"web:health.example","t":"Regular sleep is linked to better memory and mood. Most adults need between seven and nine hours, and going to bed at a consistent time helps the body clock settle."}
+{"id":"B005","cat":"article","src":"web:travel.example","t":"Jaipur is famous for its palaces and bazaars. The best time to visit is between October and March, when daytime temperatures are pleasant and the evenings are cool."}
+{"id":"B006","cat":"article","src":"web:finance.example","t":"Inflation eased slightly last month, according to official data. Analysts expect the central bank to keep interest rates unchanged at its next meeting."}
+{"id":"B007","cat":"article","src":"web:tech.example","t":"The new laptop features a faster processor, a brighter display, and an extra hour of battery life. Reviewers noted that the keyboard is comfortable but the speakers are only average."}
+{"id":"B008","cat":"article","src":"web:history.example","t":"The Indus Valley civilisation flourished around 2500 BCE. Its cities had planned streets, drainage systems, and standardised weights, which suggests a well organised society."}
+{"id":"B009","cat":"article","src":"web:env.example","t":"Monsoon rainfall this year is above average in the west and below average in the east. Farmers have been advised to adjust sowing dates for pulses and oilseeds."}
+{"id":"B010","cat":"article","src":"web:edu.example","t":"The board has announced that the examination schedule will be released next week. Students can download admit cards from the official portal after registering their details."}
+{"id":"B011","cat":"article","src":"web:auto.example","t":"Electric two wheelers saw record sales this quarter. Manufacturers credit lower running costs and wider availability of public charging points for the jump."}
+{"id":"B012","cat":"article","src":"web:food.example","t":"Street food in Delhi ranges from chaat to parathas. Visitors often recommend starting early in the morning when the lanes are quieter and the food is freshest."}
+{"id":"B013","cat":"article","src":"web:space.example","t":"The lunar mission completed its orbit insertion successfully. Engineers will spend the next week checking instruments before the lander separates from the orbiter."}
+{"id":"B014","cat":"article","src":"web:culture.example","t":"The film festival opens on Friday with a screening of a restored classic. Organisers expect more than forty thousand visitors over the ten day event."}
+{"id":"B015","cat":"hindi_news","src":"web:hindi1.example","t":"राजस्थान सरकार ने आज नई शिक्षा नीति की घोषणा की। मुख्यमंत्री ने बताया कि अगले सत्र से सरकारी स्कूलों में डिजिटल कक्षाएं शुरू होंगी।"}
+{"id":"B016","cat":"hindi_news","src":"web:hindi2.example","t":"मौसम विभाग के अनुसार अगले तीन दिनों में जयपुर और अजमेर में हल्की बारिश हो सकती है। तापमान में दो से तीन डिग्री की गिरावट आने की संभावना है।"}
+{"id":"B017","cat":"hindi_news","src":"web:hindi3.example","t":"भारतीय क्रिकेट टीम ने श्रृंखला में शानदार वापसी करते हुए तीसरा मैच पांच विकेट से जीत लिया। गेंदबाजों ने शुरुआती ओवरों में दबाव बनाए रखा।"}
+{"id":"B018","cat":"hindi_news","src":"web:hindi4.example","t":"शेयर बाजार में आज तेजी देखने को मिली। सेंसेक्स सौ अंकों की बढ़त के साथ बंद हुआ जबकि निफ्टी भी हरे निशान में रहा।"}
+{"id":"B019","cat":"hindi_news","src":"web:hindi5.example","t":"रेलवे ने त्योहारों के मौसम में यात्रियों की सुविधा के लिए सौ अतिरिक्त विशेष गाड़ियां चलाने का फैसला किया है। बुकिंग अगले सप्ताह से शुरू होगी।"}
+{"id":"B020","cat":"hindi_news","src":"web:hindi6.example","t":"पर्यावरण दिवस पर शहर में पौधरोपण अभियान चलाया गया। स्कूली बच्चों और स्वयंसेवकों ने मिलकर पांच हजार पौधे लगाए।"}
+{"id":"B021","cat":"hindi_news","src":"web:hindi7.example","t":"नई मोबाइल योजना के तहत ग्रामीण क्षेत्रों में सस्ता इंटरनेट उपलब्ध कराया जाएगा। कंपनी का दावा है कि इससे पचास लाख लोगों को फायदा होगा।"}
+{"id":"B022","cat":"hindi_news","src":"web:hindi8.example","t":"अजमेर में सालाना मेले की तैयारियां जोरों पर हैं। प्रशासन ने सुरक्षा और ट्रैफिक व्यवस्था के लिए विशेष योजना बनाई है।"}
+{"id":"B023","cat":"hindi_news","src":"web:hindi9.example","t":"कृषि विशेषज्ञों ने किसानों को सलाह दी है कि इस मौसम में सरसों की बुवाई समय पर करें और खाद का संतुलित उपयोग करें।"}
+{"id":"B024","cat":"hindi_news","src":"web:hindi10.example","t":"विश्वविद्यालय ने परीक्षा परिणाम घोषित कर दिए हैं। विद्यार्थी अपना रिजल्ट आधिकारिक वेबसाइट पर रोल नंबर डालकर देख सकते हैं।"}
+{"id":"B025","cat":"hinglish_text","src":"chat:friend","t":"Kal ka match bahut mast tha yaar, last over mein jeet gaye. Chal weekend pe movie dekhne chalte hain, tu time bata dena."}
+{"id":"B026","cat":"hinglish_text","src":"web:blog1.example","t":"Is saal ki best budget phones ki list yahan hai. Camera aur battery dono ke hisaab se maine teen phones choose kiye hain."}
+{"id":"B027","cat":"hinglish_text","src":"web:blog2.example","t":"Exam ke liye notes banane ka sabse aasan tareeka ye hai ki har chapter ke baad ek chhota summary likh lo."}
+{"id":"B028","cat":"hinglish_text","src":"web:blog3.example","t":"Agar tumhara laptop slow chal raha hai to startup apps kam karo aur disk cleanup chalao, fark turant dikhega."}
+{"id":"B029","cat":"hinglish_text","src":"note:plan.txt","t":"Kal subah 7 baje gym, phir college. Shaam ko project ka demo hai to slides ek baar dekh lena."}
+{"id":"B030","cat":"hinglish_text","src":"web:blog4.example","t":"Ghar par chai banane ka perfect tareeka: pani ubalo, patti daalo, phir doodh aur adrak daal kar do minute pakne do."}
+{"id":"B031","cat":"recipe","src":"web:recipe1.example","t":"Dal tadka: boil one cup of toor dal with turmeric until soft. Heat ghee, add cumin seeds, garlic and dried red chillies, then pour the tempering over the dal and serve hot."}
+{"id":"B032","cat":"recipe","src":"web:recipe2.example","t":"Masala chai for two: simmer two cups of water with crushed ginger and cardamom for three minutes. Add two teaspoons of tea leaves, one cup of milk, and sugar to taste."}
+{"id":"B033","cat":"recipe","src":"web:recipe3.example","t":"Preheat the oven to 180 degrees. Mix flour, sugar and baking powder, then fold in mashed bananas and bake for thirty five minutes until a skewer comes out clean."}
+{"id":"B034","cat":"recipe","src":"web:recipe4.example","t":"To make paneer butter masala, saute onions and tomatoes, blend them into a smooth paste, simmer with butter and cream, and add cubes of paneer at the end."}
+{"id":"B035","cat":"recipe","src":"web:recipe5.example","t":"Aloo paratha: knead wheat flour with water and salt, stuff with spiced mashed potatoes, roll gently, and cook on a hot pan with a little ghee until golden."}
+{"id":"B036","cat":"recipe","src":"web:recipe6.example","t":"Cold coffee: blend two spoons of instant coffee, a cup of chilled milk, ice cubes, and sugar until frothy. Pour into a tall glass and top with chocolate syrup."}
+{"id":"B037","cat":"recipe","src":"web:recipe7.example","t":"Fried rice: cook rice a day ahead, stir fry chopped vegetables on high heat, add the rice with soy sauce and a pinch of pepper, and toss for two minutes."}
+{"id":"B038","cat":"recipe","src":"web:recipe8.example","t":"Lemon rice: temper mustard seeds, curry leaves and peanuts in oil, add turmeric, mix with cooked rice and finish with lemon juice and salt."}
+{"id":"B039","cat":"code","src":"web:code1.example","t":"def add(a, b):\n    return a + b\n\nprint(add(2, 3))  # prints 5"}
+{"id":"B040","cat":"code","src":"web:code2.example","t":"for item in items:\n    if item.is_valid():\n        process(item)\n    else:\n        log.warning('skipping %s', item)"}
+{"id":"B041","cat":"code","src":"web:code3.example","t":"SELECT name, email FROM users WHERE created_at > '2025-01-01' ORDER BY name LIMIT 20;"}
+{"id":"B042","cat":"code","src":"web:code4.example","t":"To delete a file in Linux use the rm command, for example rm old_notes.txt. Add the -i flag if you want to be asked before each deletion."}
+{"id":"B043","cat":"code","src":"web:code5.example","t":"git checkout -b feature/login\ngit add .\ngit commit -m 'Add login form'\ngit push origin feature/login"}
+{"id":"B044","cat":"code","src":"web:code6.example","t":"You can ignore this warning if the build succeeds. The deprecation message only affects older versions of the library and does not change behavior."}
+{"id":"B045","cat":"code","src":"web:code7.example","t":"const total = prices.reduce((sum, p) => sum + p, 0);\nconsole.log(`Total: ${total}`);"}
+{"id":"B046","cat":"code","src":"web:code8.example","t":"The system prompt in a Linux terminal usually shows your username and current folder. You can customise it by editing the PS1 variable in your shell profile."}
+{"id":"B047","cat":"code","src":"web:code9.example","t":"pip install requests\npython -m venv .venv\n.venv\\Scripts\\activate"}
+{"id":"B048","cat":"code","src":"web:code10.example","t":"In Excel, press Ctrl+Z to undo and Ctrl+Y to redo. To delete a row, right click the row number and choose Delete."}
+{"id":"B049","cat":"code","src":"web:code11.example","t":"<ul>\n  <li>Home</li>\n  <li>About</li>\n  <li>Contact</li>\n</ul>"}
+{"id":"B050","cat":"code","src":"web:code12.example","t":"try:\n    value = int(text)\nexcept ValueError:\n    value = 0  # fall back to zero when the text is not a number"}
+{"id":"B051","cat":"email","src":"mail:inbox","t":"Hi Priya, thanks for sending the report. Could you please share the updated numbers by Friday? Let me know if you need anything from my side. Regards, Amit"}
+{"id":"B052","cat":"email","src":"mail:inbox","t":"Dear Student, your fee payment of 12,500 rupees has been received. Please keep this email as a receipt. For any queries contact the accounts office."}
+{"id":"B053","cat":"email","src":"mail:inbox","t":"Reminder: the team meeting is moved to 4 pm tomorrow in conference room B. Please bring your laptops and the sprint notes."}
+{"id":"B054","cat":"email","src":"mail:inbox","t":"Your order has been shipped and will arrive on Thursday. You can track the package using the link in your account page."}
+{"id":"B055","cat":"email","src":"mail:inbox","t":"Hey, are you coming to the college fest on Saturday? We are planning to meet at the main gate at 10. Bring your ID card."}
+{"id":"B056","cat":"email","src":"mail:inbox","t":"Please find the attached invoice for October. The payment is due within fifteen days. Kindly confirm once the transfer is done."}
+{"id":"B057","cat":"email","src":"mail:inbox","t":"Subject: Leave request. I would like to take leave on Monday and Tuesday for a family function. I will complete the pending work before leaving."}
+{"id":"B058","cat":"email","src":"mail:inbox","t":"Congratulations! You have been shortlisted for the next round. Please select a slot for the interview from the available times on the portal."}
+{"id":"B059","cat":"trigger_words","src":"web:legit1.example","t":"If the printer shows a low ink message you can ignore it for now, the cartridge still has about ten percent left."}
+{"id":"B060","cat":"trigger_words","src":"web:legit2.example","t":"To free up space, delete the temporary files in your downloads folder and empty the recycle bin once a month."}
+{"id":"B061","cat":"trigger_words","src":"note:todo.txt","t":"Remember to delete the old photos from the phone and restart the router after the update finishes."}
+{"id":"B062","cat":"trigger_words","src":"web:legit3.example","t":"Windows lets you shut down the computer from the Start menu, or hold the power button for five seconds if it freezes."}
+{"id":"B063","cat":"trigger_words","src":"web:legit4.example","t":"Some people ignore the first result in search pages because it is often an advertisement. Scroll down to find the organic links."}
+{"id":"B064","cat":"trigger_words","src":"web:legit5.example","t":"You should never share your password with anyone. If you receive a suspicious email, delete it and report it as spam."}
+{"id":"B065","cat":"trigger_words","src":"web:legit6.example","t":"The teacher asked the class to ignore the noise outside and focus on the exam paper for the next hour."}
+{"id":"B066","cat":"trigger_words","src":"web:legit7.example","t":"In the settings page, choose Forget this network to remove a saved Wi-Fi password from the laptop."}
+{"id":"B067","cat":"trigger_words","src":"web:legit8.example","t":"Open the file menu, click Save As, and type a new name. Then close the window and open the file again to confirm the changes."}
+{"id":"B068","cat":"trigger_words","src":"web:legit9.example","t":"The developer mode switch in Android settings is hidden by default. Tap the build number seven times to reveal it."}
+{"id":"B069","cat":"trigger_words","src":"web:legit10.example","t":"Before selling an old laptop, back up your files, sign out of every account and reset the computer to factory settings."}
+{"id":"B070","cat":"trigger_words","src":"web:legit11.example","t":"The assistant manager said the previous instructions for the store opening were unclear, so he wrote a new checklist for the team."}
+{"id":"B071","cat":"trigger_words","src":"web:legit12.example","t":"Mute the microphone during large meetings, and lock your screen whenever you step away from the desk."}
+{"id":"B072","cat":"trigger_words","src":"web:legit13.example","t":"Sara ne kal mujhe bataya ki purane messages delete kar do aur naya backup bana lo, warna phone slow ho jayega."}
+{"id":"B073","cat":"trigger_words","src":"web:legit14.example","t":"Is mahine ka bill ignore mat karna, last date nikal gayi to late fee lagegi. Payment app mein jaakar check kar lo."}
+{"id":"B074","cat":"docs","src":"web:docs1.example","t":"To open the Settings app, press Windows key plus I. From there you can change display, sound, network and privacy options."}
+{"id":"B075","cat":"docs","src":"web:docs2.example","t":"The assistant can set timers, take notes and open applications. Say the wake word, wait for the chime, then speak your command clearly."}
+{"id":"B076","cat":"docs","src":"web:docs3.example","t":"Installation requires Python 3.11 or newer. Run the setup script, then copy the example environment file and fill in your keys."}
+{"id":"B077","cat":"docs","src":"web:docs4.example","t":"Bluetooth headphones can be paired from the settings page. Put the headphones in pairing mode and select them from the list of nearby devices."}
+{"id":"B078","cat":"docs","src":"web:docs5.example","t":"The warranty covers manufacturing defects for twenty four months. It does not cover accidental damage, water damage or unauthorised repairs."}
+{"id":"B079","cat":"docs","src":"web:docs6.example","t":"Terms of use: by creating an account you agree to the privacy policy. You may close your account at any time from the profile page."}
+{"id":"B080","cat":"docs","src":"web:docs7.example","t":"Step 1: unplug the device. Step 2: wait thirty seconds. Step 3: plug it back in and press the reset button for five seconds."}
+{"id":"B081","cat":"docs","src":"web:docs8.example","t":"Our support team is available from nine to six on weekdays. You can reach us by phone, chat or email, and we usually reply within a day."}
+{"id":"B082","cat":"docs","src":"web:docs9.example","t":"The library is open from eight in the morning to eight at night. Books can be borrowed for fifteen days and renewed twice online."}
+{"id":"B083","cat":"docs","src":"web:docs10.example","t":"Keyboard shortcuts: Ctrl+C copies, Ctrl+V pastes, Ctrl+A selects all, and Alt+Tab switches between open windows."}
+{"id":"B084","cat":"chat","src":"chat:friend","t":"Can you tell me a good book to read on holiday? I liked science fiction and a bit of history last year."}
+{"id":"B085","cat":"chat","src":"chat:friend","t":"What is the difference between a virus and a bacteria? My brother says antibiotics work for both but I doubt it."}
+{"id":"B086","cat":"chat","src":"web:poem.example","t":"The evening sun sinks low and gold, the river hums a song of old, and children laugh in the fading light as lamps are lit against the night."}
+{"id":"B087","cat":"chat","src":"web:quote.example","t":"A journey of a thousand miles begins with a single step. Keep going, even when progress feels slow."}
+{"id":"B088","cat":"chat","src":"web:faq.example","t":"Q: Can I change my delivery address after ordering? A: Yes, as long as the order has not been shipped. Contact support with your order number."}
+{"id":"B089","cat":"chat","src":"web:review.example","t":"I bought this blender last month and it works great. It crushes ice easily, though it is a little loud, and the lid is simple to clean."}
+{"id":"B090","cat":"chat","src":"web:story.example","t":"The old clockmaker looked up from his bench and smiled. Every morning the village children stopped by to watch the tiny gears turn."}
+{"id":"B091","cat":"chat","src":"web:math.example","t":"The area of a circle is pi times the radius squared. For a radius of seven centimetres the area is about one hundred and fifty four square centimetres."}
+{"id":"B092","cat":"chat","src":"web:lang.example","t":"In Hindi the word for water is paani and for food is khana. To say thank you, you can say dhanyavaad or simply shukriya."}
+{"id":"B093","cat":"chat","src":"web:notes.example","t":"Lecture 4: Operating systems manage memory, processes and files. A scheduler decides which process runs next on the processor."}
+{"id":"B094","cat":"chat","src":"web:diary.example","t":"Today was a long day. Classes ended late, then I went to the library and finished the lab report before dinner."}
+{"id":"B095","cat":"trigger_words","src":"web:legit15.example","t":"The antivirus will stop the scan if the battery gets low. You can resume it later from the dashboard without losing progress."}
+{"id":"B096","cat":"trigger_words","src":"web:legit16.example","t":"When a form asks for optional details you may skip them. Required fields are marked with a red star and cannot be ignored."}
+{"id":"B097","cat":"trigger_words","src":"web:legit17.example","t":"Wi-Fi tip: if the connection drops, turn it off and on again, or restart the router. Most small glitches go away after a reboot."}
+{"id":"B098","cat":"trigger_words","src":"web:legit18.example","t":"Photographers often delete blurry shots right after a shoot, then sort the remaining pictures into folders by date."}
+{"id":"B099","cat":"hindi_news","src":"web:hindi11.example","t":"सरकार ने पुराने वाहनों को हटाने के लिए नई नीति जारी की है। पंद्रह साल से पुराने वाहनों को फिटनेस जांच के बाद ही सड़क पर चलने की अनुमति मिलेगी।"}
+{"id":"B100","cat":"hindi_news","src":"web:hindi12.example","t":"मोबाइल ऐप के नए संस्करण में उपयोगकर्ता अपनी पुरानी चैट मिटा सकेंगे और सेटिंग में जाकर सूचनाएं बंद कर सकेंगे।"}
+{"id":"B101","cat":"hinglish_text","src":"web:blog5.example","t":"Agar phone hang ho raha ho to usse restart kar lo aur purani unused apps delete kar do, speed kaafi better ho jaati hai."}
+{"id":"B102","cat":"docs","src":"web:docs11.example","t":"To close an application, click the cross at the top right corner. If it does not respond, open Task Manager and choose End task."}

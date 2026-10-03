@@ -17,6 +17,7 @@ analytics_usage*.json
 conversation/history exports
 *.jsonl
 !bench/golden/*.jsonl
+!bench/redteam/*.jsonl
 private/user/state files
 
 Audio Privacy
