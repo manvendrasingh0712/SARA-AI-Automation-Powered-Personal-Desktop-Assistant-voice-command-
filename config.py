@@ -634,6 +634,17 @@ class Config:
 
     # ── Reminders ─────────────────────────────────────────────────────────
     REMINDER_CHECK_INTERVAL: int = _int(os.getenv("REMINDER_CHECK_INTERVAL"), default=5)
+    # How long after its due time a reminder from a previous run is still
+    # worth a spoken line (minutes). Unrecognised reminders use the default.
+    REMINDER_GRACE_DEFAULT_MIN: int = _int(os.getenv("REMINDER_GRACE_DEFAULT_MIN"), default=45)
+    REMINDER_GRACE_CRITICAL_MIN: int = _int(os.getenv("REMINDER_GRACE_CRITICAL_MIN"), default=15)
+    REMINDER_GRACE_IMPORTANT_MIN: int = _int(os.getenv("REMINDER_GRACE_IMPORTANT_MIN"), default=60)
+    REMINDER_GRACE_ROUTINE_MIN: int = _int(os.getenv("REMINDER_GRACE_ROUTINE_MIN"), default=45)
+    # Hard time limit for one smart-reminder LLM call (seconds). When it is
+    # exceeded or the LLM fails, Sara speaks the built-in template instead.
+    CONTEXTUAL_REMINDER_LLM_TIMEOUT_S: float = _float(os.getenv("CONTEXTUAL_REMINDER_LLM_TIMEOUT_S"), default=4.0)
+    # False = due reminders use only the built-in templates (no LLM call).
+    CONTEXTUAL_REMINDER_LLM: bool = _bool(os.getenv("CONTEXTUAL_REMINDER_LLM", "True"), default=True)
 
     # ── Proactive Engine (sara/orchestrator/proactive.py) ────────────────────
     PROACTIVE_ENABLED: bool = _bool(os.getenv("PROACTIVE_ENABLED", "True"), default=True)
@@ -744,6 +755,25 @@ class Config:
     )
     TRACE_RING_SIZE: int = _int(
         os.getenv("TRACE_RING_SIZE"), default=500
+    )
+
+    # ── Security layer: untrusted-content handling, tiers, audit log ─────
+    SECURITY_MODE: str = (os.getenv("SECURITY_MODE") or "standard").strip().lower()
+    SECURITY_INJECTION_THRESHOLD: float = _float(
+        os.getenv("SECURITY_INJECTION_THRESHOLD"), default=0.6
+    )
+    SECURITY_WARN_ON_INJECTION: bool = _bool(
+        os.getenv("SECURITY_WARN_ON_INJECTION", "True"), default=True
+    )
+    SECURITY_SCAN_MAX_CHARS: int = _int(
+        os.getenv("SECURITY_SCAN_MAX_CHARS"), default=51200
+    )
+    SECURITY_LOG_RETENTION_DAYS: int = _int(
+        os.getenv("SECURITY_LOG_RETENTION_DAYS"), default=90
+    )
+    # Documented hook for a future LLM judge; unused in v1.
+    SECURITY_LLM_JUDGE: bool = _bool(
+        os.getenv("SECURITY_LLM_JUDGE", "False"), default=False
     )
 
     # ── Memory Management: decision memory & consolidation ──────────────
@@ -1160,6 +1190,19 @@ class Config:
         cls.TRACE_RING_SIZE = max(
             _MIN_TRACE_RING_SIZE,
             min(_MAX_TRACE_RING_SIZE, cls.TRACE_RING_SIZE),
+        )
+
+        # ── Security clamps ──────────────────────────────────────────────
+        if cls.SECURITY_MODE not in ("standard", "strict", "off"):
+            cls.SECURITY_MODE = "standard"
+        cls.SECURITY_INJECTION_THRESHOLD = max(
+            0.2, min(0.95, cls.SECURITY_INJECTION_THRESHOLD)
+        )
+        cls.SECURITY_SCAN_MAX_CHARS = max(
+            1_000, min(200_000, cls.SECURITY_SCAN_MAX_CHARS)
+        )
+        cls.SECURITY_LOG_RETENTION_DAYS = max(
+            1, min(3650, cls.SECURITY_LOG_RETENTION_DAYS)
         )
 
         # ── Memory consolidation / decision-memory clamps ────────────────

@@ -79,6 +79,7 @@ from sara.audio.stt import SpeechToText
 from sara.core.memory import PreferencesDB
 from sara.core.memory_consolidation import start_memory_consolidation   # ← NEW
 from sara.tools.reminders import ReminderManager, play_alarm_beep
+from sara.tools.reminder_composer import ReminderComposer
 from sara.tools.vision import VisionAssistant
 
 # PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the
@@ -271,19 +272,145 @@ def build_core_objects(ui_update):
     brain = _Lazy(_make_brain)
     vision = _Lazy(VisionAssistant)
 
+    def _deliver(
+        text,  # str, or a callable returning str (resolved after the beep)
+        *,
+        beep: bool = False,
+        speak: bool = True,
+        transcript: bool = True,
+        icon: str = "ti-bell-ringing",
+        color: str = "#fbbf24",
+        trigger: str = "reminder_due",
+        reason: str = "",
+    ) -> None:
+        # Single delivery path for reminder speech: one final text goes to the
+        # alarm beep (optional), TTS, transcript, notification and proactive_log.
+        if speak:
+            ui_update("status", "speaking")
+            if beep:
+                try:
+                    play_alarm_beep(repetitions=3)
+                except Exception as e:
+                    print(f"[Warning] alarm beep failed: {e}")
+        if callable(text):
+            # Wording may still be generating while the beep plays.
+            text = text()
+        if speak:
+            try:
+                tts.speak(text, fast=True)
+            except Exception as e:
+                print(f"[Warning] reminder speech failed: {e}")
+        if transcript:
+            ui_update("transcript", "sara", f"\U0001f514 {text}")
+        ui_update("notification", icon, color, text)
+        if reason:
+            _log_reminder_event(trigger, text, reason)
+
     def _on_reminder(msg: str) -> None:
-        ui_update("status", "speaking")
+        _deliver(
+            f"Reminder: {msg}",
+            beep=True,
+            reason=f'Your reminder "{msg}" came due.',
+        )
+
+    class _BrainBreaker:
+        # Lets short reminder generations share chat's primary-backend breaker.
+        def active(self) -> bool:
+            return bool(brain.primary_breaker_active())
+
+        def record(self, ok: bool) -> None:
+            brain.note_primary_result(ok)
+
+    def _reminder_breaker():
+        # Only once the brain is built, so a reminder never waits for it.
         try:
-            play_alarm_beep(repetitions=3)
+            if brain._ready.is_set() and brain._error is None:
+                return _BrainBreaker()
+        except Exception:
+            pass
+        return None
+
+    _composer = ReminderComposer(Config, breaker_getter=_reminder_breaker)
+
+    def _on_reminder_event(event) -> None:
+        fallback_text = f"Reminder: {event.message}"
+        reason = f'Your reminder "{event.message}" came due.'
+        try:
+            if db.get_preference("setting:contextual_reminders") == "0":
+                _deliver(fallback_text, beep=True, reason=reason)
+                return
+            wait_for_text = _composer.start(event.message)
         except Exception as e:
-            print(f"[Warning] alarm beep failed: {e}")
-        reply = f"Reminder: {msg}"
-        tts.speak(reply, fast=True)
-        ui_update("transcript", "sara", f"\U0001f514 {reply}")
-        ui_update("notification", "ti-bell-ringing", "#fbbf24", reply)
+            print(f"[Warning] contextual reminder failed, using plain wording: {e}")
+            _deliver(fallback_text, beep=True, reason=reason)
+            return
+
+        def _text() -> str:
+            try:
+                result = wait_for_text()
+                print(result.describe())
+                return result.text or fallback_text
+            except Exception as e:
+                print(f"[Warning] contextual reminder wording failed: {e}")
+                return fallback_text
+
+        _deliver(_text, beep=True, reason=reason)
+
+    def _focus_mode_on() -> bool:
+        try:
+            return db.get_preference("focus_mode") == "1"
+        except Exception:
+            return False
+
+    def _log_reminder_event(trigger: str, text: str, reason: str) -> None:
+        try:
+            db.log_proactive_event(trigger, text, reason, wait=False)
+        except Exception as e:
+            print(f"[Warning] reminder event log failed: {e}")
+
+    def _on_reminder_late(messages: list) -> None:
+        # Slightly late reminders from a previous run: one calm grouped line,
+        # no beep. Focus mode keeps it silent (toast only).
+        if not messages:
+            return
+        if len(messages) == 1:
+            text = f"Heads up, a reminder just passed: {messages[0]}."
+        else:
+            text = f"Heads up, {len(messages)} reminders just passed: " + ", ".join(messages) + "."
+        focus = _focus_mode_on()
+        _deliver(
+            text,
+            speak=not focus,
+            transcript=not focus,
+            trigger="reminder_late",
+            reason="These reminders came due while Sara was not running, but are still inside their grace window.",
+        )
+
+    def _on_reminder_missed(messages: list) -> None:
+        # Too late to speak about: small notification only.
+        if not messages:
+            return
+        if len(messages) == 1:
+            text = f"You missed a reminder: {messages[0]}."
+        else:
+            text = f"You missed {len(messages)} reminders: " + ", ".join(messages) + "."
+        _deliver(
+            text,
+            speak=False,
+            transcript=False,
+            icon="ti-bell-off",
+            color="#9ca3af",
+            trigger="reminder_missed",
+            reason="These reminders came due while Sara was not running and their grace window had passed.",
+        )
 
     def _make_reminders():
-        r = ReminderManager(on_trigger=_on_reminder)
+        r = ReminderManager(
+            on_trigger=_on_reminder,
+            on_late=_on_reminder_late,
+            on_missed=_on_reminder_missed,
+            on_trigger_event=_on_reminder_event,
+        )
         r.start()
         ui_update("boot_progress", "Reminders ready...", 95)
         return r

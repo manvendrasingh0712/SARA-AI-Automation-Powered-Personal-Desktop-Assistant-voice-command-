@@ -713,6 +713,20 @@ class SaraLLM:
             if self._cb_consecutive_failures >= threshold:
                 self._cb_cooldown_until = time.monotonic() + cooldown
 
+    def primary_breaker_active(self) -> bool:
+        """Public read of the primary-backend circuit breaker, for other
+        components (e.g. short stateless generators) that must agree with
+        chat about whether the primary backend is currently down."""
+        return self._circuit_breaker_active()
+
+    def note_primary_result(self, ok: bool) -> None:
+        """Public write to the same breaker: True resets it, False counts
+        one more consecutive failure (trips it at the usual threshold)."""
+        if ok:
+            self._circuit_breaker_record_success()
+        else:
+            self._circuit_breaker_record_failure()
+
     def is_usable(self) -> bool:
         """
         Cheap, read-only reflection of the same stage-selection logic
