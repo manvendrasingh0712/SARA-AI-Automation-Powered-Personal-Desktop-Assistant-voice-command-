@@ -30,17 +30,78 @@ LATENCY FIX (this revision):
   loss of functionality.
 """
 
+import re
 import sqlite3
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, Callable, List, Dict, Any
 
 import dateparser
 
 from config import Config
+from sara.tools.reminder_context import urgency_level
 
 _DEFAULT_DB_PATH = "sara_data.db"
+
+# A reminder that comes due this many seconds (or less) after its due time is
+# treated as "on time" and goes through the normal beep + speak path.
+_LATE_AFTER_S = 120
+
+# Grace window per urgency level: (Config name set via .env, fallback minutes).
+# The level itself comes from sara/tools/reminder_context.py.
+_GRACE_CONFIG = {
+    "critical": ("REMINDER_GRACE_CRITICAL_MIN", 15),
+    "important": ("REMINDER_GRACE_IMPORTANT_MIN", 60),
+    "routine": ("REMINDER_GRACE_ROUTINE_MIN", 45),
+    "normal": ("REMINDER_GRACE_DEFAULT_MIN", 45),
+}
+
+
+@dataclass(frozen=True)
+class ReminderEvent:
+    """
+    Structured description of one reminder delivery. Passed to
+    ReminderManager's optional on_trigger_event callback.
+    stage is "due" for now; other stages are added by later phases.
+    """
+
+    reminder_id: int
+    message: str
+    due_at: Optional[str]
+    triggered_at: str
+    stage: str = "due"
+
+
+# Columns of the reminder_intelligence table that update_intel() may write.
+_INTEL_COLUMNS = (
+    "category",
+    "delivered_at",
+    "upcoming_notified_at",
+    "last_nudge_at",
+    "nudge_count",
+    "acknowledged",
+    "last_message",
+)
+
+
+def _cfg_minutes(name: str, fallback: int) -> int:
+    """Reads a minutes value from Config (set via .env); never raises."""
+    try:
+        return max(0, int(getattr(Config, name, fallback)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _grace_minutes_for(message: str) -> int:
+    """
+    How long after its due time a reminder is still worth speaking about.
+    Decided from the reminder text; anything unrecognised uses
+    REMINDER_GRACE_DEFAULT_MIN (45 unless changed in .env).
+    """
+    name, fallback = _GRACE_CONFIG.get(urgency_level(message), _GRACE_CONFIG["normal"])
+    return _cfg_minutes(name, fallback)
 
 
 class ReminderManager:
@@ -51,7 +112,14 @@ class ReminderManager:
     # js_api bridge from recursing into the live sqlite3 connection/thread.
     _serializable = False
 
-    def __init__(self, db_path: str = _DEFAULT_DB_PATH, on_trigger: Optional[Callable[[str], None]] = None):
+    def __init__(
+        self,
+        db_path: str = _DEFAULT_DB_PATH,
+        on_trigger: Optional[Callable[[str], None]] = None,
+        on_late: Optional[Callable[[List[str]], None]] = None,
+        on_missed: Optional[Callable[[List[str]], None]] = None,
+        on_trigger_event: Optional[Callable[[ReminderEvent], None]] = None,
+    ):
         """
         Args:
             db_path: Path to the shared SQLite database file.
@@ -61,6 +129,16 @@ class ReminderManager:
         """
         self.db_path = db_path
         self.on_trigger = on_trigger
+        # on_late: reminders from a previous run that are slightly late (inside
+        # their grace window). on_missed: too late to speak about. Both get the
+        # list of reminder messages once per poll. If a callback is not set,
+        # those reminders fire through on_trigger exactly as before.
+        self.on_late = on_late
+        self.on_missed = on_missed
+        self._started_at = datetime.now()
+        # on_trigger_event: when set, on-time reminders are delivered to it as
+        # a ReminderEvent instead of calling on_trigger(message).
+        self.on_trigger_event = on_trigger_event
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -70,6 +148,7 @@ class ReminderManager:
             self._conn.execute("PRAGMA journal_mode=WAL;")
             self._create_table()
             self._ensure_done_column()
+            self._ensure_intelligence_table()
             if Config.DEBUG_MODE:
                 print(f"[Debug] ReminderManager initialized at '{self.db_path}'.")
         except sqlite3.Error as e:
@@ -89,6 +168,38 @@ class ReminderManager:
             """
         )
         self._conn.commit()
+
+    def _ensure_intelligence_table(self) -> None:
+        """
+        Side table for per-reminder smart-delivery state (delivery time,
+        nudge count, acknowledged flag, ...). The reminders table itself is
+        never altered. Safe to run on new and old databases.
+        """
+        if not self._conn:
+            return
+        try:
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reminder_intelligence (
+                    reminder_id          INTEGER PRIMARY KEY,
+                    category             TEXT,
+                    delivered_at         TEXT,
+                    upcoming_notified_at TEXT,
+                    last_nudge_at        TEXT,
+                    nudge_count          INTEGER NOT NULL DEFAULT 0,
+                    acknowledged         INTEGER NOT NULL DEFAULT 0,
+                    last_message         TEXT
+                )
+                """
+            )
+            # Drop state for reminders that were deleted.
+            self._conn.execute(
+                "DELETE FROM reminder_intelligence "
+                "WHERE reminder_id NOT IN (SELECT id FROM reminders)"
+            )
+            self._conn.commit()
+        except sqlite3.Error as e:
+            print(f"[Warning] Could not ensure reminder_intelligence table: {e}")
 
     def _ensure_done_column(self) -> None:
         """
@@ -331,7 +442,7 @@ class ReminderManager:
             with self._lock:
                 cur = self._conn.execute(
                     "SELECT id, message, due_at FROM reminders "
-                    "WHERE done = 0 AND due_at > ? AND due_at <= ? "
+                    "WHERE done = 0 AND triggered = 0 AND due_at > ? AND due_at <= ? "
                     "ORDER BY due_at ASC",
                     (now_iso, horizon),
                 )
@@ -347,6 +458,78 @@ class ReminderManager:
     # ------------------------------------------------------------
     # Background polling
     # ------------------------------------------------------------
+
+    def get_intel(self, reminder_id: Any) -> Dict[str, Any]:
+        """Returns the smart-delivery state of a reminder, or {} if none."""
+        if not self._conn:
+            return {}
+        try:
+            with self._lock:
+                row = self._conn.execute(
+                    "SELECT " + ", ".join(_INTEL_COLUMNS)
+                    + " FROM reminder_intelligence WHERE reminder_id = ?",
+                    (int(reminder_id),),
+                ).fetchone()
+            return dict(zip(_INTEL_COLUMNS, row)) if row else {}
+        except (sqlite3.Error, ValueError, TypeError) as e:
+            print(f"[Error] ReminderManager.get_intel failed: {e}")
+            return {}
+
+    def update_intel(self, reminder_id: Any, **fields: Any) -> bool:
+        """
+        Creates the reminder's state row if needed and updates the given
+        columns (only names in _INTEL_COLUMNS are accepted).
+        """
+        if not self._conn:
+            return False
+        cols = {k: v for k, v in fields.items() if k in _INTEL_COLUMNS}
+        if not cols:
+            return False
+        try:
+            rid = int(reminder_id)
+            assignments = ", ".join(f"{k} = ?" for k in cols)
+            with self._lock:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO reminder_intelligence (reminder_id) VALUES (?)",
+                    (rid,),
+                )
+                self._conn.execute(
+                    f"UPDATE reminder_intelligence SET {assignments} WHERE reminder_id = ?",
+                    (*cols.values(), rid),
+                )
+                self._conn.commit()
+            return True
+        except (sqlite3.Error, ValueError, TypeError) as e:
+            print(f"[Error] ReminderManager.update_intel failed: {e}")
+            return False
+
+    def _deliver_due(self, reminder_id: Any, message: str) -> None:
+        """
+        Delivers one on-time reminder: records the delivery time, then calls
+        on_trigger_event(ReminderEvent) if set, otherwise on_trigger(message).
+        """
+        now_iso = datetime.now().isoformat()
+        self.update_intel(reminder_id, delivered_at=now_iso)
+        if self.on_trigger_event:
+            due_at = None
+            try:
+                with self._lock:
+                    row = self._conn.execute(
+                        "SELECT due_at FROM reminders WHERE id = ?", (reminder_id,)
+                    ).fetchone()
+                due_at = row[0] if row else None
+            except Exception:
+                due_at = None
+            self.on_trigger_event(
+                ReminderEvent(
+                    reminder_id=reminder_id,
+                    message=message,
+                    due_at=due_at,
+                    triggered_at=now_iso,
+                )
+            )
+        elif self.on_trigger:
+            self.on_trigger(message)
 
     def start(self) -> None:
         """Starts the background thread that polls for due reminders."""
@@ -393,6 +576,50 @@ class ReminderManager:
             except Exception as e:  # noqa: BLE001 -- a bad tick must never kill the thread
                 print(f"[Reminders] check failed (continuing): {e}")
 
+    def _route_due_rows(self, due_rows: List[Any]) -> List[Any]:
+        """
+        Splits freshly-due rows into on-time, late and missed.
+        Returns the on-time (id, message) pairs for the normal alarm path and
+        sends late/missed messages to their callbacks. Never raises.
+        Reminders created during this run always count as on-time.
+        """
+        on_time: List[Any] = []
+        late: List[Any] = []
+        missed: List[Any] = []
+        now = datetime.now()
+        for reminder_id, message, due_at, created_at in due_rows:
+            try:
+                due_dt = datetime.fromisoformat(due_at)
+                created_dt = datetime.fromisoformat(created_at)
+                overdue_s = (now - due_dt).total_seconds()
+            except (ValueError, TypeError):
+                on_time.append((reminder_id, message))
+                continue
+            if created_dt >= self._started_at or overdue_s <= _LATE_AFTER_S:
+                on_time.append((reminder_id, message))
+            elif overdue_s <= _grace_minutes_for(message) * 60:
+                late.append((reminder_id, message))
+            else:
+                missed.append((reminder_id, message))
+
+        if late:
+            if self.on_late:
+                try:
+                    self.on_late([m for _, m in late])
+                except Exception as e:
+                    print(f"[Warning] Reminder late callback failed: {e}")
+            else:
+                on_time.extend(late)
+        if missed:
+            if self.on_missed:
+                try:
+                    self.on_missed([m for _, m in missed])
+                except Exception as e:
+                    print(f"[Warning] Reminder missed callback failed: {e}")
+            else:
+                on_time.extend(missed)
+        return on_time
+
     def _check_due_reminders(self) -> None:
         """Checks the database for due, untriggered reminders and fires them."""
         if not self._conn:
@@ -402,21 +629,22 @@ class ReminderManager:
             now_iso = datetime.now().isoformat()
             with self._lock:
                 cursor = self._conn.execute(
-                    "SELECT id, message FROM reminders WHERE triggered = 0 AND due_at <= ?",
+                    "SELECT id, message, due_at, created_at FROM reminders "
+                    "WHERE triggered = 0 AND done = 0 AND due_at <= ?",
                     (now_iso,),
                 )
                 due_rows = cursor.fetchall()
 
-                for reminder_id, message in due_rows:
+                for reminder_id, message, _due_at, _created_at in due_rows:
                     self._conn.execute(
                         "UPDATE reminders SET triggered = 1 WHERE id = ?", (reminder_id,)
                     )
                 self._conn.commit()
 
-            for _, message in due_rows:
-                if self.on_trigger:
+            for reminder_id, message in self._route_due_rows(due_rows):
+                if self.on_trigger or self.on_trigger_event:
                     try:
-                        self.on_trigger(message)
+                        self._deliver_due(reminder_id, message)
                     except Exception as e:
                         print(f"[Warning] Reminder trigger callback failed: {e}")
         except sqlite3.Error as e:

@@ -154,3 +154,35 @@ jobs:
       - name: Run mypy
         shell: bash
         run: mypy sara/ --ignore-missing-imports
+
+  bench:
+    name: Bench (router accuracy)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    continue-on-error: true  # advisory: the latency baseline was measured on another machine
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Router benchmark vs baseline
+        shell: bash
+        run: python -m bench.run_bench --mode router --compare bench/baseline.json --report-md bench/results/RESULTS.md
+
+      - name: Upload bench report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/RESULTS.md
+          retention-days: 14

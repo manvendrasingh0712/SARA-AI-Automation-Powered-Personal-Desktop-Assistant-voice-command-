@@ -205,6 +205,9 @@ class ProactiveEngine:
         # keyed by (summary, start) since Google Calendar events don't
         # have a stable id available cheaply from get_upcoming_events().
         self._meeting_notified_keys: set = set()
+        # Last time a "user is speaking" toast was shown per trigger, so a
+        # skipped trigger does not re-toast on every tick.
+        self._skip_toast_at: Dict[str, float] = {}
 
     # ------------------------------------------------------------
     # Lifecycle
@@ -672,6 +675,10 @@ class ProactiveEngine:
     ) -> bool:
         text = self._phrase(template)
         if self._ears_is_listening():
+            _now = time.monotonic()
+            if (_now - self._skip_toast_at.get(trigger, -1e9)) < 300:
+                return False
+            self._skip_toast_at[trigger] = _now
             # User is mid-utterance -- don't steal their turn. Toast only;
             # caller must NOT update cooldown/de-dupe state on a skip, so
             # this same trigger can retry next tick.

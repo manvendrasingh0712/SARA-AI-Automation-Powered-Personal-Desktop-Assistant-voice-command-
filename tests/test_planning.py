@@ -1045,7 +1045,9 @@ class ExecutorTests(unittest.TestCase):
             corrected_arguments={"target": "cmd"},
             corrected_tool="open_app",
         )
-        with patch("sara.core.planning.executor._get_ollama_client", return_value=fake_client):
+        with patch("sara.core.planning.executor._get_ollama_client", return_value=fake_client), patch(
+            "sara.core.planning.schema._unlisted_search_fallback_enabled", return_value=False
+        ):
             outcome = execute_plan(
                 plan,
                 make_dispatch_raises(),

@@ -125,6 +125,11 @@ class TurnState:
         with self._lock:
             return self._event
 
+    def generation(self) -> int:
+        """Generation number of the current turn (0 before the first begin())."""
+        with self._lock:
+            return self._gen
+
     def is_current(self, gen: int) -> bool:
         with self._lock:
             return gen == self._gen and not self._event.is_set()

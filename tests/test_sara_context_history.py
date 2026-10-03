@@ -370,7 +370,8 @@ class SaraContextAndHistoryTests(unittest.TestCase):
         self.assertEqual(len(brain.stream_calls), 1)
         prompt, reference_context = brain.stream_calls[0]
         self.assertEqual(prompt, "can you close it please")
-        self.assertEqual(reference_context, "application: notepad")
+        # A time-of-day mood hint may be appended, so match on the prefix.
+        self.assertTrue(reference_context.startswith("application: notepad"))
 
 
 if __name__ == "__main__":
