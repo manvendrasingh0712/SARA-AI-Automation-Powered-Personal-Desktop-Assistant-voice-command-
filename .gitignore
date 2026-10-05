@@ -1,26 +1,48 @@
-Secrets / Credentials
-.env*
+# =========================================================
+# Sara AI - .gitignore
+# =========================================================
+
+# ---------- Secrets / Credentials ----------
+.env
+.env.*
 !.env.example
 env.txt
 credentials.json
 token.json
-client secrets
-OAuth/session/cookie files
-.pem / .key / .p12 / .pfx etc.
+client_secret*.json
+client_secrets*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+*.cookies
+cookies*.txt
+session*.json
 
-Personal / Private Data
+# ---------- Personal / Private Data ----------
 sara_data.db
+sara_data.db-wal
+sara_data.db-shm
+sara_data.db-journal
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
 sara_notes*.txt
 sara_todos*.txt
 memory_export*.json
 analytics_usage*.json
-conversation/history exports
 *.jsonl
 !bench/golden/*.jsonl
 !bench/redteam/*.jsonl
-private/user/state files
 
-Audio Privacy
+# ---------- Audio Privacy ----------
 *.wav
 *.mp3
 *.flac
@@ -29,39 +51,56 @@ Audio Privacy
 recordings/
 captures/
 
-AI Models
+# ---------- AI Models ----------
 models/
 *.onnx
 *.safetensors
 *.gguf
 *.pt
 *.pth
-...
+*.bin
+*.ckpt
 
-Runtime
+# ---------- Runtime ----------
 data/
 logs/
+*.log
 cache/
 exports/
 tmp/
 temp/
 scratch/
 
-Python
-__pycache__/
-.venv/
-.pytest_cache/
-coverage
-...
+# ---------- Build output ----------
+build/
+dist/
+*.spec.bak
+*.egg-info/
 
-QA artifacts
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ---------- QA / dev scaffolding ----------
 qa_results.json
 qa_tester.py
 simulate_*.py
+scratch_*.py
+apply_*.py
+check_patches.py
 
-IDE / OS
+# ---------- IDE / OS ----------
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
-...
+desktop.ini
