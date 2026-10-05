@@ -239,7 +239,7 @@ def _retry_via_tool_router(user_input: str, ctx: dict, brain) -> Optional[str]:
     # would be a circular import. Deferring it to call time (dispatcher
     # is always fully loaded by the time any real command is handled)
     # avoids that without changing what this function does or returns.
-    from .dispatcher import _INTENT_HANDLERS
+    from .dispatcher import _INTENT_HANDLERS, _ORIGIN_LLM_TOOL, _guard_check, _guard_reply
     try:
         resolved = resolve_tool_call(user_input, brain.model_name)
         tool_name = resolved.get("name")
@@ -250,6 +250,11 @@ def _retry_via_tool_router(user_input: str, ctx: dict, brain) -> Optional[str]:
         tool_handler = _INTENT_HANDLERS.get(mapped_intent)
         if tool_handler is None:
             return None
+        blocked = _guard_check(
+            mapped_intent, _ORIGIN_LLM_TOOL, args=tool_args, tool_name=tool_name
+        )
+        if blocked is not None:
+            return _guard_reply(ctx, blocked)
         fake_match = build_fake_match(tool_name, tool_args)
         return tool_handler(fake_match, ctx)
     except Exception as e:

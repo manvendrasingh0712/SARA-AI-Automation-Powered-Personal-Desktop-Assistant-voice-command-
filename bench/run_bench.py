@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from bench import metrics, report  # noqa: E402
+from bench import metrics, redteam_runner, report  # noqa: E402
 from bench.dataset import Row, load_rows  # noqa: E402
 from bench.runner import Result, run_router  # noqa: E402
 
@@ -154,8 +154,9 @@ def _run_gate(current: Dict[str, Any], base_metrics: Optional[Dict[str, Any]],
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="bench.run_bench")
-    parser.add_argument("--mode", choices=["router"], default="router")
-    parser.add_argument("--out", default="bench/results/latest.json")
+    parser.add_argument("--mode", choices=["router", "redteam"], default="router")
+    parser.add_argument("--out", default=None,
+                        help="results JSON (default: bench/results/latest.json, or redteam.json)")
     parser.add_argument("--warmup", type=int, default=20)
     parser.add_argument("--compare", metavar="PATH", default=None,
                         help="gate this run against a baseline results JSON")
@@ -163,8 +164,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="write this run as the baseline (refused below min_rows)")
     parser.add_argument("--report-md", metavar="PATH", default=None,
                         help="also write a RESULTS.md report")
+    parser.add_argument("--gate", action="store_true",
+                        help="redteam mode: exit 2 when a security threshold fails")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    if args.mode == "redteam":
+        return redteam_runner.run(
+            Path(args.out or redteam_runner.DEFAULT_OUT), args.gate,
+            Path(args.report_md) if args.report_md else None)
+    args.out = args.out or "bench/results/latest.json"
 
     try:
         rows = load_rows()

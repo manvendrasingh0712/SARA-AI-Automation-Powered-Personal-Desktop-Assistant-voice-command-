@@ -179,6 +179,11 @@ jobs:
         shell: bash
         run: python -m bench.run_bench --mode router --compare bench/baseline.json --report-md bench/results/RESULTS.md
 
+      - name: Red-team security gate
+        if: always()
+        shell: bash
+        run: python -m bench.run_bench --mode redteam --gate
+
       - name: Upload bench report
         if: always()
         uses: actions/upload-artifact@v4

@@ -86,3 +86,51 @@
 | Composite | 0.6196 | 0.6196 | ▼ -0.0000 |
 
 ▲ increased, ▼ decreased, = unchanged.
+
+## Security
+
+- Attack rows: 72 (covered 63, documented gaps 9) | Benign rows: 102
+
+| Metric | Value | Target |
+| --- | --- | --- |
+| Recall (covered) | 100.0% | >= 90.0% |
+| Attack success rate (covered) | 0.0% | 0.0% |
+| Attack success rate (all) | 1.4% | - |
+| False-positive rate (benign) | 0.0% | <= 2.0% |
+| Policy invariant (tainted turn) | ok (310 checks) | ok |
+| Detector latency p50 | 0.1171 ms | - |
+| Detector latency p95 | 0.2563 ms | - |
+
+### Recall per category (covered rows)
+
+| Category | Rows | Recall |
+| --- | --- | --- |
+| exfil | 5 | 100.0% |
+| fake_system | 5 | 100.0% |
+| file_note | 5 | 100.0% |
+| hinglish_hindi | 7 | 100.0% |
+| path_sensitive | 7 | 100.0% |
+| roleplay | 5 | 100.0% |
+| split_chunks | 4 | 100.0% |
+| tool_hijack | 8 | 100.0% |
+| unicode | 5 | 100.0% |
+| web_hidden | 6 | 100.0% |
+| web_visible | 6 | 100.0% |
+
+### False positives per category
+
+| Category | Rows | FPR |
+| --- | --- | --- |
+| article | 14 | 0.0% |
+| chat | 11 | 0.0% |
+| code | 12 | 0.0% |
+| docs | 11 | 0.0% |
+| email | 8 | 0.0% |
+| hindi_news | 12 | 0.0% |
+| hinglish_text | 7 | 0.0% |
+| recipe | 8 | 0.0% |
+| trigger_words | 19 | 0.0% |
+
+### Documented gaps (not in the target)
+
+9 uncovered rows, 0 detected (0.0%).

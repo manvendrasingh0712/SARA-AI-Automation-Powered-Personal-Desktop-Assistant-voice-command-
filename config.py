@@ -645,6 +645,18 @@ class Config:
     CONTEXTUAL_REMINDER_LLM_TIMEOUT_S: float = _float(os.getenv("CONTEXTUAL_REMINDER_LLM_TIMEOUT_S"), default=4.0)
     # False = due reminders use only the built-in templates (no LLM call).
     CONTEXTUAL_REMINDER_LLM: bool = _bool(os.getenv("CONTEXTUAL_REMINDER_LLM", "True"), default=True)
+    # Related-note matching for reminders: below MIN a note is ignored, from
+    # MIN up to HIGH it may only be hinted at softly, from HIGH it may be stated.
+    CONTEXTUAL_REMINDER_NOTES_MIN_SCORE: float = _float(os.getenv("CONTEXTUAL_REMINDER_NOTES_MIN_SCORE"), default=0.45)
+    CONTEXTUAL_REMINDER_NOTES_HIGH_SCORE: float = _float(os.getenv("CONTEXTUAL_REMINDER_NOTES_HIGH_SCORE"), default=0.65)
+    # Follow-up nudges after a spoken reminder, only while the user keeps
+    # talking to Sara. Cooldown = minutes between messages about one reminder
+    # (also the wait before the first follow-up). Post-due = how long after
+    # the reminder follow-ups may still happen.
+    CONTEXTUAL_REMINDER_NUDGE_COOLDOWN_MINUTES: int = _int(os.getenv("CONTEXTUAL_REMINDER_NUDGE_COOLDOWN_MINUTES"), default=30)
+    CONTEXTUAL_REMINDER_MAX_NUDGES: int = _int(os.getenv("CONTEXTUAL_REMINDER_MAX_NUDGES"), default=2)
+    CONTEXTUAL_REMINDER_AWAKE_WINDOW_MINUTES: int = _int(os.getenv("CONTEXTUAL_REMINDER_AWAKE_WINDOW_MINUTES"), default=10)
+    CONTEXTUAL_REMINDER_POST_DUE_GRACE_MINUTES: int = _int(os.getenv("CONTEXTUAL_REMINDER_POST_DUE_GRACE_MINUTES"), default=120)
 
     # ── Proactive Engine (sara/orchestrator/proactive.py) ────────────────────
     PROACTIVE_ENABLED: bool = _bool(os.getenv("PROACTIVE_ENABLED", "True"), default=True)
@@ -775,6 +787,35 @@ class Config:
     SECURITY_LLM_JUDGE: bool = _bool(
         os.getenv("SECURITY_LLM_JUDGE", "False"), default=False
     )
+
+    # ── Memory 2.0: structured, temporal, correctable memory ─────────────
+    # Layer on top of the existing RAG store (which stays the fallback).
+    MEMORY2_ENABLED: bool = _bool(os.getenv("MEMORY2_ENABLED", "False"), default=False)
+    MEMORY2_MAX_TURNS_PER_EXTRACT: int = _int(
+        os.getenv("MEMORY2_MAX_TURNS_PER_EXTRACT"), default=40
+    )
+    MEMORY2_MIN_CONFIDENCE: float = _float(
+        os.getenv("MEMORY2_MIN_CONFIDENCE"), default=0.5
+    )
+    # Comma-separated categories that are never stored, even if the LLM returns them.
+    MEMORY2_SKIP_CATEGORIES: str = (
+        os.getenv("MEMORY2_SKIP_CATEGORIES")
+        or "credentials,financial_account,government_id"
+    )
+    MEMORY2_TOPK: int = _int(os.getenv("MEMORY2_TOPK"), default=5)
+    MEMORY2_MIN_SCORE: float = _float(os.getenv("MEMORY2_MIN_SCORE"), default=0.25)
+    MEMORY2_RETRIEVAL_TIMEOUT_MS: int = _int(
+        os.getenv("MEMORY2_RETRIEVAL_TIMEOUT_MS"), default=400
+    )
+    MEMORY2_DECAY_TAU_DAYS: float = _float(
+        os.getenv("MEMORY2_DECAY_TAU_DAYS"), default=60.0
+    )
+    MEMORY2_ARCHIVE_THRESHOLD: float = _float(
+        os.getenv("MEMORY2_ARCHIVE_THRESHOLD"), default=0.05
+    )
+    MEMORY2_PURGE_DAYS: int = _int(os.getenv("MEMORY2_PURGE_DAYS"), default=90)
+    # Reserved: weekly "inferred habits" reflection. Code may exist; default stays off.
+    MEMORY2_REFLECTION: bool = _bool(os.getenv("MEMORY2_REFLECTION", "False"), default=False)
 
     # ── Memory Management: decision memory & consolidation ──────────────
     MEMORY_CONSOLIDATION_ENABLED: bool = _bool(
@@ -1204,6 +1245,22 @@ class Config:
         cls.SECURITY_LOG_RETENTION_DAYS = max(
             1, min(3650, cls.SECURITY_LOG_RETENTION_DAYS)
         )
+
+        # ── Memory 2.0 clamps ────────────────────────────────────────────
+        cls.MEMORY2_MAX_TURNS_PER_EXTRACT = max(
+            5, min(200, cls.MEMORY2_MAX_TURNS_PER_EXTRACT)
+        )
+        cls.MEMORY2_MIN_CONFIDENCE = max(0.0, min(1.0, cls.MEMORY2_MIN_CONFIDENCE))
+        cls.MEMORY2_TOPK = max(1, min(12, cls.MEMORY2_TOPK))
+        cls.MEMORY2_MIN_SCORE = max(0.0, min(1.0, cls.MEMORY2_MIN_SCORE))
+        cls.MEMORY2_RETRIEVAL_TIMEOUT_MS = max(
+            50, min(3000, cls.MEMORY2_RETRIEVAL_TIMEOUT_MS)
+        )
+        cls.MEMORY2_DECAY_TAU_DAYS = max(1.0, min(3650.0, cls.MEMORY2_DECAY_TAU_DAYS))
+        cls.MEMORY2_ARCHIVE_THRESHOLD = max(
+            0.0, min(0.5, cls.MEMORY2_ARCHIVE_THRESHOLD)
+        )
+        cls.MEMORY2_PURGE_DAYS = max(7, min(3650, cls.MEMORY2_PURGE_DAYS))
 
         # ── Memory consolidation / decision-memory clamps ────────────────
         cls.MEMORY_CONSOLIDATION_INTERVAL_S = max(

@@ -811,9 +811,48 @@
     if (!s || typeof s.fx !== 'number' || typeof s.fy !== 'number') return;
     miniPos.fx = s.fx; miniPos.fy = s.fy; miniPos.moved = true; miniPlace();
   })();
+  let morph = null;
+  function morphClear() {
+    const m = morph; if (!m) return; morph = null;
+    m.anims.forEach(function (a) { try { a.cancel(); } catch (e) { /* animation already gone */ } });
+    m.shell.remove(); document.body.classList.remove('mp-morphing');
+  }
+  SARA.on('page', function (p) { if (p !== 'apps') morphClear(); });
+  window.addEventListener('resize', morphClear);
+  function openFromMini() {
+    if (morph) return;
+    const from = (!SARA.reduceMotion && !document.hidden && typeof card.animate === 'function' && SARA.current !== 'apps') ? mini.getBoundingClientRect() : null;
+    const mcBody = card.querySelector('.mc-body');
+    if (from && mcBody) mcBody.style.transition = 'none';
+    SARA.skipSharedOnce = true; SARA.gotoPage('apps'); SARA.skipSharedOnce = false;
+    card.classList.add('expanded'); syncExpanded();
+    if (!from || !mcBody) return;
+    const to = SARA.restRect(card);
+    mcBody.style.transition = '';
+    if (!(from.width > 0) || !(to.width > 0)) return;
+    const MORPH_MS = 460, EASE = 'cubic-bezier(.22,1,.36,1)';
+    const shell = document.createElement('div'); shell.className = 'mp-morph'; shell.setAttribute('aria-hidden', 'true'); shell.setAttribute('inert', '');
+    const fade = document.createElement('div'); fade.className = 'mp-morph-fade';
+    const cl = mini.cloneNode(true);
+    ['id', 'tabindex', 'title', 'role', 'aria-label'].forEach(function (a) { cl.removeAttribute(a); });
+    cl.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+    cl.classList.remove('dragging', 'gliding', 'landed'); cl.classList.add('mp-morph-clone');
+    cl.style.width = from.width + 'px'; cl.style.height = from.height + 'px';
+    fade.appendChild(cl); shell.appendChild(fade);
+    const r0 = window.getComputedStyle(mini).borderRadius || '12px', r1 = window.getComputedStyle(card).borderRadius || '14px';
+    const s0 = { left: from.left + 'px', top: from.top + 'px', width: from.width + 'px', height: from.height + 'px', borderRadius: r0 };
+    const s1 = { left: to.left + 'px', top: to.top + 'px', width: to.width + 'px', height: to.height + 'px', borderRadius: r1 };
+    shell.style.left = s0.left; shell.style.top = s0.top; shell.style.width = s0.width; shell.style.height = s0.height; shell.style.borderRadius = s0.borderRadius;
+    document.body.appendChild(shell); document.body.classList.add('mp-morphing');
+    const a1 = shell.animate([s0, s1], { duration: MORPH_MS, easing: EASE, fill: 'forwards' });
+    const a2 = fade.animate([{ opacity: 1 }, { opacity: 0, offset: 0.45 }, { opacity: 0 }], { duration: MORPH_MS, easing: 'linear', fill: 'forwards' });
+    const a3 = card.animate([{ opacity: 0 }, { opacity: 0, offset: 0.3 }, { opacity: 1 }], { duration: MORPH_MS, easing: 'ease-out' });
+    morph = { shell: shell, anims: [a1, a2, a3] };
+    a1.onfinish = function () { if (morph && morph.shell === shell) morphClear(); };
+  }
   mini.addEventListener('click', function () {
     if (miniClickGuard) return;   // this click is just the end of a drag
-    SARA.gotoPage('apps'); card.classList.add('expanded'); syncExpanded();
+    openFromMini();
   });
 
   syncMotion();

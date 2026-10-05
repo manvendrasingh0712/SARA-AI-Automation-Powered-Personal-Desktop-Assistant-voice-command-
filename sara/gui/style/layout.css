@@ -66,7 +66,7 @@
   display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);color:var(--text);
   padding:9px 16px;border-radius:8px;font-size:13px;max-width:min(520px,88vw);
   box-shadow:var(--shadow-rest,0 8px 20px -12px rgba(0,0,0,.45));border-left:2px solid var(--core);
-  animation:toastIn .32s cubic-bezier(.2,.9,.3,1.15);pointer-events:auto;transition:opacity .22s,transform .22s,box-shadow .2s;
+  position:relative;overflow:hidden;animation:toastIn .34s cubic-bezier(.22,1,.36,1);pointer-events:auto;transition:opacity .22s,transform .22s,box-shadow .2s;
 }
 .toast:hover{box-shadow:var(--shadow-hover,0 14px 32px -14px rgba(0,0,0,.55));}
 .toast.leaving{opacity:0;transform:translateY(6px) scale(.98);}
@@ -81,7 +81,25 @@
 .toast .t-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--core);box-shadow:0 0 6px currentColor;animation:dotPop .5s cubic-bezier(.3,1.6,.5,1) .1s both;}
 .toast .t-ico{width:16px;height:16px;flex:none;display:inline-flex;animation:dotPop .5s cubic-bezier(.3,1.6,.5,1) .1s both;}
 .toast .t-ico svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-.toast .t-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 6px;}
+.toast .t-x{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 0 0 6px;flex:none;align-self:flex-start;}
+.toast .t-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;overflow-wrap:anywhere;}
+.toast .t-title{font-weight:500;color:var(--text);line-height:1.3;}
+.toast .t-msg{line-height:1.35;}
+.toast.has-title .t-msg{color:var(--text-soft);font-size:12.5px;}
+.toast .t-sub{display:block;font-size:11px;opacity:.7;}
+.toast .t-meta{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
+.toast .t-act{flex:none;align-self:center;background:none;border:1px solid rgb(var(--core-rgb) / .4);color:var(--core);border-radius:999px;padding:3px 11px;font-size:12px;cursor:pointer;transition:background .2s,transform .12s;}
+.toast .t-act:hover{background:rgb(var(--core-rgb) / .14);}
+.toast .t-act:active{transform:scale(.95);}
+.toast .t-act:disabled{opacity:.5;cursor:default;}
+.toast .t-ico{animation:icoPop .4s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) .08s both;}
+.toast .t-ico.is-check path{stroke-dasharray:24;stroke-dashoffset:24;animation:tCheck .4s cubic-bezier(.22,1,.36,1) .16s forwards;}
+.toast .t-bar{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--t-accent,var(--core));opacity:.5;transform-origin:left center;animation:tBar var(--t-dur,4500ms) linear forwards;pointer-events:none;}
+.toast.paused .t-bar{animation-play-state:paused;}
+@keyframes tBar{from{transform:scaleX(1);}to{transform:scaleX(0);}}
+@keyframes tCheck{to{stroke-dashoffset:0;}}
+@keyframes icoPop{0%{transform:scale(.6);opacity:0;}100%{transform:none;opacity:1;}}
+@media (prefers-reduced-motion:reduce){.toast .t-ico.is-check path{stroke-dashoffset:0;animation:none;}}
 .toast .t-x:hover{color:var(--text);}
 @keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.96);}to{opacity:1;transform:none;}}
 @keyframes dotPop{0%{transform:scale(.3);}60%{transform:scale(1.55);}100%{transform:scale(1);}}

@@ -17,6 +17,16 @@
 
   /* ---- helpers ---- */
   SARA.$ = (id) => document.getElementById(id);
+  SARA.restRect = function (el) {
+    const r = el.getBoundingClientRect();
+    let dx = 0, dy = 0;
+    for (let n = el; n && n !== document.body; n = n.parentElement) {
+      const tf = window.getComputedStyle(n).transform;
+      const m = tf && tf !== 'none' ? /^matrix\(([^)]+)\)$/.exec(tf) : null;
+      if (m) { const v = m[1].split(','); dx += parseFloat(v[4]) || 0; dy += parseFloat(v[5]) || 0; }
+    }
+    return { left: r.left - dx, top: r.top - dy, width: r.width, height: r.height };
+  };
   // Schedule non-urgent DOM work (periodic re-renders, stat formatting) off the critical rendering
   // path, so it never competes with the orb/spectrum rAF loops for frame budget. Falls back to a
   // macrotask on browsers without requestIdleCallback (e.g. older WebKit inside pywebview).
@@ -81,53 +91,107 @@
 
   /* ---- toasts ---- */
   // opts.tone === 'notify' plays the notification chime; alert-type icons play the soft error tone.
+  function flipStack(stack, mutate) {
+    const kids = Array.prototype.slice.call(stack.children);
+    const before = kids.map(function (k) { return k.getBoundingClientRect().top; });
+    mutate();
+    if (SARA.reduceMotion) return;
+    kids.forEach(function (k, i) {
+      if (!k.isConnected || typeof k.animate !== 'function') return;
+      const dy = before[i] - k.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      k.animate([{ transform: 'translateY(' + dy.toFixed(1) + 'px)' }, { transform: 'translateY(0)' }], { duration: 260, easing: 'cubic-bezier(.22,1,.36,1)' });
+    });
+  }
   SARA.toast = function (iconClass, color, message, opts) {
     const stack = SARA.$('toastStack'); if (!stack) return;
+    opts = opts || {};
     const t = document.createElement('div'); t.className = 'toast';
-    // Optional semantic variant (opts.variant: 'success'|'info'|'warning'|'error') just tints the left
-    // edge via CSS -- auto-inferred from the icon/tone when not passed, so existing callers need no changes.
-    let variant = opts && opts.variant;
+    let variant = opts.variant;
     if (!variant) {
       if (/alert|error/i.test(iconClass || '')) variant = 'error';
-      else if (opts && opts.tone === 'notify') variant = 'info';
+      else if (opts.tone === 'notify') variant = 'info';
       else variant = 'success';
     }
     t.classList.add('v-' + variant);
-    const dot = document.createElement('span'); dot.className = 't-dot';
-    dot.style.background = color || 'var(--core)'; dot.style.color = color || 'var(--core)';
-    const msg = document.createElement('span'); msg.textContent = message == null ? '' : String(message);
+    t.setAttribute('role', variant === 'error' ? 'alert' : 'status');
+    const accent = color || 'var(--core)';
+    t.style.setProperty('--t-accent', accent);
+    const svg = SARA.iconSvg(iconClass);
+    let lead;
+    if (svg) {
+      lead = document.createElement('span');
+      lead.className = 't-ico' + (/check/.test(String(iconClass || '')) ? ' is-check' : '');
+      lead.innerHTML = svg; lead.style.color = accent; lead.setAttribute('aria-hidden', 'true');
+    } else {
+      lead = document.createElement('span'); lead.className = 't-dot';
+      lead.style.background = accent; lead.style.color = accent;
+    }
+    const body = document.createElement('div'); body.className = 't-body';
+    const hasTitle = opts.title != null && opts.title !== '';
+    if (hasTitle) {
+      const ti = document.createElement('span'); ti.className = 't-title'; ti.textContent = String(opts.title);
+      body.appendChild(ti); t.classList.add('has-title');
+    }
+    const text = message == null ? '' : String(message);
+    if (text || !hasTitle) {
+      const msg = document.createElement('span'); msg.className = 't-msg'; msg.textContent = text;
+      body.appendChild(msg);
+    }
+    if (opts.sub) {
+      const small = document.createElement('small'); small.className = 't-sub'; small.textContent = String(opts.sub);
+      body.appendChild(small);
+    }
+    if (opts.meta) {
+      const meta = document.createElement('small'); meta.className = 't-meta'; meta.textContent = String(opts.meta);
+      body.appendChild(meta);
+    }
+    const actCfg = opts.action || (typeof opts.undo === 'function' ? { label: 'Undo', onClick: opts.undo } : null);
+    let act = null;
+    if (actCfg && typeof actCfg.onClick === 'function') {
+      act = document.createElement('button'); act.type = 'button'; act.className = 't-act';
+      act.textContent = actCfg.label ? String(actCfg.label) : 'Undo';
+    }
     const x = document.createElement('button'); x.type = 'button'; x.className = 't-x'; x.textContent = '\u00d7'; x.setAttribute('aria-label', 'Dismiss');
-    t.appendChild(dot); t.appendChild(msg); t.appendChild(x);
-    if (opts && opts.sub) {
-      const small = document.createElement('small'); small.className = 't-sub';
-      small.textContent = String(opts.sub);
-      small.style.opacity = '0.7'; small.style.fontSize = '11px'; small.style.display = 'block';
-      t.appendChild(small);
-    }
-    stack.appendChild(t);
+    const AUTO_MS = opts.duration > 0 ? opts.duration : (act ? 6500 : 4500);
+    const bar = document.createElement('div'); bar.className = 't-bar'; bar.setAttribute('aria-hidden', 'true');
+    bar.style.setProperty('--t-dur', AUTO_MS + 'ms');
+    t.appendChild(lead); t.appendChild(body);
+    if (act) t.appendChild(act);
+    t.appendChild(x); t.appendChild(bar);
+    flipStack(stack, function () {
+      stack.appendChild(t);
+      while (stack.children.length > 4) stack.removeChild(stack.firstChild);
+    });
     if (/alert|error/i.test(iconClass || '')) SARA.sound.error();
-    else if (opts && opts.tone === 'notify') SARA.sound.notify();
-    while (stack.children.length > 4) stack.removeChild(stack.firstChild);
-    const AUTO_MS = 4500;
-    let fadeTimer = 0, leaving = false, pausedAt = 0, remaining = AUTO_MS;
-    function dismiss() {                       // shared by the auto-fade and the x button
+    else if (opts.tone === 'notify') SARA.sound.notify();
+    let fadeTimer = 0, leaving = false, paused = false, hov = false, foc = false, acted = false, startedAt = 0, remaining = AUTO_MS;
+    function dismiss() {
       if (leaving) return; leaving = true; clearTimeout(fadeTimer);
-      t.classList.add('leaving'); setTimeout(() => t.remove(), 240);
+      t.classList.add('leaving');
+      setTimeout(function () { flipStack(stack, function () { t.remove(); }); }, 240);
     }
-    function arm(ms) { clearTimeout(fadeTimer); fadeTimer = setTimeout(dismiss, ms); }
-    // Hover-to-pause: dismiss timer freezes on pointer-over (remaining time preserved) and resumes on
-    // pointer-out. Skipped once the leave animation has already started.
-    t.addEventListener('pointerenter', function () {
-      if (leaving) return;
-      t.classList.add('paused'); clearTimeout(fadeTimer); pausedAt = performance.now();
+    function arm(ms) { clearTimeout(fadeTimer); remaining = ms; startedAt = performance.now(); fadeTimer = setTimeout(dismiss, ms); }
+    function pause() {
+      if (leaving || paused) return; paused = true; clearTimeout(fadeTimer);
+      remaining = Math.max(0, remaining - (performance.now() - startedAt)); t.classList.add('paused');
+    }
+    function resume() {
+      if (leaving || !paused) return; paused = false; t.classList.remove('paused');
+      arm(Math.max(300, remaining));
+    }
+    function sync() { if (hov || foc) pause(); else resume(); }
+    t.addEventListener('pointerenter', function () { hov = true; sync(); });
+    t.addEventListener('pointerleave', function () { hov = false; sync(); });
+    t.addEventListener('focusin', function () { foc = true; sync(); });
+    t.addEventListener('focusout', function (e) { if (!t.contains(e.relatedTarget)) { foc = false; sync(); } });
+    x.addEventListener('click', function (e) { e.stopPropagation(); dismiss(); });
+    if (act) act.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (acted) return; acted = true; act.disabled = true;
+      try { actCfg.onClick(e); } catch (err) { console.error('[toast action]', err); }
+      dismiss();
     });
-    t.addEventListener('pointerleave', function () {
-      if (leaving) return;
-      t.classList.remove('paused');
-      remaining = Math.max(600, remaining - (performance.now() - pausedAt));
-      arm(remaining);
-    });
-    x.addEventListener('click', dismiss);
     arm(AUTO_MS);
   };
   SARA.ok = (m) => SARA.toast('ti-check', '#3FD8C4', m, { variant: 'success' });

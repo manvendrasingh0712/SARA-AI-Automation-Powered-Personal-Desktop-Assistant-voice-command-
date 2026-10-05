@@ -459,6 +459,30 @@ class ReminderManager:
     # Background polling
     # ------------------------------------------------------------
 
+    def followup_candidates(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Reminders that were spoken (delivered) and are neither done nor
+        acknowledged, newest first. Each dict: id, message, due_at,
+        delivered_at, last_nudge_at, nudge_count. The follow-up rules decide
+        which of them (if any) may be nudged.
+        """
+        if not self._conn:
+            return []
+        try:
+            with self._lock:
+                rows = self._conn.execute(
+                    "SELECT r.id, r.message, r.due_at, i.delivered_at, i.last_nudge_at, i.nudge_count "
+                    "FROM reminders r JOIN reminder_intelligence i ON i.reminder_id = r.id "
+                    "WHERE r.done = 0 AND i.acknowledged = 0 AND i.delivered_at IS NOT NULL "
+                    "ORDER BY i.delivered_at DESC LIMIT ?",
+                    (int(limit),),
+                ).fetchall()
+            keys = ("id", "message", "due_at", "delivered_at", "last_nudge_at", "nudge_count")
+            return [dict(zip(keys, row)) for row in rows]
+        except (sqlite3.Error, ValueError, TypeError) as e:
+            print(f"[Error] ReminderManager.followup_candidates failed: {e}")
+            return []
+
     def get_intel(self, reminder_id: Any) -> Dict[str, Any]:
         """Returns the smart-delivery state of a reminder, or {} if none."""
         if not self._conn:

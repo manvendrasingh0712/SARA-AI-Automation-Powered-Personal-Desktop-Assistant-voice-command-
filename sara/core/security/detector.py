@@ -29,6 +29,8 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Optional, Tuple
 
+from sara.core.security.detector_rules import BASE_NEEDLES, EXTRA_RULES
+
 logger = logging.getLogger(__name__)
 
 _VALID_MODES = ("off", "standard", "strict")
@@ -88,6 +90,8 @@ def _decode_tag_chars(text: str) -> str:
 
 
 def normalize_for_scan(text: str) -> str:
+    if text.isascii():  # fast path: nothing to strip or fold
+        return re.sub(r"[ \t\r\f\v\u00a0]+", " ", text.casefold())
     t = unicodedata.normalize("NFKC", text)
     t = "".join(
         ch for ch in t
@@ -114,7 +118,7 @@ _RULE_SPECS = (
      r"\b(?:ignore|disregard|forget|override)\s+(?:the\s+)?"
      r"(?:instructions?|rules?|prompts?)\s+(?:above|before|you were given|"
      r"you've been given|you have been given)\b"),
-    ("forget_everything", 0.65,
+    ("forget_everything", 0.50,
      r"\b(?:forget|ignore|disregard)\s+(?:everything|all)\b[^.\n]{0,25}?"
      r"\b(?:above|before|told|said|learned|instructed)\b"),
     ("new_instructions", 0.40,
@@ -253,15 +257,25 @@ def scan(
         half = max_chars // 2
         text = text[:half] + "\n" + text[-half:]
 
-    hidden = sum(1 for ch in text if ch in HIDDEN_CHARS)
-    smuggled = _decode_tag_chars(text)
+    ascii_only = text.isascii()
+    hidden = 0 if ascii_only else sum(1 for ch in text if ch in HIDDEN_CHARS)
+    smuggled = "" if ascii_only else _decode_tag_chars(text)
     haystack = normalize_for_scan(text)
     if smuggled:
         haystack += "\n" + normalize_for_scan(smuggled)
 
     weights = {}
     for rule_id, weight, pattern in _RULES:
+        needles = BASE_NEEDLES.get(rule_id, ())
+        if needles is None:
+            if ascii_only:
+                continue
+        elif needles and not any(n in haystack for n in needles):
+            continue
         if pattern.search(haystack):
+            weights[rule_id] = weight
+    for rule_id, weight, pattern, needles in EXTRA_RULES:
+        if any(n in haystack for n in needles) and pattern.search(haystack):
             weights[rule_id] = weight
     if len(smuggled) >= _SMUGGLED_MIN_CHARS:
         weights["unicode_tags"] = 0.70
