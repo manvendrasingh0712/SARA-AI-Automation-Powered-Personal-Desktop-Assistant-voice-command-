@@ -25,6 +25,7 @@
 <link rel="stylesheet" href="style/automation.css">
 <link rel="stylesheet" href="style/settings.css">
 <link rel="stylesheet" href="style/perf.css">
+<link rel="stylesheet" href="style/security.css">
 <link rel="stylesheet" href="style/overlays.css">
 <link rel="stylesheet" href="style/motion.css">
 <link rel="stylesheet" href="style/settings-fx.css">
@@ -225,6 +226,7 @@
         <button type="button" data-target="grp-calendar">Calendar</button>
         <button type="button" data-target="grp-memory">Memory</button>
         <button type="button" data-target="grp-system">Performance</button>
+        <button type="button" data-target="grp-security">Security</button>
         <button type="button" data-target="grp-analytics">Analytics</button>
         <button type="button" data-target="grp-advanced">Advanced</button>
       </nav>
@@ -358,17 +360,57 @@
           </div>
         </section>
 
+        <section class="set-card" id="grp-security">
+          <div class="set-card-head"><div class="set-card-title">Security</div><div class="set-card-sub">guards against instructions hidden in web pages, files and notes</div></div>
+          <div class="set-card-body">
+            <div class="section-label">Protection mode</div>
+            <div class="sec-block" id="secBlock">
+              <div class="sec-seg" id="secModes" role="group" aria-label="Protection mode">
+                <button type="button" class="sec-mode" data-mode="standard" aria-pressed="false">Standard</button>
+                <button type="button" class="sec-mode" data-mode="strict" aria-pressed="false">Strict</button>
+                <button type="button" class="sec-mode sec-off" data-mode="off" aria-pressed="false">Off</button>
+              </div>
+              <div class="acc-note sec-warn" id="secWarn" role="status" hidden>Protection off lets text from web pages, files or notes trigger actions. Press Off again to confirm.</div>
+              <div class="acc-note" id="secNote" hidden></div>
+              <div class="section-label sub">Last 7 days</div>
+              <div class="sec-nums">
+                <div class="sec-num"><b id="secBlocked">-</b><span>Blocked</span></div>
+                <div class="sec-num"><b id="secInjections">-</b><span>Injections detected</span></div>
+                <div class="sec-num"><b id="secConfirms">-</b><span>Confirmations asked</span></div>
+              </div>
+              <div class="section-label sub">Recent security events</div>
+              <div class="sec-recent" id="secRecent"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="set-card" id="grp-analytics">
           <div class="set-card-head"><div class="set-card-title">Analytics</div><div class="set-card-sub">how you use Sara</div></div>
           <div class="set-card-body">
             <div class="section-label">Analytics</div>
-            <div class="info-row"><span>Total commands</span><b id="anTotal"><span class="skel skel-inline"></span></b></div>
-            <div class="info-row"><span>Busiest day</span><b id="anBusiest"><span class="skel skel-inline"></span></b></div>
-            <div class="section-label sub">Top commands</div>
-            <div id="anTop" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
-            <div class="section-label sub">Last 14 days</div>
-            <div class="trend" id="anTrend"></div>
-            <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+            <div id="anLoading" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
+            <div class="an-empty" id="anEmpty" hidden>
+              <div class="an-empty-title">No activity yet</div>
+              <div class="an-empty-sub">Once SARA is used, your activity will appear here.</div>
+            </div>
+            <div class="an-body" id="anBody" hidden>
+              <div class="stat-grid an-kpis" id="anKpis">
+                <div class="stat an-kpi" id="anKpiMessages" hidden><b id="anMessages">0</b><span>Messages</span></div>
+                <div class="stat an-kpi" id="anKpiCommands" hidden><b id="anTotal">0</b><span>Commands</span></div>
+                <div class="stat an-kpi" id="anKpiNudges" hidden><b id="anNudges">0</b><span>Proactive nudges</span></div>
+                <div class="stat an-kpi" id="anKpiSuccess" hidden><b id="anSuccess">0</b><span id="anSuccessLbl">Action success</span></div>
+              </div>
+              <div class="section-label sub">Peak usage</div>
+              <div class="an-peak" id="anPeak"><span>Busiest day</span><b id="anBusiest">—</b></div>
+              <div class="section-label sub">Most used</div>
+              <div id="anTop" class="an-top"></div>
+              <div class="section-label sub">Last 14 days</div>
+              <div class="an-chart" id="anChart">
+                <div class="an-tip" id="anTip" role="tooltip" aria-hidden="true"></div>
+                <div class="trend" id="anTrend" role="group" aria-label="Commands per day, last 14 days"></div>
+              </div>
+              <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+            </div>
 
             <div class="section-label sub">Recent activity</div>
             <div class="btn-row">
@@ -551,9 +593,14 @@
 
 <!-- First-run Setup Wizard -->
 <div class="overlay" id="setupWizardOverlay">
-  <div class="modal setup-modal">
-    <h3>Setting up SARA</h3><div class="m-sub">A quick check that everything Sara needs is in place.</div>
+  <div class="modal setup-modal" id="setupModal" data-state="checking" role="dialog" aria-modal="true" aria-labelledby="swTitle">
+    <div class="sw-hero">
+      <div class="sw-orb" aria-hidden="true"></div>
+      <h3 id="swTitle">Initializing SARA</h3>
+      <div class="m-sub" id="swSub" role="status" aria-live="polite">A quick check that everything Sara needs is in place.</div>
+    </div>
     <div id="setupChecklist"></div>
+    <div class="sw-summary"><span id="swSummary"></span><span class="sw-pct" id="swPct"></span></div>
     <div class="setup-bar" id="setupBar"><div class="setup-bar-fill" id="setupBarFill"></div></div>
     <div class="setup-log" id="setupLog"></div>
     <div class="m-actions">
@@ -586,6 +633,7 @@
 <script src="js/settings-panels.js"></script>
 <script src="js/settings-data.js"></script>
 <script src="js/perf.js"></script>
+<script src="js/security.js"></script>
 <script src="js/settings-skills.js"></script>
 <script src="js/settings-fx.js"></script>
 <script src="js/setup-wizard.js"></script>

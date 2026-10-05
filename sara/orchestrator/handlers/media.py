@@ -95,7 +95,16 @@ def _h_summarize_url(match, ctx):
             page_text.startswith("Error:") or page_text.startswith("Sorry,")
         ):
             return page_text
-        return ctx["brain"].summarize_text(page_text)
+        try:
+            from sara.core.security.untrusted import prepare_for_llm
+
+            _lang = getattr(ctx["brain"], "get_language", lambda: "english")()
+            prepared = prepare_for_llm(page_text, "web_page", lang=_lang)
+        except Exception:
+            return ctx["brain"].summarize_text(page_text)
+        if prepared.blocked:
+            return prepared.prefix
+        return prepared.prefix + ctx["brain"].summarize_text(prepared.text)
 
     return _quick(
         ctx,

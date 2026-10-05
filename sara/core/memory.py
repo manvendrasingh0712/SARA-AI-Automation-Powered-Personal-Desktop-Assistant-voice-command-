@@ -439,6 +439,53 @@ class PreferencesDB:
             print(f"[Error] get_recent_messages: {e}")
             return []
 
+    def get_messages_after(
+        self, after_id: int = 0, limit: int = 40, role: Optional[str] = "user"
+    ) -> list[dict]:
+        """Conversation rows with id > after_id in ascending id order, optionally
+        filtered by role. Each row: {"id": int, "role": str, "message": str,
+        "timestamp": str}. Used by Memory 2.0 extraction (watermark = last id)."""
+        if not isinstance(limit, int) or limit <= 0 or self._closed:
+            return []
+        try:
+            after = int(after_id)
+        except (TypeError, ValueError):
+            after = 0
+        try:
+            conn = self._get_read_conn()
+            if role is None:
+                cursor = conn.execute(
+                    "SELECT id, role, message, timestamp FROM conversation_log "
+                    "WHERE id > ? ORDER BY id ASC LIMIT ?",
+                    (after, limit),
+                )
+            else:
+                cursor = conn.execute(
+                    "SELECT id, role, message, timestamp FROM conversation_log "
+                    "WHERE id > ? AND role = ? ORDER BY id ASC LIMIT ?",
+                    (after, role, limit),
+                )
+            return [
+                {"id": r[0], "role": r[1], "message": r[2], "timestamp": r[3]}
+                for r in cursor.fetchall()
+            ]
+        except sqlite3.Error as e:
+            logger.error("get_messages_after: %s", e)
+            return []
+
+    def get_max_message_id(self) -> int:
+        """Highest conversation_log id (0 when empty or on error)."""
+        if self._closed:
+            return 0
+        try:
+            row = self._get_read_conn().execute(
+                "SELECT COALESCE(MAX(id), 0) FROM conversation_log"
+            ).fetchone()
+            return int(row[0]) if row else 0
+        except sqlite3.Error as e:
+            logger.error("get_max_message_id: %s", e)
+            return 0
+
     def clear_conversation_log(self, wait: bool = True) -> bool:
         """Wipes all rows from the conversation log (for 'forget history' feature)."""
 

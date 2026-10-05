@@ -80,6 +80,7 @@ from sara.core.memory import PreferencesDB
 from sara.core.memory_consolidation import start_memory_consolidation   # ← NEW
 from sara.tools.reminders import ReminderManager, play_alarm_beep
 from sara.tools.reminder_composer import ReminderComposer
+from sara.tools.reminder_evidence import ReminderContextBuilder
 from sara.tools.vision import VisionAssistant
 
 # PRODUCTION-AUDIT ADDITION (Phase 2): long-term memory (RAG) and the
@@ -330,7 +331,22 @@ def build_core_objects(ui_update):
             pass
         return None
 
-    _composer = ReminderComposer(Config, breaker_getter=_reminder_breaker)
+    def _reminder_notes_search(query, top_k, min_similarity):
+        return notes_memory.search(
+            query, top_k=top_k, min_similarity=min_similarity, source_prefix="notes:"
+        )
+
+    _context_builder = ReminderContextBuilder(
+        notes_search=_reminder_notes_search if notes_memory is not None else None,
+        recent_messages=db.get_recent_messages,
+        recent_actions=db.get_recent_actions,
+        enabled=lambda: db.get_preference("setting:contextual_notes") != "0",
+        min_score=Config.CONTEXTUAL_REMINDER_NOTES_MIN_SCORE,
+        high_score=Config.CONTEXTUAL_REMINDER_NOTES_HIGH_SCORE,
+    )
+    _composer = ReminderComposer(
+        Config, breaker_getter=_reminder_breaker, context_builder=_context_builder
+    )
 
     def _on_reminder_event(event) -> None:
         fallback_text = f"Reminder: {event.message}"
@@ -642,6 +658,7 @@ def run_sara_logic(
         activity_tracker=activity_tracker,
         assistant_state=assistant_state,
         lang_state=lang_state,
+        reminder_composer=_composer,
     )
     proactive_engine.start()
 

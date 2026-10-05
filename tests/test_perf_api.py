@@ -134,4 +134,4 @@ def test_unset_pref_leaves_default(tel):
 def test_mixin_registered_on_api():
     source = (_ROOT / "sara" / "gui" / "app" / "engine.py").read_text(encoding="utf-8")
     assert "from .perf_api import ApiPerfMixin" in source
-    assert "    ApiPerfMixin,\n)" in source
+    assert "    ApiPerfMixin," in source

@@ -270,10 +270,13 @@ EXPECTED_METHODS = {
     "get_perf_summary",
     "get_recent_turns",
     "set_telemetry_enabled",
+    "get_security_summary",
+    "get_security_events",
+    "set_security_mode",
 }
 
-assert len(EXPECTED_METHODS) == 80, (
-    "EXPECTED_METHODS must contain exactly 80 entries, found "
+assert len(EXPECTED_METHODS) == 83, (
+    "EXPECTED_METHODS must contain exactly 83 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

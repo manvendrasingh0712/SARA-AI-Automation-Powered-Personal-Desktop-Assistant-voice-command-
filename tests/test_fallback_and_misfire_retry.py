@@ -201,6 +201,9 @@ class LikelyMisfireRetryTests(unittest.TestCase):
         register_handler("test_misfire_primary", _primary_handler)
         register_handler("test_misfire_secondary", _secondary_handler)
         intent_handlers.TOOL_NAME_TO_INTENT["test_open_thing_tool"] = "test_misfire_secondary"
+        from sara.core.security import tiers as _tiers
+
+        _tiers.TIERS["test_misfire_secondary"] = 1  # reversible: LLM-origin tools may run it
 
         from sara.orchestrator import route_chat
 
@@ -225,6 +228,7 @@ class LikelyMisfireRetryTests(unittest.TestCase):
             route_chat.resolve_tool_call = original_resolve
             route_chat.build_fake_match = original_build_match
             del intent_handlers.TOOL_NAME_TO_INTENT["test_open_thing_tool"]
+            _tiers.TIERS.pop("test_misfire_secondary", None)
 
         self.assertEqual(result, "Opened the correct thing via the tool router!")
         # Exactly one retry -- not zero (the misfire must be caught) and

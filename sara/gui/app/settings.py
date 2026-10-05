@@ -146,6 +146,10 @@ class ApiSettingsMixin:
                 "setting:proactive_streak",
                 "setting:proactive_meetings",
                 "setting:proactive_routines",
+                "setting:contextual_reminders",
+                "setting:contextual_notes",
+                "setting:awake_awareness",
+                "setting:late_night_nudges",
             ]
             data = {k: self.db.get_preference(k) for k in keys}
             return {"ok": True, "data": data}

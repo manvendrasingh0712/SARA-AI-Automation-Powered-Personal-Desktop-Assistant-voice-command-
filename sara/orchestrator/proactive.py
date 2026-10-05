@@ -56,6 +56,9 @@ from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
 from config import Config
+from sara.tools.reminder_context import minutes_until as _minutes_until
+from sara.tools.reminder_followup import pick_followup as _pick_followup
+from sara.tools.reminder_followup import settings_from_config as _followup_settings
 
 _DEBUG = getattr(Config, "DEBUG_MODE", False)
 
@@ -71,15 +74,23 @@ class ActivityTracker:
     adds meaningful overhead.
     """
 
-    __slots__ = ("_lock", "_last_ts")
+    __slots__ = ("_lock", "_last_ts", "_last_wall")
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._last_ts = time.monotonic()
+        # Wall-clock time of the last real interaction; None until the user
+        # has actually spoken to Sara in this run (start-up is not activity).
+        self._last_wall: Optional[datetime] = None
 
     def touch(self) -> None:
         with self._lock:
             self._last_ts = time.monotonic()
+            self._last_wall = datetime.now()
+
+    def last_touch_time(self) -> Optional[datetime]:
+        with self._lock:
+            return self._last_wall
 
     def idle_seconds(self) -> float:
         with self._lock:
@@ -181,6 +192,7 @@ class ProactiveEngine:
         assistant_state: Any = None,
         lang_state: Any = None,
         ears: Any = None,
+        reminder_composer: Any = None,
     ) -> None:
         self._db = db
         self._reminders = reminders
@@ -190,6 +202,8 @@ class ProactiveEngine:
         self._assistant_state = assistant_state
         self._lang_state = lang_state
         self._ears = ears
+        # Optional ReminderComposer: contextual wording for reminder heads-ups.
+        self._composer = reminder_composer
 
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -253,6 +267,7 @@ class ProactiveEngine:
             return
         self._check_battery()
         self._check_upcoming_reminders()
+        self._check_reminder_followups()
         self._check_upcoming_meetings()
         self._check_idle_break()
         self._check_streak_milestone()
@@ -366,6 +381,10 @@ class ProactiveEngine:
             rid = item.get("id")
             if rid is None or rid in self._reminder_notified_ids:
                 continue
+            if self._upcoming_already_notified(rid):
+                # Announced in an earlier run: remember it, never repeat it.
+                self._reminder_notified_ids.add(rid)
+                continue
             text = item.get("text") or "something"
             due_at = item.get("due_at", "")
             template = f'Just a heads-up, "{text}" is coming up soon.'
@@ -373,9 +392,15 @@ class ProactiveEngine:
                 f'You have a reminder "{text}" due at {due_at}, '
                 f"which is within the next {lead_minutes} minutes."
             )
-            if self._speak_and_notify(template, icon="ti-alarm", color="#60a5fa",
-                                       trigger="reminder", reason=reason):
+            listening = self._ears_is_listening()
+            composed = None if listening else self._compose_upcoming(text, due_at)
+            if self._speak_and_notify(
+                composed or template, icon="ti-alarm", color="#60a5fa",
+                trigger="reminder", reason=reason,
+                phrase=(composed is None and not listening),
+            ):
                 self._reminder_notified_ids.add(rid)
+                self._mark_upcoming_notified(rid)
 
     def _check_upcoming_meetings(self) -> None:
         """
@@ -671,9 +696,10 @@ class ProactiveEngine:
     # ------------------------------------------------------------
 
     def _speak_and_notify(
-        self, template: str, icon: str, color: str, trigger: str, reason: str
+        self, template: str, icon: str, color: str, trigger: str, reason: str,
+        phrase: bool = True,
     ) -> bool:
-        text = self._phrase(template)
+        text = self._phrase(template) if phrase else template
         if self._ears_is_listening():
             _now = time.monotonic()
             if (_now - self._skip_toast_at.get(trigger, -1e9)) < 300:
@@ -708,6 +734,103 @@ class ProactiveEngine:
             if _DEBUG:
                 print(f"[Proactive] log_proactive_event failed: {e}")
         return True
+
+    def _check_reminder_followups(self) -> None:
+        """
+        A gentle follow-up when a reminder was spoken, its time has passed,
+        and the user is verifiably still talking to Sara. All the rules live
+        in sara/tools/reminder_followup.py; at most one follow-up per tick.
+        """
+        if not self._trigger_enabled("reminders"):
+            return
+        if self._composer is None or self._reminders is None:
+            return
+        try:
+            if not hasattr(self._reminders, "followup_candidates"):
+                return
+            night_allowed = True
+            if self._db is not None:
+                for key in ("contextual_reminders", "awake_awareness"):
+                    if self._db.get_preference(f"setting:{key}") == "0":
+                        return
+                night_allowed = self._db.get_preference("setting:late_night_nudges") != "0"
+            if self._ears_is_listening():
+                return
+            candidates = self._reminders.followup_candidates()
+            if not candidates:
+                return
+            now = datetime.now()
+            plan = _pick_followup(
+                candidates,
+                self._activity.last_touch_time(),
+                now,
+                _followup_settings(Config),
+                night_allowed=night_allowed,
+            )
+            if plan is None:
+                return
+            result = self._composer.start(
+                plan.message, stage="followup", minutes_since=plan.minutes_since
+            )()
+            print(result.describe().replace("[Reminder]", "[Reminder follow-up]", 1))
+            reason = (
+                f'Your "{plan.message}" reminder was due about {plan.minutes_since} '
+                f"minutes ago and you were still talking to me, so I gave you a gentle follow-up."
+            )
+            icon = "ti-moon-stars" if plan.category == "sleep" else "ti-bell"
+            if self._speak_and_notify(
+                result.text, icon=icon, color="#818cf8",
+                trigger="reminder_followup", reason=reason, phrase=False,
+            ):
+                self._reminders.update_intel(
+                    plan.reminder_id,
+                    nudge_count=plan.nudge_number,
+                    last_nudge_at=now.isoformat(),
+                    last_message=result.text,
+                )
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] reminder follow-up failed: {e}")
+
+    def _upcoming_already_notified(self, rid: Any) -> bool:
+        """True if this reminder's heads-up was already given (survives restarts)."""
+        try:
+            if self._reminders is None or not hasattr(self._reminders, "get_intel"):
+                return False
+            return bool(self._reminders.get_intel(rid).get("upcoming_notified_at"))
+        except Exception:
+            return False
+
+    def _mark_upcoming_notified(self, rid: Any) -> None:
+        try:
+            if self._reminders is not None and hasattr(self._reminders, "update_intel"):
+                self._reminders.update_intel(
+                    rid, upcoming_notified_at=datetime.now().isoformat()
+                )
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] could not record heads-up for reminder {rid}: {e}")
+
+    def _compose_upcoming(self, text: str, due_at: str) -> Optional[str]:
+        """Contextual heads-up wording, or None to keep the legacy wording."""
+        if self._composer is None:
+            return None
+        try:
+            if (
+                self._db is not None
+                and self._db.get_preference("setting:contextual_reminders") == "0"
+            ):
+                return None
+            wait_for_text = self._composer.start(
+                text, stage="upcoming", minutes_until=_minutes_until(due_at)
+            )
+            result = wait_for_text()
+            print(result.describe().replace("[Reminder]", "[Reminder upcoming]", 1))
+            return result.text or None
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] contextual heads-up failed: {e}")
+            return None
 
     def _phrase(self, template: str) -> str:
         if not getattr(Config, "PROACTIVE_LLM_PHRASING", True):

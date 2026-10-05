@@ -54,6 +54,14 @@
       shuffle: S.shuffle, shuffle_supported: true, repeat: S.repeat, caps: { can_next: true, can_prev: true, can_seek: true, can_shuffle: true, can_repeat: true } });
   }
   function setPos(p) { S.pos = p; S.posTs = Date.now(); }
+  function mockSecEvents(n) {
+    const rows = [['injection_detected', '', 'web_page', null], ['blocked', 'shutdown_system', 'web_page', 3], ['confirm_asked', 'open_app', '', 1],
+      ['confirmed', 'open_app', '', 1], ['arg_rejected', 'open_url', 'clipboard', 1]];
+    return Array.from({ length: Math.min(n, 10) }, function (_, i) {
+      const r = rows[i % rows.length];
+      return { ts: Date.now() / 1000 - i * 1500, kind: r[0], tool: r[1], source: r[2], tier: r[3] };
+    });
+  }
 
   SARA.mockApi = function (name, a) {
     switch (name) {
@@ -98,6 +106,12 @@
         }) });
       }
       case 'set_telemetry_enabled': S.prefs.telemetry = !!a[0]; return ok({ enabled: !!a[0] });
+      case 'get_security_summary': return ok({ data: { mode: S.prefs.secMode || 'standard', counts: { total: 14, blocked: 5,
+        by_kind: { injection_detected: 3, blocked: 1, arg_rejected: 1, confirm_asked: 6, confirmed: 3 } }, tainted_now: false, last_events: mockSecEvents(10) } });
+      case 'get_security_events': { const n = Math.max(1, Math.min(200, +a[0] || 50)); return ok({ data: mockSecEvents(n).filter(function (e) { return !a[1] || e.kind === a[1]; }) }); }
+      case 'set_security_mode':
+        if (['standard', 'strict', 'off'].indexOf(a[0]) < 0) return { ok: false, error: 'invalid_mode' };
+        S.prefs.secMode = a[0]; return ok({ mode: a[0] });
       case 'get_notes_status': return ok({ enabled: true, count: 128, last_synced: new Date(Date.now() - 3600000).toISOString() });
       case 'get_skills_list': return ok({ data: S.skills });
       case 'set_skill_enabled': S.skills.forEach(s => { if (s.name === a[0]) s.enabled = !!a[1]; }); return ok();
@@ -116,8 +130,18 @@
       case 'delete_routine': S.routines = S.routines.filter(r => r.name !== a[0]); return ok();
       case 'run_routine_now': setTimeout(() => ev('transcript', 'sara', '(preview mode) Ran routine "' + a[0] + '".'), 500); return ok();
       case 'get_analytics_dashboard': {
-        const trend = []; for (let i = 13; i >= 0; i--) trend.push({ date: SARA.todayStr(-i), count: Math.round(Math.random() * 30) });
-        return ok({ data: { total_commands: 1904, top_commands: [{ name: 'set a reminder', count: 88 }, { name: 'open chrome', count: 61 }, { name: 'system status', count: 40 }], daily_trend: trend, conversation_stats: {}, proactive_stats: {} } });
+        const counts = [4, 9, 0, 12, 7, 15, 3, 0, 8, 11, 6, 18, 9, 5];
+        const trend = []; for (let i = 13; i >= 0; i--) trend.push({ date: SARA.todayStr(-i), count: counts[13 - i] });
+        return ok({ data: { total_commands: 212, top_commands: [{ name: 'set a reminder', count: 88 }, { name: 'open chrome', count: 61 }, { name: 'system status', count: 40 }, { name: 'play music', count: 27 }, { name: 'take a note', count: 19 }], daily_trend: trend, conversation_stats: {}, proactive_stats: { total: 3, by_trigger: { battery: 1, reminder: 1, idle_break: 1 }, recent: [] } } });
+      }
+      case 'get_action_timeline': {
+        const outs = ['success', 'success', 'success', 'fail', 'success', 'skipped', 'success', 'success', 'success', 'success'];
+        const names = ['open_app', 'set_reminder', 'play_music', 'open_app', 'take_note', 'volume_up'];
+        let rows = Array.from({ length: 30 }, function (_, i) {
+          return { action_type: 'tool', action_name: names[i % names.length], outcome: outs[i % outs.length], reason: null, timestamp: new Date(Date.now() - i * 600000).toISOString() };
+        });
+        if (a[1]) rows = rows.filter(function (r) { return r.outcome === a[1]; });
+        return ok({ data: rows.slice(0, +a[0] || 30) });
       }
       case 'get_modes_status': return ok({ active_mode: S.mode, modes: ['normal', 'study', 'work', 'gaming', 'home'] });
       case 'apply_mode': S.mode = String(a[0]).toLowerCase(); return ok({ active_mode: S.mode, message: 'Switched to ' + S.mode + ' mode (preview).' });

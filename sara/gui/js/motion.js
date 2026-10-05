@@ -250,7 +250,7 @@
   (function () {
     const nav = $('navBar'); if (!nav) return;
     const buttons = Array.prototype.slice.call(nav.querySelectorAll('button[data-page]'));
-    const MAX = 0.12, RADIUS = 92;
+    const MAX = 0.12, SIGMA = 100;
     let centers = [], mx = 0, frame = 0, inside = false;
     function measure() {
       centers = buttons.map(function (b) { const r = b.getBoundingClientRect(); return r.left + r.width / 2; });
@@ -258,8 +258,8 @@
     function paint() {
       frame = 0;
       for (let i = 0; i < buttons.length; i++) {
-        const k = inside && !SARA.reduceMotion ? Math.max(0, 1 - Math.abs(mx - centers[i]) / RADIUS) : 0;
-        const eased = k * k * (3 - 2 * k);                     // smoothstep: soft shoulders, no visible kink
+        const dist = (mx - centers[i]) / SIGMA, k = inside && !SARA.reduceMotion ? Math.exp(-dist * dist) : 0;
+        const eased = k;                     // smoothstep: soft shoulders, no visible kink
         buttons[i].style.setProperty('--prox', (1 + MAX * eased).toFixed(3));
       }
     }
@@ -269,6 +269,38 @@
     nav.addEventListener('pointerleave', function () { inside = false; queue(); });
     nav.addEventListener('scroll', function () { if (inside) { measure(); queue(); } }, { passive: true });
     window.addEventListener('resize', function () { if (inside) { measure(); queue(); } });
+  })();
+
+  /* ---- 19b) nav tooltip ---- */
+  (function () {
+    const nav = $('navBar'); if (!nav) return;
+    const TIPS = { home: 'Orb and today', chat: 'Talk or type to Sara', notes: 'Notes and reminders', apps: 'Apps and music', automation: 'Routines and automation', settings: 'Settings' };
+    const tip = document.createElement('div');
+    tip.className = 'nav-tip'; tip.id = 'navTip'; tip.setAttribute('role', 'tooltip'); tip.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(tip);
+    let timer = 0, current = null;
+    function hide() { clearTimeout(timer); timer = 0; current = null; tip.classList.remove('show'); }
+    function show(btn) {
+      const text = TIPS[btn.dataset.page]; if (!text || !btn.isConnected) return;
+      tip.textContent = text;
+      const sc = btn.dataset.shortcut;
+      if (sc) { const k = document.createElement('kbd'); k.textContent = sc; tip.appendChild(k); btn.setAttribute('aria-keyshortcuts', sc); }
+      const r = btn.getBoundingClientRect();
+      tip.style.left = Math.round(r.left + r.width / 2) + 'px'; tip.style.top = Math.round(r.top) + 'px';
+      tip.classList.add('show');
+    }
+    function arm(btn, delay) { if (btn === current) return; hide(); current = btn; timer = setTimeout(function () { show(btn); }, delay); }
+    nav.addEventListener('pointerover', function (e) {
+      if (e.pointerType === 'touch') return;
+      const b = e.target.closest('button[data-page]'); if (b) arm(b, 420);
+    });
+    nav.addEventListener('pointerleave', hide);
+    nav.addEventListener('pointerdown', hide);
+    nav.addEventListener('focusin', function (e) { const b = e.target.closest('button[data-page]'); if (b && b.matches(':focus-visible')) arm(b, 0); });
+    nav.addEventListener('focusout', hide);
+    nav.addEventListener('scroll', hide, { passive: true });
+    SARA.on('page', hide);
+    window.addEventListener('blur', hide);
   })();
 
   /* ---- 20) time-of-day tint ----

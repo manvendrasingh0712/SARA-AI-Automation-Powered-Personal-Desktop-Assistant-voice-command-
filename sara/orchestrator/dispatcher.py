@@ -43,6 +43,15 @@ except Exception:  # telemetry is optional: fall back to no-ops
     def _t_mark(*args, **kwargs) -> None:
         return None
 
+try:
+    from sara.core.security import events as _sec_events, guard as _guard
+except Exception:  # security layer is optional: fall back to "run"
+    _sec_events = None
+    _guard = None
+
+_ORIGIN_USER_DIRECT = "user_direct"
+_ORIGIN_LLM_TOOL = "llm_tool"
+
 from ._shared_state import (
     _HAS_RAG,
     resolve_tool_call,
@@ -141,6 +150,7 @@ from .handlers.calendar import (
     _h_calendar_create,
 )
 from .handlers.automation import _h_run_routine
+from sara.tools.reminder_followup import acknowledge_if_applicable as _acknowledge_reminder
 from .handlers.misc import (
     _h_why_proactive,
     _h_why_decision,
@@ -326,6 +336,54 @@ def register_handler(name: str, fn) -> None:
     _INTENT_HANDLERS[name] = fn
 
 
+def _guard_check(tool: str, origin: str, **kwargs):
+    """Security verdict for a tool call, or None when it may run (also when the guard is absent)."""
+    if _guard is None:
+        return None
+    try:
+        outcome = _guard.check_tool_call(tool, origin, **kwargs)
+    except Exception:
+        return None
+    return None if outcome.action == "run" else outcome
+
+
+def _guard_reply(ctx: dict, outcome) -> str:
+    """Arm the guarded confirmation (if any) and return the sentence to speak."""
+    if outcome.action == "confirm" and outcome.pending:
+        ctx["confirm_state"]["pending"] = outcome.pending
+    return _quick(ctx, outcome.message)
+
+
+def _replay_guarded(pending: dict, ctx: dict) -> _Optional[str]:
+    """Run a guarded tool call the user just confirmed; None when it cannot be replayed."""
+    if _guard is None:
+        return None
+    try:
+        return _guard.replay_confirmed(
+            pending,
+            ctx,
+            handlers=_INTENT_HANDLERS,
+            simple_actions=system_tools.SIMPLE_ACTIONS,
+            detect_intent=detect_intent,
+            build_fake_match=build_fake_match,
+        )
+    except Exception:
+        return None
+
+
+def _log_guarded_denial(pending: dict) -> None:
+    """Audit a declined guarded confirmation; never raises."""
+    try:
+        if _sec_events is not None and pending.get("action") == "guarded_tool":
+            _sec_events.log_event(
+                "denied_by_user",
+                tool=str(pending.get("tool") or ""),
+                origin=str(pending.get("origin") or ""),
+            )
+    except Exception:
+        return None
+
+
 def _plan_step_confirmation_needed(mapped_intent: str, fake_match):
     """
     Mirrors _handle_command()'s existing pending-confirmation gate (see
@@ -436,6 +494,20 @@ def _build_plan_dispatch_fn(ctx: dict):
         tool_handler = _INTENT_HANDLERS.get(mapped_intent)
         if tool_handler is None:
             raise RuntimeError(f"No handler registered for intent '{mapped_intent}'.")
+        blocked = _guard_check(
+            mapped_intent, _ORIGIN_LLM_TOOL, args=tool_args, tool_name=tool_name
+        )
+        if blocked is not None:
+            if (
+                blocked.action == "confirm"
+                and blocked.pending
+                and PlanStepRequiresConfirmation is not None
+            ):
+                ctx["confirm_state"]["pending"] = blocked.pending
+                raise PlanStepRequiresConfirmation(
+                    blocked.pending["action"], mapped_intent, blocked.message
+                )
+            raise _guard.PlanStepBlocked(blocked.message)
         fake_match = build_fake_match(tool_name, tool_args)
         if PlanStepRequiresConfirmation is not None:
             confirmation = _plan_step_confirmation_needed(mapped_intent, fake_match)
@@ -567,6 +639,14 @@ def _handle_command(
     # turn's job is to answer that, not to be re-parsed as a brand-new
     # command. Expires after _CONFIRM_PENDING_TTL_S so a stale "yes"
     # minutes later doesn't accidentally trigger an old, forgotten action.
+    # "okay, going to sleep" right after Sara spoke about a reminder: mark it
+    # acknowledged so no follow-up nudge comes. Never steals an answer to a
+    # pending confirmation, and anything unrelated falls through unchanged.
+    if not confirm_state.get("pending"):
+        ack_reply = _acknowledge_reminder(user_input, reminders)
+        if ack_reply:
+            return _quick(ctx, ack_reply)
+
     pending = confirm_state.get("pending")
     if pending:
         if time.time() > pending.get("expires_at", 0):
@@ -641,7 +721,11 @@ def _handle_command(
                 _t_mark("route_done")
                 _t_mark("tool_start")
                 _ack(ctx)
-                if action == "close_app":
+                if action == "guarded_tool":
+                    result = _replay_guarded(pending, ctx)
+                    if result is None:
+                        result = "Sorry, I lost track of what I was confirming."
+                elif action == "close_app":
                     label = _activity_label(target)
                     result = _run_activity(
                         ctx, "app", f"Closing {label}", f"{label} closed", f"Couldn't close {label}",
@@ -695,6 +779,7 @@ def _handle_command(
                 return _quick(ctx, result)
             if reply in _CONFIRM_NO_WORDS:
                 confirm_state.pop("pending", None)
+                _log_guarded_denial(pending)
                 return _quick(ctx, "Okay, cancelled.")
             # Anything else: fall through to normal intent detection below
             # (user changed their mind / asked something unrelated) but
@@ -730,6 +815,9 @@ def _handle_command(
     if handler is not None:
         _t_annotate(route="regex", intent=intent)
         _t_mark("route_done")
+        blocked = _guard_check(intent, _ORIGIN_USER_DIRECT, match=match, text=user_input)
+        if blocked is not None:
+            return _guard_reply(ctx, blocked)
         _t_mark("tool_start")
         try:
             result = handler(match, ctx)
@@ -792,6 +880,9 @@ def _handle_command(
     if intent in system_tools.SIMPLE_ACTIONS:
         _t_annotate(route="regex", intent=intent)
         _t_mark("route_done")
+        blocked = _guard_check(intent, _ORIGIN_USER_DIRECT, text=user_input)
+        if blocked is not None:
+            return _guard_reply(ctx, blocked)
         _t_mark("tool_start")
         try:
             result = _quick(ctx, system_tools.SIMPLE_ACTIONS[intent]())
@@ -876,11 +967,17 @@ def _handle_command(
                         _, confirm_action, confirm_target, confirm_prompt = (
                             plan_abort_reason.split("::", 3)
                         )
-                        ctx["confirm_state"]["pending"] = {
-                            "action": confirm_action,
-                            "target": confirm_target or None,
-                            "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
-                        }
+                        armed = ctx["confirm_state"].get("pending")
+                        if not (
+                            confirm_action == "guarded_tool"
+                            and isinstance(armed, dict)
+                            and armed.get("action") == "guarded_tool"
+                        ):
+                            ctx["confirm_state"]["pending"] = {
+                                "action": confirm_action,
+                                "target": confirm_target or None,
+                                "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+                            }
                         plan_result = _quick(ctx, confirm_prompt)
                         brain.record_exchange(user_input, plan_result)
                         return plan_result
@@ -914,6 +1011,11 @@ def _handle_command(
                     fake_match = build_fake_match(tool_name, tool_args)
                     tool_handler = _INTENT_HANDLERS.get(mapped_intent)
                     if tool_handler is not None:
+                        blocked = _guard_check(
+                            mapped_intent, _ORIGIN_LLM_TOOL, args=tool_args, tool_name=tool_name
+                        )
+                        if blocked is not None:
+                            return _guard_reply(ctx, blocked)
                         _t_mark("tool_start")
                         tool_result = tool_handler(fake_match, ctx)
                         _t_mark("tool_end")
@@ -964,7 +1066,15 @@ def _handle_command(
             if rag is not None and _HAS_RAG:
                 hits = rag.search(user_input, top_k=1, min_similarity=0.55)
                 if hits:
-                    context_hint = f"(Relevant past note: {hits[0].text})"
+                    try:
+                        from sara.core.security.untrusted import drop_flagged_hits, wrap_untrusted
+
+                        hits = drop_flagged_hits(hits, "memory")
+                        note_text = wrap_untrusted(hits[0].text, "memory") if hits else ""
+                    except Exception:
+                        note_text = hits[0].text
+                    if note_text:
+                        context_hint = f"(Relevant past note: {note_text})"
         except Exception as e:
             print(f"[RAG] follow-up context lookup failed (continuing): {e}")
 

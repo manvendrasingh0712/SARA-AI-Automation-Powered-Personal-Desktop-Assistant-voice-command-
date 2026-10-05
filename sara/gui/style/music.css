@@ -519,3 +519,10 @@ body[data-page="apps"] .mini-player *,
 body[data-page="apps"] .mini-player *::after{animation-play-state:paused !important;}
 .mini-player.reduce-motion,.mini-player.reduce-motion *,.mini-player.reduce-motion::before,.mini-player.reduce-motion *::after{animation:none !important;}
 @media (prefers-reduced-motion:reduce){.mini-player,.mini-player *,.mini-player::before,.mini-player *::after{animation:none !important;}}
+
+.mp-morph{position:fixed;z-index:58;pointer-events:none;overflow:hidden;background:var(--panel);box-shadow:inset 0 0 0 1px rgb(var(--core-rgb) / .35),0 18px 40px -14px rgb(0 0 0 / .6),0 0 34px -8px rgb(var(--core-rgb) / .3);contain:layout paint;}
+.mp-morph-fade{position:absolute;inset:0;will-change:opacity;}
+.mini-player.mp-morph-clone{position:absolute;left:0;top:0;bottom:auto;translate:none;rotate:none;scale:1;max-width:none;box-sizing:border-box;background:transparent;border-color:transparent;box-shadow:none;cursor:default;pointer-events:none;opacity:1 !important;transition:none !important;}
+.mini-player.mp-morph-clone::before{display:none;}
+body.mp-morphing #musicCard{pointer-events:none;}
+@media (prefers-reduced-motion:reduce){.mp-morph{display:none;}}

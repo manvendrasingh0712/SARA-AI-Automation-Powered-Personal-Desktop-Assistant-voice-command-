@@ -16,6 +16,7 @@ from .modes import ApiModesMixin
 from .clock_api import ApiClockMixin
 from .ui_prefs import ApiUiPrefsMixin
 from .perf_api import ApiPerfMixin
+from .security_api import ApiSecurityMixin
 
 
 _MIXINS = (
@@ -32,6 +33,7 @@ _MIXINS = (
     ApiClockMixin,
     ApiUiPrefsMixin,
     ApiPerfMixin,
+    ApiSecurityMixin,
 )
 
 
