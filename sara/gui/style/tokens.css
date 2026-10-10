@@ -164,6 +164,68 @@
   --success:#2E8F57; --success-rgb:46 143 87; --warning:#A8740E; --warning-rgb:168 116 14; --info:#2F72B8; --info-rgb:47 114 184;
 }
 
+/* ---- NEON BLACK (futuristic dark): true-black base, electric blue + neon blue + cyan, no purple. Effects live in style/theme-neon.css ---- */
+:root[data-theme="neon"], [data-theme-preview="neon"]{
+  --void:#020305; --deep:#05090F; --panel:#05080C; --panel-rgb:5 8 12; --panel-2:#081019; --line:#0F2236;
+  --core-rgb:0 183 255; --think-rgb:0 140 255; --speak-rgb:0 231 255;
+  --text:#EAF6FF; --text-soft:#A9C4DC; --muted:#7F98B0; --faint:#44566B;
+  --danger:#FF4D5E; --danger-rgb:255 77 94; --on-core:#00121F;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:.8;
+  --void-rgb:2 3 5; --vignette:rgba(0,0,0,.7);
+  --shine-rgb:150 230 255;
+  --glass-bg:rgb(var(--panel-rgb) / .78); --glass-border:rgb(var(--core-rgb) / .20);
+  --glow:rgb(var(--core-rgb) / .38);
+  --shadow-rest: 0 1px 2px rgba(0,0,0,.7), 0 10px 26px -14px rgba(0,0,0,.9), 0 0 22px -12px rgb(var(--core-rgb) / .35);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.7), 0 18px 36px -14px rgba(0,0,0,.9), 0 0 30px -6px rgb(var(--core-rgb) / .5);
+  --scrim:rgb(2 3 5 / .82);
+}
+
+/* ---- MONO INK (minimal dark): pure black + greys, one vermilion accent ---- */
+:root[data-theme="ink"], [data-theme-preview="ink"]{
+  --void:#050505; --deep:#0A0A0A; --panel:#0C0C0C; --panel-rgb:12 12 12; --panel-2:#131313; --line:#242424;
+  --core-rgb:255 90 54; --think-rgb:150 150 150; --speak-rgb:236 236 236;
+  --text:#EDEDED; --text-soft:#A8A8A8; --muted:#7C7C7C; --faint:#484848;
+  --danger:#FF2D55; --danger-rgb:255 45 85; --on-core:#1A0600;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:0;
+  --void-rgb:5 5 5; --vignette:rgba(0,0,0,.55);
+  --glass-bg:rgb(var(--panel-rgb) / .92); --glass-border:rgb(255 255 255 / .10);
+  --glow:rgb(var(--core-rgb) / .10);
+  --shadow-rest: 0 0 0 1px rgb(255 255 255 / .03);
+  --shadow-hover: 0 14px 26px -18px rgba(0,0,0,.9), 0 0 0 1px rgb(var(--core-rgb) / .35);
+  --scrim:rgb(5 5 5 / .85);
+}
+
+/* ---- OAT & SAGE (minimal light): oat base, sage accent, clay + charcoal; matte, soft shadows ---- */
+:root[data-theme="oat"], [data-theme-preview="oat"]{
+  --void:#E9E4D8; --deep:#F1EDE2; --panel:#F7F4EC; --panel-rgb:247 244 236; --panel-2:#EEE9DC; --line:#D6CFBE;
+  --core-rgb:79 111 82; --think-rgb:139 154 126; --speak-rgb:196 154 108;
+  --text:#2B2A26; --text-soft:#55524A; --muted:#6F6B60; --faint:#A8A294;
+  --danger:#B3402F; --danger-rgb:179 64 47; --on-core:#FFFFFF;
+  --fg-rgb:43 42 38; color-scheme:light; --mesh-k:.4;
+  --void-rgb:233 228 216; --vignette:rgba(90,80,50,.08);
+  --glass-bg:rgb(var(--panel-rgb) / .82); --glass-border:rgb(var(--fg-rgb) / .10);
+  --glow:rgb(var(--core-rgb) / .16);
+  --shadow-rest: 0 1px 2px rgb(var(--fg-rgb) / .06), 0 10px 22px -14px rgb(var(--fg-rgb) / .22);
+  --shadow-hover: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 30px -16px rgb(var(--fg-rgb) / .30);
+  --scrim:rgb(var(--void-rgb) / .74);
+  --success:#4A7C59; --success-rgb:74 124 89; --warning:#9A6B12; --warning-rgb:154 107 18; --info:#3F6F8F; --info-rgb:63 111 143;
+}
+
+/* ---- GRAPHITE LIME (minimal dark): charcoal greys, one acid-lime accent ---- */
+:root[data-theme="lime"], [data-theme-preview="lime"]{
+  --void:#0F1011; --deep:#161719; --panel:#161718; --panel-rgb:22 23 24; --panel-2:#1D1E20; --line:#2B2D30;
+  --core-rgb:198 255 61; --think-rgb:140 146 138; --speak-rgb:240 240 232;
+  --text:#ECEDE8; --text-soft:#AEB0A8; --muted:#85887F; --faint:#50524C;
+  --danger:#FF5A4D; --danger-rgb:255 90 77; --on-core:#0E1400;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:0;
+  --void-rgb:15 16 17; --vignette:rgba(0,0,0,.5);
+  --glass-bg:rgb(var(--panel-rgb) / .90); --glass-border:rgb(255 255 255 / .08);
+  --glow:rgb(var(--core-rgb) / .12);
+  --shadow-rest: 0 1px 2px rgba(0,0,0,.4), 0 8px 18px -12px rgba(0,0,0,.6);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.4), 0 14px 28px -14px rgba(0,0,0,.7), 0 0 0 1px rgb(var(--core-rgb) / .30);
+  --scrim:rgb(15 16 17 / .82);
+}
+
 /* ---- reset + body ---- */
 *{box-sizing:border-box;}
 html,body{height:100%;}

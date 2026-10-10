@@ -11,6 +11,125 @@ import time
 from ..command_helpers import _quick, _ack, _MEMORY_FORGET_MATCH_THRESHOLD
 from .._shared_state import _HAS_RAG, _CONFIRM_PENDING_TTL_S
 
+_HINGLISH_MARKERS = frozenset({"mujhe", "mera", "meri", "mere", "bhool", "jao", "hai", "ki", "main"})
+
+
+def _mem2():
+    """Memory 2.0 store, or None when disabled or unavailable."""
+    try:
+        from sara.core.memory2 import get_store
+
+        return get_store()
+    except Exception:
+        return None
+
+
+def _preview_lang(phrase: str) -> str:
+    if set(phrase.lower().split()) & _HINGLISH_MARKERS or any("\u0900" <= ch <= "\u097f" for ch in phrase):
+        return "hinglish"
+    return "english"
+
+
+def _memory2_recall_line() -> str:
+    """Spoken list of pinned / strongest active user facts ('' when none or on any failure)."""
+    store = _mem2()
+    if store is None:
+        return ""
+    try:
+        from datetime import datetime
+
+        from sara.core.memory2 import decay
+
+        now = time.time()
+        tau = decay.tau_days()
+        rows = [
+            r for r in store.iter_rows("facts", ("active",))
+            if str(r.get("subject") or "user").lower() == "user" and r.get("text")
+        ]
+        rows.sort(key=lambda r: (not r.get("pinned"), -decay.strength(
+            float(r.get("importance") or 0.5), decay.row_ref_ts(r), int(r.get("use_count") or 0),
+            bool(r.get("pinned")), now, tau)))
+        top = rows[:5]
+        if not top:
+            return ""
+        first = float(top[0].get("valid_from") or top[0].get("created_at") or now)
+        since = datetime.fromtimestamp(first).strftime("%d %B %Y")
+        parts = [f"{top[0]['text']} (since {since})"] + [str(r["text"]) for r in top[1:]]
+        return "Here's what I remember: " + "; ".join(parts) + "."
+    except Exception as e:
+        print(f"[Memory2] recall failed: {type(e).__name__}")
+        return ""
+
+
+def _arm_forget_items(ctx, phrase: str):
+    """Look in Memory 2.0 and RAG; arm a confirmation. None when Memory 2.0 is off or nothing matched."""
+    store = _mem2()
+    if store is None:
+        return None
+    hits = []
+    try:
+        from sara.core.memory2 import forget
+
+        hits = forget.find_matches(phrase, store=store)
+    except Exception as e:
+        print(f"[Memory2] forget lookup failed: {type(e).__name__}")
+    rag_ids, rag_texts = [], []
+    rag = ctx.get("notes_memory")
+    if rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
+        try:
+            best = _best_fuzzy_memory_match(phrase, rag.list_memories())
+            if best is not None and best["score"] >= _MEMORY_FORGET_MATCH_THRESHOLD:
+                rag_ids.append(best["id"])
+                rag_texts.append(str(best.get("text") or ""))
+        except Exception as e:
+            print(f"[Memory] list_memories failed: {e}")
+    if not hits and not rag_ids:
+        return None
+    try:
+        from sara.core.memory2 import forget
+        from sara.core.memory2.types import Mem2Hit
+
+        shown = list(hits) + [
+            Mem2Hit("rag", int(i), t, 1.0, "", 1.0, None, "active", False)
+            for i, t in zip(rag_ids, rag_texts)
+        ]
+        preview = forget.preview_text(shown, _preview_lang(phrase))
+    except Exception as e:
+        print(f"[Memory2] preview failed: {type(e).__name__}")
+        return None
+    ctx["confirm_state"]["pending"] = {
+        "action": "forget_memory_items",
+        "target": phrase,
+        "mem2_ids": [[h.kind, h.id] for h in hits],
+        "rag_ids": rag_ids,
+        "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+    }
+    return _quick(ctx, preview)
+
+
+def apply_forget_items(pending: dict, ctx) -> str:
+    """Execute a confirmed 'forget_memory_items' action; returns the spoken reply."""
+    forgotten = 0
+    store = _mem2()
+    if store is not None:
+        for entry in pending.get("mem2_ids") or []:
+            try:
+                if store.retract(int(entry[1]), str(entry[0])):
+                    forgotten += 1
+            except Exception as e:
+                print(f"[Memory2] retract failed: {type(e).__name__}")
+    rag = ctx.get("notes_memory")
+    if rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
+        for rag_id in pending.get("rag_ids") or []:
+            try:
+                if rag.delete_memory(rag_id):
+                    forgotten += 1
+            except Exception as e:
+                print(f"[Memory] delete_memory failed: {e}")
+    if forgotten <= 0:
+        return "Sorry, I ran into a problem forgetting that."
+    return f"Okay, I've forgotten {forgotten} thing{'s' if forgotten != 1 else ''}."
+
 def _best_fuzzy_memory_match(target_phrase: str, candidates: list) -> "dict | None":
     """
     Finds the RAG memory in `candidates` (list of {"id","text",...} from
@@ -61,7 +180,8 @@ def _h_memory_recall(match, ctx):
 
     rag = ctx.get("notes_memory")
     memory_texts = []
-    if rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
+    m2_line = _memory2_recall_line()
+    if not m2_line and rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
         try:
             hits = rag.search(
                 "personal facts and preferences about the user", top_k=5
@@ -70,6 +190,9 @@ def _h_memory_recall(match, ctx):
         except Exception as e:
             print(f"[Memory] recall search failed: {e}")
 
+    if m2_line:
+        name_part = f"I know your name is {user_name}. " if user_name else ""
+        return _quick(ctx, name_part + m2_line)
     if not memory_texts and not user_name:
         return _quick(ctx, "I don't have anything specific stored about you yet.")
 
@@ -97,6 +220,10 @@ def _h_memory_forget_specific(match, ctx):
     target_phrase = match.group(1).strip()
     if not target_phrase:
         return _quick(ctx, "What would you like me to forget?")
+
+    armed = _arm_forget_items(ctx, target_phrase)
+    if armed is not None:
+        return armed
 
     rag = ctx.get("notes_memory")
     if rag is None or not _HAS_RAG or not getattr(rag, "enabled", False):

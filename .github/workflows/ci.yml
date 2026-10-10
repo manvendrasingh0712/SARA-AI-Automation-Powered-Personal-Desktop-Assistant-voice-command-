@@ -179,10 +179,13 @@ jobs:
         shell: bash
         run: python -m bench.run_bench --mode router --compare bench/baseline.json --report-md bench/results/RESULTS.md
 
-      - name: Red-team security gate
-        if: always()
+      - name: Red-team gate
         shell: bash
         run: python -m bench.run_bench --mode redteam --gate
+
+      - name: Memory benchmark gate
+        shell: bash
+        run: python -m bench.run_bench --mode memory --embedder hash --gate
 
       - name: Upload bench report
         if: always()

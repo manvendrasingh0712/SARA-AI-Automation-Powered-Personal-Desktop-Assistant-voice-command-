@@ -1,0 +1,30 @@
+/* ==========================================================================
+   quality.css  --  Visual quality tiers (set by js/quality.js on <html data-quality="low|balanced|high">) + FPS meter.
+   Load LAST (after flow.css).
+   ========================================================================== */
+
+/* ---- HIGH: richer glass, everything on ---- */
+html[data-quality="high"]{--glass-blur:14px;}
+html[data-quality="high"] :is(.glass,.nav){backdrop-filter:blur(var(--glass-blur)) saturate(1.4);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.4);}
+
+/* ---- BALANCED: no floating dust (3D tilt is switched off in JS) ---- */
+html[data-quality="balanced"] .pm-dust{display:none;}
+
+/* ---- LOW: no live blur, no ambient layers, no decorative loops ---- */
+html[data-quality="low"]{--glass-blur:0px;}
+html[data-quality="low"] :is(.glass,.nav,.overlay,.pal-overlay,.clock-card,#page-settings .set-rail){backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
+html[data-quality="low"] :is(.glass,.nav){background:var(--panel);}
+html[data-quality="low"] .overlay,html[data-quality="low"] .pal-overlay{background:rgb(var(--void-rgb,5 8 12) / .78);}
+html[data-quality="low"] body::before,html[data-quality="low"] #stage::before{display:none;}
+html[data-quality="low"] :is(.pm-aura,.pm-dust,.set-fx,.set-edge){display:none;}
+html[data-quality="low"] .gl-sheen::after{display:none;}
+html[data-quality="low"] :is(.home-greet,.cc-greet,.cc-bar-fill,.nx-rel,.sleep-badge,.offline-strip,.accent-pv,.pal-empty,.rt-empty,.mini-orb::after,.theme-card.on::after,.music-card.playing .art-block,.music-card.playing .mc-play::after,.today-card::before,.next-card::before,.plan-card::before,.home-activity::before){animation:none !important;}
+html[data-quality="low"] .page{animation-duration:.18s;}
+html[data-quality="low"] body.pm-overlay-open .page.active{scale:1;}
+
+/* ---- FPS meter (developer mode) ---- */
+.fps-hud{position:fixed;left:10px;top:10px;z-index:300;font:600 11px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:6px 10px;border-radius:9px;
+  background:rgba(0,0,0,.74);color:#9fe6b0;border:1px solid rgba(255,255,255,.14);cursor:pointer;user-select:none;white-space:pre;letter-spacing:.02em;}
+.fps-hud.warn{color:#ffd166;}
+.fps-hud.bad{color:#ff7a7a;}
+.fps-hud div:first-child{font-size:13px;}

@@ -118,6 +118,58 @@
       case 'get_notes': return ok({ data: S.notes });
       case 'save_note': S.notes.unshift({ id: Date.now(), text: a[0], timestamp: new Date().toISOString() }); return ok({ message: 'Note saved.', id: null });
       case 'export_memory': return ok({ path: 'memory_export.json' });
+      case 'mem2_list': var m2op = 'list';
+      case 'mem2_update': var m2op = m2op || 'update';
+      case 'mem2_forget': var m2op = m2op || 'forget';
+      case 'mem2_pin': var m2op = m2op || 'pin';
+      case 'mem2_stats': {
+        var m2op = m2op || 'stats';
+        const DAY = 86400000, ago = function (ms) { return new Date(Date.now() - ms).toISOString(); };
+        const row = function (id, kind, text, o) {
+          return Object.assign({ id: id, kind: kind, text: text, value: null, status: 'active', confidence: null, importance: null,
+            pinned: false, inferred: false, when: ago(DAY), learned: ago(DAY), source_turn_id: null, mentions: null }, o);
+        };
+        const M = S.mem2 || (S.mem2 = [
+          row(1, 'facts', 'user lives in Jaipur', { value: 'Jaipur', confidence: 0.92, importance: 0.8, pinned: true, when: ago(3 * DAY), learned: ago(3 * DAY), source_turn_id: 't41' }),
+          row(2, 'facts', 'user likes cricket', { value: 'cricket', confidence: 0.8, importance: 0.5, when: ago(12 * DAY), learned: ago(12 * DAY), source_turn_id: 't27' }),
+          row(3, 'facts', 'user works at Acme', { value: 'Acme', confidence: 0.55, importance: 0.6, when: ago(40 * DAY), learned: ago(40 * DAY), source_turn_id: 't12' }),
+          row(4, 'facts', 'user is probably a morning person', { value: 'is probably a morning person', confidence: 0.3, importance: 0.3, inferred: true, when: ago(20000), learned: ago(20000), source_turn_id: 't58' }),
+          row(5, 'facts', 'user lives in Ajmer', { value: 'Ajmer', status: 'archived', confidence: 0.9, importance: 0.4, when: ago(70 * DAY), learned: ago(70 * DAY), source_turn_id: 't03' }),
+          row(1, 'events', 'Trip to Goa planned for December', { value: 'Trip to Goa planned for December', confidence: 0.7, importance: 0.5, when: ago(DAY), learned: ago(DAY), source_turn_id: 't55' }),
+          row(2, 'events', 'Birthday dinner with Riya', { value: 'Birthday dinner with Riya', confidence: 0.85, importance: 0.6, when: ago(9 * DAY), learned: ago(10 * DAY), source_turn_id: 't49' }),
+          row(1, 'entities', 'Riya (person)', { mentions: 7, when: ago(DAY), learned: ago(30 * DAY) }),
+          row(2, 'entities', 'Jaipur (place)', { mentions: 5, when: ago(3 * DAY), learned: ago(60 * DAY) }),
+          row(3, 'entities', 'Acme (org)', { mentions: 2, when: ago(40 * DAY), learned: ago(40 * DAY) })
+        ]);
+        const n = function (k, s) { return M.filter(function (x) { return x.kind === k && x.status === s; }).length; };
+        if (m2op === 'stats') {
+          return ok({ data: { enabled: true, schema_version: 1,
+            facts: { active: n('facts', 'active'), superseded: 0, retracted: n('facts', 'retracted'), archived: n('facts', 'archived'), total: M.filter(function (x) { return x.kind === 'facts'; }).length },
+            events: { active: n('events', 'active'), superseded: 0, retracted: n('events', 'retracted'), archived: n('events', 'archived'), total: M.filter(function (x) { return x.kind === 'events'; }).length },
+            entities: n('entities', 'active'), last_extract_ts: Date.now() / 1000 - 7200, db_bytes: 40960 } });
+        }
+        if (m2op === 'list') {
+          const kind = a[0] || 'facts', q = String(a[1] || '').toLowerCase();
+          const lim = Math.max(1, Math.min(100, +a[2] || 50)), off = Math.max(0, +a[3] || 0);
+          const rows = M.filter(function (x) {
+            const inTab = kind === 'archived' ? x.status === 'archived' : x.kind === kind && x.status === 'active';
+            return inTab && (!q || x.text.toLowerCase().indexOf(q) >= 0);
+          });
+          const page = rows.slice(off, off + lim).map(function (x) { return Object.assign({}, x); });
+          return ok({ data: { enabled: true, items: page, total: off + page.length, has_more: rows.length > off + lim } });
+        }
+        const it = M.find(function (x) { return x.id === a[0] && x.kind === a[1]; });
+        if (!it || it.kind === 'entities') return { ok: false, error: 'not_found' };
+        if (m2op === 'pin') it.pinned = !!a[2];
+        else if (m2op === 'forget') it.status = 'retracted';
+        else {
+          const p = a[2] || {}, v = typeof p.object_text === 'string' ? p.object_text : p.summary;
+          if (typeof v === 'string') { it.value = v; it.text = v; }
+          if (typeof p.importance === 'number') it.importance = p.importance;
+          if (typeof p.pinned === 'boolean') it.pinned = p.pinned;
+        }
+        return ok({ data: { id: it.id, kind: it.kind } });
+      }
       case 'get_reminders': return ok({ data: S.reminders });
       case 'add_reminder': S.reminders.push({ id: ++S.reminderId, date: a[0], time: a[1], text: a[2], done: false }); return ok({ id: S.reminderId });
       case 'delete_reminder': S.reminders = S.reminders.filter(r => r.id !== a[0]); return ok();

@@ -165,6 +165,7 @@ class CoreObjects(NamedTuple):
     volume_state: dict
     playback_state: dict
     context_state: dict
+    reminder_composer: Any = None
 
 
 def build_core_objects(ui_update):
@@ -450,6 +451,7 @@ def build_core_objects(ui_update):
         volume_state=volume_state,
         playback_state=playback_state,
         context_state=context_state,
+        reminder_composer=_composer,
     )
 
 
@@ -611,6 +613,7 @@ def run_sara_logic(
     volume_state=None,
     playback_state=None,
     context_state=None,
+    reminder_composer=None,
 ) -> None:
     if manual_wake_event is None:
         manual_wake_event = threading.Event()
@@ -658,7 +661,7 @@ def run_sara_logic(
         activity_tracker=activity_tracker,
         assistant_state=assistant_state,
         lang_state=lang_state,
-        reminder_composer=_composer,
+        reminder_composer=reminder_composer,
     )
     proactive_engine.start()
 

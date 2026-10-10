@@ -1113,6 +1113,66 @@ class SaraLLM:
         existing = {f"User said: {u}\nSara replied: {a}" for u, a in history}
         return [h for h in hits if getattr(h, "text", None) not in existing]
 
+    def _start_memory2_retrieval(self, prompt: str):
+        """Start Memory 2.0 retrieval in a helper thread; None when disabled or unavailable."""
+        try:
+            import importlib
+            import threading
+            import time
+
+            if not importlib.import_module("sara.core.memory2").is_enabled():
+                return None
+            module = importlib.import_module("sara.core.memory2.retrieve")
+            budget_ms = int(getattr(self._cfg, "MEMORY2_RETRIEVAL_TIMEOUT_MS", 400) or 400)
+        except Exception:
+            return None
+        box: dict = {}
+        done = threading.Event()
+
+        def _work() -> None:
+            try:
+                box["hits"] = list(module.retrieve(prompt, timeout_ms=budget_ms))
+                box["question"] = bool(module.is_memory_question(prompt))
+            except Exception as exc:
+                logger.warning("[Memory2] retrieval helper failed (%s)", type(exc).__name__)
+            finally:
+                done.set()
+
+        threading.Thread(target=_work, name="mem2-retrieve", daemon=True).start()
+        return done, box, budget_ms, time.monotonic()
+
+    def _merge_memory2_hits(self, hits: list, job) -> list:
+        """Put Memory 2.0 hits first; add the fixed abstention line when both stores are empty."""
+        if job is None:
+            return hits
+        try:
+            import time
+
+            from sara.core.rag import MemoryHit
+
+            done, box, budget_ms, started = job
+            wait_s = max(0.0, budget_ms / 1000.0 - (time.monotonic() - started))
+            if not done.wait(wait_s) or "hits" not in box:
+                return hits
+            extra = [
+                MemoryHit(id=-int(h.id), text=h.text, score=float(h.score), source="memory2", timestamp=h.when)
+                for h in box["hits"]
+            ]
+            if not extra and not hits and box.get("question"):
+                extra = [
+                    MemoryHit(
+                        id=0,
+                        text="I have no stored memory that answers this question; say you do not know instead of guessing.",
+                        score=0.0,
+                        source="memory2",
+                        timestamp="",
+                    )
+                ]
+            return extra + list(hits) if extra else hits
+        except Exception as exc:
+            logger.warning("[Memory2] merge failed (%s)", type(exc).__name__)
+            return hits
+
     # ── Backend stream openers ─────────────────────────────────────────
 
     def _open_ollama_stream(
@@ -1286,7 +1346,9 @@ class SaraLLM:
         hits: list = []
         if self._memory is not None and not trivial:
             try:
+                _m2_job = self._start_memory2_retrieval(prompt)
                 hits = self._memory.search(prompt)
+                hits = self._merge_memory2_hits(hits, _m2_job)
                 # PRIORITY-9 FIX (now against the actual trimmed history,
                 # not the full untrimmed deque — see PRIORITY-4 above):
                 # drop hits that duplicate what's already going into the

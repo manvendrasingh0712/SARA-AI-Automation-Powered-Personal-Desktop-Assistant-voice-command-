@@ -27,8 +27,20 @@
 <link rel="stylesheet" href="style/perf.css">
 <link rel="stylesheet" href="style/security.css">
 <link rel="stylesheet" href="style/overlays.css">
+<link rel="stylesheet" href="style/memory-view.css">
 <link rel="stylesheet" href="style/motion.css">
 <link rel="stylesheet" href="style/settings-fx.css">
+<link rel="stylesheet" href="style/theme-neon.css">
+<link rel="stylesheet" href="style/theme-minimal.css">
+<link rel="stylesheet" href="style/smooth.css">
+<link rel="stylesheet" href="style/animations.css">
+<link rel="stylesheet" href="style/premium.css">
+<link rel="stylesheet" href="style/luxe.css">
+<link rel="stylesheet" href="style/aurum.css">
+<link rel="stylesheet" href="style/flow.css">
+<link rel="stylesheet" href="style/quality.css">
+<link rel="stylesheet" href="style/chat-plus.css">
+<link rel="stylesheet" href="style/home-plus.css">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -262,6 +274,14 @@
               <div class="info-row tog"><span>Meetings</span><div class="toggle on" data-setting="proactive_meetings" role="switch" tabindex="0" aria-checked="true"></div></div>
               <div class="info-row tog"><span>Routines</span><div class="toggle on" data-setting="proactive_routines" role="switch" tabindex="0" aria-checked="true"></div></div>
             </div>
+            <div class="section-label">Smart reminders</div>
+            <div class="acc-note">context-aware wording and gentle nudges</div>
+            <div class="tog-grid">
+              <div class="info-row tog"><span>Contextual wording</span><div class="toggle on" data-setting="contextual_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
+              <div class="info-row tog"><span>Use my notes</span><div class="toggle on" data-setting="contextual_notes" role="switch" tabindex="0" aria-checked="true"></div></div>
+              <div class="info-row tog"><span>Awake awareness</span><div class="toggle on" data-setting="awake_awareness" role="switch" tabindex="0" aria-checked="true"></div></div>
+              <div class="info-row tog"><span>Late-night nudges</span><div class="toggle on" data-setting="late_night_nudges" role="switch" tabindex="0" aria-checked="true"></div></div>
+            </div>
             <div class="info-row"><span>Nudges so far</span><b id="pvTotal">0</b></div>
             <div class="acc-note" id="pvBreakdown"></div>
             <div class="acc-note pv-recent" id="pvRecent" data-skel><span class="skel skel-line"></span></div>
@@ -312,7 +332,7 @@
               <div class="stat"><b id="shDays"><span class="skel skel-inline"></span></b><span>Days used</span></div>
               <div class="stat"><b id="shNudges"><span class="skel skel-inline"></span></b><span>Proactive nudges</span></div>
             </div>
-            <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button></div>
+            <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button><button class="pill-btn" id="openMemoryViewerBtn" aria-haspopup="dialog" aria-controls="memViewer">Open memory viewer</button></div>
             <div class="acc-note">Export saves your recent conversation to memory_export.json next to the app.</div>
           </div>
         </section>
@@ -322,6 +342,14 @@
           <div class="set-card-body">
             <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
             <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
+            <div class="section-label" id="qualityLabel">Visual quality</div>
+            <div class="chip-row" id="qualityRow" role="radiogroup" aria-label="Visual quality">
+              <button type="button" class="chip" role="radio" aria-checked="false" data-q="low">Low</button>
+              <button type="button" class="chip" role="radio" aria-checked="false" data-q="balanced">Balanced</button>
+              <button type="button" class="chip" role="radio" aria-checked="false" data-q="high">High</button>
+            </div>
+            <div class="acc-note" id="qualityNote"></div>
+            <div id="devBlock" hidden></div>
             <div class="section-label">Accent hue</div>
             <div class="hue-block">
               <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170" aria-label="Accent hue"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset to Theme Default</button></div>
@@ -591,6 +619,30 @@
   </div>
 </div>
 
+<!-- Memory viewer (Settings > Memory) -->
+<div class="mv-overlay" id="memViewer" hidden>
+  <div class="mv-card" role="dialog" aria-modal="true" aria-labelledby="mvTitle" tabindex="-1">
+    <div class="mv-head">
+      <div class="mv-titles">
+        <h3 id="mvTitle">Memory viewer</h3>
+        <div class="mv-sub" id="mvCounts" role="status"></div>
+        <div class="mv-sub" id="mvHint"></div>
+      </div>
+      <button type="button" class="pill-btn small" id="mvClose" aria-label="Close memory viewer">Close</button>
+    </div>
+    <div class="mv-tabs" id="mvTabs" role="tablist" aria-label="Memory type">
+      <button type="button" class="mv-tab" role="tab" id="mvTab-facts" data-tab="facts" aria-selected="true" aria-controls="mvList" tabindex="0">Facts</button>
+      <button type="button" class="mv-tab" role="tab" id="mvTab-events" data-tab="events" aria-selected="false" aria-controls="mvList" tabindex="-1">Events</button>
+      <button type="button" class="mv-tab" role="tab" id="mvTab-entities" data-tab="entities" aria-selected="false" aria-controls="mvList" tabindex="-1">Entities</button>
+      <button type="button" class="mv-tab" role="tab" id="mvTab-archived" data-tab="archived" aria-selected="false" aria-controls="mvList" tabindex="-1">Archived</button>
+    </div>
+    <input type="search" class="mv-search" id="mvSearch" maxlength="80" placeholder="Search memories" aria-label="Search memories" autocomplete="off">
+    <div class="mv-note" id="mvNote" role="status" hidden></div>
+    <div class="mv-list" id="mvList" role="tabpanel" aria-labelledby="mvTab-facts"></div>
+    <button type="button" class="pill-btn mv-more" id="mvMore" hidden>Load more</button>
+  </div>
+</div>
+
 <!-- First-run Setup Wizard -->
 <div class="overlay" id="setupWizardOverlay">
   <div class="modal setup-modal" id="setupModal" data-state="checking" role="dialog" aria-modal="true" aria-labelledby="swTitle">
@@ -620,6 +672,7 @@
 <script src="js/fx.js"></script>
 <script src="js/motion.js"></script>
 <script src="js/home.js"></script>
+<script src="js/home-plus.js"></script>
 <script src="js/today.js"></script>
 <script src="js/clock-card.js"></script>
 <script src="js/chat.js"></script>
@@ -634,10 +687,17 @@
 <script src="js/settings-data.js"></script>
 <script src="js/perf.js"></script>
 <script src="js/security.js"></script>
+<script src="js/memory-view.js"></script>
 <script src="js/settings-skills.js"></script>
 <script src="js/settings-fx.js"></script>
 <script src="js/setup-wizard.js"></script>
 <script src="js/palette.js"></script>
+<script src="js/quality.js"></script>
+<script src="js/premium.js"></script>
+<script src="js/aurum.js"></script>
 <script src="js/main.js"></script>
+<script src="js/chat-plus.js"></script>
+<script src="js/automation-plus.js"></script>
+
 </body>
 </html>

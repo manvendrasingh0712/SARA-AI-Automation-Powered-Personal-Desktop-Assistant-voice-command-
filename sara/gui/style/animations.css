@@ -1,0 +1,120 @@
+/* ==========================================================================
+   animations.css  --  minimal motion pack: 26 animations, theme-independent. Load AFTER smooth.css (last stylesheet).
+
+   PAGE ENTRANCE (replay every time a page is shown)
+    1 ax-title-in     page title slides in            2 ax-line         accent underline draws under the title
+    3 ax-status-in    status pill fades in            4 ax-label-in     section labels glide in
+    5 ax-tile-in     tiles rise + scale (staggered)   6 ax-chip-in      chips pop in (staggered)
+    7 ax-info-in     info rows slide in (staggered)   8 ax-btn-in       button rows fade up (staggered)
+    9 ax-note-in     helper notes fade in            10 ax-setrow-in    settings rows fade in
+   OVERLAYS
+   11 ax-modal-child modal contents cascade in       12 ax-sheet-child  sheet contents cascade in
+   ONE-SHOT FEEDBACK
+   13 ax-chip-select chip pulses when selected       14 ax-focus-bloom  input focus ring blooms
+   15 ax-focus-ring  keyboard-focus outline eases in 16 ax-sheen        soft light pass across a button on hover
+   17 ax-thumb-grow  slider thumb grows while dragging  (16 ax-sheen removed)
+   AMBIENT (subtle, only on the visible page)
+   18 ax-ping        status dot sends out a soft ring
+   HOVER / PRESS TRANSITIONS
+   19 ax-lift        tiles float up slightly          20 ax-press        everything clickable sinks on press
+   21 ax-link-line   link buttons draw an underline   22 ax-tab-line     tabs preview an underline
+   23 ax-dock-rise   chat bar rises when focused      24 (removed)
+   25 ax-theme-zoom  theme previews zoom gently       26 ax-row-nudge    list rows nudge right
+   Rules: transform/opacity/translate/scale only (GPU), fill-mode "backwards" so nothing is left stuck after an animation,
+   all keyframe motion wrapped in prefers-reduced-motion:no-preference.
+   ========================================================================== */
+
+:root{
+  --ax-ease:var(--ease-premium,cubic-bezier(.22,1,.36,1));
+  --ax-spring:var(--ease-spring,cubic-bezier(.34,1.56,.64,1));
+  --ax-step:45ms;
+}
+
+/* ---------- HOVER / PRESS TRANSITIONS (19-26) ---------- */
+:is(.qc-tile,.an-kpi,.perf-num){transition:scale .28s var(--ax-ease);}
+:is(.qc-tile,.an-kpi,.perf-num):hover{scale:1.015;}                                   /* 19 */
+:is(.pill-btn,.chip,.qc-tile,.app-tile,.stat,.theme-card,.dock-btn,.qa-btn,.link-btn):active{scale:.97;} /* 20 */
+:is(.pill-btn,.chip,.app-tile,.theme-card,.dock-btn,.qa-btn,.link-btn){transition-property:border-color,color,background-color,box-shadow,transform,scale;}
+.link-btn{background-image:linear-gradient(currentColor,currentColor);background-repeat:no-repeat;background-position:50% calc(100% - 3px);background-size:0 1px;transition:color .2s,background-size .3s var(--ax-ease),scale .16s var(--ax-ease);}
+.link-btn:hover{background-size:calc(100% - 16px) 1px;}                                /* 21 */
+.tab::before{content:'';position:absolute;left:0;right:0;bottom:4px;height:2px;border-radius:2px;background:currentColor;opacity:0;transform:scaleX(.4);transform-origin:center;transition:opacity .25s ease,transform .3s var(--ax-ease);pointer-events:none;}
+.tab:hover::before{opacity:.35;transform:scaleX(1);}                                    /* 22 */
+.tab.active::before{opacity:0;}
+.chat-dock{transition-property:border-color,box-shadow,opacity,translate;translate:0 0;}
+.chat-dock:focus-within{translate:0 -2px;}                                              /* 23 */
+.nav{transition-property:opacity,translate,border-color,box-shadow;transition-duration:.3s;transition-timing-function:var(--ax-ease);translate:0 0;}
+/* 24 (removed: moving the whole bar under the cursor caused hover flicker) */
+.tc-pv{transition:scale .35s var(--ax-ease);}
+.theme-card:hover .tc-pv{scale:1.03;}                                                   /* 25 */
+.row{transition:translate .25s var(--ax-ease);}
+.row:hover{translate:3px 0;}                                                            /* 26 */
+
+/* ---------- KEYFRAME ANIMATIONS (1-18) ---------- */
+@media (prefers-reduced-motion:no-preference){
+
+  /* 1-2 title + underline */
+  .page-title{animation:ax-title-in .5s var(--ax-ease) backwards;}
+  .page-header .page-title{position:relative;}
+  .page-header .page-title::after{content:'';position:absolute;left:0;bottom:-6px;width:28px;height:2px;border-radius:2px;background:var(--core);transform-origin:left center;animation:ax-line .7s var(--ax-ease) .25s backwards;pointer-events:none;}
+  /* 3-4 */
+  .page-status{animation:ax-status-in .5s var(--ax-ease) .12s backwards;}
+  .section-label{animation:ax-label-in .45s var(--ax-ease) backwards;}
+  /* 5 tiles (staggered) */
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat){animation:ax-tile-in .5s var(--ax-ease) backwards;}
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(2){animation-delay:calc(var(--ax-step)*1);}
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(3){animation-delay:calc(var(--ax-step)*2);}
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(4){animation-delay:calc(var(--ax-step)*3);}
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(5){animation-delay:calc(var(--ax-step)*4);}
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(6){animation-delay:calc(var(--ax-step)*5);}
+  :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(n+7){animation-delay:calc(var(--ax-step)*6);}
+  /* 6 chips */
+  .chip-row .chip{animation:ax-chip-in .45s var(--ax-ease) backwards;}
+  .chip-row .chip:nth-child(2){animation-delay:40ms;} .chip-row .chip:nth-child(3){animation-delay:80ms;}
+  .chip-row .chip:nth-child(4){animation-delay:120ms;} .chip-row .chip:nth-child(n+5){animation-delay:160ms;}
+  /* 7 info rows */
+  .info-row{animation:ax-info-in .45s var(--ax-ease) backwards;}
+  .info-row:nth-child(2){animation-delay:40ms;} .info-row:nth-child(3){animation-delay:80ms;}
+  .info-row:nth-child(4){animation-delay:120ms;} .info-row:nth-child(n+5){animation-delay:160ms;}
+  /* 8 button rows */
+  .btn-row>*{animation:ax-btn-in .45s var(--ax-ease) backwards;}
+  .btn-row>*:nth-child(2){animation-delay:50ms;} .btn-row>*:nth-child(n+3){animation-delay:100ms;}
+  /* 9-10 notes + settings rows */
+  .acc-note{animation:ax-note-in .6s ease .15s backwards;}
+  .set-row{animation:ax-setrow-in .45s var(--ax-ease) backwards;}
+  /* 11-12 overlays: contents cascade in after the box opens */
+  .overlay.open .modal>*{animation:ax-modal-child .45s var(--ax-ease) backwards;}
+  .overlay.open .modal>*:nth-child(2){animation-delay:60ms;} .overlay.open .modal>*:nth-child(3){animation-delay:110ms;}
+  .overlay.open .modal>*:nth-child(n+4){animation-delay:160ms;}
+  .overlay.open .sheet>*{animation:ax-sheet-child .45s var(--ax-ease) backwards;}
+  .overlay.open .sheet>*:nth-child(2){animation-delay:60ms;} .overlay.open .sheet>*:nth-child(3){animation-delay:110ms;}
+  .overlay.open .sheet>*:nth-child(n+4){animation-delay:160ms;}
+  /* 13 chip selected */
+  .chip.on{animation:ax-chip-select .45s var(--ax-ease);}
+  /* 14-15 focus */
+  :is(.field,.add-row input,.modal input,.modal select,.set-row input[type=text]):focus{animation:ax-focus-bloom .5s var(--ax-ease);}
+  :is(button,.chip,.pill-btn,.tab,.nav button):focus-visible{outline:2px solid rgb(var(--core-rgb) / .8);outline-offset:2px;animation:ax-focus-ring .3s var(--ax-ease);}
+  /* 17 slider thumb */
+  input[type=range]::-webkit-slider-thumb{transition:scale .2s var(--ax-spring);}
+  input[type=range]:active::-webkit-slider-thumb{scale:1.25;}
+  /* 18 status dot ping */
+  .mini-orb{position:relative;}
+  .mini-orb::after{content:'';position:absolute;inset:0;border-radius:50%;border:1px solid var(--core);opacity:0;pointer-events:none;animation:ax-ping 3.2s ease-out infinite;}
+}
+
+@keyframes ax-title-in{from{opacity:0;transform:translateX(-10px);}}
+@keyframes ax-line{from{transform:scaleX(0);}}
+@keyframes ax-status-in{from{opacity:0;transform:translateY(-6px);}}
+@keyframes ax-label-in{from{opacity:0;transform:translateX(-6px);}}
+@keyframes ax-tile-in{from{opacity:0;transform:translateY(8px) scale(.985);}}
+@keyframes ax-chip-in{from{opacity:0;transform:scale(.92);}}
+@keyframes ax-info-in{from{opacity:0;transform:translateX(-6px);}}
+@keyframes ax-btn-in{from{opacity:0;transform:translateY(6px);}}
+@keyframes ax-note-in{from{opacity:0;}}
+@keyframes ax-setrow-in{from{opacity:0;transform:translateY(4px);}}
+@keyframes ax-modal-child{from{opacity:0;transform:translateY(8px);}}
+@keyframes ax-sheet-child{from{opacity:0;transform:translateY(8px);}}
+@keyframes ax-chip-select{0%{transform:scale(.965);}60%{transform:scale(1.025);}100%{transform:scale(1);}}
+@keyframes ax-focus-bloom{from{box-shadow:0 0 0 0 rgb(var(--core-rgb) / .4);}to{box-shadow:0 0 0 6px rgb(var(--core-rgb) / 0);}}
+@keyframes ax-focus-ring{from{outline-offset:7px;outline-color:rgb(var(--core-rgb) / 0);}}
+@keyframes ax-sheen{from{background-position:130% 0;}to{background-position:-30% 0;}}
+@keyframes ax-ping{0%{opacity:.4;transform:scale(1);}70%,100%{opacity:0;transform:scale(2.2);}}

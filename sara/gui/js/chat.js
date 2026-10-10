@@ -66,6 +66,7 @@
   document.addEventListener('visibilitychange', syncWave);
 
   function scrollDown(smooth) {
+    if (window.SaraChatPlus && !window.SaraChatPlus.shouldStick()) return;   // chat-plus.js: don't yank the log while the user is reading older messages
     if (smooth && !SARA.reduceMotion) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
     else scroller.scrollTop = scroller.scrollHeight;
   }
