@@ -51,6 +51,7 @@
   $('rtAddStep').addEventListener('click', () => { steps.push(defaultAction()); render(); });
   $('rtCancel').addEventListener('click', () => SARA.closeOverlay('routineModal'));
 
+  SARA.routineEditor = { get: () => steps, set: (s) => { steps = s; }, render: render };   // used by js/automation-plus.js
   SARA.openRoutineBuilder = function (existing) {
     $('rtError').style.display = 'none';
     editingName = existing ? existing.name : null;

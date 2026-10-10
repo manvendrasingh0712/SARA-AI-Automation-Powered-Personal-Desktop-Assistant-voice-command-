@@ -65,6 +65,11 @@ _TYPO_MIN_WORD_LEN = 5
 _TYPO_CUTOFF = 0.8
 _TRIGGER_VOCAB = set()
 
+try:  # words the typo-rescue pass must never "correct" into a command word
+    from .patterns_multilingual import TYPO_PROTECTED as _TYPO_PROTECTED
+except Exception:  # optional layer
+    _TYPO_PROTECTED = frozenset()
+
 
 def _rebuild_routes() -> None:
     """
@@ -294,7 +299,7 @@ def _correct_typos(text: str) -> str:
     out = []
     for w in words:
         bare = _TYPO_WORD_RE.sub("", w.lower())
-        if len(bare) < _TYPO_MIN_WORD_LEN or bare in _TRIGGER_VOCAB:
+        if len(bare) < _TYPO_MIN_WORD_LEN or bare in _TRIGGER_VOCAB or bare in _TYPO_PROTECTED:
             out.append(w)
             continue
         match = difflib.get_close_matches(
