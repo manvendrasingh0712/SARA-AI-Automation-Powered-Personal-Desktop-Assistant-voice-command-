@@ -1,0 +1,56 @@
+/* ==========================================================================
+   memory-view.css -- Settings > Memory > memory viewer overlay.
+   Markup: index.html #memViewer.  JS: js/memory-view.js.  Token colours only.
+   ========================================================================== */
+.mv-overlay{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:16px;min-width:0;background:color-mix(in srgb,var(--panel) 70%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);}
+.mv-overlay[hidden]{display:none;}
+.mv-card{display:flex;flex-direction:column;gap:10px;width:min(720px,100%);max-height:100%;min-width:0;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:16px;color:var(--text);outline:none;overflow:hidden;}
+.mv-overlay:not([hidden]) .mv-card{animation:mvIn .18s ease-out;}
+@keyframes mvIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.mv-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;min-width:0;}
+.mv-titles{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;}
+.mv-titles h3{margin:0;font-size:16px;font-weight:500;color:var(--text);}
+.mv-sub{font-size:12px;color:var(--muted);overflow-wrap:anywhere;}
+.mv-head .pill-btn{flex:none;}
+.mv-tabs{display:flex;gap:6px;min-width:0;}
+.mv-tab{flex:1 1 0;min-width:0;padding:8px 6px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;color:var(--text-soft);font:inherit;font-size:12.5px;cursor:pointer;overflow-wrap:anywhere;}
+.mv-tab[aria-selected="true"]{border-color:var(--core);color:var(--text);}
+.mv-tab:focus-visible,.mv-act:focus-visible,.mv-search:focus-visible,.mv-edit:focus-visible,.mv-card .pill-btn:focus-visible{outline:2px solid var(--core);outline-offset:2px;}
+.mv-search,.mv-edit{display:block;width:100%;box-sizing:border-box;min-width:0;padding:9px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;color:var(--text);font:inherit;font-size:13px;}
+.mv-note{font-size:12.5px;color:var(--warning);overflow-wrap:anywhere;}
+.mv-note[hidden]{display:none;}
+.mv-list{display:flex;flex-direction:column;gap:8px;flex:1 1 auto;min-width:0;min-height:120px;overflow-x:hidden;overflow-y:auto;}
+.mv-row{display:flex;flex-direction:column;gap:6px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;min-width:0;}
+.mv-row.mv-pinned{border-color:var(--core);}
+.mv-main{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.mv-text{font-size:14px;color:var(--text);overflow-wrap:anywhere;}
+.mv-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:11.5px;color:var(--muted);min-width:0;}
+.mv-dot{flex:none;display:inline-block;width:9px;height:9px;border-radius:50%;}
+.mv-dot-high{background:var(--success);}
+.mv-dot-medium{background:var(--warning);}
+.mv-dot-low{background:var(--danger);}
+.mv-badge{flex:none;padding:1px 8px;border:1px solid currentColor;border-radius:999px;font-size:11px;line-height:1.5;}
+.mv-badge-inferred{color:var(--info);}
+.mv-badge-pin{color:var(--core);}
+.mv-actions{display:flex;flex-wrap:wrap;gap:6px;min-width:0;}
+.mv-act{padding:5px 10px;background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--text-soft);font:inherit;font-size:12px;cursor:pointer;transition:color .15s ease,border-color .15s ease;}
+.mv-act:hover{color:var(--text);border-color:var(--text-soft);}
+.mv-act:disabled{opacity:.5;cursor:default;}
+.mv-act-danger{color:var(--danger);border-color:var(--danger);}
+.mv-act-danger:hover{color:var(--danger);border-color:var(--danger);}
+.mv-confirm{align-self:center;font-size:12.5px;color:var(--danger);}
+.mv-why{padding-top:6px;border-top:1px dashed var(--line);font-size:12px;color:var(--text-soft);overflow-wrap:anywhere;}
+.mv-why[hidden]{display:none;}
+.mv-status{padding:24px 8px;text-align:center;font-size:13px;color:var(--muted);overflow-wrap:anywhere;}
+.mv-more{align-self:center;flex:none;}
+.mv-more[hidden]{display:none;}
+.mv-off .mv-tabs,.mv-off .mv-search{display:none;}
+@media (max-width:480px){
+  .mv-overlay{padding:8px;}
+  .mv-card{padding:12px;border-radius:12px;}
+  .mv-tab{padding:7px 4px;font-size:12px;}
+}
+@media (prefers-reduced-motion:reduce){
+  .mv-overlay:not([hidden]) .mv-card{animation:none;}
+  .mv-act{transition:none;}
+}

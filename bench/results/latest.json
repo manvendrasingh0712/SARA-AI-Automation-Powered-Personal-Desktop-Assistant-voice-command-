@@ -3,10 +3,10 @@
   "python": "3.11.9",
   "os": "Windows-10-10.0.26300-SP0",
   "cpu": "AMD64 Family 25 Model 68 Stepping 1, AuthenticAMD",
-  "git_commit": "2417f4b",
+  "git_commit": "4e2d49e",
   "row_count": 590,
   "mode": "router",
-  "timestamp": "2026-10-02T11:29:53+00:00"
+  "timestamp": "2026-10-05T18:21:00+00:00"
  },
  "metrics": {
   "rows": 590,
@@ -1052,12 +1052,12 @@
   "group_accuracy": 0.810811,
   "group_rows": 74,
   "latency": {
-   "p50": 0.0468,
-   "p95": 0.8733,
-   "p99": 1.1601
+   "p50": 0.0494,
+   "p95": 0.875,
+   "p99": 1.2133
   },
-  "latency_score": 0.995633,
-  "composite": 0.76677
+  "latency_score": 0.995625,
+  "composite": 0.766769
  },
  "results": [
   {
@@ -1068,7 +1068,7 @@
    "pred": "switch_mode",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0036,
+   "latency_ms": 0.0021,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -1081,7 +1081,7 @@
    "pred": "undo_setting_change",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0032,
+   "latency_ms": 0.003,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -1094,7 +1094,7 @@
    "pred": "reminder_add",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0042,
+   "latency_ms": 0.0035,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1107,7 +1107,7 @@
    "pred": "reminder_list",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0048,
+   "latency_ms": 0.0045,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1120,7 +1120,7 @@
    "pred": "reminder_cancel",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.007,
+   "latency_ms": 0.0066,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1133,7 +1133,7 @@
    "pred": "set_timer",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0038,
+   "latency_ms": 0.0034,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1146,7 +1146,7 @@
    "pred": "set_alarm",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0037,
+   "latency_ms": 0.0034,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1159,7 +1159,7 @@
    "pred": "start_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0042,
+   "latency_ms": 0.0041,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1172,7 +1172,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0035,
+   "latency_ms": 0.0033,
    "kind": "positive",
    "style": "short",
    "category": "reminders_time"
@@ -1185,7 +1185,7 @@
    "pred": "stop_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0076,
+   "latency_ms": 0.0071,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -1198,7 +1198,7 @@
    "pred": "take_note",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.005,
+   "latency_ms": 0.0044,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1211,7 +1211,7 @@
    "pred": "read_notes",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0066,
+   "latency_ms": 0.0067,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1224,7 +1224,7 @@
    "pred": "clear_notes",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0093,
+   "latency_ms": 0.0087,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1237,7 +1237,7 @@
    "pred": "add_todo",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0059,
+   "latency_ms": 0.0057,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1250,7 +1250,7 @@
    "pred": "list_todos",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0064,
+   "latency_ms": 0.0062,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1263,7 +1263,7 @@
    "pred": "complete_todo",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0067,
+   "latency_ms": 0.0063,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1276,7 +1276,7 @@
    "pred": "delete_todo",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0136,
+   "latency_ms": 0.013,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -1302,7 +1302,7 @@
    "pred": "clipboard_write",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0103,
+   "latency_ms": 0.0098,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -1315,7 +1315,7 @@
    "pred": "screenshot_describe",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0076,
+   "latency_ms": 0.0071,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -1328,7 +1328,7 @@
    "pred": "weather",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0095,
+   "latency_ms": 0.009,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -1341,7 +1341,7 @@
    "pred": "news",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0099,
+   "latency_ms": 0.0102,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -1354,7 +1354,7 @@
    "pred": "followup_query",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0101,
+   "latency_ms": 0.0089,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -1367,7 +1367,7 @@
    "pred": "play_youtube",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0097,
+   "latency_ms": 0.0094,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -1380,7 +1380,7 @@
    "pred": "play_spotify",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0185,
+   "latency_ms": 0.018,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -1393,7 +1393,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0061,
+   "latency_ms": 0.0058,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -1406,7 +1406,7 @@
    "pred": "summarize_url",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0137,
+   "latency_ms": 0.0141,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -1419,7 +1419,7 @@
    "pred": "open_url",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0115,
+   "latency_ms": 0.0117,
    "kind": "positive",
    "style": "short",
    "category": "web_info"
@@ -1432,7 +1432,7 @@
    "pred": "calculator",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.011,
+   "latency_ms": 0.0104,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -1445,7 +1445,7 @@
    "pred": "system_info",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.014,
+   "latency_ms": 0.0136,
    "kind": "positive",
    "style": "short",
    "category": "system_info"
@@ -1458,7 +1458,7 @@
    "pred": "set_volume",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0175,
+   "latency_ms": 0.0172,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1471,7 +1471,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0176,
+   "latency_ms": 0.0171,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1484,7 +1484,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0144,
+   "latency_ms": 0.014,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1497,7 +1497,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0047,
+   "latency_ms": 0.0044,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -1510,7 +1510,7 @@
    "pred": "sleep_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0229,
+   "latency_ms": 0.0217,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -1523,7 +1523,7 @@
    "pred": "hibernate_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0177,
+   "latency_ms": 0.0156,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -1536,7 +1536,7 @@
    "pred": "log_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0125,
+   "latency_ms": 0.0121,
    "kind": "positive",
    "style": "short",
    "category": "power"
@@ -1549,7 +1549,7 @@
    "pred": "shutdown_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0172,
+   "latency_ms": 0.0169,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -1562,7 +1562,7 @@
    "pred": "restart_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0189,
+   "latency_ms": 0.018,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -1575,7 +1575,7 @@
    "pred": "cancel_shutdown",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0222,
+   "latency_ms": 0.0225,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -1588,7 +1588,7 @@
    "pred": "max_volume",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0164,
+   "latency_ms": 0.0159,
    "kind": "positive",
    "style": "short",
    "category": "volume_brightness"
@@ -1601,7 +1601,7 @@
    "pred": "min_volume",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0338,
+   "latency_ms": 0.0183,
    "kind": "positive",
    "style": "short",
    "category": "volume_brightness"
@@ -1614,7 +1614,7 @@
    "pred": "set_brightness",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0296,
+   "latency_ms": 0.0194,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1627,7 +1627,7 @@
    "pred": "increase_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0399,
+   "latency_ms": 0.026,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1640,7 +1640,7 @@
    "pred": "decrease_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0392,
+   "latency_ms": 0.025,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1653,7 +1653,7 @@
    "pred": "max_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0338,
+   "latency_ms": 0.0204,
    "kind": "positive",
    "style": "short",
    "category": "volume_brightness"
@@ -1666,7 +1666,7 @@
    "pred": "min_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.037,
+   "latency_ms": 0.0275,
    "kind": "positive",
    "style": "short",
    "category": "volume_brightness"
@@ -1679,7 +1679,7 @@
    "pred": "get_brightness_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0478,
+   "latency_ms": 0.0397,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -1692,7 +1692,7 @@
    "pred": "show_desktop",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0588,
+   "latency_ms": 0.0195,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1705,7 +1705,7 @@
    "pred": "minimize_all_windows",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.039,
+   "latency_ms": 0.0214,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1718,7 +1718,7 @@
    "pred": "unmute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0302,
+   "latency_ms": 0.0176,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1731,7 +1731,7 @@
    "pred": "maximize_active_window",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0365,
+   "latency_ms": 0.0214,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1744,7 +1744,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8906,
+   "latency_ms": 0.5085,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1757,7 +1757,7 @@
    "pred": "close_active_window",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.032,
+   "latency_ms": 0.0346,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1770,7 +1770,7 @@
    "pred": "snap_window_left",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0254,
+   "latency_ms": 0.0259,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1783,7 +1783,7 @@
    "pred": "snap_window_right",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0262,
+   "latency_ms": 0.0267,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1796,7 +1796,7 @@
    "pred": "switch_window",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0255,
+   "latency_ms": 0.0253,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1809,7 +1809,7 @@
    "pred": "restart_application",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0282,
+   "latency_ms": 0.0286,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -1822,7 +1822,7 @@
    "pred": "switch_to_application",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.027,
+   "latency_ms": 0.0336,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1835,7 +1835,7 @@
    "pred": "move_window",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0452,
+   "latency_ms": 0.0536,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1848,7 +1848,7 @@
    "pred": "resize_window",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0519,
+   "latency_ms": 0.0515,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1861,7 +1861,7 @@
    "pred": "always_on_top",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0259,
+   "latency_ms": 0.0261,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1874,7 +1874,7 @@
    "pred": "toggle_fullscreen",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0258,
+   "latency_ms": 0.026,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -1887,7 +1887,7 @@
    "pred": "play_pause_media",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0217,
+   "latency_ms": 0.0218,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -1900,7 +1900,7 @@
    "pred": "next_track",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0194,
+   "latency_ms": 0.0197,
    "kind": "positive",
    "style": "short",
    "category": "media"
@@ -1913,7 +1913,7 @@
    "pred": "previous_track",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.022,
+   "latency_ms": 0.0215,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -1926,7 +1926,7 @@
    "pred": "stop_media",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0238,
+   "latency_ms": 0.0982,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -1939,7 +1939,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.3726,
+   "latency_ms": 0.6118,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -1952,7 +1952,7 @@
    "pred": "press_key",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0284,
+   "latency_ms": 0.0397,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -1965,7 +1965,7 @@
    "pred": "copy_selection",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0287,
+   "latency_ms": 0.0376,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -1978,7 +1978,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0441,
+   "latency_ms": 0.0596,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -1991,7 +1991,7 @@
    "pred": "select_all",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0224,
+   "latency_ms": 0.0304,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2004,7 +2004,7 @@
    "pred": "undo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0212,
+   "latency_ms": 0.0266,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2017,7 +2017,7 @@
    "pred": "redo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0173,
+   "latency_ms": 0.0235,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2030,7 +2030,7 @@
    "pred": "new_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0264,
+   "latency_ms": 0.0332,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2043,7 +2043,7 @@
    "pred": "close_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0242,
+   "latency_ms": 0.0299,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2056,7 +2056,7 @@
    "pred": "next_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0316,
+   "latency_ms": 0.0314,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2069,7 +2069,7 @@
    "pred": "switch_to_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0297,
+   "latency_ms": 0.0317,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2082,7 +2082,7 @@
    "pred": "reload_page",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.028,
+   "latency_ms": 0.0282,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2095,7 +2095,7 @@
    "pred": "zoom_in",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0207,
+   "latency_ms": 0.0208,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2108,7 +2108,7 @@
    "pred": "zoom_out",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0224,
+   "latency_ms": 0.0216,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2121,7 +2121,7 @@
    "pred": "zoom_reset",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0237,
+   "latency_ms": 0.0236,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2134,7 +2134,7 @@
    "pred": "scroll_up",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.025,
+   "latency_ms": 0.0248,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2147,7 +2147,7 @@
    "pred": "scroll_down",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0243,
+   "latency_ms": 0.0241,
    "kind": "positive",
    "style": "short",
    "category": "keyboard_mouse"
@@ -2160,7 +2160,7 @@
    "pred": "scroll_top",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0378,
+   "latency_ms": 0.0375,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2173,7 +2173,7 @@
    "pred": "scroll_bottom",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0367,
+   "latency_ms": 0.036,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -2199,7 +2199,7 @@
    "pred": "wifi_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0265,
+   "latency_ms": 0.0257,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2212,7 +2212,7 @@
    "pred": "unmute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0161,
+   "latency_ms": 0.0159,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2225,7 +2225,7 @@
    "pred": "bluetooth_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0304,
+   "latency_ms": 0.03,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2238,7 +2238,7 @@
    "pred": "switch_to_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0301,
+   "latency_ms": 0.0292,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2251,7 +2251,7 @@
    "pred": "light_mode",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0311,
+   "latency_ms": 0.0407,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2264,7 +2264,7 @@
    "pred": "web_search",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0133,
+   "latency_ms": 0.0138,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2277,7 +2277,7 @@
    "pred": "empty_recycle_bin",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0302,
+   "latency_ms": 0.0309,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2290,7 +2290,7 @@
    "pred": "notify_on_file",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0568,
+   "latency_ms": 0.0553,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2303,7 +2303,7 @@
    "pred": "open_downloads",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0389,
+   "latency_ms": 0.0384,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2316,7 +2316,7 @@
    "pred": "open_documents",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0313,
+   "latency_ms": 0.0311,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2329,7 +2329,7 @@
    "pred": "open_desktop_folder",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0392,
+   "latency_ms": 0.0388,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2342,7 +2342,7 @@
    "pred": "open_pictures",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0305,
+   "latency_ms": 0.0311,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2355,7 +2355,7 @@
    "pred": "open_music",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0337,
+   "latency_ms": 0.0339,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2368,7 +2368,7 @@
    "pred": "open_videos",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0289,
+   "latency_ms": 0.0285,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2381,7 +2381,7 @@
    "pred": "open_this_pc",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0295,
+   "latency_ms": 0.0296,
    "kind": "positive",
    "style": "short",
    "category": "files_folders"
@@ -2394,7 +2394,7 @@
    "pred": "open_recycle_bin",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0349,
+   "latency_ms": 0.0344,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -2407,7 +2407,7 @@
    "pred": "open_file_explorer",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0342,
+   "latency_ms": 0.0494,
    "kind": "positive",
    "style": "short",
    "category": "files_folders"
@@ -2420,7 +2420,7 @@
    "pred": "open_control_panel",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0327,
+   "latency_ms": 0.0333,
    "kind": "positive",
    "style": "short",
    "category": "settings_pages"
@@ -2433,7 +2433,7 @@
    "pred": "open_task_manager",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0369,
+   "latency_ms": 0.0363,
    "kind": "positive",
    "style": "short",
    "category": "settings_pages"
@@ -2446,7 +2446,7 @@
    "pred": "open_display_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0425,
+   "latency_ms": 0.0424,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2459,7 +2459,7 @@
    "pred": "open_sound_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0338,
+   "latency_ms": 0.0335,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2472,7 +2472,7 @@
    "pred": "open_bluetooth_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0395,
+   "latency_ms": 0.0385,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2485,7 +2485,7 @@
    "pred": "open_network_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0347,
+   "latency_ms": 0.0348,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2498,7 +2498,7 @@
    "pred": "open_update_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0484,
+   "latency_ms": 0.0459,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2511,7 +2511,7 @@
    "pred": "open_apps_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0408,
+   "latency_ms": 0.0406,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2524,7 +2524,7 @@
    "pred": "open_personalization_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0413,
+   "latency_ms": 0.0464,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2537,7 +2537,7 @@
    "pred": "open_privacy_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0356,
+   "latency_ms": 0.0578,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2550,7 +2550,7 @@
    "pred": "open_storage_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0358,
+   "latency_ms": 0.0517,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2563,7 +2563,7 @@
    "pred": "open_power_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0361,
+   "latency_ms": 0.0568,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2576,7 +2576,7 @@
    "pred": "open_about_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0337,
+   "latency_ms": 0.0581,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2589,7 +2589,7 @@
    "pred": "open_nightlight_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.035,
+   "latency_ms": 0.1038,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2602,7 +2602,7 @@
    "pred": "unmute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0288,
+   "latency_ms": 0.0355,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -2615,7 +2615,7 @@
    "pred": "system_info",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0151,
+   "latency_ms": 0.0478,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -2628,7 +2628,7 @@
    "pred": "uptime",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0329,
+   "latency_ms": 0.0553,
    "kind": "positive",
    "style": "short",
    "category": "system_info"
@@ -2641,7 +2641,7 @@
    "pred": "local_ip",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0406,
+   "latency_ms": 0.062,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -2654,7 +2654,7 @@
    "pred": "gpu_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0304,
+   "latency_ms": 0.0508,
    "kind": "positive",
    "style": "short",
    "category": "system_info"
@@ -2667,7 +2667,7 @@
    "pred": "temperature_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0388,
+   "latency_ms": 0.0786,
    "kind": "positive",
    "style": "short",
    "category": "system_info"
@@ -2680,7 +2680,7 @@
    "pred": "process_list",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0374,
+   "latency_ms": 0.0603,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -2693,7 +2693,7 @@
    "pred": "list_services",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0396,
+   "latency_ms": 0.064,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -2706,7 +2706,7 @@
    "pred": "start_service",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0456,
+   "latency_ms": 0.0703,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -2719,7 +2719,7 @@
    "pred": "stop_service",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.063,
+   "latency_ms": 0.096,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -2732,7 +2732,7 @@
    "pred": "time_query",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0357,
+   "latency_ms": 0.0865,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -2745,7 +2745,7 @@
    "pred": "date_query",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0379,
+   "latency_ms": 0.0639,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -2758,7 +2758,7 @@
    "pred": "calendar_today",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0478,
+   "latency_ms": 0.0804,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -2771,7 +2771,7 @@
    "pred": "calendar_create",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0684,
+   "latency_ms": 0.1074,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -2784,7 +2784,7 @@
    "pred": "why_proactive",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0372,
+   "latency_ms": 0.0627,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -2797,7 +2797,7 @@
    "pred": "why_decision",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0539,
+   "latency_ms": 0.1099,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -2810,7 +2810,7 @@
    "pred": "memory_forget_all",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0468,
+   "latency_ms": 0.0556,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -2823,7 +2823,7 @@
    "pred": "memory_forget_specific",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0451,
+   "latency_ms": 0.0453,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -2836,7 +2836,7 @@
    "pred": "memory_recall",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0479,
+   "latency_ms": 0.0486,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -2849,7 +2849,7 @@
    "pred": "run_routine",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0403,
+   "latency_ms": 0.0409,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -2862,7 +2862,7 @@
    "pred": "open_app",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0494,
+   "latency_ms": 0.0501,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -2875,7 +2875,7 @@
    "pred": "close_app",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0393,
+   "latency_ms": 0.0413,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -2888,7 +2888,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.6816,
+   "latency_ms": 0.3477,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -2901,7 +2901,7 @@
    "pred": "undo_setting_change",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0102,
+   "latency_ms": 0.0057,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -2914,7 +2914,7 @@
    "pred": "reminder_add",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0071,
+   "latency_ms": 0.0042,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -2927,7 +2927,7 @@
    "pred": "reminder_list",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0084,
+   "latency_ms": 0.005,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -2940,7 +2940,7 @@
    "pred": "reminder_cancel",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0139,
+   "latency_ms": 0.0081,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -2953,7 +2953,7 @@
    "pred": "set_timer",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0067,
+   "latency_ms": 0.0043,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -2966,7 +2966,7 @@
    "pred": "set_alarm",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0062,
+   "latency_ms": 0.0037,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -2979,7 +2979,7 @@
    "pred": "start_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0078,
+   "latency_ms": 0.0052,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -2992,7 +2992,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0075,
+   "latency_ms": 0.0049,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -3005,7 +3005,7 @@
    "pred": "stop_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0118,
+   "latency_ms": 0.0066,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -3018,7 +3018,7 @@
    "pred": "take_note",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0082,
+   "latency_ms": 0.005,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3031,7 +3031,7 @@
    "pred": "read_notes",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0187,
+   "latency_ms": 0.0057,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3044,7 +3044,7 @@
    "pred": "clear_notes",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0119,
+   "latency_ms": 0.0087,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3057,7 +3057,7 @@
    "pred": "add_todo",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0078,
+   "latency_ms": 0.0064,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3070,7 +3070,7 @@
    "pred": "list_todos",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0081,
+   "latency_ms": 0.0066,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3083,7 +3083,7 @@
    "pred": "complete_todo",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0083,
+   "latency_ms": 0.0075,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3096,7 +3096,7 @@
    "pred": "delete_todo",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0183,
+   "latency_ms": 0.0161,
    "kind": "positive",
    "style": "noisy",
    "category": "notes_todos"
@@ -3109,7 +3109,7 @@
    "pred": "clipboard_read",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0079,
+   "latency_ms": 0.0073,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3122,7 +3122,7 @@
    "pred": "clipboard_write",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0128,
+   "latency_ms": 0.012,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3135,7 +3135,7 @@
    "pred": "screenshot_describe",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0078,
+   "latency_ms": 0.007,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -3148,7 +3148,7 @@
    "pred": "weather",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0094,
+   "latency_ms": 0.0082,
    "kind": "positive",
    "style": "noisy",
    "category": "web_info"
@@ -3161,7 +3161,7 @@
    "pred": "news",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0107,
+   "latency_ms": 0.01,
    "kind": "positive",
    "style": "noisy",
    "category": "web_info"
@@ -3174,7 +3174,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.7749,
+   "latency_ms": 0.7195,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -3200,7 +3200,7 @@
    "pred": "play_spotify",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0201,
+   "latency_ms": 0.0194,
    "kind": "positive",
    "style": "noisy",
    "category": "media"
@@ -3213,7 +3213,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0071,
+   "latency_ms": 0.0062,
    "kind": "positive",
    "style": "noisy",
    "category": "web_info"
@@ -3226,7 +3226,7 @@
    "pred": "summarize_url",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.014,
+   "latency_ms": 0.0137,
    "kind": "positive",
    "style": "noisy",
    "category": "web_info"
@@ -3239,7 +3239,7 @@
    "pred": "open_url",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0262,
+   "latency_ms": 0.0111,
    "kind": "positive",
    "style": "noisy",
    "category": "web_info"
@@ -3252,7 +3252,7 @@
    "pred": "calculator",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0113,
+   "latency_ms": 0.0114,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -3265,7 +3265,7 @@
    "pred": "system_info",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0159,
+   "latency_ms": 0.0152,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -3278,7 +3278,7 @@
    "pred": "set_volume",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0177,
+   "latency_ms": 0.0174,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3291,7 +3291,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0183,
+   "latency_ms": 0.0174,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3304,7 +3304,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0133,
+   "latency_ms": 0.0126,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3317,7 +3317,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0054,
+   "latency_ms": 0.005,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3330,7 +3330,7 @@
    "pred": "sleep_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.022,
+   "latency_ms": 0.0205,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3343,7 +3343,7 @@
    "pred": "hibernate_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.015,
+   "latency_ms": 0.0148,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3356,7 +3356,7 @@
    "pred": "log_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0148,
+   "latency_ms": 0.0144,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3369,7 +3369,7 @@
    "pred": "shutdown_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0152,
+   "latency_ms": 0.0142,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3382,7 +3382,7 @@
    "pred": "restart_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0181,
+   "latency_ms": 0.0177,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3395,7 +3395,7 @@
    "pred": "cancel_shutdown",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0191,
+   "latency_ms": 0.0187,
    "kind": "positive",
    "style": "noisy",
    "category": "power"
@@ -3408,7 +3408,7 @@
    "pred": "max_volume",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0167,
+   "latency_ms": 0.0159,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3421,7 +3421,7 @@
    "pred": "min_volume",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0196,
+   "latency_ms": 0.019,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3434,7 +3434,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0603,
+   "latency_ms": 0.0585,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3447,7 +3447,7 @@
    "pred": "increase_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0289,
+   "latency_ms": 0.0287,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3460,7 +3460,7 @@
    "pred": "decrease_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0229,
+   "latency_ms": 0.0233,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3473,7 +3473,7 @@
    "pred": "max_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0225,
+   "latency_ms": 0.0223,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3486,7 +3486,7 @@
    "pred": "min_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0284,
+   "latency_ms": 0.0287,
    "kind": "positive",
    "style": "noisy",
    "category": "volume_brightness"
@@ -3512,7 +3512,7 @@
    "pred": "show_desktop",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0177,
+   "latency_ms": 0.0175,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3525,7 +3525,7 @@
    "pred": "minimize_all_windows",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0222,
+   "latency_ms": 0.022,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3538,7 +3538,7 @@
    "pred": "unmute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0173,
+   "latency_ms": 0.0165,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3551,7 +3551,7 @@
    "pred": "maximize_active_window",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0218,
+   "latency_ms": 0.0213,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3564,7 +3564,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5026,
+   "latency_ms": 0.3812,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3577,7 +3577,7 @@
    "pred": "close_app",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0741,
+   "latency_ms": 0.0906,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3590,7 +3590,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0721,
+   "latency_ms": 0.055,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3603,7 +3603,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0642,
+   "latency_ms": 0.0634,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3616,7 +3616,7 @@
    "pred": "switch_window",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0242,
+   "latency_ms": 0.0244,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3629,7 +3629,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.3909,
+   "latency_ms": 0.358,
    "kind": "positive",
    "style": "noisy",
    "category": "apps"
@@ -3642,7 +3642,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": true,
-   "latency_ms": 0.0574,
+   "latency_ms": 0.0545,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3655,7 +3655,7 @@
    "pred": "move_window",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0427,
+   "latency_ms": 0.0658,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3668,7 +3668,7 @@
    "pred": "resize_window",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0585,
+   "latency_ms": 0.0739,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3681,7 +3681,7 @@
    "pred": "always_on_top",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0295,
+   "latency_ms": 0.0367,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3694,7 +3694,7 @@
    "pred": "toggle_fullscreen",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0299,
+   "latency_ms": 0.0363,
    "kind": "positive",
    "style": "noisy",
    "category": "windows"
@@ -3707,7 +3707,7 @@
    "pred": "play_pause_media",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0207,
+   "latency_ms": 0.0255,
    "kind": "positive",
    "style": "noisy",
    "category": "media"
@@ -3720,7 +3720,7 @@
    "pred": "next_track",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0208,
+   "latency_ms": 0.0261,
    "kind": "positive",
    "style": "noisy",
    "category": "media"
@@ -3733,7 +3733,7 @@
    "pred": "previous_track",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0229,
+   "latency_ms": 0.0288,
    "kind": "positive",
    "style": "noisy",
    "category": "media"
@@ -3746,7 +3746,7 @@
    "pred": "stop_media",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0297,
+   "latency_ms": 0.0315,
    "kind": "positive",
    "style": "noisy",
    "category": "media"
@@ -3759,7 +3759,7 @@
    "pred": "chat",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.3354,
+   "latency_ms": 0.4313,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3772,7 +3772,7 @@
    "pred": "press_key",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0286,
+   "latency_ms": 0.0371,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3785,7 +3785,7 @@
    "pred": "copy_selection",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0284,
+   "latency_ms": 0.0492,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3798,7 +3798,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0435,
+   "latency_ms": 0.056,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3811,7 +3811,7 @@
    "pred": "select_all",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0256,
+   "latency_ms": 0.033,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3824,7 +3824,7 @@
    "pred": "undo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0234,
+   "latency_ms": 0.0288,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3837,7 +3837,7 @@
    "pred": "redo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0222,
+   "latency_ms": 0.0251,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3850,7 +3850,7 @@
    "pred": "new_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0248,
+   "latency_ms": 0.0246,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3863,7 +3863,7 @@
    "pred": "close_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0241,
+   "latency_ms": 0.0238,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3876,7 +3876,7 @@
    "pred": "next_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0279,
+   "latency_ms": 0.0278,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3889,7 +3889,7 @@
    "pred": "prev_tab",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0435,
+   "latency_ms": 0.0444,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3902,7 +3902,7 @@
    "pred": "reload_page",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.025,
+   "latency_ms": 0.0251,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3915,7 +3915,7 @@
    "pred": "zoom_in",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.023,
+   "latency_ms": 0.0225,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3928,7 +3928,7 @@
    "pred": "zoom_out",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0259,
+   "latency_ms": 0.0258,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3941,7 +3941,7 @@
    "pred": "zoom_reset",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0257,
+   "latency_ms": 0.0254,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3954,7 +3954,7 @@
    "pred": "scroll_up",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0239,
+   "latency_ms": 0.0237,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3967,7 +3967,7 @@
    "pred": "scroll_down",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0254,
+   "latency_ms": 0.0252,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3980,7 +3980,7 @@
    "pred": "scroll_top",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0352,
+   "latency_ms": 0.0355,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -3993,7 +3993,7 @@
    "pred": "scroll_bottom",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0337,
+   "latency_ms": 0.0328,
    "kind": "positive",
    "style": "noisy",
    "category": "keyboard_mouse"
@@ -4019,7 +4019,7 @@
    "pred": "wifi_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0307,
+   "latency_ms": 0.0414,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4032,7 +4032,7 @@
    "pred": "unmute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0165,
+   "latency_ms": 0.0164,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4045,7 +4045,7 @@
    "pred": "bluetooth_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0327,
+   "latency_ms": 0.0322,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4071,7 +4071,7 @@
    "pred": "light_mode",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0335,
+   "latency_ms": 0.0338,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4084,7 +4084,7 @@
    "pred": "web_search",
    "groups_ok": false,
    "gate_open": false,
-   "latency_ms": 0.0128,
+   "latency_ms": 0.0123,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4110,7 +4110,7 @@
    "pred": "notify_on_file",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0521,
+   "latency_ms": 0.0516,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4123,7 +4123,7 @@
    "pred": "open_downloads",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0372,
+   "latency_ms": 0.0374,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4136,7 +4136,7 @@
    "pred": "open_documents",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0439,
+   "latency_ms": 0.035,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4149,7 +4149,7 @@
    "pred": "open_desktop_folder",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0384,
+   "latency_ms": 0.0495,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4162,7 +4162,7 @@
    "pred": "open_pictures",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0323,
+   "latency_ms": 0.0381,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4175,7 +4175,7 @@
    "pred": "open_music",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0326,
+   "latency_ms": 0.0352,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4188,7 +4188,7 @@
    "pred": "open_videos",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0305,
+   "latency_ms": 0.0318,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4201,7 +4201,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.0428,
+   "latency_ms": 0.045,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4214,7 +4214,7 @@
    "pred": "open_recycle_bin",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.033,
+   "latency_ms": 0.035,
    "kind": "positive",
    "style": "noisy",
    "category": "files_folders"
@@ -4240,7 +4240,7 @@
    "pred": "open_control_panel",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0351,
+   "latency_ms": 0.0356,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4253,7 +4253,7 @@
    "pred": "open_task_manager",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0419,
+   "latency_ms": 0.0418,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4266,7 +4266,7 @@
    "pred": "open_display_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0449,
+   "latency_ms": 0.045,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4279,7 +4279,7 @@
    "pred": "open_sound_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0376,
+   "latency_ms": 0.0371,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4292,7 +4292,7 @@
    "pred": "open_bluetooth_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.041,
+   "latency_ms": 0.0416,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4305,7 +4305,7 @@
    "pred": "open_network_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0368,
+   "latency_ms": 0.0366,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4318,7 +4318,7 @@
    "pred": "open_update_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0523,
+   "latency_ms": 0.0518,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4331,7 +4331,7 @@
    "pred": "open_apps_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0432,
+   "latency_ms": 0.0429,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4344,7 +4344,7 @@
    "pred": "open_personalization_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0438,
+   "latency_ms": 0.0433,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4357,7 +4357,7 @@
    "pred": "open_privacy_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0368,
+   "latency_ms": 0.0365,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4370,7 +4370,7 @@
    "pred": "open_storage_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0427,
+   "latency_ms": 0.0397,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4383,7 +4383,7 @@
    "pred": "open_power_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0507,
+   "latency_ms": 0.0374,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4396,7 +4396,7 @@
    "pred": "open_about_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0679,
+   "latency_ms": 0.0389,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4409,7 +4409,7 @@
    "pred": "open_nightlight_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0585,
+   "latency_ms": 0.0372,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4422,7 +4422,7 @@
    "pred": "unmute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0341,
+   "latency_ms": 0.0205,
    "kind": "positive",
    "style": "noisy",
    "category": "settings_pages"
@@ -4435,7 +4435,7 @@
    "pred": "system_info",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0251,
+   "latency_ms": 0.0168,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4448,7 +4448,7 @@
    "pred": "uptime",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0497,
+   "latency_ms": 0.0366,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4461,7 +4461,7 @@
    "pred": "local_ip",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0615,
+   "latency_ms": 0.0366,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4474,7 +4474,7 @@
    "pred": "gpu_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0521,
+   "latency_ms": 0.0322,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4487,7 +4487,7 @@
    "pred": "temperature_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0451,
+   "latency_ms": 0.0424,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4500,7 +4500,7 @@
    "pred": "process_list",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0421,
+   "latency_ms": 0.0383,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4513,7 +4513,7 @@
    "pred": "list_services",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0506,
+   "latency_ms": 0.0412,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4526,7 +4526,7 @@
    "pred": "start_service",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0438,
+   "latency_ms": 0.0413,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4539,7 +4539,7 @@
    "pred": "stop_service",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0573,
+   "latency_ms": 0.0546,
    "kind": "positive",
    "style": "noisy",
    "category": "system_info"
@@ -4552,7 +4552,7 @@
    "pred": "time_query",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0354,
+   "latency_ms": 0.0339,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -4565,7 +4565,7 @@
    "pred": "date_query",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0499,
+   "latency_ms": 0.0391,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -4578,7 +4578,7 @@
    "pred": "calendar_today",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0755,
+   "latency_ms": 0.0453,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -4591,7 +4591,7 @@
    "pred": "calendar_create",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.1205,
+   "latency_ms": 0.0669,
    "kind": "positive",
    "style": "noisy",
    "category": "reminders_time"
@@ -4604,7 +4604,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0808,
+   "latency_ms": 0.2227,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -4617,7 +4617,7 @@
    "pred": "why_decision",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0789,
+   "latency_ms": 0.06,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -4630,7 +4630,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3088,
+   "latency_ms": 0.3007,
    "kind": "positive",
    "style": "noisy",
    "category": "memory"
@@ -4643,7 +4643,7 @@
    "pred": "memory_forget_specific",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.05,
+   "latency_ms": 0.0502,
    "kind": "positive",
    "style": "noisy",
    "category": "memory"
@@ -4656,7 +4656,7 @@
    "pred": "memory_recall",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0547,
+   "latency_ms": 0.0553,
    "kind": "positive",
    "style": "noisy",
    "category": "memory"
@@ -4669,7 +4669,7 @@
    "pred": "run_routine",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0451,
+   "latency_ms": 0.0457,
    "kind": "positive",
    "style": "noisy",
    "category": "misc"
@@ -4682,7 +4682,7 @@
    "pred": "open_app",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0624,
+   "latency_ms": 0.0554,
    "kind": "positive",
    "style": "noisy",
    "category": "apps"
@@ -4695,7 +4695,7 @@
    "pred": "close_app",
    "groups_ok": true,
    "gate_open": false,
-   "latency_ms": 0.0451,
+   "latency_ms": 0.0434,
    "kind": "positive",
    "style": "noisy",
    "category": "apps"
@@ -4708,7 +4708,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.387,
+   "latency_ms": 0.4804,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -4721,7 +4721,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4635,
+   "latency_ms": 0.3831,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -4734,7 +4734,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5962,
+   "latency_ms": 0.5926,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4747,7 +4747,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.011,
+   "latency_ms": 0.9954,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4760,7 +4760,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.717,
+   "latency_ms": 0.7094,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4773,7 +4773,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4896,
+   "latency_ms": 0.4762,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4786,7 +4786,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.3173,
+   "latency_ms": 0.3244,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4799,7 +4799,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.0611,
+   "latency_ms": 0.0632,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4812,7 +4812,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0076,
+   "latency_ms": 0.0078,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4825,7 +4825,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.0543,
+   "latency_ms": 0.0623,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -4838,7 +4838,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4711,
+   "latency_ms": 0.3824,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4851,7 +4851,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8669,
+   "latency_ms": 0.9975,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4864,7 +4864,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6463,
+   "latency_ms": 0.8297,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4877,7 +4877,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6601,
+   "latency_ms": 0.862,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4890,7 +4890,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3482,
+   "latency_ms": 0.4804,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4903,7 +4903,7 @@
    "pred": "complete_todo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0236,
+   "latency_ms": 0.0313,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4916,7 +4916,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3888,
+   "latency_ms": 0.5501,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -4929,7 +4929,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.5438,
+   "latency_ms": 0.4648,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -4942,7 +4942,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.5756,
+   "latency_ms": 0.9299,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -4955,7 +4955,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3475,
+   "latency_ms": 0.3927,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -4968,7 +4968,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.6112,
+   "latency_ms": 0.5955,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -4981,7 +4981,7 @@
    "pred": "news",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0169,
+   "latency_ms": 0.0166,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -4994,7 +4994,7 @@
    "pred": "followup_query",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0115,
+   "latency_ms": 0.0117,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -5007,7 +5007,7 @@
    "pred": "play_youtube",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0114,
+   "latency_ms": 0.011,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -5020,7 +5020,7 @@
    "pred": "play_spotify",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0098,
+   "latency_ms": 0.0099,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -5033,7 +5033,7 @@
    "pred": "web_search",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0132,
+   "latency_ms": 0.0135,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -5046,7 +5046,7 @@
    "pred": "news",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0188,
+   "latency_ms": 0.0183,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -5059,7 +5059,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9667,
+   "latency_ms": 0.9845,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -5072,7 +5072,7 @@
    "pred": "calculator",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0261,
+   "latency_ms": 0.0177,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -5085,7 +5085,7 @@
    "pred": "system_info",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0317,
+   "latency_ms": 0.0212,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -5098,7 +5098,7 @@
    "pred": "set_volume",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0259,
+   "latency_ms": 0.0169,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5111,7 +5111,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0241,
+   "latency_ms": 0.0151,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5124,7 +5124,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0244,
+   "latency_ms": 0.015,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5137,7 +5137,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0756,
+   "latency_ms": 0.0476,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5150,7 +5150,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0106,
+   "latency_ms": 0.005,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5163,7 +5163,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5079,
+   "latency_ms": 0.4918,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5176,7 +5176,7 @@
    "pred": "log_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0193,
+   "latency_ms": 0.0222,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5189,7 +5189,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3291,
+   "latency_ms": 0.4052,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5202,7 +5202,7 @@
    "pred": "lap_stopwatch",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0076,
+   "latency_ms": 0.0068,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5215,7 +5215,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4459,
+   "latency_ms": 0.3384,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -5228,7 +5228,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0533,
+   "latency_ms": 0.0568,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5241,7 +5241,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3584,
+   "latency_ms": 0.3646,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5254,7 +5254,7 @@
    "pred": "set_brightness",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0229,
+   "latency_ms": 0.0234,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5267,7 +5267,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6334,
+   "latency_ms": 0.6228,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5280,7 +5280,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0541,
+   "latency_ms": 0.0546,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5293,7 +5293,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0542,
+   "latency_ms": 0.0556,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5306,7 +5306,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3039,
+   "latency_ms": 0.3003,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5319,7 +5319,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3036,
+   "latency_ms": 0.2957,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -5332,7 +5332,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3539,
+   "latency_ms": 0.3877,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5345,7 +5345,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6908,
+   "latency_ms": 0.7026,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5358,7 +5358,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.447,
+   "latency_ms": 0.4585,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5371,7 +5371,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0541,
+   "latency_ms": 0.0558,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5384,7 +5384,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0541,
+   "latency_ms": 0.0553,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5397,7 +5397,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0749,
+   "latency_ms": 0.0757,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5410,7 +5410,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0934,
+   "latency_ms": 0.0834,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5423,7 +5423,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.1162,
+   "latency_ms": 0.0571,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5436,7 +5436,7 @@
    "pred": "switch_to_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0601,
+   "latency_ms": 0.035,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5449,7 +5449,7 @@
    "pred": "restart_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0462,
+   "latency_ms": 0.0275,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -5462,7 +5462,7 @@
    "pred": "switch_to_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0375,
+   "latency_ms": 0.0223,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5475,7 +5475,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4768,
+   "latency_ms": 0.4115,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5488,7 +5488,7 @@
    "pred": "resize_window",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0541,
+   "latency_ms": 0.0839,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5501,7 +5501,7 @@
    "pred": "scroll_top",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0804,
+   "latency_ms": 0.1288,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5514,7 +5514,7 @@
    "pred": "toggle_fullscreen",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0333,
+   "latency_ms": 0.0582,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -5527,7 +5527,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2961,
+   "latency_ms": 0.4783,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -5540,7 +5540,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7329,
+   "latency_ms": 0.597,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -5553,7 +5553,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8322,
+   "latency_ms": 0.8337,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -5566,7 +5566,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0458,
+   "latency_ms": 0.048,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -5579,7 +5579,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3481,
+   "latency_ms": 0.3447,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5592,7 +5592,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6371,
+   "latency_ms": 1.264,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5605,7 +5605,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4548,
+   "latency_ms": 0.4434,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5618,7 +5618,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2917,
+   "latency_ms": 0.2864,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5631,7 +5631,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0513,
+   "latency_ms": 0.0492,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5644,7 +5644,7 @@
    "pred": "undo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.025,
+   "latency_ms": 0.0251,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5657,7 +5657,7 @@
    "pred": "redo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0232,
+   "latency_ms": 0.0225,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5670,7 +5670,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3289,
+   "latency_ms": 0.3617,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5683,7 +5683,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0515,
+   "latency_ms": 0.0538,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5696,7 +5696,7 @@
    "pred": "switch_to_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0256,
+   "latency_ms": 0.0268,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5709,7 +5709,7 @@
    "pred": "switch_to_application",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0271,
+   "latency_ms": 0.0275,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5722,7 +5722,7 @@
    "pred": "reload_page",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0298,
+   "latency_ms": 0.0295,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5735,7 +5735,7 @@
    "pred": "zoom_in",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0236,
+   "latency_ms": 0.0234,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5748,7 +5748,7 @@
    "pred": "zoom_out",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0294,
+   "latency_ms": 0.0284,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5761,7 +5761,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6387,
+   "latency_ms": 0.3496,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5774,7 +5774,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5405,
+   "latency_ms": 0.321,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5787,7 +5787,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3679,
+   "latency_ms": 0.3398,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5800,7 +5800,7 @@
    "pred": "scroll_top",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0512,
+   "latency_ms": 0.0442,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5813,7 +5813,7 @@
    "pred": "scroll_bottom",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0559,
+   "latency_ms": 0.0409,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -5826,7 +5826,7 @@
    "pred": "wifi_on",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0299,
+   "latency_ms": 0.0262,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -5839,7 +5839,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0537,
+   "latency_ms": 0.0522,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -5852,7 +5852,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3277,
+   "latency_ms": 0.3021,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -5865,7 +5865,7 @@
    "pred": "bluetooth_off",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0349,
+   "latency_ms": 0.0316,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -5878,7 +5878,7 @@
    "pred": "dark_mode",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0318,
+   "latency_ms": 0.0306,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -5891,7 +5891,7 @@
    "pred": "light_mode",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.031,
+   "latency_ms": 0.0302,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -5904,7 +5904,7 @@
    "pred": "undo",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0332,
+   "latency_ms": 0.0322,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5917,7 +5917,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3006,
+   "latency_ms": 0.296,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5930,7 +5930,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3032,
+   "latency_ms": 0.3107,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5943,7 +5943,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9936,
+   "latency_ms": 1.0516,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5956,7 +5956,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7064,
+   "latency_ms": 0.7186,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5969,7 +5969,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6235,
+   "latency_ms": 0.6181,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5982,7 +5982,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9858,
+   "latency_ms": 1.0121,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -5995,7 +5995,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.0195,
+   "latency_ms": 0.6776,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -6008,7 +6008,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7984,
+   "latency_ms": 0.7267,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -6021,7 +6021,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3107,
+   "latency_ms": 0.3082,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -6034,7 +6034,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3028,
+   "latency_ms": 0.3377,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -6047,7 +6047,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3201,
+   "latency_ms": 0.3268,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -6060,7 +6060,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6212,
+   "latency_ms": 1.0261,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6073,7 +6073,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6994,
+   "latency_ms": 1.1489,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6086,7 +6086,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5968,
+   "latency_ms": 0.7261,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6099,7 +6099,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3164,
+   "latency_ms": 0.3871,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6112,7 +6112,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.3251,
+   "latency_ms": 0.6827,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6125,7 +6125,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9381,
+   "latency_ms": 0.6734,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6138,7 +6138,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8378,
+   "latency_ms": 0.6888,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6151,7 +6151,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3007,
+   "latency_ms": 0.2919,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6164,7 +6164,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0504,
+   "latency_ms": 0.0499,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6177,7 +6177,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5986,
+   "latency_ms": 0.5782,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6190,7 +6190,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5745,
+   "latency_ms": 0.5724,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6203,7 +6203,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3172,
+   "latency_ms": 0.3125,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6216,7 +6216,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.0828,
+   "latency_ms": 1.2174,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6229,7 +6229,7 @@
    "pred": "open_nightlight_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0402,
+   "latency_ms": 0.0408,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6242,7 +6242,7 @@
    "pred": "open_airplane_mode_settings",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0412,
+   "latency_ms": 0.042,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6268,7 +6268,7 @@
    "pred": "uptime",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0393,
+   "latency_ms": 0.0392,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6281,7 +6281,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6568,
+   "latency_ms": 0.6706,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6294,7 +6294,7 @@
    "pred": "gpu_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0409,
+   "latency_ms": 0.0504,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6307,7 +6307,7 @@
    "pred": "temperature_status",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0385,
+   "latency_ms": 0.0473,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6320,7 +6320,7 @@
    "pred": "process_list",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0397,
+   "latency_ms": 0.0411,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6333,7 +6333,7 @@
    "pred": "list_services",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0374,
+   "latency_ms": 0.0377,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6346,7 +6346,7 @@
    "pred": "start_service",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0692,
+   "latency_ms": 0.0493,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6359,7 +6359,7 @@
    "pred": "stop_service",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.1204,
+   "latency_ms": 0.0679,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -6372,7 +6372,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0712,
+   "latency_ms": 0.0478,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6385,7 +6385,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0967,
+   "latency_ms": 0.0507,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6398,7 +6398,7 @@
    "pred": "calendar_today",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0686,
+   "latency_ms": 0.0413,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6411,7 +6411,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2436,
+   "latency_ms": 0.1737,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6424,7 +6424,7 @@
    "pred": "why_proactive",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0478,
+   "latency_ms": 0.0434,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -6437,7 +6437,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4169,
+   "latency_ms": 0.4098,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -6450,7 +6450,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3295,
+   "latency_ms": 0.3192,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -6463,7 +6463,7 @@
    "pred": "memory_forget_specific",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0683,
+   "latency_ms": 0.0565,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -6476,7 +6476,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5578,
+   "latency_ms": 0.5492,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -6489,7 +6489,7 @@
    "pred": "run_routine",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0486,
+   "latency_ms": 0.0505,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -6502,7 +6502,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3412,
+   "latency_ms": 0.3416,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -6515,7 +6515,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5289,
+   "latency_ms": 0.464,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -6528,7 +6528,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3247,
+   "latency_ms": 1.1958,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -6541,7 +6541,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3379,
+   "latency_ms": 0.6669,
    "kind": "positive",
    "style": "casual",
    "category": "apps"
@@ -6554,7 +6554,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2865,
+   "latency_ms": 0.307,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6567,7 +6567,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5167,
+   "latency_ms": 0.5435,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6580,7 +6580,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5897,
+   "latency_ms": 0.5901,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6593,7 +6593,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2824,
+   "latency_ms": 0.4669,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6606,7 +6606,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7042,
+   "latency_ms": 0.5904,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6619,7 +6619,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5409,
+   "latency_ms": 0.3204,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6632,7 +6632,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.757,
+   "latency_ms": 0.5417,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6645,7 +6645,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3261,
+   "latency_ms": 0.305,
    "kind": "positive",
    "style": "casual",
    "category": "volume_brightness"
@@ -6658,7 +6658,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3556,
+   "latency_ms": 0.2915,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6671,7 +6671,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3803,
+   "latency_ms": 0.4096,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6684,7 +6684,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3033,
+   "latency_ms": 0.306,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6697,7 +6697,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5447,
+   "latency_ms": 0.5387,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6710,7 +6710,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3092,
+   "latency_ms": 0.3188,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6723,7 +6723,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2903,
+   "latency_ms": 0.2894,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -6736,7 +6736,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7449,
+   "latency_ms": 0.8047,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -6749,7 +6749,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0537,
+   "latency_ms": 0.0588,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -6762,7 +6762,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9705,
+   "latency_ms": 0.9209,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -6775,7 +6775,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5328,
+   "latency_ms": 0.2856,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -6788,7 +6788,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3078,
+   "latency_ms": 0.2822,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6801,7 +6801,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2999,
+   "latency_ms": 0.28,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -6814,7 +6814,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.489,
+   "latency_ms": 0.341,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6827,7 +6827,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3555,
+   "latency_ms": 0.33,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6840,7 +6840,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3419,
+   "latency_ms": 0.3913,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6853,7 +6853,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4363,
+   "latency_ms": 0.3379,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -6866,7 +6866,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3563,
+   "latency_ms": 0.3451,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -6879,7 +6879,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.046,
+   "latency_ms": 0.0536,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -6892,7 +6892,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0453,
+   "latency_ms": 0.0487,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -6905,7 +6905,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2879,
+   "latency_ms": 0.3023,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -6918,7 +6918,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2803,
+   "latency_ms": 0.284,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -6931,7 +6931,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3099,
+   "latency_ms": 0.31,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -6944,7 +6944,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3195,
+   "latency_ms": 0.3021,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -6957,7 +6957,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6141,
+   "latency_ms": 0.5936,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -6970,7 +6970,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9035,
+   "latency_ms": 0.563,
    "kind": "positive",
    "style": "casual",
    "category": "power"
@@ -6983,7 +6983,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6882,
+   "latency_ms": 0.7285,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -6996,7 +6996,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6774,
+   "latency_ms": 0.8085,
    "kind": "positive",
    "style": "casual",
    "category": "media"
@@ -7009,7 +7009,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7725,
+   "latency_ms": 1.1507,
    "kind": "positive",
    "style": "casual",
    "category": "web_info"
@@ -7022,7 +7022,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4029,
+   "latency_ms": 0.42,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -7035,7 +7035,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7314,
+   "latency_ms": 0.8864,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -7048,7 +7048,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8341,
+   "latency_ms": 1.102,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -7061,7 +7061,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0617,
+   "latency_ms": 0.0712,
    "kind": "positive",
    "style": "casual",
    "category": "notes_todos"
@@ -7074,7 +7074,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3306,
+   "latency_ms": 0.4419,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -7087,7 +7087,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3198,
+   "latency_ms": 0.5187,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -7100,7 +7100,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3877,
+   "latency_ms": 0.663,
    "kind": "positive",
    "style": "casual",
    "category": "reminders_time"
@@ -7113,7 +7113,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5163,
+   "latency_ms": 0.3017,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -7126,7 +7126,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7963,
+   "latency_ms": 0.051,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -7139,7 +7139,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6275,
+   "latency_ms": 0.5644,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -7152,7 +7152,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3003,
+   "latency_ms": 0.3318,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -7165,7 +7165,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.287,
+   "latency_ms": 0.4143,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -7178,7 +7178,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3887,
+   "latency_ms": 0.3132,
    "kind": "positive",
    "style": "casual",
    "category": "windows"
@@ -7191,7 +7191,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0542,
+   "latency_ms": 0.0501,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7204,7 +7204,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0477,
+   "latency_ms": 0.0502,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7217,7 +7217,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3583,
+   "latency_ms": 0.3624,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7230,7 +7230,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0475,
+   "latency_ms": 0.047,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7243,7 +7243,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0435,
+   "latency_ms": 0.0442,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7256,7 +7256,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3514,
+   "latency_ms": 0.4908,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7269,7 +7269,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3605,
+   "latency_ms": 0.3515,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7282,7 +7282,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6827,
+   "latency_ms": 0.8772,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -7295,7 +7295,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5719,
+   "latency_ms": 0.6501,
    "kind": "positive",
    "style": "casual",
    "category": "settings_pages"
@@ -7308,7 +7308,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8841,
+   "latency_ms": 0.4922,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -7321,7 +7321,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5659,
+   "latency_ms": 0.5388,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -7334,7 +7334,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3457,
+   "latency_ms": 0.5848,
    "kind": "positive",
    "style": "casual",
    "category": "system_info"
@@ -7347,7 +7347,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4957,
+   "latency_ms": 0.4877,
    "kind": "positive",
    "style": "casual",
    "category": "files_folders"
@@ -7360,7 +7360,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3596,
+   "latency_ms": 0.3798,
    "kind": "positive",
    "style": "casual",
    "category": "memory"
@@ -7373,7 +7373,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2865,
+   "latency_ms": 0.3092,
    "kind": "positive",
    "style": "casual",
    "category": "misc"
@@ -7386,7 +7386,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.354,
+   "latency_ms": 0.3902,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7399,7 +7399,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2824,
+   "latency_ms": 0.2835,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7412,7 +7412,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3499,
+   "latency_ms": 0.3418,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7425,7 +7425,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0475,
+   "latency_ms": 0.0497,
    "kind": "positive",
    "style": "casual",
    "category": "keyboard_mouse"
@@ -7438,7 +7438,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.1558,
+   "latency_ms": 0.1647,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7451,7 +7451,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0429,
+   "latency_ms": 0.0437,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7464,7 +7464,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3803,
+   "latency_ms": 0.357,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7477,7 +7477,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3673,
+   "latency_ms": 0.3503,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7490,7 +7490,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6166,
+   "latency_ms": 0.5882,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7503,7 +7503,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9545,
+   "latency_ms": 0.7717,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7516,7 +7516,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.0184,
+   "latency_ms": 0.8396,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7529,7 +7529,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6109,
+   "latency_ms": 0.5492,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7542,7 +7542,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2895,
+   "latency_ms": 0.3381,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7555,7 +7555,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3431,
+   "latency_ms": 0.3276,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7568,7 +7568,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5852,
+   "latency_ms": 0.5876,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7581,7 +7581,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5348,
+   "latency_ms": 0.5262,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7594,7 +7594,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0553,
+   "latency_ms": 0.0508,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7607,7 +7607,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7468,
+   "latency_ms": 0.6368,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7620,7 +7620,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.298,
+   "latency_ms": 0.2928,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7633,7 +7633,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6624,
+   "latency_ms": 0.6869,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7646,7 +7646,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9007,
+   "latency_ms": 0.4706,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7659,7 +7659,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4558,
+   "latency_ms": 0.4502,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7672,7 +7672,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.61,
+   "latency_ms": 0.5891,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7685,7 +7685,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0742,
+   "latency_ms": 0.0485,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7698,7 +7698,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3538,
+   "latency_ms": 0.3433,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7711,7 +7711,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3251,
+   "latency_ms": 0.2779,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7724,7 +7724,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0729,
+   "latency_ms": 0.0443,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7737,7 +7737,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.621,
+   "latency_ms": 0.5791,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7750,7 +7750,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6412,
+   "latency_ms": 0.6145,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7763,7 +7763,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8649,
+   "latency_ms": 1.2706,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7776,7 +7776,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3072,
+   "latency_ms": 0.3208,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7789,7 +7789,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6161,
+   "latency_ms": 0.5937,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7802,7 +7802,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3851,
+   "latency_ms": 0.1718,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7815,7 +7815,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9128,
+   "latency_ms": 0.649,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7828,7 +7828,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3654,
+   "latency_ms": 0.3549,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7841,7 +7841,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.3513,
+   "latency_ms": 1.2133,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7854,7 +7854,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5673,
+   "latency_ms": 0.5753,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7867,7 +7867,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.1727,
+   "latency_ms": 1.1664,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7880,7 +7880,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.444,
+   "latency_ms": 0.4564,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7893,7 +7893,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.1601,
+   "latency_ms": 0.8221,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7906,7 +7906,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.7331,
+   "latency_ms": 1.1373,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7919,7 +7919,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.314,
+   "latency_ms": 0.381,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7932,7 +7932,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.611,
+   "latency_ms": 0.6184,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7945,7 +7945,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.0827,
+   "latency_ms": 1.0555,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7958,7 +7958,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6368,
+   "latency_ms": 0.617,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7971,7 +7971,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0472,
+   "latency_ms": 0.0478,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7984,7 +7984,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8997,
+   "latency_ms": 0.875,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -7997,7 +7997,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3505,
+   "latency_ms": 0.3977,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8010,7 +8010,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2702,
+   "latency_ms": 0.0548,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8023,7 +8023,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.9664,
+   "latency_ms": 0.3488,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8036,7 +8036,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.4563,
+   "latency_ms": 0.4841,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8049,7 +8049,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8167,
+   "latency_ms": 1.0761,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8062,7 +8062,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6011,
+   "latency_ms": 1.0243,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8075,7 +8075,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3367,
+   "latency_ms": 0.3505,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8088,7 +8088,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0551,
+   "latency_ms": 0.064,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8101,7 +8101,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3426,
+   "latency_ms": 0.3647,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8114,7 +8114,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.523,
+   "latency_ms": 0.531,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8127,7 +8127,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.2126,
+   "latency_ms": 0.2362,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8140,7 +8140,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8738,
+   "latency_ms": 1.0693,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8153,7 +8153,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0507,
+   "latency_ms": 0.0558,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8166,7 +8166,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3532,
+   "latency_ms": 0.3458,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8179,7 +8179,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.0177,
+   "latency_ms": 0.572,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8192,7 +8192,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3629,
+   "latency_ms": 0.3089,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8205,7 +8205,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8929,
+   "latency_ms": 0.8741,
    "kind": "negative",
    "style": "casual",
    "category": "chat"
@@ -8218,7 +8218,7 @@
    "pred": "scroll_bottom",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0425,
+   "latency_ms": 0.0426,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8231,7 +8231,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3434,
+   "latency_ms": 0.5105,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8244,7 +8244,7 @@
    "pred": "scroll_top",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.033,
+   "latency_ms": 0.0581,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8257,7 +8257,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0417,
+   "latency_ms": 0.0481,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8270,7 +8270,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3462,
+   "latency_ms": 0.3595,
    "kind": "adversarial",
    "style": "short",
    "category": "chat"
@@ -8283,7 +8283,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.3577,
+   "latency_ms": 0.4132,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8296,7 +8296,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.5915,
+   "latency_ms": 0.5988,
    "kind": "adversarial",
    "style": "short",
    "category": "chat"
@@ -8309,7 +8309,7 @@
    "pred": "restart_system",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0404,
+   "latency_ms": 0.0327,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8322,7 +8322,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.071,
+   "latency_ms": 0.0632,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8335,7 +8335,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6784,
+   "latency_ms": 0.7219,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8348,7 +8348,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.6391,
+   "latency_ms": 0.6303,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8361,7 +8361,7 @@
    "pred": "mute",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0219,
+   "latency_ms": 0.0228,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8374,7 +8374,7 @@
    "pred": "time_query",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0509,
+   "latency_ms": 0.0474,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8387,7 +8387,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8733,
+   "latency_ms": 0.6577,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8400,7 +8400,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.8981,
+   "latency_ms": 0.6977,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8413,7 +8413,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.0743,
+   "latency_ms": 0.8839,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8426,7 +8426,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0704,
+   "latency_ms": 0.0658,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8439,7 +8439,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 1.3917,
+   "latency_ms": 2.2052,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8452,7 +8452,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3456,
+   "latency_ms": 0.6115,
    "kind": "adversarial",
    "style": "formal",
    "category": "chat"
@@ -8465,7 +8465,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.7047,
+   "latency_ms": 1.316,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8478,7 +8478,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0609,
+   "latency_ms": 0.0923,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8491,7 +8491,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3567,
+   "latency_ms": 0.5237,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8504,7 +8504,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0477,
+   "latency_ms": 0.0664,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8517,7 +8517,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.6522,
+   "latency_ms": 0.9043,
    "kind": "adversarial",
    "style": "casual",
    "category": "chat"
@@ -8530,7 +8530,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.6024,
+   "latency_ms": 0.5755,
    "kind": "adversarial",
    "style": "noisy",
    "category": "apps"
@@ -8543,7 +8543,7 @@
    "pred": "open_app",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0645,
+   "latency_ms": 0.0826,
    "kind": "adversarial",
    "style": "noisy",
    "category": "apps"
@@ -8556,7 +8556,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.5396,
+   "latency_ms": 0.4286,
    "kind": "adversarial",
    "style": "short",
    "category": "volume_brightness"
@@ -8569,7 +8569,7 @@
    "pred": "set_timer",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0101,
+   "latency_ms": 0.008,
    "kind": "adversarial",
    "style": "formal",
    "category": "reminders_time"
@@ -8582,7 +8582,7 @@
    "pred": "weather",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0125,
+   "latency_ms": 0.0133,
    "kind": "adversarial",
    "style": "noisy",
    "category": "web_info"
@@ -8595,7 +8595,7 @@
    "pred": "weather",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0107,
+   "latency_ms": 0.0405,
    "kind": "adversarial",
    "style": "noisy",
    "category": "web_info"
@@ -8608,7 +8608,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.45,
+   "latency_ms": 0.5253,
    "kind": "adversarial",
    "style": "short",
    "category": "misc"
@@ -8621,7 +8621,7 @@
    "pred": "lock_pc",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0243,
+   "latency_ms": 0.0361,
    "kind": "adversarial",
    "style": "short",
    "category": "power"
@@ -8634,7 +8634,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0478,
+   "latency_ms": 0.0784,
    "kind": "adversarial",
    "style": "noisy",
    "category": "media"
@@ -8647,7 +8647,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0519,
+   "latency_ms": 0.9149,
    "kind": "adversarial",
    "style": "noisy",
    "category": "settings_pages"
@@ -8660,7 +8660,7 @@
    "pred": "reminder_add",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0048,
+   "latency_ms": 0.0094,
    "kind": "adversarial",
    "style": "casual",
    "category": "reminders_time"
@@ -8673,7 +8673,7 @@
    "pred": "set_timer",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.009,
+   "latency_ms": 0.0131,
    "kind": "adversarial",
    "style": "noisy",
    "category": "reminders_time"
@@ -8686,7 +8686,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.3806,
+   "latency_ms": 0.7852,
    "kind": "adversarial",
    "style": "noisy",
    "category": "apps"
@@ -8699,7 +8699,7 @@
    "pred": "set_volume",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0222,
+   "latency_ms": 0.0414,
    "kind": "adversarial",
    "style": "noisy",
    "category": "volume_brightness"
@@ -8712,7 +8712,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": true,
-   "latency_ms": 0.0612,
+   "latency_ms": 0.1086,
    "kind": "adversarial",
    "style": "noisy",
    "category": "reminders_time"
@@ -8725,7 +8725,7 @@
    "pred": "chat",
    "groups_ok": null,
    "gate_open": false,
-   "latency_ms": 0.0428,
+   "latency_ms": 0.0983,
    "kind": "adversarial",
    "style": "short",
    "category": "volume_brightness"

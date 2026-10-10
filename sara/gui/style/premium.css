@@ -1,0 +1,104 @@
+/* ==========================================================================
+   premium.css  --  (A) styles for the 15 effects in js/premium.js, (B) upgrade of the EXISTING animations/effects.
+   Load LAST (after animations.css). Theme-independent. Redefining a @keyframes name here upgrades every existing
+   element that already uses it, so no selector needs to change.
+   ========================================================================== */
+
+/* ============================ (B) UPGRADES OF EXISTING MOTION ============================ */
+
+/* B1 -- a sharper "expo-out" curve + a calmer spring become the house easing everywhere the tokens are used */
+:root{--ease-premium:cubic-bezier(.16,1,.3,1);--ease-spring:cubic-bezier(.22,1.45,.36,1);--dur-fast:.14s;--dur-med:.3s;}
+
+/* B2 -- page entrance: depth (tiny scale) + longer, smoother expo settle; direction-aware slides get the same depth */
+.page{animation-duration:.42s;animation-timing-function:var(--ease-premium);}
+@keyframes pageIn{from{opacity:0;transform:translateY(12px) scale(.992);}to{opacity:1;transform:translateY(0) scale(1);}}
+@keyframes pageInR{from{opacity:0;transform:translateX(24px) scale(.99);}to{opacity:1;transform:translateX(0) scale(1);}}
+@keyframes pageInL{from{opacity:0;transform:translateX(-24px) scale(.99);}to{opacity:1;transform:translateX(0) scale(1);}}
+@keyframes headerIn{from{opacity:0;transform:translateY(-8px);}to{opacity:1;transform:none;}}
+
+/* B3 -- lists / cards / chat bubbles / toasts: soft overshoot settle instead of a flat ease */
+@keyframes rowIn{from{opacity:0;transform:translateY(9px);}to{opacity:1;transform:none;}}
+@keyframes setCardIn{0%{opacity:0;transform:translateY(22px) scale(.985);}100%{opacity:1;transform:none;}}
+@keyframes msgIn{0%{opacity:0;transform:translateY(14px) scale(.96);}62%{opacity:1;transform:translateY(-2px) scale(1.006);}100%{opacity:1;transform:none;}}
+@keyframes toastIn{0%{opacity:0;transform:translateY(18px) scale(.94);}60%{opacity:1;transform:translateY(-3px) scale(1.012);}100%{opacity:1;transform:none;}}
+@keyframes tcPop{0%{transform:scale(.96);}55%{transform:scale(1.02);}100%{transform:scale(1);}}
+@keyframes themePick{0%{transform:scale(1);}40%{transform:scale(1.12);}70%{transform:scale(.98);}100%{transform:scale(1);}}
+@keyframes dotPop{0%{transform:scale(.3);}55%{transform:scale(1.5);}80%{transform:scale(.94);}100%{transform:scale(1);}}
+@keyframes icoPop{0%{transform:scale(.5);opacity:0;}60%{transform:scale(1.12);opacity:1;}100%{transform:none;opacity:1;}}
+
+/* B4 -- status orb: organic three-beat pulse instead of a mechanical two-beat */
+@keyframes orbPulse{0%,100%{opacity:.62;transform:scale(.88);}38%{opacity:1;transform:scale(1.08);}68%{opacity:.8;transform:scale(.98);}}
+
+/* B5 -- ripple: soft radial light that expands further and fades like water, not a flat disc */
+.ripple{background:radial-gradient(circle,rgb(var(--fg-rgb) / .26) 0%,rgb(var(--fg-rgb) / .10) 45%,rgb(var(--fg-rgb) / 0) 72%);animation:rippleOut .8s var(--ease-premium) forwards;}
+
+/* B6 -- skeleton: brighter, narrower highlight band that glides (reads as "premium loading") */
+.skel{background:linear-gradient(105deg,var(--panel) 35%,rgb(var(--fg-rgb) / .09) 50%,var(--panel) 65%);background-size:240% 100%;animation-duration:1.5s;animation-timing-function:cubic-bezier(.4,0,.2,1);}
+
+/* B7 -- sheets / modals: open with a slower expo spring (closing stays quick) */
+.overlay.open .sheet,.overlay.open .modal{transition:transform .6s var(--ease-premium),opacity .3s ease;}
+
+/* B8 -- keyboard / form polish */
+::selection{background:rgb(var(--core-rgb) / .32);color:inherit;}
+:root{caret-color:var(--core);}
+::-webkit-scrollbar-thumb:hover{background:rgb(var(--core-rgb) / .5);}
+
+/* ============================ (A) STYLES FOR js/premium.js ============================ */
+
+/* 1 cursor aura */
+.pm-aura{position:fixed;left:0;top:0;width:520px;height:520px;border-radius:50%;pointer-events:none;z-index:0;opacity:0;
+  background:radial-gradient(circle,rgb(var(--core-rgb) / .10) 0%,rgb(var(--core-rgb) / .045) 35%,transparent 68%);transition:opacity .5s ease;will-change:transform;}
+.pm-aura.on{opacity:1;}
+
+/* 2-3 magnetic + tilt: while tilting, follow the pointer tightly (no spring overshoot); the card's own transition handles the smooth return */
+.pm-tilt{transition:transform .14s ease-out !important;will-change:transform;}
+
+/* 4 spark burst */
+.pm-spark{position:fixed;width:4px;height:4px;border-radius:50%;pointer-events:none;z-index:60;will-change:transform,opacity;}
+
+/* 9 scroll progress hairline */
+.pm-progress{position:fixed;left:0;right:0;top:0;height:2px;z-index:40;pointer-events:none;transform:scaleX(0);transform-origin:left center;opacity:0;
+  background:linear-gradient(90deg,var(--core),var(--speak));transition:opacity .3s ease;will-change:transform;}
+.pm-progress.on{opacity:.9;}
+
+/* 10 dust motes (sits with the ambient layer, behind the UI) */
+.pm-dust{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none;}
+
+/* 11 depth recede: the page behind a sheet/modal sinks back a little (class set by premium.js) */
+.page{transition:scale .6s var(--ease-premium),opacity .45s ease;}
+body.pm-overlay-open .page.active{scale:.985;opacity:.72;}
+
+/* 12 border beam: a light travels around the chat bar while it is focused */
+@property --pm-a{syntax:'<angle>';inherits:false;initial-value:0deg;}
+.chat-dock::before{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;opacity:0;transition:opacity .4s ease;
+  background:conic-gradient(from var(--pm-a),transparent 0 68%,rgb(var(--core-rgb) / .95) 84%,rgb(var(--speak-rgb) / .95) 92%,transparent 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:pm-spin 3.4s linear infinite;animation-play-state:paused;}
+.chat-dock:focus-within::before{opacity:1;animation-play-state:running;}
+@keyframes pm-spin{to{--pm-a:360deg;}}
+
+/* 13 theme circular reveal (View Transitions) */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal;}
+::view-transition-new(root){animation:pm-reveal .8s var(--ease-premium) both;}
+@keyframes pm-reveal{from{clip-path:circle(0 at var(--vt-x,50%) var(--vt-y,50%));}to{clip-path:circle(var(--vt-r,150vmax) at var(--vt-x,50%) var(--vt-y,50%));}}
+:root.pm-vt,:root.pm-vt *{transition:none !important;}
+
+/* 14 header condense once the page body is scrolled */
+.page-header{position:relative;z-index:3;transition:box-shadow .35s ease;}
+.page-header .page-title{transform-origin:left center;transition:scale .35s var(--ease-premium);}
+.page.pm-scrolled>.page-header{box-shadow:0 1px 0 rgb(var(--core-rgb) / .16),0 14px 22px -20px rgba(0,0,0,.65);}
+.page.pm-scrolled>.page-header .page-title{scale:.94;}
+
+/* 15 edge pulse */
+.pm-edge{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;box-shadow:inset 0 0 80px -24px var(--pm-edge,var(--core));}
+
+/* calmer versions on the flat minimal themes */
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pm-dust{opacity:.45;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pm-aura{opacity:0;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pm-aura.on{opacity:.5;}
+
+@media (prefers-reduced-motion:reduce){
+  .pm-aura,.pm-spark,.pm-dust,.pm-edge,.pm-progress{display:none;}
+  .chat-dock::before{animation:none;}
+  body.pm-overlay-open .page.active{scale:1;opacity:1;}
+}

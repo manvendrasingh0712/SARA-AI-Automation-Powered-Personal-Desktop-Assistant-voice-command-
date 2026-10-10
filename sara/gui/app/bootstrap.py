@@ -139,6 +139,7 @@ def main():
                     "volume_state": co.volume_state,
                     "playback_state": co.playback_state,
                     "context_state": co.context_state,
+                    "reminder_composer": co.reminder_composer,
                 },
                 daemon=True,
                 name="SaraLogic",

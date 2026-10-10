@@ -108,13 +108,13 @@
   /* ---- 4) cursor parallax (skipped entirely under reduced-motion) ---- */
   if (!SARA.reduceMotion) {
     const root = document.documentElement;
-    let mx = 0, my = 0, tx = 0, ty = 0, raf = 0;
+    let mx = 0, my = 0, tx = 0, ty = 0, raf = 0, lastQx = 0, lastQy = 0;
     function applyParallax() {
       raf = 0;
       tx += (mx - tx) * 0.08; ty += (my - ty) * 0.08;
-      root.style.setProperty('--mx', tx.toFixed(1) + 'px');
-      root.style.setProperty('--my', ty.toFixed(1) + 'px');
-      if (Math.abs(mx - tx) > 0.05 || Math.abs(my - ty) > 0.05) raf = requestAnimationFrame(applyParallax);
+      const qx = Math.round(tx), qy = Math.round(ty); if (qx !== lastQx) { lastQx = qx; root.style.setProperty('--mx', qx + 'px'); }
+      if (qy !== lastQy) { lastQy = qy; root.style.setProperty('--my', qy + 'px'); }
+      if (Math.abs(mx - tx) > 0.4 || Math.abs(my - ty) > 0.4) raf = requestAnimationFrame(applyParallax);
     }
     window.addEventListener('pointermove', function (e) {
       mx = (e.clientX / window.innerWidth - 0.5) * 8;    // -4px..4px -- deliberately tiny, this is ambience not a gimmick

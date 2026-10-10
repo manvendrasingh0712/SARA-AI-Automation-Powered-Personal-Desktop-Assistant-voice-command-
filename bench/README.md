@@ -56,3 +56,36 @@ All rates are fractions in [0, 1] and shown as percentages in reports.
 1. Run with `--report-md bench/results/RESULTS.md` and review the report.
 2. Run `python -m bench.run_bench --mode router --accept-baseline`.
 3. Commit `bench/baseline.json`.
+
+## Memory benchmark
+
+Compares Memory 2.0 (structured, temporal, correctable memory) with a simulation of the old vector-only RAG. In-process, offline, deterministic, temp databases only. Scenario data: `bench/memory/scenarios.jsonl` (gold facts and events, EN / Hinglish / Hindi).
+
+```bash
+python -m bench.run_bench --mode memory --embedder hash
+python -m bench.run_bench --mode memory --embedder hash --gate
+python -m bench.run_bench --mode memory --embedder gemini --out bench/results/memory_gemini.json
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--embedder hash` | Offline `hash_embed` (default). `gemini` uses `sara.core.rag.embed_text` (manual run, needs network). |
+| `--extract gold` | Facts and events come from the scenario file. `llm` is not implemented (exit 2). |
+| `--out PATH` | Raw results and metrics JSON (default `bench/results/memory.json`). |
+| `--report-md PATH` | RESULTS.md to update (default `bench/results/RESULTS.md`); only its `## Memory` section is replaced. |
+| `--gate` | Exit 2 on a regression (see below). |
+
+Both systems see the same scenario: turns are replayed in order, `forget` ops run after the given turn (`after_turn` counts turns from 1; 0 means before the first turn), then every question is answered at its `at` time.
+
+- **Memory 2.0**: gold facts / events go into a fresh `Memory2Store`; forget ops use `forget.find_matches` + `forget.retract_hits`; answers come from `retrieve()`.
+- **Baseline**: raw user utterances embedded with the same embedder; answer = cosine top-5 with floor 0.30; a forget op deletes the single nearest utterance.
+
+Pass rules (case-insensitive substrings): `expect.any` needs a match in the top 3 hits; `contradiction` also needs no `forbid` string in the top-1 hit; `abstain` needs zero hits (a hit is a false memory); `forget` needs no forbidden string in any hit.
+
+Metrics, overall and per question type: recall@1/@3/@5 and MRR (types with `expect.any`), contradiction / temporal / abstention accuracy, false-memory rate, forgetting leak rate, retrieval latency p50 / p95 (ms, nearest rank, per `retrieve()` call).
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Run OK (and gate passed with `--gate`). |
+| 2 | Error, `--extract llm`, or gate failed: Memory 2.0 forgetting leak > 0, overall recall@3 below baseline, abstention accuracy below baseline, or false-memory rate above baseline. |
+| 4 | Memory 2.0 modules (`retrieve`, `forget`, `store`) or the embedder are missing. |

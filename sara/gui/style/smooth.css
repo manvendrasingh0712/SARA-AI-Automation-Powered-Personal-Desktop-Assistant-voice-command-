@@ -1,0 +1,23 @@
+/* ==========================================================================
+   smooth.css  --  performance / smoothness layer. Loaded LAST in index.html. Theme-independent: works with every theme.
+   Nothing here changes layout, colours or behaviour; it only trims GPU/CPU cost and removes input lag.
+   ========================================================================== */
+
+/* 1) frosted glass is the single most expensive effect (re-blurred under the animated ambient glow every frame).
+      24px -> 16px blur cuts that cost by roughly a third and still reads as frosted glass. */
+:root{--glass-blur:16px;}
+
+/* 2) ambient nebula drift only runs on Home; on every other page it is frozen, so glass cards stop re-blurring each frame */
+body:not([data-page="home"])::before{animation-play-state:paused;}
+
+/* 3) theme switch: the global colour-glide no longer animates box-shadow on every element (that forced a repaint of every shadow) and is shorter */
+:root.theme-anim,:root.theme-anim *{transition-property:background-color,border-color,color,fill,stroke !important;transition-duration:.3s !important;}
+
+/* 4) music spectrum: 40 bars change height every frame -> keep that relayout inside the spectrum box */
+.spectrum{contain:layout style;}
+
+/* 5) scrolling: no scroll-chaining / rubber-band into the page behind a list or sheet */
+.page-body,.chat-log,.skills-scroll,.pv-recent,.sheet,.modal{overscroll-behavior:contain;}
+
+/* 6) touch / click responsiveness: no 300ms tap delay, no grey tap flash */
+button,.chip,.pill-btn,.theme-card,.nav button,.app-tile,.row,[role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}

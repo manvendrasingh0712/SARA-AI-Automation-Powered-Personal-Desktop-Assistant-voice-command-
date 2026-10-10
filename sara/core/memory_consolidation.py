@@ -147,6 +147,22 @@ def _consolidation_tick(db, brain, rag_memory) -> None:
             logger.warning(f"[MemoryConsolidation] add_memory failed: {e}")
 
 
+def _memory2_tick(db, brain) -> bool:
+    """Run one Memory 2.0 tick (own try/except); True when Memory 2.0 is enabled."""
+    enabled = False
+    try:
+        from sara.core.memory2 import is_enabled
+
+        enabled = is_enabled()
+        if enabled:
+            from sara.core.memory2.worker import tick
+
+            tick(db, brain)
+    except Exception as e:  # noqa: BLE001 -- Memory 2.0 must never stop consolidation
+        logger.warning(f"[MemoryConsolidation] Memory2 tick failed: {type(e).__name__}")
+    return enabled
+
+
 def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> None:
     interval_s = getattr(Config, "MEMORY_CONSOLIDATION_INTERVAL_S", 60)
     while not stop_event.is_set():
@@ -158,7 +174,8 @@ def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> N
                 stop_event.wait(_STOP_POLL_S)
                 continue
             if rag_memory is None or not getattr(rag_memory, "enabled", False):
-                stop_event.wait(_STOP_POLL_S)
+                # Memory 2.0 does not need RAG: keep ticking it on its own cadence.
+                stop_event.wait(interval_s if _memory2_tick(db, brain) else _STOP_POLL_S)
                 continue
             if not brain.is_usable():
                 # brain.is_usable() (sara/core/llm/engine.py) is a cheap,
@@ -175,6 +192,7 @@ def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> N
                 stop_event.wait(interval_s)
                 continue
             _consolidation_tick(db, brain, rag_memory)
+            _memory2_tick(db, brain)
         except Exception as e:  # noqa: BLE001 -- one bad tick must never kill the thread
             logger.error(f"[MemoryConsolidation] tick failed: {e}")
             print(f"[MemoryConsolidation] tick failed (non-fatal): {e}")

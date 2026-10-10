@@ -751,11 +751,21 @@ def _handle_command(
                         except Exception as e:
                             print(f"[Memory] clear_all failed: {e}")
                             ok = False
+                        try:
+                            from sara.core.memory2 import forget as _m2_forget
+
+                            _m2_forget.forget_all()
+                        except Exception as e:
+                            print(f"[Memory2] forget_all failed: {type(e).__name__}")
                         result = (
                             "Done -- I've forgotten everything I knew about you long-term."
                             if ok
                             else "Sorry, I ran into a problem clearing my memory."
                         )
+                elif action == "forget_memory_items":
+                    from sara.orchestrator.handlers.memory_intents import apply_forget_items
+
+                    result = apply_forget_items(pending, ctx)
                 elif action in _LOW_CONFIDENCE_CONFIRM_ACTIONS:
                     # NEW: confirmed low-confidence destructive action
                     # (shutdown_system / restart_system / log_off /

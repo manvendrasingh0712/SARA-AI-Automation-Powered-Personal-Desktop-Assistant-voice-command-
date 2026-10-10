@@ -9,6 +9,28 @@ from config import app_data_subdir
 import os
 import json
 import threading
+import importlib
+import logging
+
+_log = logging.getLogger(__name__)
+_M2_STATUSES = ("active", "superseded", "retracted", "archived")
+
+
+def _memory2_export():
+    """Memory 2.0 rows (all statuses) for the export JSON, or None when off. Never raises."""
+    try:
+        store = importlib.import_module("sara.core.memory2").get_store()
+        if store is None:
+            return None
+        return {
+            "facts": store.iter_rows("facts", _M2_STATUSES),
+            "events": store.iter_rows("events", _M2_STATUSES),
+            "entities": store.iter_rows("entities", _M2_STATUSES),
+        }
+    except Exception as exc:
+        _log.warning("[export_memory] memory2 export skipped (%s)", type(exc).__name__)
+        return None
+
 
 class ApiNotesMixin:
 
@@ -64,9 +86,12 @@ class ApiNotesMixin:
             def _export():
                 try:
                     rows = self.db.get_recent_messages(limit=500)
+                    messages = [_row_to_export_dict(r) for r in rows]
+                    memory2 = _memory2_export()
+                    payload = messages if memory2 is None else {"messages": messages, "memory2": memory2}
                     with open(export_path, "w", encoding="utf-8") as f:
                         json.dump(
-                            [_row_to_export_dict(r) for r in rows],
+                            payload,
                             f,
                             ensure_ascii=False,
                             indent=2,

@@ -1,0 +1,41 @@
+/* ==========================================================================
+   flow.css  --  smoothness pass. Load LAST (after aurum.css). Theme-independent.
+   Everything here removes cost from scrolling / dragging / typing; nothing changes layout or behaviour.
+   ========================================================================== */
+
+/* 1) Frosted glass is re-blurred every frame while content scrolls underneath it. Smaller radius + no saturate pass = same look, far cheaper. */
+:root{--glass-blur:10px;}
+.glass,.nav{backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));}
+/* the sticky Settings rail sat on top of the scrolling page with a live blur -> use a solid-ish panel instead */
+#page-settings .set-rail{backdrop-filter:none;-webkit-backdrop-filter:none;background:color-mix(in srgb,var(--panel) 94%,transparent);}
+
+/* 2) The scroll edge-fade is a CSS mask on the SCROLLER: it was active almost the whole time you scroll, which forces the whole
+      page to be re-masked every frame. Dropped for the big scrollers (small lists keep it). */
+.page-body.edge-fade.edge-on,.chat-log.edge-fade.edge-on{-webkit-mask-image:none;mask-image:none;}
+
+/* 3) Streaming text: a blur filter on every new chunk is very expensive -> plain fade */
+@keyframes chunkIn{from{opacity:.35;}to{opacity:1;}}
+
+/* 4) Dragging a sheet: my open-transition (.6s) was winning over the "follow the pointer" rule -> sheets lagged behind the finger */
+.overlay.sheet-dragging .sheet,.overlay.sheet-dragging .modal{transition:none !important;}
+
+/* 5) Depth recede: group-opacity on the whole page (with blurred children) forces an offscreen surface for as long as a sheet is open -> scale only */
+body.pm-overlay-open .page.active{scale:.985;opacity:1;}
+
+/* 6) Beams: one single lap (on focus / hover) instead of an endless repaint loop while you type or hover */
+.chat-dock::before{animation:none;}
+.chat-dock:focus-within::before{animation:pm-spin 2.6s cubic-bezier(.4,0,.2,1) 1 both;opacity:1;}
+.clock-card::before{animation:none;}
+.clock-card:hover::before{opacity:1;animation:lx-spin 3s cubic-bezier(.4,0,.2,1) 1 both;}
+
+/* 7) Fullscreen film grain + sweep layers removed (extra full-screen composited layers on top of everything) */
+html::before,html::after{display:none !important;}
+
+/* 8) Hundreds of rows animating in at once on long pages (Settings!) made page switches stutter -> only tiles / chips / buttons animate in */
+.set-row,.info-row,.acc-note{animation:none !important;}
+
+/* 9) While you scroll or drag, the ambient decoration rests (set by js/flow.js) */
+html.is-scrolling body::before,html.is-dragging body::before,
+html.is-scrolling #stage::before,html.is-dragging #stage::before,
+html.is-scrolling .mini-orb::after,html.is-dragging .mini-orb::after{animation-play-state:paused;}
+html.is-dragging .pm-aura{opacity:0;}

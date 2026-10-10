@@ -154,7 +154,7 @@ def _run_gate(current: Dict[str, Any], base_metrics: Optional[Dict[str, Any]],
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(prog="bench.run_bench")
-    parser.add_argument("--mode", choices=["router", "redteam"], default="router")
+    parser.add_argument("--mode", choices=["router", "redteam", "memory"], default="router")
     parser.add_argument("--out", default=None,
                         help="results JSON (default: bench/results/latest.json, or redteam.json)")
     parser.add_argument("--warmup", type=int, default=20)
@@ -165,9 +165,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--report-md", metavar="PATH", default=None,
                         help="also write a RESULTS.md report")
     parser.add_argument("--gate", action="store_true",
-                        help="redteam mode: exit 2 when a security threshold fails")
+                        help="redteam / memory mode: exit 2 when a threshold fails")
+    parser.add_argument("--embedder", choices=["hash", "gemini"], default="hash",
+                        help="memory mode: hash (offline, deterministic) or gemini (manual run)")
+    parser.add_argument("--extract", choices=["gold", "llm"], default="gold",
+                        help="memory mode: gold facts from the scenario file (llm: not implemented)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    if args.mode == "memory":
+        from bench.memory import runner as memory_runner
+        return memory_runner.run(
+            Path(args.out or memory_runner.DEFAULT_OUT), args.embedder, args.extract, args.gate,
+            Path(args.report_md) if args.report_md else None)
     if args.mode == "redteam":
         return redteam_runner.run(
             Path(args.out or redteam_runner.DEFAULT_OUT), args.gate,

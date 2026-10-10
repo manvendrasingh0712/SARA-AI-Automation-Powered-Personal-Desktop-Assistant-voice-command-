@@ -134,3 +134,36 @@
 ### Documented gaps (not in the target)
 
 9 uncovered rows, 0 detected (0.0%).
+
+## Memory
+
+- Embedder: hash | Extraction: gold | Scenarios: 40 | Questions: 130
+
+| Metric | Baseline | Memory 2.0 | Change |
+| --- | --- | --- | --- |
+| Recall@1 | 45.7% | 86.7% | ▲ +41.0 pts |
+| Recall@3 | 54.3% | 87.6% | ▲ +33.3 pts |
+| Recall@5 | 54.3% | 87.6% | ▲ +33.3 pts |
+| MRR | 0.5000 | 0.8714 | ▲ +0.3714 |
+| Contradiction accuracy | 8.0% | 96.0% | ▲ +88.0 pts |
+| Temporal accuracy | 21.1% | 68.4% | ▲ +47.4 pts |
+| Abstention accuracy | 79.0% | 100.0% | ▲ +21.1 pts |
+| False-memory rate | 21.1% | 0.0% | ▼ -21.1 pts |
+| Forgetting leak rate | 16.7% | 0.0% | ▼ -16.7 pts |
+| Overall pass rate | 53.1% | 90.0% | ▲ +36.9 pts |
+| Retrieval latency p50 | 0.0193 ms | 0.8232 ms | ▲ +0.8039 ms (+4165.3%) |
+| Retrieval latency p95 | 0.1063 ms | 1.3538 ms | ▲ +1.2475 ms (+1173.6%) |
+| Type abstain: pass rate | 79.0% | 100.0% | ▲ +21.1 pts |
+| Type contradiction: pass rate | 8.0% | 96.0% | ▲ +88.0 pts |
+| Type contradiction: recall@3 | 40.0% | 96.0% | ▲ +56.0 pts |
+| Type contradiction_history: pass rate | 100.0% | 100.0% | = +0.0 pts |
+| Type contradiction_history: recall@3 | 100.0% | 100.0% | = +0.0 pts |
+| Type forget: pass rate | 83.3% | 100.0% | ▲ +16.7 pts |
+| Type multihop: pass rate | 36.4% | 45.5% | ▲ +9.1 pts |
+| Type multihop: recall@3 | 36.4% | 45.5% | ▲ +9.1 pts |
+| Type single: pass rate | 72.5% | 100.0% | ▲ +27.5 pts |
+| Type single: recall@3 | 72.5% | 100.0% | ▲ +27.5 pts |
+| Type temporal: pass rate | 21.1% | 68.4% | ▲ +47.4 pts |
+| Type temporal: recall@3 | 21.1% | 68.4% | ▲ +47.4 pts |
+
+▲ increased, ▼ decreased, = unchanged.

@@ -332,11 +332,11 @@
   let audioLevel = 0, audioLevelTarget = 0;  function fit() {
     if (!ctx) return;
     const rect = stage.getBoundingClientRect(); if (!rect.width) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = Math.round(rect.width * dpr), ch = Math.round(rect.height * dpr); if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  window.addEventListener('resize', fit); fit();
+  let fitRaf = 0; window.addEventListener('resize', function () { if (!fitRaf) fitRaf = requestAnimationFrame(function () { fitRaf = 0; fit(); }); }); fit();
   SARA.on('page', (p) => { if (p === 'home') requestAnimationFrame(fit); });
 
   const particles = Array.from({ length: 32 }, () => ({
