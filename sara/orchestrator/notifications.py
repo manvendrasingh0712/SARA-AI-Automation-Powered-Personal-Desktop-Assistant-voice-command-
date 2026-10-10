@@ -445,7 +445,6 @@ def get_watcher(
 def shutdown_watcher() -> None:
     """Shuts down the singleton, if one was ever created. Called from
     sara/gui/app/bootstrap.py during app teardown."""
-    global _watcher_instance
     with _watcher_lock:
         if _watcher_instance is not None:
             _watcher_instance.shutdown()

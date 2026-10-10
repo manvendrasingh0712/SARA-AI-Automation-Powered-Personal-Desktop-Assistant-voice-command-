@@ -117,7 +117,6 @@ class ProactiveFollowupTests(unittest.TestCase):
         self.assertEqual(self.gen_calls, [])
 
     def test_activity_before_delivery_does_not_count(self):
-        due = datetime.now() - timedelta(minutes=40)
         self.mgr.update_intel(self.rid, delivered_at=(datetime.now() + timedelta(seconds=30)).isoformat())
         self.tracker.touch()
         self._engine()._check_reminder_followups()
