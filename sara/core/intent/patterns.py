@@ -143,7 +143,7 @@ _INTENT_PATTERNS = [
         r"start timing",
     ]),
     ("lap_stopwatch", [
-        r"(?:lap|split)(?: time)?",
+        r"\b(?:lap|split)(?: time)?\b",
         r"stopwatch lap",
     ]),
     ("stop_stopwatch", [
@@ -1087,3 +1087,12 @@ _INTENT_GATES = {
     # calculator: no safe substring gate — always run (its own patterns
     # provide the necessary keywords/digit-shape; unaffected by this pass).
 }
+
+
+# ── Hinglish / Hindi extensions (additive; see patterns_multilingual.py) ──
+try:
+    from .patterns_multilingual import apply as _apply_multilingual
+
+    _apply_multilingual(_INTENT_PATTERNS, _INTENT_GATES)
+except Exception:  # optional layer: never let it break the English patterns
+    pass
