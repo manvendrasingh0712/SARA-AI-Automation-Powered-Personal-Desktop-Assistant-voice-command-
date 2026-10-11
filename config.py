@@ -365,6 +365,8 @@ class Config:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     GEMINI_FAST_MODEL: str = os.getenv("GEMINI_FAST_MODEL", "")
+    # Optional top tier for the learned router (empty = tier absent).
+    GEMINI_PRO_MODEL: str = os.getenv("GEMINI_PRO_MODEL", "")
     GEMINI_MAX_HISTORY_TOKENS: int = _int(
         os.getenv("GEMINI_MAX_HISTORY_TOKENS"), default=30_000
     )
@@ -817,6 +819,20 @@ class Config:
     # Reserved: weekly "inferred habits" reflection. Code may exist; default stays off.
     MEMORY2_REFLECTION: bool = _bool(os.getenv("MEMORY2_REFLECTION", "False"), default=False)
 
+    # ── Learned model router (off by default; never changes behaviour when off) ──
+    # off = static rules only (old behaviour) | shadow = learn + log only | on = learner chooses
+    ROUTER_MODE: str = (os.getenv("ROUTER_MODE") or "off").strip().lower()
+    # Optional JSON list overriding the tiers built from the model keys, e.g.
+    # [{"name":"cloud_fast","backend":"gemini","model":"...","cost":1.0}, ...]
+    ROUTER_TIERS: str = os.getenv("ROUTER_TIERS", "")
+    ROUTER_ALPHA: float = _float(os.getenv("ROUTER_ALPHA"), default=0.8)
+    ROUTER_EPSILON: float = _float(os.getenv("ROUTER_EPSILON"), default=0.05)
+    ROUTER_LAMBDA_LATENCY: float = _float(os.getenv("ROUTER_LAMBDA_LATENCY"), default=0.15)
+    ROUTER_LAMBDA_COST: float = _float(os.getenv("ROUTER_LAMBDA_COST"), default=0.05)
+    ROUTER_MIN_SAMPLES: int = _int(os.getenv("ROUTER_MIN_SAMPLES"), default=200)
+    ROUTER_COOLDOWN_BASE_S: float = _float(os.getenv("ROUTER_COOLDOWN_BASE_S"), default=30.0)
+    ROUTER_RETENTION_DAYS: int = _int(os.getenv("ROUTER_RETENTION_DAYS"), default=60)
+
     # ── Memory Management: decision memory & consolidation ──────────────
     MEMORY_CONSOLIDATION_ENABLED: bool = _bool(
         os.getenv("MEMORY_CONSOLIDATION_ENABLED", "True"), default=True
@@ -842,6 +858,9 @@ class Config:
         os.getenv("TOOL_CALLING_TIMEOUT_S"), default=3.0
     )
     TOOL_CALLING_MODE: str = os.getenv("TOOL_CALLING_MODE", "llm").lower()
+    TOOL_ROUTER_LLM_TIMEOUT_S: float = _float(
+        os.getenv("TOOL_ROUTER_LLM_TIMEOUT_S"), default=12.0
+    )
 
     # ── Multi-step planning engine (sara/core/planning/) ────────────────────
     PLANNING_ENABLED: bool = _bool(os.getenv("PLANNING_ENABLED", "True"), default=True)
@@ -1262,6 +1281,17 @@ class Config:
         )
         cls.MEMORY2_PURGE_DAYS = max(7, min(3650, cls.MEMORY2_PURGE_DAYS))
 
+        # ── Router clamps ────────────────────────────────────────────────
+        if cls.ROUTER_MODE not in ("off", "shadow", "on"):
+            cls.ROUTER_MODE = "off"
+        cls.ROUTER_ALPHA = max(0.0, min(3.0, cls.ROUTER_ALPHA))
+        cls.ROUTER_EPSILON = max(0.0, min(0.3, cls.ROUTER_EPSILON))
+        cls.ROUTER_LAMBDA_LATENCY = max(0.0, min(1.0, cls.ROUTER_LAMBDA_LATENCY))
+        cls.ROUTER_LAMBDA_COST = max(0.0, min(1.0, cls.ROUTER_LAMBDA_COST))
+        cls.ROUTER_MIN_SAMPLES = max(20, min(100_000, cls.ROUTER_MIN_SAMPLES))
+        cls.ROUTER_COOLDOWN_BASE_S = max(1.0, min(3600.0, cls.ROUTER_COOLDOWN_BASE_S))
+        cls.ROUTER_RETENTION_DAYS = max(1, min(3650, cls.ROUTER_RETENTION_DAYS))
+
         # ── Memory consolidation / decision-memory clamps ────────────────
         cls.MEMORY_CONSOLIDATION_INTERVAL_S = max(
             _MIN_MEMORY_CONSOLIDATION_INTERVAL_S,
@@ -1281,6 +1311,9 @@ class Config:
 
         # ── Tool-calling clamps ─────────────────────────────────────────────
         cls.TOOL_CALLING_TIMEOUT_S = max(1.0, min(15.0, cls.TOOL_CALLING_TIMEOUT_S))
+        cls.TOOL_ROUTER_LLM_TIMEOUT_S = max(
+            10.0, min(30.0, cls.TOOL_ROUTER_LLM_TIMEOUT_S)
+        )
 
         if cls.TOOL_CALLING_MODE not in ("llm", "heuristic"):
             print(

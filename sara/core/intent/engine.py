@@ -7,6 +7,7 @@ public detect_intent() entry point, including its LRU cache wrapper.
 import difflib
 import re
 import threading
+import unicodedata
 from functools import lru_cache
 from typing import Optional, Tuple
 
@@ -14,6 +15,56 @@ from typing import Optional, Tuple
 # Each entry: (intent_name, [pattern_strings])
 # Order matters: more specific patterns must come before broad fallbacks.
 from .patterns import _INTENT_PATTERNS, _INTENT_GATES, _NON_APP_TOKENS
+
+
+_ACTION_VERBS = (
+    r"open|launch|start|run|restart|reboot|shutdown|shut\s+down|close|quit|kill|"
+    r"delete|remove|clear|format|mute|unmute|lock|unlock|enable|disable|turn\s+on|"
+    r"turn\s+off|play|pause|stop|install|uninstall|send|submit|purchase|buy|exit|"
+    r"leave|log\s+off|sign\s+out|forget|erase|khol(?:o|na|de|do|dijiye)?|chalu|"
+    r"shuru|bandh?|mita|hata|baja|rok"
+)
+
+_NEGATED_ACTION_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE | re.UNICODE)
+    for pattern in (
+        rf"^\s*(?:(?:please|sara|hey\s+sara)\s+)*(?:do\s+not|don't|dont|never(?:\s+ever)?|must\s+not|should(?:\s+not|'t)|can't|cannot|won't|will\s+not|not)\s+(?:(?:you|please|ever|again|just)\s+)*(?:{_ACTION_VERBS})\b",
+        rf"\b(?:i|we|you)\s+(?:do\s+not|don't|dont|never|must\s+not|should(?:\s+not|'t)|can't|cannot|won't|will\s+not)\s+(?:(?:really|ever)\s+)?(?:(?:want|need|allow|expect)\s+(?:(?:you|me|it)\s+)?to\s+)?(?:{_ACTION_VERBS})\b",
+        rf"\b[\w.+-]+(?:\s+[\w.+-]+){{0,3}}\s+(?:ko\s+)?(?:mat|nahi|nahin|na)\s+(?:please\s+)?(?:{_ACTION_VERBS})\b",
+        rf"\b(?:mat|nahi|nahin|na)\s+(?:please\s+)?(?:{_ACTION_VERBS})\b",
+        r"\b[\w.+-]+(?:\s+[\w.+-]+){0,3}\s+(?:ko\s+)?(?:खोल|चालू|शुरू|बंद|रीस्टार्ट|रिस्टार्ट|डिलीट|मिटा|हटा|म्यूट|लॉक|प्ले|रोक)\s*(?:मत|नहीं|नही|ना)\b",
+        r"\b[\w.+-]+(?:\s+[\w.+-]+){0,3}\s+(?:को\s*)?(?:मत|नहीं|नही|ना)\s*(?:खोल|चालू|शुरू|बंद|रीस्टार्ट|रिस्टार्ट|डिलीट|मिटा|हटा|म्यूट|लॉक|प्ले|रोक)",
+        r"\b(?:मत|नहीं|नही|ना)\s*(?:खोल|चालू|शुरू|बंद|रीस्टार्ट|रिस्टार्ट|डिलीट|मिटा|हटा|म्यूट|लॉक|प्ले|रोक)",
+        rf"\b[\w.+-]+(?:\s+[\w.+-]+){{0,3}}\s+(?:ko\s+)?(?:{_ACTION_VERBS})(?:\s+(?:kar|karo|karna|do|de|dijiye))?\s+(?:mat|nahi|nahin|na)(?:\s+(?:kar|karo|karna|do|de|dijiye))?\b",
+    )
+)
+
+_NORMALIZE_TRANSLATION = str.maketrans({
+    "‘": "'", "’": "'", "‛": "'", "“": '"', "”": '"',
+    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
+})
+
+
+def normalize_intent_text(text: str) -> str:
+    """Normalize harmless text variation without deleting negation or meaning words."""
+    if not isinstance(text, str):
+        return ""
+    normalized = unicodedata.normalize("NFKC", text).translate(_NORMALIZE_TRANSLATION)
+    normalized = re.sub(r"[\u200b\ufeff]", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    normalized = re.sub(r"\bkr\s*(do|de|dena|dijiye)\b", r"kar \1", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bkro\b", "karo", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\bkrna\b", "karna", normalized, flags=re.IGNORECASE)
+    return normalized
+
+
+def is_negated_action_request(text: str) -> bool:
+    """Detect clear English/Hinglish/Hindi negated action requests before routing."""
+    normalized = normalize_intent_text(text)
+    return bool(
+        normalized
+        and any(pattern.search(normalized) for pattern in _NEGATED_ACTION_PATTERNS)
+    )
 
 # O2: guards every mutation of the module-level _INTENT_PATTERNS /
 # _INTENT_GATES lists/dicts done by register_intent() below. Without
@@ -313,32 +364,123 @@ def _correct_typos(text: str) -> str:
     return " ".join(out) if changed else text
 
 
+def _canonical_known_app_alias(candidate: str) -> Optional[str]:
+    """Resolve a known app alias conservatively to its canonical name."""
+    try:
+        from sara.tools.system.apps import _APP_ALIASES
+    except Exception:
+        return None
+
+    key = re.sub(r"\s+", " ", normalize_intent_text(candidate).lower()).strip(" .,!?")
+    if not key:
+        return None
+
+    aliases = _APP_ALIASES
+    matched = key if key in aliases else None
+
+    if matched is None:
+        if len(key) < 4:
+            return None
+
+        ranked = sorted(
+            (
+                (difflib.SequenceMatcher(None, key, alias).ratio(), alias)
+                for alias in aliases
+            ),
+            reverse=True,
+        )
+
+        if not ranked or ranked[0][0] < 0.88:
+            return None
+
+        if len(ranked) > 1 and ranked[0][0] - ranked[1][0] < 0.06:
+            return None
+
+        matched = ranked[0][1]
+
+    executable = aliases[matched]
+    equivalent_aliases = [
+        alias for alias, target in aliases.items()
+        if target == executable
+    ]
+
+    if not equivalent_aliases:
+        return matched
+
+    return min(
+        equivalent_aliases,
+        key=lambda alias: (len(alias.split()), len(alias), alias),
+    )
+
+
+def _resolve_known_app_open(text: str) -> Optional[Tuple[str, re.Match]]:
+    """Resolve strict app-opening commands before broad intent routes."""
+    native_intent, native_match = _detect_intent_cached(text)
+    if (
+        native_intent.startswith("open_")
+        and native_intent != "open_app"
+        and native_match is not None
+    ):
+        return native_intent, native_match
+
+    for intent_name, compiled_list, _gate in _ROUTES:
+        if intent_name != "open_app":
+            continue
+
+        for pattern in compiled_list:
+            candidate_match = pattern.search(text)
+            if not candidate_match or not candidate_match.lastindex:
+                continue
+
+            canonical = _canonical_known_app_alias(candidate_match.group(1))
+            if canonical is None:
+                continue
+
+            native_intent, native_match = _detect_intent_cached(
+                f"{canonical} kholo"
+            )
+
+            if (
+                native_intent.startswith("open_")
+                and native_intent != "open_app"
+                and native_match
+            ):
+                return native_intent, native_match
+
+            resolved_intent, resolved_match = _detect_intent_cached(
+                f"open {canonical}"
+            )
+
+            if resolved_intent == "open_app" and resolved_match:
+                return resolved_intent, resolved_match
+
+    return None
+
+
 def detect_intent(text: str) -> Tuple[str, Optional[re.Match]]:
-    """
-    Detect the intent of a user command via fast local keyword matching.
+    """Resolve a command locally while preserving negation and legacy match groups."""
+    stripped = text.strip() if isinstance(text, str) else ""
+    if not stripped or is_negated_action_request(stripped):
+        return "chat", None
 
-    Tries the text exactly as given first. Only if that finds nothing
-    (would return "chat") does it retry once against a typo-corrected
-    version of the text (see _correct_typos) -- a rescue pass for common
-    single-word typos/homophones of real trigger words (e.g. "whether"
-    for "weather", "restrt" for "restart"). This ordering means the
-    rescue pass can only ever turn a would-be "chat" fallback into a
-    real intent; it can never override or change a match that already
-    succeeded on the original text.
+    normalized = normalize_intent_text(stripped)
+    app_route = _resolve_known_app_open(normalized)
+    if app_route is not None:
+        return app_route
 
-    Returns:
-        (intent_name, match_object)
-        Falls through to ("chat", None) when no intent matches, even
-        after the typo-correction retry.
-    """
-    stripped = text.strip()
     intent_name, match = _detect_intent_cached(stripped)
     if intent_name != "chat":
         return intent_name, match
 
-    corrected = _correct_typos(stripped)
-    if corrected == stripped:
+    if normalized != stripped:
+        intent_name, match = _detect_intent_cached(normalized)
+        if intent_name != "chat":
+            return intent_name, match
+
+    corrected = _correct_typos(normalized)
+    if corrected == normalized:
         return intent_name, match
+
     return _detect_intent_cached(corrected)
 
 

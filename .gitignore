@@ -42,6 +42,8 @@ analytics_usage*.json
 !bench/golden/*.jsonl
 !bench/redteam/*.jsonl
 !bench/memory/*.jsonl
+!bench/router/*.jsonl
+bench/.cache/
 
 # ---------- Audio Privacy ----------
 *.wav

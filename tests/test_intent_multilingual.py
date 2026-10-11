@@ -8,13 +8,12 @@ patterns only memorising the benchmark rows.
 import pytest
 
 import sara.orchestrator.intent_handlers  # noqa: F401  (registers skill intents)
-from sara.core.intent import detect_intent
+from sara.core.intent import detect_intent, is_negated_action_request, normalize_intent_text
 from sara.core.intent import patterns as P
 
-# Known gaps, kept visible instead of hidden:
-#   * "spotify kholo please" is read as play_spotify (English pattern wins)
+# Known negative gaps, kept visible instead of hidden:
 #   * "lock screen ..." / "dark mode in apps" fire on the existing English patterns
-_KNOWN_POSITIVE_GAPS = {"spotify kholo please"}
+_KNOWN_POSITIVE_GAPS = set()
 _KNOWN_NEGATIVE_GAPS = {"lock screen ka wallpaper accha hai", "I like dark mode in apps"}
 
 POSITIVES = [
@@ -72,6 +71,35 @@ def test_conversation_does_not_trigger_a_tool(text):
     assert detect_intent(text)[0] == "chat"
 
 
+def test_intent_normalization_preserves_meaning_and_cleans_variants():
+    assert normalize_intent_text("  CHROME   krdo  ") == "CHROME kar do"
+    assert normalize_intent_text("Chrome don’t   kholo") == "Chrome don't kholo"
+
+
+@pytest.mark.parametrize("text", [
+    "Chrome mat kholo",
+    "Chrome nahi kholna",
+    "Chrome chalu mat kar",
+    "Chrome kholna mat",
+    "Chrome band mat karo",
+    "Chrome kholo mat",
+    "Computer restart mat karna",
+    "never restart my pc without asking me first",
+    "don't clear memory",
+    "I don't want you to restart my PC",
+    "कंप्यूटर बंद मत करो",
+])
+def test_negated_action_requests_never_resolve_to_an_executable_intent(text):
+    assert is_negated_action_request(text)
+    assert detect_intent(text) == ("chat", None)
+
+
+def test_negation_guard_does_not_block_ordinary_explanation_requests():
+    assert not is_negated_action_request("I don't know how to open Chrome")
+    assert not is_negated_action_request("Chrome mujhe pasand hai")
+    assert detect_intent("I don't know how to open Chrome")[0] == "chat"
+
+
 def test_laptop_is_not_a_lap_command():
     assert detect_intent("my laptop is very slow today")[0] == "chat"
     assert detect_intent("laptop ko sleep me daal do")[0] == "sleep_system"
@@ -79,6 +107,84 @@ def test_laptop_is_not_a_lap_command():
 
 def test_science_is_not_corrected_into_silence():
     assert detect_intent("computer science mera favourite subject hai")[0] == "chat"
+
+
+@pytest.mark.parametrize(("text", "target"), [
+    ("open chrome", "chrome"),
+    ("Chrome kholo", "chrome"),
+    ("Chrome chalu kro", "chrome"),
+    ("chrom khol de", "chrome"),
+    ("google chrome start kar do", "chrome"),
+    ("zara chrome kholo", "chrome"),
+    ("spotify kholo please", "spotify"),
+])
+def test_supported_app_open_phrasings_resolve_to_canonical_target(text, target):
+    intent, match = detect_intent(text)
+    assert intent == "open_app"
+    assert match is not None
+    assert match.group(1).strip().lower() == target
+
+
+@pytest.mark.parametrize("text", [
+    "Chrome mujhe pasand hai",
+    "Chrome mat kholo",
+    "I don't know how to open Chrome",
+    "how do I open Chrome?",
+])
+def test_app_resolution_does_not_trigger_on_discussion_or_negation(text):
+    intent, _ = detect_intent(text)
+    assert intent != "open_app"
+
+
+@pytest.mark.parametrize("text", [
+    "Chrome active kar de",
+    "Chrome on kar de",
+])
+def test_unmatched_hinglish_commands_reach_semantic_tool_router(monkeypatch, text):
+    from sara.core.tool_router import has_probable_tool_intent
+    from sara.orchestrator import route_chat
+
+    monkeypatch.setattr(route_chat, "_HAS_PLANNING", False)
+    monkeypatch.setattr(route_chat, "_tool_router_available", lambda: True)
+
+    assert detect_intent(text)[0] == "chat"
+    route, context_hint = route_chat._route_chat_message(text, {})
+    assert route == "tool"
+    assert context_hint is None
+    assert has_probable_tool_intent(text) is True
+
+
+@pytest.mark.parametrize("text", [
+    "I don't know how to open Chrome",
+    "I want to know how to open Chrome",
+    "How do I open Chrome?",
+    "Chrome kaise open karte hain?",
+    "Chrome kaise kholun?",
+    "Chrome kyun start nahi ho raha?",
+])
+def test_information_seeking_phrases_stay_on_chat_route(monkeypatch, text):
+    from sara.orchestrator import route_chat
+
+    monkeypatch.setattr(route_chat, "_HAS_PLANNING", False)
+    monkeypatch.setattr(route_chat, "_tool_router_available", lambda: True)
+
+    route, _ = route_chat._route_chat_message(text, {})
+    assert route == "chat"
+
+
+@pytest.mark.parametrize("text", [
+    "Chrome chalu kro",
+    "Chrome khol de",
+    "Google Chrome start kar do",
+])
+def test_hinglish_action_phrases_reach_tool_route(monkeypatch, text):
+    from sara.orchestrator import route_chat
+
+    monkeypatch.setattr(route_chat, "_HAS_PLANNING", False)
+    monkeypatch.setattr(route_chat, "_tool_router_available", lambda: True)
+
+    route, _ = route_chat._route_chat_message(text, {})
+    assert route == "tool"
 
 
 def test_slot_intents_keep_handler_group_layout():

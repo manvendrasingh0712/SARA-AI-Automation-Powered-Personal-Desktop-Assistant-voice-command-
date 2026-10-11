@@ -586,9 +586,12 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
     # deadline in resolve_tool_call(), which cannot stop a thread that
     # is already running.
     try:
-        _http_timeout_s = float(getattr(cfg, "TOOL_ROUTER_LLM_TIMEOUT_S", 8.0))
+        _http_timeout_s = float(
+            getattr(cfg, "TOOL_ROUTER_LLM_TIMEOUT_S", 12.0)
+        )
+        _http_timeout_s = max(10.0, min(30.0, _http_timeout_s))
     except (TypeError, ValueError):
-        _http_timeout_s = 8.0
+        _http_timeout_s = 12.0
     _gen_config = _build_gemini_generate_config(
         _gtypes,
         _http_timeout_s,
@@ -647,6 +650,8 @@ _TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
         "screenshot", "describe",
         "clipboard",
         "open", "launch", "start",
+        "chalu", "chaloo", "shuru", "khol", "kholo", "khole", "kholde", "kholna",
+        "active kar", "activate kar", "on kar", "off kar",
         "close", "quit", "exit", "terminate",
         "calculate",
         "alarm", "wake me",
@@ -687,9 +692,78 @@ def has_probable_tool_intent(user_input: str) -> bool:
 # ══════════════════════════════════════════════════════════════════════
 
 
+def _resolve_app_open_heuristic(text: str) -> Optional[Dict[str, Any]]:
+    """Resolve explicit app-launch phrasing locally when the LLM is unavailable."""
+    cleaned = re.sub(r"\s+", " ", (text or "").strip()).strip(" \t\r\n,!? .")
+    if not cleaned or len(cleaned.split()) > 8:
+        return None
+
+    try:
+        from sara.tools.system.apps import (
+            _APP_ALIASES,
+            _FUZZY_AUTO_CUTOFF,
+            _fuzzy_alias,
+            _normalize_app_name,
+        )
+    except Exception:
+        return None
+
+    prefix = r"(?:(?:please|pls|sara|hey\s+sara|zara|jara)\s+)*"
+    suffix = r"(?:\s+(?:please|pls|now|na|zara|jara))?"
+    app_chars = r"(?P<app>[a-z0-9][a-z0-9 ._+\-]{0,63}?)"
+
+    action_first = re.fullmatch(
+        prefix + r"(?:open|launch|start|run)\s+(?:the\s+)?" + app_chars + suffix,
+        cleaned,
+        re.IGNORECASE,
+    )
+
+    kar_verb = r"(?:karo|kro|karna|kar\s+(?:do|de|dijiye|na)|karein|kijiye)"
+    app_first_tail = (
+        r"khol(?:o|na|de|do|le|lo|iye|dijiye)?(?:\s+(?:de|do|dijiye))?|"
+        + r"chalu\s+" + kar_verb + r"|"
+        + r"chaloo\s+" + kar_verb + r"|"
+        + r"shuru\s+" + kar_verb + r"|"
+        + r"start\s+" + kar_verb + r"|"
+        + r"launch\s+" + kar_verb + r"|"
+        + r"open\s+" + kar_verb
+    )
+
+    app_first = re.fullmatch(
+        prefix + app_chars + r"\s+(?:" + app_first_tail + r")" + suffix,
+        cleaned,
+        re.IGNORECASE,
+    )
+
+    match = action_first or app_first
+    if match is None:
+        return None
+
+    candidate = _normalize_app_name(match.group("app"))
+    alias = (
+        candidate
+        if candidate in _APP_ALIASES
+        else _fuzzy_alias(candidate, _FUZZY_AUTO_CUTOFF)
+    )
+
+    if alias is None or alias not in _APP_ALIASES:
+        return None
+
+    executable = _APP_ALIASES[alias]
+    canonical = next(
+        (name for name, target in _APP_ALIASES.items() if target == executable),
+        alias,
+    )
+    return {"name": "open_app", "arguments": {"target": canonical}}
+
+
 def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
     text = (user_input or "").strip()
     lowered = text.lower()
+
+    app_open = _resolve_app_open_heuristic(text)
+    if app_open is not None:
+        return app_open
 
     if _kw_present(lowered, ("weather", "temperature", "rain", "forecast")):
         location = _extract_after_phrases(text, ("weather in", "weather at", "in", "at"))
@@ -737,9 +811,22 @@ def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
     if _kw_present(lowered, ("stopwatch",)) and _kw_present(lowered, ("stop", "end")):
         return {"name": "stop_stopwatch", "arguments": {}}
 
-    if _kw_present(lowered, ("open", "launch", "start")):
-        app = _extract_after_phrases(text, ("open", "launch", "start"))
-        return {"name": "open_app", "arguments": {"target": app}}
+    explicit_open = re.fullmatch(
+        r"(?:(?:please|pls|sara|hey\s+sara|zara|jara|can\s+you|could\s+you|would\s+you)\s+)*"
+        r"(?:open|launch|start|run)\s+(?:the\s+)?"
+        r"(?P<app>[a-z0-9][a-z0-9 ._+\-]{0,63}?)"
+        r"(?:\s+(?:please|pls|now|na|zara|jara))?[.!?]*",
+        text,
+        re.IGNORECASE,
+    )
+    if explicit_open:
+        app = explicit_open.group("app").strip()
+        if app and not re.search(
+            r"\b(?:and then|then|after that|and)\b",
+            app,
+            re.IGNORECASE,
+        ):
+            return {"name": "open_app", "arguments": {"target": app}}
 
     if _kw_present(lowered, ("close", "quit", "exit", "terminate")):
         app = _extract_after_phrases(text, ("close", "quit", "exit", "terminate"))
@@ -774,38 +861,81 @@ _URL_LIKE_RE = re.compile(r"^(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?$")
 
 
 def _validate_tool_result(result: Dict[str, Any], cfg=None) -> Dict[str, Any]:
-    """
-    Final safety net applied to EVERY resolved tool call, regardless of
-    which path produced it (LLM tool-call or keyword heuristic). Rejects
-    a `calculator` call whose `expr` has no digit/operator, and an
-    `open_url` call whose `url` isn't URL-shaped, downgrading either to
-    "unknown" (=no tool applies, fall back to normal chat) instead of
-    ever reaching the caller as a broken tool call.
-    """
+    """Validate a tool candidate against the registered schema before dispatch."""
+    def _reject(reason: str) -> Dict[str, Any]:
+        if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
+            print(f"[ToolRouter] Rejected invalid tool result: {reason}")
+        return {"name": "unknown", "arguments": {}}
+
+    if not isinstance(result, dict):
+        return _reject("result must be a dictionary")
+
     name = result.get("name")
-    args = result.get("arguments", {})
+    if name == "unknown":
+        return {"name": "unknown", "arguments": {}}
+    if not isinstance(name, str) or name not in TOOL_NAME_TO_INTENT:
+        return _reject(f"unregistered tool name: {name!r}")
 
-    if name == "calculator":
-        expr = str(args.get("expr", ""))
-        if not _has_math_signal(expr):
-            if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
-                print(
-                    f"[ToolRouter] Rejected hallucinated calculator call "
-                    f"(no digits/operators in expr={expr!r}) -- falling back to chat."
-                )
-            return {"name": "unknown", "arguments": {}}
+    args = result.get("arguments")
+    if not isinstance(args, dict):
+        return _reject("arguments must be a dictionary")
 
-    if name == "open_url":
-        url = str(args.get("url", "")).strip()
-        if not _URL_LIKE_RE.match(url):
-            if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
-                print(
-                    f"[ToolRouter] Rejected non-URL-like open_url call "
-                    f"(url={url!r}) -- falling back to chat."
-                )
-            return {"name": "unknown", "arguments": {}}
+    function_schema = next(
+        (
+            entry.get("function")
+            for entry in TOOLS_SCHEMA
+            if entry.get("function", {}).get("name") == name
+        ),
+        None,
+    )
+    if not isinstance(function_schema, dict):
+        return _reject(f"missing schema for tool: {name}")
 
-    return result
+    parameters = function_schema.get("parameters") or {}
+    properties = parameters.get("properties") or {}
+    required = parameters.get("required") or []
+    if not isinstance(properties, dict) or not isinstance(required, list):
+        return _reject(f"invalid schema for tool: {name}")
+
+    unexpected = [
+        key for key in args
+        if not isinstance(key, str) or key not in properties
+    ]
+    if unexpected:
+        return _reject(f"unexpected arguments for {name}: {unexpected!r}")
+
+    missing = [key for key in required if key not in args]
+    if missing:
+        return _reject(f"missing required arguments for {name}: {missing}")
+
+    allow_empty = {
+        "weather": {"location"},
+        "news": {"topic"},
+        "list_todos": {"scope"},
+    }
+    for key, value in args.items():
+        property_schema = properties.get(key)
+        expected_type = (
+            property_schema.get("type")
+            if isinstance(property_schema, dict)
+            else None
+        )
+        if expected_type == "string" and not isinstance(value, str):
+            return _reject(f"argument {key!r} for {name} must be a string")
+        if (
+            expected_type == "string"
+            and not value.strip()
+            and key not in allow_empty.get(name, set())
+        ):
+            return _reject(f"argument {key!r} for {name} must not be empty")
+
+    if name == "calculator" and not _has_math_signal(args.get("expr", "")):
+        return _reject("calculator expression has no numeric/operator signal")
+
+    if name == "open_url" and not _URL_LIKE_RE.match(args.get("url", "").strip()):
+        return _reject("URL is not URL-shaped")
+
+    return {"name": name, "arguments": dict(args)}
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -821,6 +951,11 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
     _validate_tool_result() so the defensive checks (Bug 1 fix #2, Bug 3
     fix) apply no matter which internal path resolved the call.
     """
+    from sara.core.intent import is_negated_action_request
+
+    if is_negated_action_request(user_input or ""):
+        return {"name": "unknown", "arguments": {}}
+
     if cfg is None:
         # Lazy import, mirroring the pattern used throughout this codebase
         # (sara/skills/__init__.py, sara/orchestrator/proactive.py) to

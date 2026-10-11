@@ -11,6 +11,16 @@ Internal layout:
                  + register_intent(), used by sara/skills/ to add new
                    intents at runtime
 """
-from .engine import detect_intent, register_intent
+from .engine import (
+    detect_intent,
+    is_negated_action_request,
+    normalize_intent_text,
+    register_intent,
+)
 
-__all__ = ["detect_intent", "register_intent"]
+__all__ = [
+    "detect_intent",
+    "is_negated_action_request",
+    "normalize_intent_text",
+    "register_intent",
+]

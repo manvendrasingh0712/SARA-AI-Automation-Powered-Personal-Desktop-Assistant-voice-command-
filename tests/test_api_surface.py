@@ -278,10 +278,14 @@ EXPECTED_METHODS = {
     "mem2_forget",
     "mem2_pin",
     "mem2_stats",
+    "get_router_stats",
+    "set_router_mode",
+    "reset_router",
+    "submit_feedback",
 }
 
-assert len(EXPECTED_METHODS) == 88, (
-    "EXPECTED_METHODS must contain exactly 88 entries, found "
+assert len(EXPECTED_METHODS) == 92, (
+    "EXPECTED_METHODS must contain exactly 92 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

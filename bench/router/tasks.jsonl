@@ -1,0 +1,90 @@
+{"id":"R001","type":"math","prompt":"What is 17 times 23? Reply with only the number.","check":{"kind":"number","value":391,"tol":0}}
+{"id":"R002","type":"math","prompt":"A shop sells pens at 12 rupees each. What is the cost of 15 pens? Reply with only the number.","check":{"kind":"number","value":180,"tol":0}}
+{"id":"R003","type":"math","prompt":"What is 15 percent of 240? Reply with only the number.","check":{"kind":"number","value":36,"tol":0}}
+{"id":"R004","type":"math","prompt":"What is (45 + 55) divided by 4? Reply with only the number.","check":{"kind":"number","value":25,"tol":0}}
+{"id":"R005","type":"math","prompt":"What is 2 to the power 10? Reply with only the number.","check":{"kind":"number","value":1024,"tol":0}}
+{"id":"R006","type":"math","prompt":"What is the square root of 144? Reply with only the number.","check":{"kind":"number","value":12,"tol":0}}
+{"id":"R007","type":"math","prompt":"What is 1001 minus 478? Reply with only the number.","check":{"kind":"number","value":523,"tol":0}}
+{"id":"R008","type":"math","prompt":"A train travels at 60 km/h for 2.5 hours. How many km does it cover? Reply with only the number.","check":{"kind":"number","value":150,"tol":0}}
+{"id":"R009","type":"math","prompt":"What is the sum of the first 10 positive integers? Reply with only the number.","check":{"kind":"number","value":55,"tol":0}}
+{"id":"R010","type":"math","prompt":"What is 7 factorial? Reply with only the number.","check":{"kind":"number","value":5040,"tol":0}}
+{"id":"R011","type":"math","prompt":"What is 3/4 of 80? Reply with only the number.","check":{"kind":"number","value":60,"tol":0}}
+{"id":"R012","type":"math","prompt":"What is the average of 12, 18 and 30? Reply with only the number.","check":{"kind":"number","value":20,"tol":0}}
+{"id":"R013","type":"math","prompt":"A rectangle has a perimeter of 54 and a length of 15. What is its width? Reply with only the number.","check":{"kind":"number","value":12,"tol":0}}
+{"id":"R014","type":"math","prompt":"What is 13 times 17 plus 29? Reply with only the number.","check":{"kind":"number","value":250,"tol":0}}
+{"id":"R015","type":"math","prompt":"Solve for x: 3x + 7 = 31. Reply with only the number.","check":{"kind":"number","value":8,"tol":0}}
+{"id":"R016","type":"math","prompt":"What is the LCM of 12 and 18? Reply with only the number.","check":{"kind":"number","value":36,"tol":0}}
+{"id":"R017","type":"math","prompt":"What is the GCD of 84 and 126? Reply with only the number.","check":{"kind":"number","value":42,"tol":0}}
+{"id":"R018","type":"math","prompt":"How many seconds are there in 3 hours? Reply with only the number.","check":{"kind":"number","value":10800,"tol":0}}
+{"id":"R019","type":"math","prompt":"What is 12.5 percent of 800? Reply with only the number.","check":{"kind":"number","value":100,"tol":0}}
+{"id":"R020","type":"math","prompt":"What number comes next: 2, 6, 12, 20, 30, ? Reply with only the number.","check":{"kind":"number","value":42,"tol":0}}
+{"id":"R021","type":"math","prompt":"A number doubled and then increased by 9 gives 51. What is the number? Reply with only the number.","check":{"kind":"number","value":21,"tol":0}}
+{"id":"R022","type":"math","prompt":"What is the simple interest on 1000 rupees at 10 percent per year for 3 years? Reply with only the number.","check":{"kind":"number","value":300,"tol":0}}
+{"id":"R023","type":"math","prompt":"How many minutes are there between 9:45 and 13:10 on the same day? Reply with only the number.","check":{"kind":"number","value":205,"tol":0}}
+{"id":"R024","type":"math","prompt":"What is 999 times 3? Reply with only the number.","check":{"kind":"number","value":2997,"tol":0}}
+{"id":"R025","type":"units","prompt":"Convert 5 km to meters. Reply with only the number.","check":{"kind":"number","value":5000,"tol":0.01}}
+{"id":"R026","type":"units","prompt":"Convert 2.5 hours to minutes. Reply with only the number.","check":{"kind":"number","value":150,"tol":0.01}}
+{"id":"R027","type":"units","prompt":"Convert 3 kg to grams. Reply with only the number.","check":{"kind":"number","value":3000,"tol":0.01}}
+{"id":"R028","type":"units","prompt":"Convert 100 cm to meters. Reply with only the number.","check":{"kind":"number","value":1,"tol":0.01}}
+{"id":"R029","type":"units","prompt":"Convert 72 km/h to meters per second. Reply with only the number.","check":{"kind":"number","value":20,"tol":0.01}}
+{"id":"R030","type":"units","prompt":"How many days are there in 6 weeks? Reply with only the number.","check":{"kind":"number","value":42,"tol":0.01}}
+{"id":"R031","type":"units","prompt":"Convert 2 litres to millilitres. Reply with only the number.","check":{"kind":"number","value":2000,"tol":0.01}}
+{"id":"R032","type":"units","prompt":"Convert 90 minutes to hours as a decimal. Reply with only the number.","check":{"kind":"number","value":1.5,"tol":0.01}}
+{"id":"R033","type":"factual","prompt":"What is the capital of France? Answer in one word.","check":{"kind":"contains_any","values":["paris"]}}
+{"id":"R034","type":"factual","prompt":"Who wrote the play Romeo and Juliet? Give just the surname.","check":{"kind":"contains_any","values":["shakespeare"]}}
+{"id":"R035","type":"factual","prompt":"What is the chemical symbol for gold? Reply with just the symbol.","check":{"kind":"contains_any","values":["au"]}}
+{"id":"R036","type":"factual","prompt":"What is the largest planet in the solar system? One word.","check":{"kind":"contains_any","values":["jupiter"]}}
+{"id":"R037","type":"factual","prompt":"What is the national animal of India? One word.","check":{"kind":"contains_any","values":["tiger"]}}
+{"id":"R038","type":"factual","prompt":"Who wrote the book The Discovery of India? Give just the surname.","check":{"kind":"contains_any","values":["nehru"]}}
+{"id":"R039","type":"factual","prompt":"What is the capital of Japan? One word.","check":{"kind":"contains_any","values":["tokyo"]}}
+{"id":"R040","type":"factual","prompt":"Who is credited with inventing the telephone? Give just the surname.","check":{"kind":"contains_any","values":["bell"]}}
+{"id":"R041","type":"factual","prompt":"What is the currency of Japan? One word.","check":{"kind":"contains_any","values":["yen"]}}
+{"id":"R042","type":"factual","prompt":"Which planet is known as the Red Planet? One word.","check":{"kind":"contains_any","values":["mars"]}}
+{"id":"R043","type":"factual","prompt":"H2O is the chemical formula of which substance? One word.","check":{"kind":"contains_any","values":["water"]}}
+{"id":"R044","type":"factual","prompt":"Who was the first Prime Minister of India? Give just the surname.","check":{"kind":"contains_any","values":["nehru"]}}
+{"id":"R045","type":"factual","prompt":"Which gas do plants absorb during photosynthesis? Name it briefly.","check":{"kind":"contains_any","values":["carbon dioxide","co2"]}}
+{"id":"R046","type":"factual","prompt":"How many continents are there? Reply with only the number.","check":{"kind":"number","value":7,"tol":0}}
+{"id":"R047","type":"factual","prompt":"What is the boiling point of water at sea level in degrees Celsius? Reply with only the number.","check":{"kind":"number","value":100,"tol":0}}
+{"id":"R048","type":"factual","prompt":"What is the smallest prime number? Reply with only the number.","check":{"kind":"number","value":2,"tol":0}}
+{"id":"R049","type":"json","prompt":"Extract the name and age from this sentence as a JSON object using exactly those key names: 'Riya Sharma is 21 years old.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"name":"Riya Sharma","age":21}}}
+{"id":"R050","type":"json","prompt":"Extract the city and temperature (a number) from this sentence as a JSON object using exactly those key names: 'It is 31 degrees in Jaipur today.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"city":"Jaipur","temperature":31}}}
+{"id":"R051","type":"json","prompt":"Extract the item and quantity (a number) from this sentence as a JSON object using exactly those key names: 'Please add 3 apples to the list.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"item":"apples","quantity":3}}}
+{"id":"R052","type":"json","prompt":"Extract the from, to and date from this sentence as a JSON object using exactly those key names: 'Book a train from Ajmer to Delhi on 5 May.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"from":"Ajmer","to":"Delhi","date":"5 May"}}}
+{"id":"R053","type":"json","prompt":"Extract the title and year (a number) from this sentence as a JSON object using exactly those key names: 'The movie Dangal was released in 2016.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"title":"Dangal","year":2016}}}
+{"id":"R054","type":"json","prompt":"Extract the product and price (a number) from this sentence as a JSON object using exactly those key names: 'The keyboard costs 1499 rupees.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"product":"keyboard","price":1499}}}
+{"id":"R055","type":"json","prompt":"Extract the person and role from this sentence as a JSON object using exactly those key names: 'Anil works as a pilot.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"person":"Anil","role":"pilot"}}}
+{"id":"R056","type":"json","prompt":"Extract the hours (a number) and task from this sentence as a JSON object using exactly those key names: 'I studied physics for 2 hours.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"hours":2,"task":"physics"}}}
+{"id":"R057","type":"json","prompt":"Extract the name and city from this sentence as a JSON object using exactly those key names: 'Meera lives in Pune.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"name":"Meera","city":"Pune"}}}
+{"id":"R058","type":"json","prompt":"Extract the brand and model from this sentence as a JSON object using exactly those key names: 'I bought a Samsung Galaxy M34.' Reply with the JSON object only.","check":{"kind":"json_fields","fields":{"brand":"Samsung","model":"Galaxy M34"}}}
+{"id":"R059","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'open chrome'","check":{"kind":"equals","value":"open_app"}}
+{"id":"R060","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'make it louder, volume 70'","check":{"kind":"equals","value":"set_volume"}}
+{"id":"R061","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'wake me at 6 tomorrow'","check":{"kind":"equals","value":"set_alarm"}}
+{"id":"R062","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'write down: buy milk'","check":{"kind":"equals","value":"take_note"}}
+{"id":"R063","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'will it rain in Delhi today'","check":{"kind":"equals","value":"weather"}}
+{"id":"R064","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'play some lofi on youtube'","check":{"kind":"equals","value":"play_youtube"}}
+{"id":"R065","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'what is 12 times 9'","check":{"kind":"equals","value":"calculator"}}
+{"id":"R066","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'lock my pc'","check":{"kind":"equals","value":"lock_pc"}}
+{"id":"R067","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'what is on my screen right now'","check":{"kind":"equals","value":"screenshot_describe"}}
+{"id":"R068","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'what did I copy last'","check":{"kind":"equals","value":"clipboard_read"}}
+{"id":"R069","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'countdown 10 minutes'","check":{"kind":"equals","value":"set_timer"}}
+{"id":"R070","type":"tool","prompt":"Pick exactly one tool name from this list that best handles the request and reply with the tool name only: [open_app, set_volume, set_timer, take_note, weather, play_youtube, web_search, calculator, lock_pc, screenshot_describe, clipboard_read, set_alarm]. Request: 'who won the cricket match yesterday'","check":{"kind":"equals","value":"web_search"}}
+{"id":"R071","type":"instruction","prompt":"Answer in exactly one word: what colour is the sky on a clear day?","check":{"kind":"all","checks":[{"kind":"one_word"},{"kind":"contains_any","values":["blue"]}]}}
+{"id":"R072","type":"instruction","prompt":"Reply in all lowercase letters only: say hello to Sara.","check":{"kind":"all","checks":[{"kind":"all_lower"},{"kind":"contains_any","values":["hello"]}]}}
+{"id":"R073","type":"instruction","prompt":"Give exactly 3 bullet points, each starting with '- ', about why exercise is good.","check":{"kind":"bullets","n":3}}
+{"id":"R074","type":"instruction","prompt":"Answer in at most 5 words: why is the sea salty?","check":{"kind":"max_words","n":5}}
+{"id":"R075","type":"instruction","prompt":"Start your answer with the word 'Sure' and then name two fruits.","check":{"kind":"starts_with","value":"Sure"}}
+{"id":"R076","type":"instruction","prompt":"Reply with only yes or no: is 17 a prime number?","check":{"kind":"equals","value":"yes"}}
+{"id":"R077","type":"instruction","prompt":"Reply with only yes or no: is 21 a prime number?","check":{"kind":"equals","value":"no"}}
+{"id":"R078","type":"instruction","prompt":"Write the word banana backwards and nothing else.","check":{"kind":"equals","value":"ananab"}}
+{"id":"R079","type":"instruction","prompt":"List the days of the week in order, separated by commas, and nothing else.","check":{"kind":"equals","value":"monday, tuesday, wednesday, thursday, friday, saturday, sunday"}}
+{"id":"R080","type":"instruction","prompt":"Give exactly 2 bullet points, each starting with '- ', about the moon.","check":{"kind":"bullets","n":2}}
+{"id":"R081","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'mujhe paani chahiye'","check":{"kind":"contains_any","values":["water"]}}
+{"id":"R082","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'kal meri exam hai'","check":{"kind":"contains_any","values":["exam"]}}
+{"id":"R083","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'main bazaar ja raha hoon'","check":{"kind":"contains_any","values":["market"]}}
+{"id":"R084","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'tumhara naam kya hai'","check":{"kind":"contains_any","values":["name"]}}
+{"id":"R085","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'aaj mausam bahut accha hai'","check":{"kind":"contains_any","values":["weather"]}}
+{"id":"R086","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'yeh kitne ka hai'","check":{"kind":"contains_any","values":["how much","price","cost"]}}
+{"id":"R087","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'mujhe bhookh lagi hai'","check":{"kind":"contains_any","values":["hungry"]}}
+{"id":"R088","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'darwaza band kar do'","check":{"kind":"contains_any","values":["door"]}}
+{"id":"R089","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'main ghar jaa raha hoon'","check":{"kind":"contains_any","values":["home"]}}
+{"id":"R090","type":"hinglish","prompt":"Translate to English and reply with only the translation: 'kya tum meri madad karoge'","check":{"kind":"contains_any","values":["help"]}}

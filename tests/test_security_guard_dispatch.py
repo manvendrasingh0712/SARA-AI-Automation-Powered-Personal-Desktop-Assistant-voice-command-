@@ -65,7 +65,7 @@ def route_to_tool(monkeypatch, route: str = "tool") -> None:
 def run(text: str, confirm_state: dict) -> str:
     brain = SimpleNamespace(model_name="m", record_exchange=lambda *a: None)
     return dispatcher._handle_command(
-        text, brain, SimpleNamespace(), None, None, None, None,
+        text, brain, SimpleNamespace(speak=lambda *a, **k: None), None, None, None, None,
         lambda *a: None, {}, confirm_state=confirm_state, context_state={},
     )
 
@@ -205,3 +205,53 @@ def test_retry_via_tool_router_clean_arms_confirmation(spy, monkeypatch):
     result = route_chat._retry_via_tool_router("drop that", ctx, SimpleNamespace(model_name="m"))
     assert "Say yes or cancel" in result
     assert ctx["confirm_state"]["pending"]["action"] == "guarded_tool" and spy.calls == 0
+    
+    
+def test_negated_command_is_blocked_before_tool_routing(spy, monkeypatch):
+    route_to_tool(monkeypatch)
+    state: dict = {}
+
+    result = run("Chrome chalu mat kar", state)
+
+    assert result == "Understood. I won't execute that command."
+    assert spy.calls == 0
+    assert "pending" not in state
+
+
+def test_open_app_tool_route_passes_canonical_target_to_handler(monkeypatch):
+    received = {}
+
+    def open_handler(match, ctx):
+        received["target"] = match.group(1)
+        return "Chrome opened"
+
+    monkeypatch.setattr(dispatcher, "detect_intent", lambda text: ("chat", None))
+    monkeypatch.setattr(
+        dispatcher, "_route_chat_message", lambda text, state: ("tool", None)
+    )
+    monkeypatch.setattr(
+        dispatcher,
+        "resolve_tool_call",
+        lambda text, model: {
+            "name": "open_app",
+            "arguments": {"target": "chrome"},
+        },
+    )
+    monkeypatch.setitem(dispatcher._INTENT_HANDLERS, "open_app", open_handler)
+
+    result = run("chrom khol de", {})
+
+    assert result == "Chrome opened"
+    assert received == {"target": "chrome"}
+
+
+def test_negated_command_never_calls_tool_resolver(monkeypatch):
+    monkeypatch.setattr(
+        dispatcher,
+        "resolve_tool_call",
+        lambda *args: pytest.fail("Negated command reached tool resolver"),
+    )
+
+    result = run("Chrome chalu mat kar", {})
+
+    assert result == "Understood. I won't execute that command."

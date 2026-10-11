@@ -16,7 +16,7 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Iterator, List, Optional, Tuple
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 from config import Config
 
@@ -28,6 +28,56 @@ except Exception:  # telemetry is optional: fall back to no-ops
 
     def _t_mark(*args, **kwargs) -> None:
         return None
+
+
+try:
+    from sara.core.telemetry import current_turn_id as _t_turn_id
+except Exception:  # telemetry is optional: fall back to a no-op
+    def _t_turn_id():
+        return None
+
+
+def _router():
+    """Learned-router singleton, or None when it is off or cannot be imported."""
+    try:
+        if str(getattr(Config, "ROUTER_MODE", "off") or "off").strip().lower() == "off":
+            return None
+        from sara.core.router import get_router
+
+        return get_router()
+    except Exception:
+        return None
+
+
+def _looks_rate_limited(exc: BaseException) -> bool:
+    """True for 429 / quota style errors (never logs the error text)."""
+    try:
+        code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+        text = f"{type(exc).__name__} {exc}".lower()
+        return (
+            code == 429
+            or "429" in text
+            or "resource_exhausted" in text
+            or "quota" in text
+            or "rate limit" in text
+        )
+    except Exception:
+        return False
+
+
+def _router_report(router, decision_id: str, started: float, produced: bool, escalated: bool) -> None:
+    """Hand the finished turn's outcome to the router; never raises."""
+    try:
+        router.report_done(
+            decision_id,
+            ok=produced,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            empty=not produced,
+            escalated=escalated,
+            error_code=None if produced else "no_output",
+        )
+    except Exception:
+        pass
 
 # ══════════════════════════════════════════════════════════════════════
 # Module-level compiled regexes
@@ -773,6 +823,8 @@ class SaraLLM:
         prompt: str,
         stages,
         max_retries: Optional[int] = None,
+        tier_labels: Optional[Dict[str, str]] = None,
+        on_rate_limit: Optional[Callable[[str], None]] = None,
     ) -> Iterator[str]:
         # FALLBACK FIX: `stages` is an ordered list of (label, open_stream)
         # pairs instead of a single open_stream callable. Stage 0 is
@@ -861,7 +913,7 @@ class SaraLLM:
                             with self._last_stage_lock:
                                 self._last_stage_used = stage_name
                             _t_mark("llm_first_token")
-                            _t_annotate(model=stage_name)
+                            _t_annotate(model=(tier_labels or {}).get(stage_name, stage_name))
 
                         buffer_str += piece
                         reply_parts.append(piece)
@@ -892,6 +944,11 @@ class SaraLLM:
                         print(
                             f"[LLM:{stage_name}] stream error on attempt {attempt+1}: {e}"
                         )
+                    if on_rate_limit is not None and _looks_rate_limited(e):
+                        try:
+                            on_rate_limit(stage_name)
+                        except Exception:
+                            pass
 
                     if yielded_any:
                         # v7: never speak the raw exception — the user already
@@ -1181,6 +1238,7 @@ class SaraLLM:
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
         reference_context: Optional[str] = None,
+        model_override: Optional[str] = None,
     ):
         client = _get_ollama_client(self._cfg)
         if not client:
@@ -1191,7 +1249,8 @@ class SaraLLM:
         reference_context = self._secure_reference(reference_context)
         messages = self._build_messages_ollama(prompt, history, memory_context, reference_context)
         raw_stream = client.chat(
-            model=(
+            model=model_override
+            or (
                 self._ollama_fast_model_name
                 if _is_simple_query(prompt)
                 else self._ollama_model_name
@@ -1224,6 +1283,7 @@ class SaraLLM:
         history: List[Tuple[str, str]],
         memory_context: Optional[str] = None,
         reference_context: Optional[str] = None,
+        model_override: Optional[str] = None,
     ):
         client = _get_gemini_client(self._cfg)
         if not client:
@@ -1236,7 +1296,8 @@ class SaraLLM:
         contents = self._build_contents_gemini(prompt, history, memory_context, reference_context)
 
         raw_stream = client.models.generate_content_stream(
-            model=(
+            model=model_override
+            or (
                 self._gemini_fast_model_name
                 if _is_simple_query(prompt)
                 else self._gemini_model_name
@@ -1371,11 +1432,51 @@ class SaraLLM:
             # spawning an unbounded thread per request.
             self._get_fact_extract_pool().submit(self._safe_extract_fact, prompt)
 
+        router = _router()
+        choice = None
+        override: Optional[str] = None
+        cascade_tier = None
+        tier_labels: Dict[str, str] = {}
+        try:
+            if router is not None and router.mode != "off":
+                router.note_user_turn(prompt)
+                choice = router.choose(
+                    prompt, {"memory_injected": bool(hits), "depth": router.depth()}
+                )
+                if choice.decision_id:
+                    router.bind_turn(choice.decision_id, _t_turn_id())
+                    override = router.model_for(choice, self._primary_backend)
+                    cascade_tier = router.cascade(choice)
+                    if cascade_tier is not None and cascade_tier.backend != self._primary_backend:
+                        cascade_tier = None
+                    if self._primary_backend == "ollama":
+                        legacy_model = (
+                            self._ollama_fast_model_name
+                            if _is_simple_query(prompt)
+                            else self._ollama_model_name
+                        )
+                    else:
+                        legacy_model = (
+                            self._gemini_fast_model_name
+                            if _is_simple_query(prompt)
+                            else self._gemini_model_name
+                        )
+                    used_model = override or legacy_model
+                    for tier in router.tiers():
+                        if tier.backend == self._primary_backend and tier.model == used_model:
+                            tier_labels[self._primary_backend] = tier.name
+                            break
+        except Exception:
+            logger.warning("[router] routing step failed; using the legacy model selection")
+            router, choice, override, cascade_tier = None, None, None, None
+            tier_labels = {}
+
         def _open_primary(attempt: int):
+            extra = {"model_override": override} if override else {}
             return (
-                self._open_ollama_stream(prompt, history, memory_context, reference_context)
+                self._open_ollama_stream(prompt, history, memory_context, reference_context, **extra)
                 if self._primary_backend == "ollama"
-                else self._open_gemini_stream(prompt, history, memory_context, reference_context)
+                else self._open_gemini_stream(prompt, history, memory_context, reference_context, **extra)
             )
 
         # FALLBACK FIX: build an ordered list of (label, opener) stages.
@@ -1385,6 +1486,18 @@ class SaraLLM:
         # only reaches it if Gemini fails to yield a single token (no
         # network, quota/rate-limit exhausted, auth error, etc.).
         stages = [(self._primary_backend, _open_primary)]
+        if cascade_tier is not None:
+
+            def _open_cascade(attempt: int, _model: str = cascade_tier.model):
+                extra = {"model_override": _model}
+                return (
+                    self._open_ollama_stream(prompt, history, memory_context, reference_context, **extra)
+                    if self._primary_backend == "ollama"
+                    else self._open_gemini_stream(prompt, history, memory_context, reference_context, **extra)
+                )
+
+            stages.append((cascade_tier.name, _open_cascade))
+            tier_labels[cascade_tier.name] = cascade_tier.name
         if self._fallback_enabled:
 
             def _open_ollama_fallback(attempt: int):
@@ -1416,7 +1529,40 @@ class SaraLLM:
 
             stages.append((_FALLBACK_STAGE_LABEL, _open_ollama_fallback))
 
-        yield from self._stream_generic(prompt, stages)
+        if router is None or choice is None or not choice.decision_id:
+            yield from self._stream_generic(prompt, stages)
+        else:
+
+            def _on_rate_limit(stage: str) -> None:
+                name = tier_labels.get(stage)
+                if name:
+                    router.note_rate_limited(name)
+
+            started = time.monotonic()
+            produced = False
+            completed = False
+            try:
+                for piece in self._stream_generic(
+                    prompt,
+                    stages,
+                    tier_labels=tier_labels or None,
+                    on_rate_limit=_on_rate_limit,
+                ):
+                    if piece.strip() and not self._is_fallback_reply(piece):
+                        produced = True
+                    yield piece
+                completed = True
+            finally:
+                if completed and not _current_cancel_event().is_set():
+                    with self._last_stage_lock:
+                        served = self._last_stage_used
+                    _router_report(
+                        router,
+                        choice.decision_id,
+                        started,
+                        produced,
+                        produced and served not in (None, self._primary_backend),
+                    )
         _t_mark("llm_done")
 
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): ingest this exchange

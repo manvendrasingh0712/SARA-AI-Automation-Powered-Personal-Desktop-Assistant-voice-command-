@@ -34,6 +34,7 @@
 <link rel="stylesheet" href="style/theme-minimal.css">
 <link rel="stylesheet" href="style/smooth.css">
 <link rel="stylesheet" href="style/animations.css">
+<link rel="stylesheet" href="style/router-view.css">
 <link rel="stylesheet" href="style/premium.css">
 <link rel="stylesheet" href="style/luxe.css">
 <link rel="stylesheet" href="style/aurum.css">
@@ -310,6 +311,37 @@
           <div class="set-card-body">
             <div class="skills-scroll"><div id="skillsList" class="acc-note" data-skel><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div></div>
             <div class="acc-note" id="skillRestartNote" hidden>Skill changes apply after you restart SARA.</div>
+          </div>
+        </section>
+
+        <section class="set-card" id="grp-router">
+          <div class="set-card-head"><div class="set-card-title">Smart routing</div><div class="set-card-sub">cheapest model that still answers well</div></div>
+          <div class="set-card-body">
+            <div class="rt-block">
+              <div class="rt-seg" role="group" aria-label="Smart routing mode">
+                <button type="button" class="rt-mode" data-mode="off" aria-pressed="false">Off</button>
+                <button type="button" class="rt-mode" data-mode="shadow" aria-pressed="false">Shadow</button>
+                <button type="button" class="rt-mode" data-mode="on" aria-pressed="false">On</button>
+              </div>
+              <div class="rt-gate" id="rtGate" hidden></div>
+              <div class="rt-note" id="rtNote" hidden></div>
+              <div class="rt-empty" id="rtEmpty" hidden>Only one model is configured - add GEMINI_FAST_MODEL in .env to let Sara choose</div>
+              <div class="rt-usage" id="rtUsage"></div>
+              <div class="rt-legend" id="rtLegend"></div>
+              <div class="rt-nums" id="rtNums" hidden>
+                <div class="rt-num"><b id="rtLatency">-</b><span>average response time</span></div>
+                <div class="rt-num" id="rtSavedWrap"><b id="rtSaved">-</b><span>calls saved vs always-main</span></div>
+              </div>
+              <div class="rt-progress" id="rtCollecting" hidden></div>
+              <div class="rt-reset">
+                <button type="button" class="rt-btn" id="rtReset">Reset learning</button>
+                <div class="rt-confirm" id="rtConfirm" hidden>
+                  <span>Forget everything Sara has learned about routing?</span>
+                  <button type="button" class="rt-btn rt-danger" id="rtResetYes">Yes, reset</button>
+                  <button type="button" class="rt-btn" id="rtResetNo">Cancel</button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -698,11 +730,12 @@
 <script src="js/palette.js"></script>
 <script src="js/quality.js"></script>
 <script src="js/premium.js"></script>
+<script src="js/router-view.js"></script>
 <script src="js/aurum.js"></script>
 <script src="js/main.js"></script>
 <script src="js/chat-plus.js"></script>
-<script src="js/notes-plus.js"></script>
 <script src="js/nlparse.js"></script>
+<script src="js/notes-plus.js"></script>
 
 </body>
 </html>

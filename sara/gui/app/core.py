@@ -560,6 +560,13 @@ class ApiCoreMixin:
             print("[send_text_command] turn cancelled by Stop; dropping late result")
             reply = None
         if reply:
+            try:
+                from sara.core.telemetry import current_turn_id
+                _reply_turn = current_turn_id()
+                if _reply_turn:
+                    _push("reply_meta", str(_reply_turn)[:40])
+            except Exception as e:
+                print(f"[reply_meta push error] {type(e).__name__}")
             _push("transcript", "sara", reply)
             try:
                 self.db.log_message("user", text)
