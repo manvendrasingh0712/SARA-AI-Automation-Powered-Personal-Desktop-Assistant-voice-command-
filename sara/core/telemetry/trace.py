@@ -186,6 +186,11 @@ def _finalise_locked(turn: _Turn) -> dict[str, Any]:
     return rec
 
 
+def current_turn_id() -> Optional[str]:
+    """Id of the most recently begun turn (None before the first one)."""
+    return _latest
+
+
 def new_turn_id() -> str:
     """Short unique id for a turn."""
     return uuid.uuid4().hex[:12]

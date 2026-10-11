@@ -233,6 +233,43 @@
     anim.onfinish = land; anim.oncancel = land;
   }
 
+  let pendingReplyTurn = null;
+  SARA.on('ev:reply_meta', function (turnId) {
+    pendingReplyTurn = typeof turnId === 'string' && turnId ? turnId.slice(0, 40) : null;
+  });
+
+  function attachThumbs(bubble) {
+    if (!bubble || !bubble.div || !pendingReplyTurn) return;
+    const turnId = pendingReplyTurn;
+    pendingReplyTurn = null;
+    const bar = document.createElement('div');
+    bar.className = 'msg-feedback';
+    const specs = [
+      { value: 1, glyph: '\u{1F44D}', label: 'Helpful answer' },
+      { value: -1, glyph: '\u{1F44E}', label: 'Unhelpful answer' }
+    ];
+    const buttons = specs.map(function (spec) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'msg-fb-btn';
+      b.textContent = spec.glyph;
+      b.setAttribute('aria-label', spec.label);
+      b.addEventListener('click', function () { vote(spec, b); });
+      bar.appendChild(b);
+      return b;
+    });
+    function vote(spec, chosen) {
+      if (bar.dataset.done) return;
+      bar.dataset.done = '1';
+      buttons.forEach(function (b) {
+        if (b === chosen) { b.disabled = true; b.classList.add('is-chosen'); }
+        else { b.hidden = true; }
+      });
+      SARA.callApi('submit_feedback', turnId, spec.value).catch(function () {});
+    }
+    bubble.div.appendChild(bar);
+  }
+
   SARA.on('ev:transcript', function (role, text) {
     if (role !== 'user') hideThinking();       // any non-user line means Sara's reply has arrived
     if (role === 'user') {
@@ -241,13 +278,16 @@
       const ub = makeBubble('user', text, false); SARA.sound.sent();
       if (fly) flyUp(ub.div, fly);
     } else if (role === 'sara' && streaming) {
+      const liveBubble = streaming;
       finalizeStream();                       // this reply was already streamed live -> no duplicate bubble
+      attachThumbs(liveBubble);
     } else {
       // This event arrives AFTER Sara has already spoken the reply (backend pushes it once
       // _handle_command() returns), so a typewriter here only makes the UI look "still generating".
       // Render instantly; the streaming path (ev:transcript_chunk) keeps its typewriter.
       const nb = makeBubble(role, text, false); SARA.sound.received();
       attachActions(nb);
+      attachThumbs(nb);
     }
   });
 

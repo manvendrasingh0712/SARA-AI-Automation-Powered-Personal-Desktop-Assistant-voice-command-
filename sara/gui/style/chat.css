@@ -31,6 +31,15 @@
 .msg.sara.streaming::after,.msg.sara.typing::after{content:'▍';margin-left:2px;animation:blink 1s steps(2) infinite;}
 @keyframes blink{50%{opacity:0;}}
 .msg .ts{display:block;font-size:10.5px;color:var(--muted);margin-top:5px;font-style:normal;}
+/* ---- thumbs on assistant replies (js/chat.js attachThumbs): hidden until hover/focus, always shown on touch ---- */
+.msg-feedback{display:flex;gap:4px;margin-top:4px;opacity:0;transition:opacity .2s ease;}
+.msg:hover .msg-feedback,.msg:focus-within .msg-feedback,.msg-feedback:focus-within{opacity:1;}
+@media (hover:none){.msg-feedback{opacity:1;}}
+.msg-fb-btn{background:transparent;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font:inherit;font-size:12px;line-height:1.4;color:var(--muted);cursor:pointer;}
+.msg-fb-btn:hover,.msg-fb-btn:focus-visible{color:var(--text);border-color:var(--core);}
+.msg-fb-btn:focus-visible{outline:2px solid var(--core);outline-offset:2px;}
+.msg-fb-btn.is-chosen{color:var(--core);border-color:var(--core);}
+.msg-fb-btn:disabled{cursor:default;}
 /* ==========================================================================
    State-aware command dock. `data-state` on .chat-dock (js/chat.js) drives the
    "real" states -- idle is the only one CSS reaches on its own, via :hover/

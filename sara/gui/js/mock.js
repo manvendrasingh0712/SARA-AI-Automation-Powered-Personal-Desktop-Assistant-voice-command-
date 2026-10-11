@@ -112,6 +112,16 @@
       case 'set_security_mode':
         if (['standard', 'strict', 'off'].indexOf(a[0]) < 0) return { ok: false, error: 'invalid_mode' };
         S.prefs.secMode = a[0]; return ok({ mode: a[0] });
+      case 'get_router_stats': return ok({ data: { mode: S.prefs.routerMode || 'off',
+        tiers: [{ name: 'cloud_fast', backend: 'gemini', model: 'gemini-fast', cost: 1 }, { name: 'cloud_main', backend: 'gemini', model: 'gemini-main', cost: 2 }],
+        samples: 64, labelled: 58, usage: { cloud_fast: 41, cloud_main: 23 }, avg_latency_ms: 1420, calls_saved_vs_main: 41,
+        shown: true, gate: { ok: false, message: 'The offline benchmark has not passed yet. Run it first.' }, reverted: false } });
+      case 'set_router_mode':
+        if (['off', 'shadow', 'on'].indexOf(a[0]) < 0) return { ok: false, mode: S.prefs.routerMode || 'off', message: 'Unknown mode.' };
+        if (a[0] === 'on') return { ok: false, mode: S.prefs.routerMode || 'off', message: 'The offline benchmark has not passed yet.' };
+        S.prefs.routerMode = a[0]; return ok({ mode: a[0], message: 'Mode saved.' });
+      case 'reset_router': return ok({});
+      case 'submit_feedback': return ok({});
       case 'get_notes_status': return ok({ enabled: true, count: 128, last_synced: new Date(Date.now() - 3600000).toISOString() });
       case 'get_skills_list': return ok({ data: S.skills });
       case 'set_skill_enabled': S.skills.forEach(s => { if (s.name === a[0]) s.enabled = !!a[1]; }); return ok();

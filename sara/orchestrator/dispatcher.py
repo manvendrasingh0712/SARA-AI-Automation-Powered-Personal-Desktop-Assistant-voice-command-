@@ -23,7 +23,7 @@ from typing import Optional as _Optional
 
 from config import Config
 
-from sara.core.intent import detect_intent
+from sara.core.intent import detect_intent, is_negated_action_request
 from sara.core.unmatched_log import log_unmatched
 from sara.tools import system as system_tools
 
@@ -583,6 +583,17 @@ def _handle_command(
     # phrase) or "my name is Sam", that takes priority over re-parsing it
     # as a yes/cancel answer to the stale confirmation.
     lowered = (user_input or "").lower().strip()
+
+    # Phase 2 safety pre-check: a clearly negated action must not reach
+    # session controls, regex handlers, the planner, or the LLM tool router.
+    if is_negated_action_request(user_input or ""):
+        pending_negation = confirm_state.pop("pending", None)
+        if pending_negation:
+            _log_guarded_denial(pending_negation)
+        reply = "Understood. I won't execute that command."
+        ui_update("status", "speaking")
+        tts.speak(reply, fast=True)
+        return reply
 
     if _matches_phrase_set(lowered, _EXIT_WORDS):
         session_control["action"] = "exit"

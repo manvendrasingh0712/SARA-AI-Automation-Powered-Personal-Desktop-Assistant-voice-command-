@@ -18,6 +18,7 @@ from .ui_prefs import ApiUiPrefsMixin
 from .perf_api import ApiPerfMixin
 from .security_api import ApiSecurityMixin
 from .memory2_api import ApiMemory2Mixin
+from .router_api import ApiRouterMixin
 
 
 _MIXINS = (
@@ -36,6 +37,7 @@ _MIXINS = (
     ApiPerfMixin,
     ApiSecurityMixin,
     ApiMemory2Mixin,
+    ApiRouterMixin,
 )
 
 

@@ -955,6 +955,13 @@ def run_sara_logic(
                     logger.info("[Logic] turn cancelled by Stop; dropping late result")
                     continue
 
+                try:
+                    from sara.core.telemetry import current_turn_id
+                    _reply_turn = current_turn_id()
+                    if _reply_turn:
+                        ui_update("reply_meta", str(_reply_turn)[:40])
+                except Exception as e:
+                    logger.info("[Logic] reply_meta skipped (%s)", type(e).__name__)
                 ui_update("transcript", "sara", reply_text or "(no response)")
                 db_writer.log_message("user", user_input)
                 db_writer.log_message("assistant", reply_text or "")

@@ -76,8 +76,12 @@ _TOOL_SIGNAL_RE = re.compile(
     r"|remind|schedule|book|create|make|add|delete|remove|clear"
     r"|send|message|call|email|type|press|copy|paste"
     r"|screenshot|lock|shutdown|sleep|restart"
-    r"|kholo|khol|chalao|chala|band|bajao|baja|dhundo|dhoondo"
-    r"|bhejo|likho|banao|karo|kar\s+do|set\s+karo|yaad\s+dila"
+    r"|kholo|khol(?:o|e|na|de|do|le|lo|iye|dijiye)?"
+    r"|chalu|chaloo|shuru|chalao|chala|bandh?|bajao|baja|dhundo|dhoondo"
+    r"|bhejo|likho|banao|karo|kro|karna|kar\s+do|kar\s+de"
+    r"|set\s+karo|yaad\s+dila"
+    r"|(?:on|off)\s+kar(?:o|na|de|do|dijiye)?"
+    r"|active\s+kar|activate\s+kar"
     r")\b",
     re.IGNORECASE,
 )
@@ -87,11 +91,21 @@ _TOOL_SIGNAL_RE = re.compile(
 # a command -- these keep such messages out of the tool-router entirely.
 _CHAT_SIGNAL_RE = re.compile(
     r"^\s*("
-    r"who|what|why|how|when|which|whose|whom"
+    r"i\s+(?:do\s+not|don['’]?t)\s+know\s+how\s+to"
+    r"|i\s+(?:want|need)\s+to\s+know\s+how\s+to"
+    r"|i\s+(?:am|'m)\s+(?:asking|wondering)\s+how\s+to"
+    r"|tell\s+me\s+how\s+to|explain\s+how\s+to"
+    r"|who|what|why|how|when|which|whose|whom"
     r"|tell\s+me|explain|describe|define|summar|compare|suggest|recommend"
     r"|do\s+you|are\s+you|can\s+you\s+explain|should\s+i|is\s+it|was\s+it"
     r"|kya|kyun|kyu|kaise|kaun|kab|kahan|batao|bata|samjhao|samjha"
     r")\b",
+    re.IGNORECASE,
+)
+
+_HINGLISH_QUESTION_WITH_ACTION_RE = re.compile(
+    r"\b(?:kaise|kyun|kyu|kya|kab|kahan|kaun|kis|kitna|kitni|kitne)\b"
+    r".{0,80}\b(?:open|launch|start|run|khol\w*|chalu|shuru|chala\w*|kar\w*)\b",
     re.IGNORECASE,
 )
 
@@ -197,6 +211,8 @@ def _route_chat_message(user_input: str, context_state: dict = None) -> tuple:
     if len(text.split()) > _TOOL_SIGNAL_MAX_WORDS:
         return "chat", None
     if _CHAT_SIGNAL_RE.match(text):
+        return "chat", None
+    if _HINGLISH_QUESTION_WITH_ACTION_RE.search(text):
         return "chat", None
     if _TOOL_SIGNAL_RE.search(text):
         return "tool", None

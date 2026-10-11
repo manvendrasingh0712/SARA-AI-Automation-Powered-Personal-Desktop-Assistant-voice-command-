@@ -57,6 +57,24 @@ All rates are fractions in [0, 1] and shown as percentages in reports.
 2. Run `python -m bench.run_bench --mode router --accept-baseline`.
 3. Commit `bench/baseline.json`.
 
+## Router benchmark
+
+Offline benchmark for the Smart routing card. It answers each task on every enabled model tier once, then replays the routing policies over the cached answers. Nothing here calls the network except `collect` (and only without `--dry-run`).
+
+```bash
+python -m bench.router.collect --rpm 8
+python -m bench.router.simulate
+```
+
+| Step | Output |
+| --- | --- |
+| `collect` | `bench/.cache/router/<tier>/<task_id>.json`, one cell per tier and task. Resumable: cells that already succeeded are skipped. |
+| `simulate` | `bench/router/results/simulation.json`, `SIMULATION.md` (one table) and `gate.json`. |
+
+`collect` needs at least two enabled tiers (for example `GEMINI_FAST_MODEL` plus `GEMINI_MODEL` in `.env`). With fewer, it prints a plain message and exits with code 3. `simulate` exits with code 3 when fewer than 60 tasks have a reply from every tier.
+
+The gate passes only when the learned policy is within 1 accuracy point of the static rule and uses no more quota. The gate file is what unlocks the "On" mode in Settings > Smart routing. Reports are honest: a failed gate is written as a failed gate.
+
 ## Memory benchmark
 
 Compares Memory 2.0 (structured, temporal, correctable memory) with a simulation of the old vector-only RAG. In-process, offline, deterministic, temp databases only. Scenario data: `bench/memory/scenarios.jsonl` (gold facts and events, EN / Hinglish / Hindi).

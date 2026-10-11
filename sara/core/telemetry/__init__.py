@@ -6,6 +6,7 @@ modules code against the names re-exported here.
 from .trace import (
     annotate,
     begin_turn,
+    current_turn_id,
     dropped_count,
     end_turn,
     get_recent,
@@ -20,6 +21,7 @@ from .trace import (
 __all__ = [
     "annotate",
     "begin_turn",
+    "current_turn_id",
     "dropped_count",
     "end_turn",
     "get_recent",
