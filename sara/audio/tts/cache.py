@@ -115,6 +115,11 @@ _PHRASE_CACHE_MAXLEN = int(getattr(Config, "TTS_PHRASE_CACHE_MAXLEN", 40))
 _phrase_cache: "OrderedDict[tuple, bytes]" = OrderedDict()
 _phrase_cache_lock = threading.Lock()
 
+# Keys protected from LRU eviction (pre-synthesised fixed phrases).
+_pinned: "set[tuple]" = set()
+_PIN_MAX = 256
+_PIN_HEADROOM = 32
+
 
 def _phrase_cache_get(key: tuple) -> bytes | None:
     with _phrase_cache_lock:
@@ -128,5 +133,34 @@ def _phrase_cache_put(key: tuple, pcm_bytes: bytes) -> None:
     with _phrase_cache_lock:
         _phrase_cache[key] = pcm_bytes
         _phrase_cache.move_to_end(key)
-        while len(_phrase_cache) > _PHRASE_CACHE_MAX:
-            _phrase_cache.popitem(last=False)
+        limit = _effective_capacity_locked()
+        while len(_phrase_cache) > limit:
+            victim = next((k for k in _phrase_cache if k not in _pinned), None)
+            if victim is None:
+                break
+            del _phrase_cache[victim]
+
+
+def _effective_capacity_locked() -> int:
+    if not _pinned:
+        return _PHRASE_CACHE_MAX
+    return max(_PHRASE_CACHE_MAX, len(_pinned) + _PIN_HEADROOM)
+
+
+def effective_capacity() -> int:
+    """Current LRU capacity: the configured size, or pinned + 32 when larger."""
+    with _phrase_cache_lock:
+        return _effective_capacity_locked()
+
+
+def pin(key: tuple) -> None:
+    """Protect key from eviction (bounded set; extra pins are ignored)."""
+    with _phrase_cache_lock:
+        if len(_pinned) < _PIN_MAX:
+            _pinned.add(key)
+
+
+def unpin_all() -> None:
+    """Drop every pin; entries stay cached but become evictable again."""
+    with _phrase_cache_lock:
+        _pinned.clear()

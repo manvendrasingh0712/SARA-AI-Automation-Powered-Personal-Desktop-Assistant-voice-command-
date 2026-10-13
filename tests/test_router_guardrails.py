@@ -57,6 +57,7 @@ def make(tmp_path, monkeypatch):
         monkeypatch.setattr(Config, "ROUTER_MODE", mode, raising=False)
         monkeypatch.setattr(Config, "ROUTER_EPSILON", eps, raising=False)
         clk = clock or Clock()
+        clk = clock or Clock()
         store = RouterStore(path=str(tmp_path / f"r{len(made)}.sqlite"), clock=clk)
         router = Router(
             store=store, tiers=tiers or GEMINI, clock=clk, rng=random.Random(1)

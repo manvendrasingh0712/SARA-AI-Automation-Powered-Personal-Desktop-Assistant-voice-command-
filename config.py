@@ -260,6 +260,9 @@ _MAX_TTS_FIRST_CHUNK_CHARS = 100
 _MIN_TTS_FIRST_CHUNK_SOFT_CHARS = 1
 _MAX_TTS_FIRST_CHUNK_SOFT_CHARS = 300
 
+_MIN_VOICE_PREWARM_PHRASES = 8
+_MAX_VOICE_PREWARM_PHRASES = 256
+
 _MIN_LLM_RETRIES = 0
 _MAX_LLM_RETRIES = 10
 
@@ -473,6 +476,18 @@ class Config:
     )
     TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS: int = _int(
         os.getenv("TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS"), default=35
+    )
+
+    # ── Voice pipeline flags (live; registry in sara/audio/voice_flags.py) ──
+    VOICE_ACK_CACHE: bool = _bool(os.getenv("VOICE_ACK_CACHE", "True"), default=True)
+    VOICE_ACK_CACHE_DISK: bool = _bool(
+        os.getenv("VOICE_ACK_CACHE_DISK", "False"), default=False
+    )
+    VOICE_CHUNKER_V2: bool = _bool(
+        os.getenv("VOICE_CHUNKER_V2", "False"), default=False
+    )
+    VOICE_PREWARM_MAX_PHRASES: int = _int(
+        os.getenv("VOICE_PREWARM_MAX_PHRASES"), default=64
     )
     # ── Core ──────────────────────────────────────────────────────────────
     DEBUG_MODE: bool = _bool(os.getenv("DEBUG_MODE", "False"), default=False)
@@ -1056,6 +1071,10 @@ class Config:
         cls.TTS_PHRASE_CACHE_SIZE = max(
             _MIN_PHRASE_CACHE_SIZE,
             min(_MAX_PHRASE_CACHE_SIZE, cls.TTS_PHRASE_CACHE_SIZE),
+        )
+        cls.VOICE_PREWARM_MAX_PHRASES = max(
+            _MIN_VOICE_PREWARM_PHRASES,
+            min(_MAX_VOICE_PREWARM_PHRASES, cls.VOICE_PREWARM_MAX_PHRASES),
         )
         cls.TTS_PHRASE_CACHE_MAXLEN = max(
             _MIN_PHRASE_CACHE_MAXLEN,
