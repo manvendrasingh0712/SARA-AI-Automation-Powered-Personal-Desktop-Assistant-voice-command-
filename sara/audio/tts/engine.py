@@ -16,6 +16,9 @@ from .text_prep import clean_for_tts, _split_adaptive
 from .synth import _synth_kokoro
 from .player import _PersistentPlayer, _drain
 from .cache import _phrase_cache_get, _phrase_cache_put
+from .chunker import ReplyRecorder, first_chunk_end
+from .prewarm import start_prewarm
+from sara.audio.voice_flags import get_flag
 
 
 import os
@@ -443,6 +446,10 @@ class TextToSpeech:
                 print(f"[TTS] warm-up failed: {e}")
         finally:
             self._warmup_done.set()
+        try:
+            start_prewarm(self)
+        except Exception:
+            pass
 
     # ── Synthesis router ─────────────────────────────────────────────────────
 
@@ -611,18 +618,51 @@ class TextToSpeech:
             synth_q: queue.Queue[str | None] = queue.Queue(maxsize=_SYNTH_QUEUE_SIZE)
             play_q: queue.Queue[_Seg | None] = queue.Queue(maxsize=_PLAY_QUEUE_SIZE)
 
-            self._chunker_pool.submit(self._chunker_worker, text_chunks, synth_q)
+            recorder = ReplyRecorder(text_chunks)
+            chunker_future = self._chunker_pool.submit(
+                self._chunker_worker, recorder, synth_q
+            )
             self._synth_pool.submit(self._synth_worker, synth_q, play_q, fast, on_playback_start)
 
+            failed = False
             try:
                interrupted = self._playback_worker(play_q)
+            except Exception:
+               failed = True
+               print("[TTS] stream playback failed; falling back to whole-reply synthesis")
             finally:
                self._stop.set()
                _drain(synth_q)
                _drain(play_q)
                self._speaking.clear()
 
+        if failed or recorder.error:
+            return self._speak_whole_reply(recorder, chunker_future, fast, interrupted)
         return interrupted
+
+    def _speak_whole_reply(
+        self,
+        recorder: ReplyRecorder,
+        chunker_future,
+        fast: bool,
+        interrupted: bool,
+    ) -> bool:
+        """Fallback after a streaming failure: speak the whole reply in one go.
+        Never raises; returns the interrupted state."""
+        try:
+            if interrupted or self._interrupted.is_set():
+                return True
+            try:
+                chunker_future.result(timeout=2.0)
+            except Exception:
+                pass
+            text = recorder.whole_reply(drain=chunker_future.done())
+            if text:
+                self.speak(text, fast=fast)
+            return self._interrupted.is_set()
+        except Exception:
+            print("[TTS] whole-reply fallback failed")
+            return False
 
     def stop(self) -> None:
         self._stop.set()
@@ -716,11 +756,31 @@ class TextToSpeech:
     def _chunker_worker(self, chunks: Iterator[str], synth_q: queue.Queue) -> None:
         buf = ""
         first_pushed = False
+        use_v2 = get_flag("VOICE_CHUNKER_V2")
         try:
             for raw in chunks:
                 if self._stop.is_set():
                     break
                 buf += raw + " "
+
+                if use_v2 and not first_pushed:
+                    try:
+                        cut = first_chunk_end(buf, False)
+                    except Exception:
+                        print("[TTS] chunker v2 failed; legacy splitter used")
+                        use_v2 = False
+                    else:
+                        if cut is None:
+                            continue
+                        part = buf[:cut].strip()
+                        if not part:
+                            continue
+                        if self._stop.is_set() or not self._stop_aware_put(
+                            synth_q, part
+                        ):
+                            break
+                        first_pushed = True
+                        buf = buf[cut:]
 
                 if not first_pushed and len(buf.strip()) >= _FIRST_TRIGGER:
                     m = self._first_flush_match(buf)
@@ -752,7 +812,7 @@ class TextToSpeech:
                         first_pushed = True
                     if aborted:
                         break
-                    buf = segs[-1]
+                    buf = segs[-1] + (" " if use_v2 else "")
 
             tail = buf.strip()
             if tail and not self._stop.is_set():
@@ -894,6 +954,10 @@ class TextToSpeech:
                 on_complete=done_event,
                 on_start=start_event
             )
+            if self._stop.is_set():
+                self._player.clear()
+                interrupted = True
+                break
             last_done_event = done_event
             
             if start_event is not None and seg.on_start is not None:
