@@ -27,7 +27,8 @@
     { id: 'slate',   name: 'Midnight',   description: 'iOS dark',        category: 'minimal',    tags: ['dark'] },
     { id: 'ember',   name: 'Ember',      description: 'Molten warm',     category: 'warm',       tags: ['dark'] },
     { id: 'cyber',   name: 'Cyber Blue', description: 'Electric',        category: 'futuristic', tags: ['dark'] },
-    { id: 'aurora',  name: 'Aurora',     description: 'Northern lights', category: 'futuristic', tags: ['dark'] },
+    { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
+    { id: 'custom',  name: 'Custom',     description: 'Your colours',      category: 'minimal',  tags: ['dark', 'light'] },
     { id: 'neon',    name: 'Neon Black', description: 'Electric blue',   category: 'futuristic', tags: ['dark'] },
     { id: 'ink',     name: 'Mono Ink',   description: 'Black & vermilion', category: 'minimal',  tags: ['dark'] },
     { id: 'oat',     name: 'Oat & Sage', description: 'Calm & matte',      category: 'light',    tags: ['minimal'] },
@@ -157,7 +158,7 @@
   const slider = $('hueSlider');
   if (slider) {
     let timer = 0;
-    slider.addEventListener('input', function () { hue = normHue(slider.value); commit(false); clearTimeout(timer); timer = setTimeout(() => SARA.prefs.set('accent_hue', Math.round(hue)), 250); });
+    slider.addEventListener('input', function () { hue = normHue(slider.value); if (!slider._hf) slider._hf = requestAnimationFrame(function () { slider._hf = 0; commit(false); }); clearTimeout(timer); timer = setTimeout(() => SARA.prefs.set('accent_hue', Math.round(hue)), 250); });
   }
   const reset = $('hueReset');
   if (reset) reset.addEventListener('click', function () { SARA.sound.tap(); SARA.theme.setHue(null); });

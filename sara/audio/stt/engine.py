@@ -1161,6 +1161,142 @@ class SpeechToText:
 
     # ── end v8.1 watchdog block ──────────────────────────────────────
 
+    @staticmethod
+    def _endpoint_noop(_text: str) -> None:
+        """Preview callback used when adaptive endpointing runs without a caller callback."""
+
+    @staticmethod
+    def _endpoint_lang() -> str:
+        """Map Config.SARA_LANGUAGE to the endpointing hint: en | hinglish | hi."""
+        raw = str(getattr(Config, "SARA_LANGUAGE", "") or "").strip().lower()
+        if raw.startswith("hinglish"):
+            return "hinglish"
+        return "hi" if raw.startswith("hi") else "en"
+
+    def _endpoint_guard_get(self) -> object:
+        """Lazily build the per-engine EarlyCutGuard; window and back-off follow Config per turn."""
+        from sara.audio.stt.endpoint import EarlyCutGuard
+
+        window = float(getattr(Config, "ENDPOINT_EARLY_CUT_WINDOW_MS", 700))
+        step = float(getattr(Config, "ENDPOINT_EARLY_CUT_BACKOFF_MS", 100))
+        guard = getattr(self, "_endpoint_guard", None)
+        if guard is None:
+            guard = EarlyCutGuard(window, step)
+            self._endpoint_guard = guard
+        guard.window_ms, guard.backoff_step_ms = window, step
+        return guard
+
+    def endpoint_stats(self) -> dict:
+        """Adaptive-endpointing counters: endpoints, early cuts and a per-rule histogram."""
+        guard = getattr(self, "_endpoint_guard", None)
+        try:
+            if guard is not None:
+                return guard.stats()
+        except Exception:
+            pass
+        return {"endpoints": 0, "early_cuts": 0, "rules": {}}
+
+    def _endpoint_open(
+        self,
+        silence_limit: float,
+        silence_limit_n: int,
+        preview_chunks: "collections.deque[bytes]",
+        generation: int,
+        user_cb: Optional[Callable[[str], None]],
+    ) -> Optional[dict]:
+        """Per-utterance adaptive-endpoint state, or None (flag off / failure -> legacy rule)."""
+        if not getattr(Config, "VOICE_ENDPOINT_ADAPTIVE", False):
+            return None
+        try:
+            return {
+                "on": True,
+                "limit_n": silence_limit_n,
+                "limit_ms": float(silence_limit) * 1000.0,
+                "chunk_ms": 1000.0 * self.CHUNK_SIZE / self.SAMPLE_RATE,
+                "preview": preview_chunks,
+                "gen": generation,
+                "user_cb": user_cb,
+                "seq": 0,
+                "partial": None,
+                "sent": False,
+                "lang": self._endpoint_lang(),
+            }
+        except Exception:
+            print("[STT] adaptive endpoint unavailable; using legacy rule")
+            return None
+
+    @staticmethod
+    def _endpoint_cb(ep: dict, user_cb: Optional[Callable[[str], None]]) -> Callable[[str], None]:
+        """Preview callback that stamps the partial with the voice sequence at spawn time."""
+        stamp = ep["seq"]
+
+        def _cb(text: str) -> None:
+            ep["partial"] = (stamp, str(text))
+            if user_cb is not None:
+                user_cb(text)
+
+        return _cb
+
+    @staticmethod
+    def _endpoint_voice(ep: dict) -> None:
+        """Voice resumed: older partials are stale and a new silence run may preview again."""
+        ep["seq"] += 1
+        ep["sent"] = False
+
+    def _endpoint_speech_started(self) -> None:
+        """Tell the early-cut guard that speech started again."""
+        try:
+            self._endpoint_guard_get().note_next_speech_start(None)
+        except Exception:
+            print("[STT] endpoint guard failed")
+
+    def _endpoint_preview(self, ep: dict) -> None:
+        """Request the one extra preview of this silence run (skipped while one is in flight)."""
+        if self._preview_busy.is_set():
+            return
+        ep["sent"] = True
+        self._spawn_preview_transcribe(
+            b"".join(ep["preview"]), self._endpoint_cb(ep, ep["user_cb"]), ep["gen"]
+        )
+
+    def _endpoint_reached(self, ep: dict, silence_count: int, utt_chunks: int) -> bool:
+        """Adaptive replacement for `silence_count >= silence_limit_n`; failure -> legacy rule."""
+        if not ep["on"]:
+            return silence_count >= ep["limit_n"]
+        try:
+            from sara.audio.stt import endpoint as _ep
+
+            silence_ms = silence_count * ep["chunk_ms"]
+            utt_ms = utt_chunks * ep["chunk_ms"]
+            if not ep["sent"] and silence_ms >= float(
+                getattr(Config, "ENDPOINT_PREVIEW_AT_MS", 150)
+            ):
+                self._endpoint_preview(ep)
+            fresh = ep["partial"]
+            text = fresh[1] if fresh is not None and fresh[0] == ep["seq"] else None
+            floor = getattr(getattr(self, "_noise_floor", None), "floor", None)
+            noise = _ep.noise_level_from(floor, float(self.energy_threshold))
+            guard = self._endpoint_guard_get()
+            kw = {
+                "utterance_ms": utt_ms,
+                "base_ms": ep["limit_ms"],
+                "backoff_ms": guard.backoff_ms(),
+            }
+            if not _ep.decide_endpoint(text, silence_ms, noise, ep["lang"], **kw):
+                return False
+            rule = _ep.required_silence_ms(text, noise, ep["lang"], **kw)[1]
+            guard.note_endpoint(text, rule)
+            if getattr(Config, "DEBUG_MODE", False):
+                print(
+                    f"[STT] endpoint rule={rule} silence_ms={int(silence_ms)} "
+                    f"utt_ms={int(utt_ms)}"
+                )
+            return True
+        except Exception:
+            ep["on"] = False
+            print("[STT] adaptive endpoint failed; using legacy rule for this utterance")
+            return silence_count >= ep["limit_n"]
+
     def _collect_speech(
         self,
         timeout: float,
@@ -1213,6 +1349,11 @@ class SpeechToText:
         # _spawn_preview_transcribe()).
         self._preview_generation += 1
         my_generation = self._preview_generation
+        ep = self._endpoint_open(
+            silence_limit, silence_limit_n, preview_chunks, my_generation, on_partial_transcript
+        )
+        if ep is not None and on_partial_transcript is None:
+            on_partial_transcript = self._endpoint_noop
 
         # BARGE-IN HANDOFF: prepend any audio captured by
         # capture_barge_in_audio() at the moment a barge-in interrupted
@@ -1255,6 +1396,8 @@ class SpeechToText:
                             speech_start = time.monotonic()
                             _t_pending("speech_start")
                             last_preview_time = speech_start
+                            if ep is not None:
+                                self._endpoint_speech_started()
                             state = _CollectState.SPEAKING
                             break
                     pending_chunks = (
@@ -1288,7 +1431,11 @@ class SpeechToText:
                         last_preview_time = now
                         preview_audio = b"".join(preview_chunks)
                         self._spawn_preview_transcribe(
-                            preview_audio, on_partial_transcript, my_generation
+                            preview_audio,
+                            on_partial_transcript
+                            if ep is None
+                            else self._endpoint_cb(ep, ep["user_cb"]),
+                            my_generation,
                         )
 
                     if state is _CollectState.SPEAKING:
@@ -1307,10 +1454,20 @@ class SpeechToText:
                             _push_preview_chunk(chunk)
                             if is_voice:
                                 silence_count, trailing_silence_chunks = 0, 0
+                                if ep is not None:
+                                    self._endpoint_voice(ep)
                             else:
                                 silence_count += 1
                                 trailing_silence_chunks += 1
-                                if silence_count >= silence_limit_n:
+                                if ep is None:
+                                    ended = silence_count >= silence_limit_n
+                                else:
+                                    ended = self._endpoint_reached(
+                                        ep,
+                                        silence_count,
+                                        len(speech_chunks) - trailing_silence_chunks,
+                                    )
+                                if ended:
                                     state = _CollectState.DONE
                                     break
                         pending_chunks = []
