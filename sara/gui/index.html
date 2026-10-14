@@ -30,6 +30,7 @@
 <link rel="stylesheet" href="style/memory-view.css">
 <link rel="stylesheet" href="style/motion.css">
 <link rel="stylesheet" href="style/settings-fx.css">
+<link rel="stylesheet" href="style/theme-custom.css">
 <link rel="stylesheet" href="style/theme-neon.css">
 <link rel="stylesheet" href="style/theme-minimal.css">
 <link rel="stylesheet" href="style/smooth.css">
@@ -45,8 +46,7 @@
 <link rel="stylesheet" href="style/automation-plus.css">
 <link rel="stylesheet" href="style/notes-plus.css">
 <link rel="stylesheet" href="style/music-plus.css">
-<link rel="stylesheet" href="style/theme-custom.css">
-
+<link rel="stylesheet" href="style/settings-plus.css">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -240,6 +240,7 @@
         <button type="button" data-target="grp-assistant">Assistant</button>
         <button type="button" data-target="grp-voice">Voice</button>
         <button type="button" data-target="grp-appearance">Appearance</button>
+        <button type="button" data-target="grp-presets">Presets</button>
         <button type="button" data-target="grp-skills">Skills</button>
         <button type="button" data-target="grp-calendar">Calendar</button>
         <button type="button" data-target="grp-memory">Memory</button>
@@ -399,6 +400,11 @@
         </section>
 
         <!-- 6. SYSTEM (analytics, calendar, system stats, window controls, setup check) -->
+        <section class="set-card" id="grp-presets">
+          <div class="set-card-head"><div class="set-card-title">Presets &amp; backup</div><div class="set-card-sub">one-tap setups, export &amp; import</div></div>
+          <div class="set-card-body" id="presetsBody"></div>
+        </section>
+
         <section class="set-card" id="grp-system">
           <div class="set-card-head"><div class="set-card-title">Performance</div><div class="set-card-sub">live system &amp; response speed</div></div>
           <div class="set-card-body">
@@ -732,6 +738,7 @@
 <script src="js/setup-wizard.js"></script>
 <script src="js/palette.js"></script>
 <script src="js/quality.js"></script>
+<script src="js/settings-plus.js"></script>
 <script src="js/premium.js"></script>
 <script src="js/router-view.js"></script>
 <script src="js/aurum.js"></script>
@@ -739,7 +746,5 @@
 <script src="js/chat-plus.js"></script>
 <script src="js/nlparse.js"></script>
 <script src="js/notes-plus.js"></script>
-<script src="js/settings-plus.js"></script>
-
 </body>
 </html>

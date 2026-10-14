@@ -55,6 +55,16 @@ VOICE_FLAGS: tuple[VoiceFlag, ...] = (
         ),
         task="T13",
     ),
+    VoiceFlag(
+        key="VOICE_ENDPOINT_ADAPTIVE",
+        default=False,
+        label="Smarter end-of-speech detection",
+        description=(
+            "Answers sooner after a finished command and waits longer when "
+            "you pause mid-sentence, in English, Hindi and Hinglish."
+        ),
+        task="T14",
+    ),
 )
 
 _BY_KEY = {flag.key: flag for flag in VOICE_FLAGS}

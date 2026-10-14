@@ -217,6 +217,14 @@ _MAX_TTS_VOLUME = 2.0
 _MIN_STT_SETTLE_GAP_S = 0.3
 _MAX_STT_SETTLE_GAP_S = 5.0
 
+_ENDPOINT_MIN_MS_RANGE = (200, 800)
+_ENDPOINT_MAX_MS_RANGE = (400, 2500)
+_ENDPOINT_CONT_EXTRA_RANGE = (0, 1000)
+_ENDPOINT_NOISE_EXTRA_RANGE = (0, 500)
+_ENDPOINT_PREVIEW_AT_RANGE = (50, 400)
+_ENDPOINT_CUT_WINDOW_RANGE = (300, 2000)
+_ENDPOINT_CUT_BACKOFF_RANGE = (0, 300)
+
 # WebRTC Audio Processing Module (APM) only accepts these native rates.
 _AEC_VALID_SAMPLE_RATES = (8000, 16000, 32000, 48000)
 _MIN_AEC_STREAM_DELAY_MS = 0
@@ -488,6 +496,26 @@ class Config:
     )
     VOICE_PREWARM_MAX_PHRASES: int = _int(
         os.getenv("VOICE_PREWARM_MAX_PHRASES"), default=64
+    )
+    VOICE_ENDPOINT_ADAPTIVE: bool = _bool(
+        os.getenv("VOICE_ENDPOINT_ADAPTIVE", "False"), default=False
+    )
+    ENDPOINT_MIN_MS: int = _int(os.getenv("ENDPOINT_MIN_MS"), default=350)
+    ENDPOINT_MAX_MS: int = _int(os.getenv("ENDPOINT_MAX_MS"), default=900)
+    ENDPOINT_CONTINUATION_EXTRA_MS: int = _int(
+        os.getenv("ENDPOINT_CONTINUATION_EXTRA_MS"), default=400
+    )
+    ENDPOINT_NOISE_EXTRA_MS: int = _int(
+        os.getenv("ENDPOINT_NOISE_EXTRA_MS"), default=150
+    )
+    ENDPOINT_PREVIEW_AT_MS: int = _int(
+        os.getenv("ENDPOINT_PREVIEW_AT_MS"), default=150
+    )
+    ENDPOINT_EARLY_CUT_WINDOW_MS: int = _int(
+        os.getenv("ENDPOINT_EARLY_CUT_WINDOW_MS"), default=700
+    )
+    ENDPOINT_EARLY_CUT_BACKOFF_MS: int = _int(
+        os.getenv("ENDPOINT_EARLY_CUT_BACKOFF_MS"), default=100
     )
     # ── Core ──────────────────────────────────────────────────────────────
     DEBUG_MODE: bool = _bool(os.getenv("DEBUG_MODE", "False"), default=False)
@@ -1076,6 +1104,17 @@ class Config:
             _MIN_VOICE_PREWARM_PHRASES,
             min(_MAX_VOICE_PREWARM_PHRASES, cls.VOICE_PREWARM_MAX_PHRASES),
         )
+        for _ep_key, (_ep_lo, _ep_hi) in (
+            ("ENDPOINT_MIN_MS", _ENDPOINT_MIN_MS_RANGE),
+            ("ENDPOINT_MAX_MS", _ENDPOINT_MAX_MS_RANGE),
+            ("ENDPOINT_CONTINUATION_EXTRA_MS", _ENDPOINT_CONT_EXTRA_RANGE),
+            ("ENDPOINT_NOISE_EXTRA_MS", _ENDPOINT_NOISE_EXTRA_RANGE),
+            ("ENDPOINT_PREVIEW_AT_MS", _ENDPOINT_PREVIEW_AT_RANGE),
+            ("ENDPOINT_EARLY_CUT_WINDOW_MS", _ENDPOINT_CUT_WINDOW_RANGE),
+            ("ENDPOINT_EARLY_CUT_BACKOFF_MS", _ENDPOINT_CUT_BACKOFF_RANGE),
+        ):
+            setattr(cls, _ep_key, max(_ep_lo, min(_ep_hi, int(getattr(cls, _ep_key)))))
+        cls.ENDPOINT_MAX_MS = max(cls.ENDPOINT_MIN_MS + 100, cls.ENDPOINT_MAX_MS)
         cls.TTS_PHRASE_CACHE_MAXLEN = max(
             _MIN_PHRASE_CACHE_MAXLEN,
             min(_MAX_PHRASE_CACHE_MAXLEN, cls.TTS_PHRASE_CACHE_MAXLEN),
