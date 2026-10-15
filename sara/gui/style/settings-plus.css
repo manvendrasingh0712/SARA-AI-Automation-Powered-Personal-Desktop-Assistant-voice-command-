@@ -1,0 +1,52 @@
+/* ==========================================================================
+   settings-plus.css  --  styles for js/settings-plus.js (custom theme editor, presets, export/import dialogs). Load LAST.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- custom theme editor */
+.cx-box{display:flex;flex-direction:column;gap:12px;max-width:520px;margin:6px 0 10px;}
+.cx-field{display:flex;align-items:center;gap:12px;}
+.cx-lbl{width:96px;font-size:13px;color:var(--text-soft);}
+.cx-field input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);cursor:pointer;}
+.cx-field input[type=color]::-webkit-color-swatch-wrapper{padding:3px;}
+.cx-field input[type=color]::-webkit-color-swatch{border:none;border-radius:5px;}
+.cx-hex{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);}
+.cx-sw{display:flex;gap:0;height:30px;border-radius:9px;overflow:hidden;border:1px solid var(--line);}
+.cx-sw i{flex:1;display:block;}
+.cx-note{font-size:11.5px;color:var(--muted);line-height:1.45;}
+
+/* ---------------------------------------------------------------- presets */
+.sx-presets{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;max-width:640px;margin-top:8px;}
+.sx-preset{display:flex;flex-direction:column;gap:12px;justify-content:space-between;border:1px solid var(--line);background:var(--panel);border-radius:12px;padding:12px 12px 10px;
+  transition:border-color .2s ease,box-shadow .3s ease,translate .3s var(--ease-premium,cubic-bezier(.16,1,.3,1));}
+.sx-preset:hover{border-color:rgb(var(--core-rgb) / .4);translate:0 -1px;}
+.sx-preset.on{border-color:rgb(var(--core-rgb) / .6);box-shadow:inset 0 0 0 1px rgb(var(--core-rgb) / .25),0 0 22px -10px rgb(var(--core-rgb) / .5);}
+.sx-pname{font-size:13.5px;font-weight:600;color:var(--text);}
+.sx-preset.on .sx-pname{color:var(--core);}
+.sx-pdesc{font-size:11.5px;line-height:1.45;color:var(--muted);margin-top:3px;}
+.sx-preset .pill-btn{align-self:flex-start;}
+.sx-note{font-size:12px;color:var(--muted);line-height:1.5;max-width:560px;margin-bottom:10px;}
+
+/* ---------------------------------------------------------------- dialogs */
+.sx-back{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:20px;background:rgb(var(--void-rgb,5 8 12) / .7);opacity:0;transition:opacity .22s ease;}
+.sx-back.open{opacity:1;}
+.sx-dialog{width:min(560px,100%);max-height:min(86vh,720px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-hover,0 24px 60px -20px rgba(0,0,0,.7));
+  translate:0 14px;transition:translate .38s var(--ease-premium,cubic-bezier(.16,1,.3,1));}
+.sx-back.open .sx-dialog{translate:0 0;}
+.sx-dhead{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px;}
+.sx-dtitle{font-size:15px;font-weight:600;color:var(--text);}
+.sx-x{border:none;background:none;color:var(--muted);font-size:22px;line-height:1;width:28px;height:28px;border-radius:8px;cursor:pointer;transition:color .15s ease,background .15s ease;}
+.sx-x:hover{color:var(--text);background:var(--panel-2);}
+.sx-dbody{padding:4px 16px 8px;overflow-y:auto;}
+.sx-p{font-size:12.5px;line-height:1.55;color:var(--muted);margin:0 0 10px;}
+.sx-ta{width:100%;box-sizing:border-box;resize:vertical;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--panel-2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px;outline:none;}
+.sx-ta:focus{border-color:var(--core);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .14);}
+.sx-file{margin-top:10px;font-size:12px;color:var(--text-soft);}
+.sx-out{margin-top:12px;}
+.sx-msg{font-size:12.5px;color:var(--text-soft);margin:4px 0 6px;}
+.sx-msg.bad{color:var(--danger);}
+.sx-list{margin:0;padding:0 0 0 18px;font-size:12.5px;line-height:1.7;color:var(--text-soft);}
+.sx-list b{color:var(--text);font-weight:600;}
+.sx-skip{font-size:11.5px;color:var(--muted);margin-top:8px;}
+.sx-dfoot{display:flex;justify-content:flex-end;gap:10px;padding:10px 16px 14px;}
+html[data-quality="low"] .sx-dialog,html[data-quality="low"] .sx-back{transition:none;translate:0 0;}
+@media (prefers-reduced-motion:reduce){.sx-dialog,.sx-back{transition:none;translate:0 0;}}

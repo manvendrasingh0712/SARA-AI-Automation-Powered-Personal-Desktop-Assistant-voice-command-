@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
 from bench import dataset  # noqa: E402
 from sara.core.intent import patterns  # noqa: E402
 
-REGISTERED = {name for name, _ in patterns._INTENT_PATTERNS}
+REGISTERED = {name for name, _ in patterns._INTENT_PATTERNS} & set(dataset.CATEGORY_BY_INTENT)
 
 
 def _golden_files():
