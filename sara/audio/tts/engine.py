@@ -690,6 +690,14 @@ class TextToSpeech:
     def is_speaking(self) -> bool:
         return self._speaking.is_set()
 
+    def duck(self, on: bool) -> None:
+        """Lower (True) or restore (False) playback level using
+        Config.VOICE_DUCK_DB / VOICE_DUCK_RAMP_MS. Any thread; never raises;
+        a 3 s dead-man timer restores the level if never released."""
+        from sara.audio.tts.duck import apply_duck
+
+        apply_duck(self, on)
+
     def shutdown(self) -> None:
         """v16 (LIFECYCLE): idempotent — safe to call more than once (the
         previous version had no guard; calling it twice would re-invoke

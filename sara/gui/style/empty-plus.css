@@ -1,0 +1,17 @@
+/* empty-plus.css -- styles for js/empty-plus.js (empty + error states). Load LAST. */
+.es{max-width:640px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;padding:30px 12px 26px;color:var(--muted);}
+.es-svg{width:84px;height:84px;color:var(--muted);flex:none;}
+.es-svg *{fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+.es-svg .a{stroke:var(--core);}
+.es-tx{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.es-title{font-size:14.5px;font-weight:600;color:var(--text);}
+.es-text{font-size:12.5px;line-height:1.55;max-width:360px;}
+.es .pill-btn{margin-top:8px;}
+.es.error .es-svg .a{stroke:var(--danger);}
+.es.compact{flex-direction:row;text-align:left;padding:10px 4px;gap:12px;}
+.es.compact .es-svg{width:34px;height:34px;}
+.es.compact .es-title{font-size:13px;font-weight:400;color:var(--muted);}
+.es-retry{margin-left:8px;}
+@media (prefers-reduced-motion:no-preference){.es:not(.compact) .es-svg{animation:esFloat 5s ease-in-out infinite;}}
+@keyframes esFloat{0%,100%{translate:0 0;}50%{translate:0 -4px;}}
+html[data-quality="low"] .es-svg{animation:none;}

@@ -132,7 +132,8 @@
       ui: {
         theme: SARA.theme.current(), accent_hue: SARA.theme.hue() === null || SARA.theme.hue() === undefined ? null : Math.round(SARA.theme.hue()),
         clock_theme: SARA.prefs.get('clock_theme', ''), quality: SARA.quality ? SARA.quality.get() : 'balanced',
-        home: SARA.homeLayout ? SARA.homeLayout.get() : null, custom_theme: { accent: ct.accent, bg: ct.bg }
+        home: SARA.homeLayout ? SARA.homeLayout.get() : null, custom_theme: { accent: ct.accent, bg: ct.bg },
+        a11y: SARA.a11y ? SARA.a11y.get() : null, fx_off: SARA.quality && SARA.quality.fx ? SARA.quality.fx.off() : []
       },
       assistant: {
         display_name: ($('setName') || {}).value || '', muted: isOn($('setMute')), focus: isOn($('setFocus')), language: chip ? chip.dataset.lang : null,
@@ -192,6 +193,17 @@
       const h = ui.accent_hue === null ? null : Number(ui.accent_hue);
       if (h === null || (isFinite(h) && h >= 0 && h <= 360)) { if (h !== cur.ui.accent_hue) add('Accent hue', cur.ui.accent_hue === null ? 'theme default' : cur.ui.accent_hue, h === null ? 'theme default' : h, function () { SARA.theme.setHue(h); }); }
       else skipped.push('accent hue (out of range)');
+    }
+    if (Array.isArray(ui.fx_off) && SARA.quality && SARA.quality.fx) {
+      const names = SARA.quality.fx.names, want = ui.fx_off.filter(function (x) { return names.indexOf(x) >= 0; }).sort(), have = SARA.quality.fx.off().sort();
+      if (ui.fx_off.length !== want.length) skipped.push('unknown effects');
+      if (want.join(',') !== have.join(',')) add('Effects switched off', have.length ? have.join(', ') : 'none', want.length ? want.join(', ') : 'none', function () { SARA.quality.fx.setOff(want); });
+    }
+    if (ui.a11y && typeof ui.a11y === 'object' && SARA.a11y) {
+      const cu = SARA.a11y.get(), a = ui.a11y, patch = {}, bits = [];
+      if (typeof a.scale === 'number' && a.scale >= 85 && a.scale <= 150 && Math.round(a.scale / 5) * 5 !== cu.scale) { patch.scale = a.scale; bits.push('size ' + cu.scale + '% \u2192 ' + Math.round(a.scale / 5) * 5 + '%'); }
+      [['contrast', 'higher contrast'], ['motion', 'reduce motion'], ['focus', 'strong focus'], ['sr', 'screen-reader announcements']].forEach(function (p) { if (typeof a[p[0]] === 'boolean' && a[p[0]] !== cu[p[0]]) { patch[p[0]] = a[p[0]]; bits.push(p[1] + ' ' + (a[p[0]] ? 'on' : 'off')); } });
+      if (bits.length) add('Accessibility', bits.length + ' change' + (bits.length === 1 ? '' : 's'), bits.join(', '), function () { SARA.a11y.set(patch); });
     }
     if (typeof ui.clock_theme === 'string' && ui.clock_theme.length < 40 && ui.clock_theme !== cur.ui.clock_theme) add('Clock style', cur.ui.clock_theme || 'default', ui.clock_theme, function () { SARA.prefs.set('clock_theme', ui.clock_theme); });
     if (ui.quality !== undefined) {
@@ -268,10 +280,11 @@
     if (!prev) { SARA.setFocus(false, true); return; }
     SARA.setFocus(!!prev.focus, true); Object.keys(prev.toggles || {}).forEach(function (k) { setSetting(k, !!prev.toggles[k]); });
   }
+  const hl = function () { return SARA.homeLayout ? SARA.homeLayout.get() : { sky: 1, fx: 1, ring: 1 }; };
   const PRESETS = [
-    { id: 'performance', name: 'Performance', desc: 'Lowest visual load: no blur, aura or sky light. Best for older PCs.', apply: function () { SARA.quality.set('low'); SARA.homeLayout && SARA.homeLayout.merge({ sky: 0, fx: 0 }); }, active: function () { return SARA.quality.get() === 'low'; } },
-    { id: 'balanced', name: 'Balanced', desc: 'Smooth with light effects. The recommended default.', apply: function () { SARA.quality.set('balanced'); SARA.homeLayout && SARA.homeLayout.merge({ sky: 1, fx: 1, ring: 1 }); }, active: function () { return SARA.quality.get() === 'balanced'; } },
-    { id: 'showcase', name: 'Showcase', desc: 'Everything on: stronger glass, dust, 3D tilt, stars at night.', apply: function () { SARA.quality.set('high'); SARA.homeLayout && SARA.homeLayout.merge({ sky: 1, fx: 1, ring: 1 }); }, active: function () { return SARA.quality.get() === 'high'; } },
+    { id: 'performance', name: 'Performance', desc: 'Lowest visual load: no blur, aura or sky light. Best for older PCs.', apply: function () { SARA.quality.set('low'); SARA.homeLayout && SARA.homeLayout.merge({ sky: 0, fx: 0 }); }, active: function () { return SARA.quality.get() === 'low' && !hl().sky && !hl().fx; } },
+    { id: 'balanced', name: 'Balanced', desc: 'Smooth with light effects. The recommended default.', apply: function () { SARA.quality.set('balanced'); SARA.homeLayout && SARA.homeLayout.merge({ sky: 1, fx: 1, ring: 1 }); }, active: function () { return SARA.quality.get() === 'balanced' && !!hl().sky && !!hl().fx && !!hl().ring; } },
+    { id: 'showcase', name: 'Showcase', desc: 'Everything on: stronger glass, dust, 3D tilt, stars at night.', apply: function () { SARA.quality.set('high'); SARA.homeLayout && SARA.homeLayout.merge({ sky: 1, fx: 1, ring: 1 }); }, active: function () { return SARA.quality.get() === 'high' && !!hl().sky && !!hl().fx && !!hl().ring; } },
     { id: 'focus', name: 'Focus', desc: 'Focus mode on, notifications and proactive nudges off. Remembers what you had and can restore it.', apply: applyFocusPreset, active: function () { return !!store.get(SNAP); } }
   ];
   const body = $('presetsBody');
