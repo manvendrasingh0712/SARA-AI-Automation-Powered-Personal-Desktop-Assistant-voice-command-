@@ -34,9 +34,8 @@
 <link rel="stylesheet" href="style/theme-neon.css">
 <link rel="stylesheet" href="style/theme-minimal.css">
 <link rel="stylesheet" href="style/smooth.css">
-<link rel="stylesheet" href="style/animations.css">
+<link rel="stylesheet" href="style/motion-pack.css">
 <link rel="stylesheet" href="style/router-view.css">
-<link rel="stylesheet" href="style/premium.css">
 <link rel="stylesheet" href="style/luxe.css">
 <link rel="stylesheet" href="style/aurum.css">
 <link rel="stylesheet" href="style/flow.css">
@@ -47,6 +46,8 @@
 <link rel="stylesheet" href="style/notes-plus.css">
 <link rel="stylesheet" href="style/music-plus.css">
 <link rel="stylesheet" href="style/settings-plus.css">
+<link rel="stylesheet" href="style/a11y-plus.css">
+<link rel="stylesheet" href="style/empty-plus.css">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -241,6 +242,7 @@
         <button type="button" data-target="grp-voice">Voice</button>
         <button type="button" data-target="grp-appearance">Appearance</button>
         <button type="button" data-target="grp-presets">Presets</button>
+        <button type="button" data-target="grp-access">Access</button>
         <button type="button" data-target="grp-skills">Skills</button>
         <button type="button" data-target="grp-calendar">Calendar</button>
         <button type="button" data-target="grp-memory">Memory</button>
@@ -403,6 +405,11 @@
         <section class="set-card" id="grp-presets">
           <div class="set-card-head"><div class="set-card-title">Presets &amp; backup</div><div class="set-card-sub">one-tap setups, export &amp; import</div></div>
           <div class="set-card-body" id="presetsBody"></div>
+        </section>
+
+        <section class="set-card" id="grp-access">
+          <div class="set-card-head"><div class="set-card-title">Accessibility</div><div class="set-card-sub">size, contrast, motion, keyboard</div></div>
+          <div class="set-card-body" id="accessBody"></div>
         </section>
 
         <section class="set-card" id="grp-system">
@@ -739,9 +746,10 @@
 <script src="js/palette.js"></script>
 <script src="js/quality.js"></script>
 <script src="js/settings-plus.js"></script>
-<script src="js/premium.js"></script>
+<script src="js/a11y-plus.js"></script>
+<script src="js/empty-plus.js"></script>
+<script src="js/motion-pack.js"></script>
 <script src="js/router-view.js"></script>
-<script src="js/aurum.js"></script>
 <script src="js/main.js"></script>
 <script src="js/chat-plus.js"></script>
 <script src="js/nlparse.js"></script>

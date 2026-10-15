@@ -230,6 +230,14 @@ class _PersistentPlayer:
         # `frames` value safe instead of assumed.
         self._scratch_block = np.zeros(_BLOCK_SIZE, dtype=np.int16)
 
+        # T15 ducking state. _duck_target is written from other threads as a
+        # plain float; _duck_gain/_duck_step are only advanced by _callback.
+        self._duck_target: float = 1.0
+        self._duck_gain: float = 1.0
+        self._duck_step: float = 1.0
+        self._duck_idx = np.arange(1, _BLOCK_SIZE + 1, dtype=np.float32)
+        self._duck_buf = np.zeros(_BLOCK_SIZE, dtype=np.float32)
+
         self._far_end_q: "queue.Queue[np.ndarray]" = queue.Queue(
             maxsize=_FAR_END_QUEUE_MAXSIZE
         )
@@ -348,6 +356,13 @@ class _PersistentPlayer:
             self._current_pos += take
             filled += take
 
+        target = self._duck_target
+        if target != 1.0 or self._duck_gain != 1.0:
+            try:
+                self._apply_duck(block, frames, target)
+            except Exception:
+                pass
+
         outdata[:, 0] = block
 
         # Live TTS level meter hand-off — same lock-free, non-blocking
@@ -379,6 +394,52 @@ class _PersistentPlayer:
                 self._far_end_q.put_nowait(block.copy())
             except queue.Full:
                 pass  # dropping one far-end block is harmless; blocking here is not
+
+    @property
+    def duck_active(self) -> bool:
+        """True while a duck (gain below unity) is requested."""
+        return self._duck_target < 1.0
+
+    def set_duck_gain(self, db: float, ramp_ms: int) -> None:
+        """Request output gain `db` (<= 0; 0 restores) reached over `ramp_ms`.
+        Lock-free: only plain floats are written; never raises."""
+        try:
+            db_f = max(-60.0, min(0.0, float(db)))
+            ramp = max(1.0, min(1000.0, float(ramp_ms)))
+            if db_f != db_f or ramp != ramp:
+                return
+            target = 1.0 if db_f >= 0.0 else 10.0 ** (db_f / 20.0)
+            blocks = max(1.0, ramp / 1000.0 * _SAMPLE_RATE / _BLOCK_SIZE)
+            span = max(abs(self._duck_gain - target), 1e-6)
+            self._duck_step = span / blocks
+            self._duck_target = target
+        except Exception:
+            pass
+
+    def _apply_duck(self, block: np.ndarray, frames: int, target: float) -> None:
+        """Real-time: scale `block` in place by a gain ramping one step toward
+        `target`. No locks, no logging, preallocated buffers."""
+        g0 = self._duck_gain
+        if g0 < target:
+            g1 = min(target, g0 + self._duck_step)
+        elif g0 > target:
+            g1 = max(target, g0 - self._duck_step)
+        else:
+            g1 = g0
+        self._duck_gain = g1
+        gains = self._duck_buf
+        if gains.shape[0] < frames:
+            gains = np.zeros(frames, dtype=np.float32)
+            self._duck_buf = gains
+            self._duck_idx = np.arange(1, frames + 1, dtype=np.float32)
+        gains = gains[:frames]
+        if g1 == g0:
+            gains.fill(g1)
+        else:
+            np.multiply(self._duck_idx[:frames], (g1 - g0) / frames, out=gains)
+            gains += g0
+        np.multiply(block, gains, out=gains)
+        block[:] = gains
 
     def enqueue(
         self,
@@ -423,6 +484,7 @@ class _PersistentPlayer:
                     pass
             # _SegmentStart is intentionally dropped without firing, so
             # UI callbacks for cancelled segments never trigger.
+        self._duck_target = 1.0
         self._clear_flag.set()
 
     def _pygame_play_and_wait(

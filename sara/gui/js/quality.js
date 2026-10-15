@@ -19,21 +19,33 @@
   };
   const TIERS = ['low', 'balanced', 'high'];
   const FEATURES = {
-    high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1 },
-    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 1, spark: 1, decrypt: 1, reveal: 1 },
-    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0 }
+    high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1 },
+    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1 },
+    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0 }
   };
   const NOTES = {
     low: 'Fastest. No blur, aura, dust or tilt, and decorative loops are off. Best for older or busy PCs.',
     balanced: 'Recommended. Smooth, with light effects (aura, magnetic buttons, sparks).',
     high: 'Everything on: stronger blur, floating dust, 3D tilt. Needs a decent GPU.'
   };
+  /* ---- fine-tune registry: every effect has its own on/off (js = checked by js/motion-pack.js, css = <html data-fx-off="..."> gates style/motion-pack.css) ---- */
+  const FX = [
+    ['aura', 'Cursor aura', 'soft light that follows the pointer', 'js'], ['magnetic', 'Magnetic buttons', 'buttons lean toward the cursor', 'js'], ['tilt', '3D tilt cards', 'tiles tilt under the cursor', 'js'],
+    ['spark', 'Click sparks', 'particles on primary clicks', 'js'], ['dust', 'Floating dust', 'faint drifting particles', 'js'], ['decrypt', 'Title decrypt', 'page titles resolve from glyphs', 'js'],
+    ['reveal', 'Theme circle reveal', 'a theme change expands from the click', 'js'], ['numberroll', 'Number roll', 'stats count up to new values', 'js'], ['progress', 'Scroll progress line', 'hairline at the top of long pages', 'js'],
+    ['edgepulse', 'Toast edge pulse', 'screen edge glows on a notification', 'js'], ['idle', 'Idle calm', 'dims the chrome after 25 s without input', 'js'],
+    ['ax', 'Entrance & hover animations', 'page entrances, press and hover motion', 'css'], ['pm', 'Premium upgrades', 'smoother page, message and toast timing', 'css'],
+    ['lx', 'Hover polish', 'icon springs, gloss and beams on hover', 'css'], ['au', 'Detail effects', 'small interaction details across the app', 'css']
+  ];
+  const off = new Set();
+  try { const a = JSON.parse(ls.get('sara_fx_off') || '[]'); if (Array.isArray(a)) a.forEach(function (x) { if (FX.some(function (f) { return f[0] === x; })) off.add(x); }); } catch (e) { /* none */ }
+  function applyFx() { const css = FX.filter(function (f) { return f[3] === 'css' && off.has(f[0]); }).map(function (f) { return f[0]; }); if (css.length) root.dataset.fxOff = css.join(' '); else delete root.dataset.fxOff; }
   function detect() {
     const c = navigator.hardwareConcurrency || 4, m = navigator.deviceMemory || 4;
     return (c <= 2 || m <= 2) ? 'low' : 'balanced';
   }
   let q = ls.get(K_Q); if (TIERS.indexOf(q) < 0) q = detect();
-  root.dataset.quality = q;
+  root.dataset.quality = q; applyFx();
 
   const $ = function (id) { return doc.getElementById(id); };
   const qRow = $('qualityRow'), qNote = $('qualityNote');
@@ -47,7 +59,14 @@
   SARA.quality = {
     tiers: TIERS.slice(),
     get: function () { return q; },
-    allows: function (f) { return !!(FEATURES[q] && FEATURES[q][f]); },
+    allows: function (f) { return !!(FEATURES[q] && FEATURES[q][f]) && !off.has(f); },
+    fx: {
+      names: FX.map(function (f) { return f[0]; }),
+      off: function () { return Array.from(off); },
+      isOn: function (n) { return !off.has(n); },
+      set: function (n, on) { if (!FX.some(function (f) { return f[0] === n; })) return; if (on) off.delete(n); else off.add(n); ls.set('sara_fx_off', JSON.stringify(Array.from(off))); applyFx(); SARA.emit('fx', n, !!on); },
+      setOff: function (arr) { off.clear(); (arr || []).forEach(function (x) { if (FX.some(function (f) { return f[0] === x; })) off.add(x); }); ls.set('sara_fx_off', JSON.stringify(Array.from(off))); applyFx(); SARA.emit('fx'); paintFx(); }
+    },
     set: function (v, persist) {
       if (TIERS.indexOf(v) < 0 || v === q) return;
       q = v; if (persist !== false) ls.set(K_Q, q);
@@ -60,6 +79,27 @@
     SARA.quality.set(c.dataset.q);
   });
   paint();
+
+  /* ---------------- Settings > Appearance > Fine-tune effects ---------------- */
+  const fxRows = {};
+  function paintFx() { Object.keys(fxRows).forEach(function (n) { SARA.setToggle(fxRows[n], !off.has(n)); }); }
+  if (qNote && qNote.parentNode) {
+    const det = doc.createElement('details'); det.className = 'fx-panel';
+    const sum = doc.createElement('summary'); sum.textContent = 'Fine-tune effects'; det.appendChild(sum);
+    const hint = doc.createElement('div'); hint.className = 'acc-note'; hint.textContent = 'Switch single effects on or off. They also follow the quality tier above.'; det.appendChild(hint);
+    ['js', 'css'].forEach(function (kind) {
+      const lab = doc.createElement('div'); lab.className = 'section-label'; lab.textContent = kind === 'js' ? 'Pointer & page effects' : 'Animation groups'; det.appendChild(lab);
+      FX.filter(function (f) { return f[3] === kind; }).forEach(function (f) {
+        const r = doc.createElement('div'); r.className = 'set-row'; const info = doc.createElement('div'); info.className = 'set-info';
+        const nm = doc.createElement('div'); nm.className = 's-name'; nm.textContent = f[1]; const sb = doc.createElement('div'); sb.className = 's-sub'; sb.textContent = f[2]; info.appendChild(nm); info.appendChild(sb);
+        const t = doc.createElement('div'); t.className = 'toggle'; t.setAttribute('role', 'switch'); t.tabIndex = 0; t.setAttribute('aria-label', f[1]); r.appendChild(info); r.appendChild(t); det.appendChild(r);
+        fxRows[f[0]] = t; SARA.bindToggle(t, function (on) { SARA.quality.fx.set(f[0], on); });
+      });
+    });
+    const foot = doc.createElement('div'); foot.className = 'btn-row'; const rb = doc.createElement('button'); rb.type = 'button'; rb.className = 'pill-btn'; rb.textContent = 'Turn everything back on';
+    rb.addEventListener('click', function () { SARA.quality.fx.setOff([]); }); foot.appendChild(rb); det.appendChild(foot);
+    qNote.parentNode.insertBefore(det, $('devBlock') || qNote.nextSibling); paintFx();
+  }
 
   /* ---------------- FPS meter ---------------- */
   let hud = null, hudOn = false, raf = 0, lt = 0, ltObs = null;

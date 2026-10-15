@@ -556,6 +556,7 @@ class ApiCoreMixin:
             except Exception as e2:
                 print(f"[send_text_command status push error] {e2}")
         was_cancelled = turn_cancel.is_set() or not TURN_STATE.is_current(turn_gen)
+        _t_end("cancelled" if was_cancelled else "ok")
         if was_cancelled:
             print("[send_text_command] turn cancelled by Stop; dropping late result")
             reply = None

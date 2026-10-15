@@ -26,6 +26,26 @@ class VoiceFlag:
 
 VOICE_FLAGS: tuple[VoiceFlag, ...] = (
     VoiceFlag(
+        key="VOICE_DUCKING",
+        default=False,
+        label="Lower Sara's voice when I start talking",
+        description=(
+            "Sara's voice gets quieter for a moment as soon as you start "
+            "speaking, so you can be heard without cutting her off."
+        ),
+        task="T15",
+    ),
+    VoiceFlag(
+        key="VOICE_SEMANTIC_BARGE_IN",
+        default=False,
+        label="Understand interruptions (hmm / okay do not stop Sara)",
+        description=(
+            "Short sounds such as 'hmm' or 'okay' no longer stop Sara; "
+            "real interruptions such as 'stop' or a new command still do."
+        ),
+        task="T15",
+    ),
+    VoiceFlag(
         key="VOICE_ACK_CACHE",
         default=True,
         label="Instant acknowledgements",

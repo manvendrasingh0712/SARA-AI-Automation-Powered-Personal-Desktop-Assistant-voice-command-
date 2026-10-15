@@ -2032,6 +2032,22 @@ class SpeechToText:
             )
             return False
 
+    def decode_barge_ring(self, max_ms: int = 700) -> str | None:
+        """Decode the most recent `max_ms` of the AEC/NS-processed ring with
+        the small preview model. None on any failure, missing model or
+        timeout (~0.4 s). Never takes self._listen_lock."""
+        from sara.audio.stt.barge_decode import decode_recent
+
+        return decode_recent(self, max_ms)
+
+    def set_barge_boost(self, factor: float) -> None:
+        """Scale the TTS-time barge-in energy gate (1.0 = unchanged).
+        Never raises."""
+        try:
+            self._barge_boost = max(1.0, min(4.0, float(factor)))
+        except (TypeError, ValueError):
+            self._barge_boost = 1.0
+
     def is_user_speaking(self, duration: float = 0.3) -> bool:
         if self._closed:
             return False
@@ -2048,7 +2064,9 @@ class SpeechToText:
                 return any(_rms(c) > thr for c in chunks)
 
             bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
-            effective_thr = thr * bleed_multiplier
+            effective_thr = (
+                thr * bleed_multiplier * float(getattr(self, "_barge_boost", 1.0))
+            )
             loud = [c for c in chunks if _rms(c) > effective_thr]
             if not loud:
                 return False

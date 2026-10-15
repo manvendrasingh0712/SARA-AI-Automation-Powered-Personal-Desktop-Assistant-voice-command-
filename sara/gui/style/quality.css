@@ -28,3 +28,10 @@ html[data-quality="low"] body.pm-overlay-open .page.active{scale:1;}
 .fps-hud.warn{color:#ffd166;}
 .fps-hud.bad{color:#ff7a7a;}
 .fps-hud div:first-child{font-size:13px;}
+
+/* ---- Fine-tune effects panel ---- */
+.fx-panel{max-width:520px;margin:10px 0;border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:2px 14px 10px;}
+.fx-panel>summary{cursor:pointer;padding:12px 0 10px;font-size:13px;font-weight:600;color:var(--text);list-style:none;}
+.fx-panel>summary::-webkit-details-marker{display:none;}
+.fx-panel>summary::after{content:'\25B8';float:right;color:var(--muted);transition:rotate .25s ease;}
+.fx-panel[open]>summary::after{rotate:90deg;}

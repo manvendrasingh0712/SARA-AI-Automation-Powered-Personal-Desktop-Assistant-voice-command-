@@ -491,6 +491,26 @@ class Config:
     VOICE_ACK_CACHE_DISK: bool = _bool(
         os.getenv("VOICE_ACK_CACHE_DISK", "False"), default=False
     )
+    VOICE_DUCKING: bool = _bool(os.getenv("VOICE_DUCKING", "False"), default=False)
+    VOICE_SEMANTIC_BARGE_IN: bool = _bool(
+        os.getenv("VOICE_SEMANTIC_BARGE_IN", "False"), default=False
+    )
+    try:
+        VOICE_DUCK_DB: float = float(os.getenv("VOICE_DUCK_DB", "-12.0"))
+    except ValueError:
+        VOICE_DUCK_DB = -12.0
+    VOICE_DUCK_RAMP_MS: int = _int(os.getenv("VOICE_DUCK_RAMP_MS"), default=40)
+    BARGE_COLLECT_MS: int = _int(os.getenv("BARGE_COLLECT_MS"), default=550)
+    BARGE_AMBIGUOUS_MS: int = _int(os.getenv("BARGE_AMBIGUOUS_MS"), default=800)
+    BARGE_NOAEC_MIN_SPEECH_MS: int = _int(
+        os.getenv("BARGE_NOAEC_MIN_SPEECH_MS"), default=300
+    )
+    try:
+        BARGE_NOAEC_THRESHOLD_BOOST: float = float(
+            os.getenv("BARGE_NOAEC_THRESHOLD_BOOST", "1.5")
+        )
+    except ValueError:
+        BARGE_NOAEC_THRESHOLD_BOOST = 1.5
     VOICE_CHUNKER_V2: bool = _bool(
         os.getenv("VOICE_CHUNKER_V2", "False"), default=False
     )
@@ -1103,6 +1123,16 @@ class Config:
         cls.VOICE_PREWARM_MAX_PHRASES = max(
             _MIN_VOICE_PREWARM_PHRASES,
             min(_MAX_VOICE_PREWARM_PHRASES, cls.VOICE_PREWARM_MAX_PHRASES),
+        )
+        cls.VOICE_DUCK_DB = max(-24.0, min(-3.0, cls.VOICE_DUCK_DB))
+        cls.VOICE_DUCK_RAMP_MS = max(10, min(200, cls.VOICE_DUCK_RAMP_MS))
+        cls.BARGE_COLLECT_MS = max(300, min(900, cls.BARGE_COLLECT_MS))
+        cls.BARGE_AMBIGUOUS_MS = max(500, min(1500, cls.BARGE_AMBIGUOUS_MS))
+        cls.BARGE_NOAEC_MIN_SPEECH_MS = max(
+            150, min(800, cls.BARGE_NOAEC_MIN_SPEECH_MS)
+        )
+        cls.BARGE_NOAEC_THRESHOLD_BOOST = max(
+            1.0, min(3.0, cls.BARGE_NOAEC_THRESHOLD_BOOST)
         )
         for _ep_key, (_ep_lo, _ep_hi) in (
             ("ENDPOINT_MIN_MS", _ENDPOINT_MIN_MS_RANGE),

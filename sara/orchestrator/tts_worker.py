@@ -23,6 +23,7 @@ except Exception:  # telemetry is optional: fall back to no-ops
 
 from sara.audio.tts import TextToSpeech
 from sara.audio.stt import SpeechToText
+from sara.orchestrator.barge_watch import SemanticBargeIn
 
 from sara.orchestrator._constants import (
     _DEBUG,
@@ -72,6 +73,8 @@ class TTSWorker:
         "_db",
         "_epoch",
         "_epoch_lock",
+        "_semantic",
+        "_last_info",
     )
 
     def __init__(self, voice: TextToSpeech, ears: SpeechToText, db=None):
@@ -88,6 +91,8 @@ class TTSWorker:
         
         self._epoch = 0
         self._epoch_lock = threading.Lock()
+        self._semantic = None
+        self._last_info = None
 
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -104,6 +109,9 @@ class TTSWorker:
                     time.sleep(_WATCH_IDLE_POLL_S)
                     continue
                 if time.monotonic() - self._speech_started_at < _BARGE_IN_GRACE_S:
+                    time.sleep(_BARGE_IN_POLL_S)
+                    continue
+                if getattr(Config, "VOICE_SEMANTIC_BARGE_IN", False) and self._semantic_step():
                     time.sleep(_BARGE_IN_POLL_S)
                     continue
                 if self._voice.is_speaking() and self._ears.is_user_speaking(
@@ -130,6 +138,39 @@ class TTSWorker:
             except Exception as e:
                 logger.exception(f"[TTSWorker] watch_loop error (continuing): {e}")
                 time.sleep(_THREAD_ERROR_BACKOFF_S)
+
+    @property
+    def last_interrupt_info(self) -> "dict | None":
+        """Details of the latest semantic interruption (no spoken text)."""
+        info = self._last_info
+        return dict(info) if info is not None else None
+
+    def _record_interrupt(self, info: dict) -> None:
+        self._last_info = dict(info)
+
+    def _hard_stop(self) -> None:
+        """Legacy barge-in stop sequence (same order as _watch_loop)."""
+        self._voice.stop()
+        self._ears.capture_barge_in_audio()
+        self._barge_stop.set()
+        _t_end("barge_in")
+
+    def _semantic_step(self) -> bool:
+        """One semantic barge-in poll; False means run the legacy branch."""
+        try:
+            if self._semantic is None:
+                self._semantic = SemanticBargeIn(
+                    self._voice, self._ears, self._hard_stop, self._record_interrupt
+                )
+            return self._semantic.step()
+        except Exception as e:
+            logger.warning("[TTSWorker] semantic barge-in unavailable: %s", type(e).__name__)
+            return False
+
+    def _release_duck(self) -> None:
+        sem = self._semantic
+        if sem is not None:
+            sem.release()
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -179,6 +220,7 @@ class TTSWorker:
 
     def _disarm_barge_in(self) -> None:
         self._speaking.clear()
+        self._release_duck()
 
     def _should_speak(self) -> bool:
         """Gate for actual audio synthesis/playback -- checks "muted"
@@ -316,6 +358,7 @@ class TTSWorker:
     def stop(self) -> None:
         with self._epoch_lock:
             self._epoch += 1
+        self._release_duck()
         self._voice.stop()
 
     def clear_interrupt(self) -> None:
@@ -362,6 +405,7 @@ class TTSWorker:
         """
         self._stop.set()
         self._speaking.clear()
+        self._release_duck()
         self._barge_stop.set()
         if hasattr(self._voice, "shutdown"):
             self._voice.shutdown()
