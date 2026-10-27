@@ -1,0 +1,86 @@
+/* settings-fx.css -- advanced effects layer for Settings. Scoped to #page-settings. Load AFTER settings.css / motion.css. */
+
+/* ---- rail: index numbers, scroll-progress line, search ---- */
+#page-settings .set-rail{counter-reset:rl;}
+#page-settings .set-rail button{padding-right:18px;transition:color .2s,translate .3s var(--ease-premium);translate:var(--mx,0px) var(--my,0px);}
+#page-settings .set-rail button::before{counter-increment:rl;content:counter(rl,decimal-leading-zero);display:inline-block;width:22px;font-size:9.5px;letter-spacing:.08em;opacity:.45;font-variant-numeric:tabular-nums;transition:opacity .2s,color .2s;}
+#page-settings .set-rail button.on::before{opacity:1;color:var(--core);}
+#page-settings .set-rail::before,#page-settings .set-rail::after{content:'';position:absolute;right:5px;top:12px;bottom:12px;width:2px;border-radius:2px;pointer-events:none;}
+#page-settings .set-rail::before{background:var(--line);}
+#page-settings .set-rail::after{background:linear-gradient(var(--core),var(--think));transform-origin:top;transform:scaleY(var(--prog,0));transition:transform .2s linear;}
+#page-settings .set-search{width:100%;margin:2px 0 6px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:var(--panel-2);color:var(--text);font-size:12.5px;outline:none;transition:border-color .2s,box-shadow .2s;}
+#page-settings .set-search:focus{border-color:var(--core);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .18);}
+#page-settings.set-enter .set-rail button{animation:fxRailIn .5s var(--ease-premium) both;animation-delay:calc(var(--ri,0) * 35ms);}
+@keyframes fxRailIn{from{opacity:0;transform:translateX(-12px);}to{opacity:1;transform:none;}}
+
+/* ---- holographic edge (border lit by the pointer) + effect clip layer ---- */
+#page-settings .set-edge{position:absolute;inset:-1px;padding:1px;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(240px circle at var(--ex,50%) var(--ey,50%),rgb(var(--core-rgb) / .95),rgb(var(--think-rgb) / .55) 45%,transparent 72%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;}
+#page-settings .set-card:hover>.set-edge{opacity:1;}
+#page-settings .set-fx{position:absolute;inset:0;z-index:-1;border-radius:inherit;overflow:hidden;pointer-events:none;}
+
+/* ---- toggle shockwave + particle burst ---- */
+#page-settings .fx-wave{position:absolute;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;
+  background:radial-gradient(circle,transparent 56%,rgb(var(--core-rgb) / .55) 62%,rgb(var(--core-rgb) / .12) 70%,transparent 76%);
+  animation:fxWave .8s cubic-bezier(.22,1,.36,1) forwards;}
+@keyframes fxWave{from{transform:scale(.4);opacity:1;}to{transform:scale(18);opacity:0;}}
+#page-settings .fx-p{position:absolute;width:5px;height:5px;border-radius:50%;background:var(--core);box-shadow:0 0 8px var(--core);}
+#page-settings .fx-p:nth-child(even){background:var(--think);box-shadow:0 0 8px var(--think);}
+
+/* ---- magnetic controls (JS sets --mx/--my; uses the independent `translate` property so no transform conflicts) ---- */
+#page-settings .qc-tile{translate:var(--mx,0px) var(--my,0px);transition:border-color .25s,background .25s,color .2s,transform .16s var(--ease-spring),translate .3s var(--ease-premium);}
+#page-settings .pill-btn{translate:var(--mx,0px) var(--my,0px);transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--ease-spring),box-shadow .2s,translate .3s var(--ease-premium);}
+
+/* ---- theme cards: 3D tilt + glare (JS adds .tilt while the mouse is over a card) ---- */
+#page-settings .theme-card::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .25s;background:radial-gradient(circle at var(--gx,50%) var(--gy,50%),rgb(255 255 255 / .16),transparent 55%);}
+#page-settings .theme-grid .theme-card.tilt{transform:perspective(700px) rotateX(var(--ry,0deg)) rotateY(var(--rx,0deg)) translateY(-3px) scale(1.02);transition:transform .12s linear,border-color .28s,box-shadow .28s;}
+#page-settings .theme-grid .theme-card.tilt::before{opacity:1;}
+
+/* ---- sliders: energy glow while dragging ---- */
+#page-settings input[type=range].drag{box-shadow:0 0 14px -2px rgb(var(--core-rgb) / .7);}
+
+/* ---- card headers: line draw-in, title light sweep on page open ---- */
+#page-settings .set-card-head{position:relative;}
+#page-settings .set-card-head::after{content:'';position:absolute;left:0;bottom:-1px;width:100%;height:1px;transform-origin:left;opacity:.65;background:linear-gradient(90deg,var(--core),rgb(var(--think-rgb) / .35) 45%,transparent 80%);}
+#page-settings.set-enter .set-card-head::after{animation:fxLine .9s var(--ease-premium) both;animation-delay:calc(var(--i,0) * 45ms + 260ms);}
+@keyframes fxLine{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+#page-settings.set-enter .page-title{background:linear-gradient(100deg,var(--text) 0 42%,var(--core) 50%,var(--text) 58% 100%);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:fxSweep 1s var(--ease-premium) both;}
+@keyframes fxSweep{from{background-position:100% 0;}to{background-position:0 0;}}
+
+/* ---- quick-controls counter ---- */
+#page-settings .odo{display:inline-block;color:var(--core);font-weight:600;font-variant-numeric:tabular-nums;}
+
+/* ---- memory ring: tick marks + one-shot scan ---- */
+#page-settings .mem-ring{margin:9px;}
+#page-settings .mem-ring::before,#page-settings .mem-ring::after{content:'';position:absolute;inset:-9px;border-radius:50%;pointer-events:none;
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));}
+#page-settings .mem-ring::before{background:repeating-conic-gradient(rgb(var(--fg-rgb) / .22) 0 1deg,transparent 1deg 6deg);}
+#page-settings .mem-ring::after{background:conic-gradient(from 0deg,transparent 0 78%,rgb(var(--core-rgb) / .9) 100%);opacity:0;}
+#page-settings .mem-ring.scan::after{animation:fxScan 1.3s cubic-bezier(.4,0,.2,1);}
+@keyframes fxScan{0%{opacity:1;transform:rotate(0);}85%{opacity:1;}100%{opacity:0;transform:rotate(360deg);}}
+
+/* ---- skills: rows stream in ---- */
+#skillsList .skill-row{animation:fxRowIn .5s var(--ease-premium) both;}
+#skillsList .skill-row:nth-child(2){animation-delay:50ms;} #skillsList .skill-row:nth-child(3){animation-delay:100ms;}
+#skillsList .skill-row:nth-child(4){animation-delay:150ms;} #skillsList .skill-row:nth-child(5){animation-delay:200ms;}
+#skillsList .skill-row:nth-child(6){animation-delay:250ms;} #skillsList .skill-row:nth-child(7){animation-delay:300ms;}
+#skillsList .skill-row:nth-child(n+8){animation-delay:350ms;}
+@keyframes fxRowIn{from{opacity:0;transform:translateX(-10px);}to{opacity:1;transform:none;}}
+
+/* ---- danger zone: hazard stripes ---- */
+#page-settings .danger-zone{background:repeating-linear-gradient(135deg,rgb(var(--danger-rgb) / .07) 0 10px,transparent 10px 20px),linear-gradient(135deg,rgb(var(--danger-rgb) / .09),transparent 70%);}
+
+/* ---- settings search ---- */
+#page-settings .set-card{transition:border-color .3s,box-shadow .35s,opacity .3s;}
+#page-settings .set-card.dim{opacity:.3;}
+#page-settings .hit{background:rgb(var(--core-rgb) / .10);box-shadow:0 0 0 6px rgb(var(--core-rgb) / .10);border-radius:8px;}
+
+@media (max-width:980px){
+  #page-settings .set-rail::before,#page-settings .set-rail::after{left:16px;right:16px;top:auto;bottom:2px;width:auto;height:2px;}
+  #page-settings .set-rail::after{transform-origin:left;transform:scaleX(var(--prog,0));}
+  #page-settings .set-search{display:none;}
+}
+@media (hover:none),(prefers-reduced-motion:reduce){
+  #page-settings .set-edge{display:none;}
+}

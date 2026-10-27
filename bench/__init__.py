@@ -1,0 +1,1 @@
+"""SARA-Bench: offline benchmark harness (never imported by the app)."""

@@ -1,0 +1,105 @@
+/* ==========================================================================
+   theme-neon.css  --  effects for the "Neon Black" theme (data-theme="neon") ONLY.
+   Colours live in style/tokens.css (the :root[data-theme="neon"] block); this file only adds gloss, edge light and glow.
+   Every rule is scoped to :root[data-theme="neon"] (except the Settings preview card), so no other theme is affected.
+   Motion = transform/opacity or tiny 2px strips only, and is wrapped in prefers-reduced-motion:no-preference.
+   Load order: last stylesheet in index.html.
+   ========================================================================== */
+
+/* ---- background glow: blue only (no teal/purple/amber from the time-of-day tint) ---- */
+:root[data-theme="neon"] body::before{
+  background:
+    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgb(var(--core-rgb) / .10), transparent 70%),
+    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgb(var(--think-rgb) / .08), transparent 70%),
+    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgb(var(--speak-rgb) / .045), transparent 70%);
+}
+:root[data-theme="neon"] ::-webkit-scrollbar-thumb{background:rgb(var(--core-rgb) / .35);}
+
+/* ---- glass cards: glossy top edge + faint inner sheen ---- */
+:root[data-theme="neon"] .set-card,
+:root[data-theme="neon"] .modal{
+  border-color:rgb(var(--core-rgb) / .20);
+  background-image:linear-gradient(180deg,rgb(var(--core-rgb) / .06),transparent 42%);
+  box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .20),var(--shadow-rest);
+  transition:border-color var(--dur-med,.28s),box-shadow var(--dur-med,.28s);
+}
+:root[data-theme="neon"] .set-card:hover{border-color:rgb(var(--core-rgb) / .42);box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .34),var(--shadow-hover);}
+:root[data-theme="neon"] .modal{box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .22),0 26px 60px -20px #000,0 0 44px -16px rgb(var(--core-rgb) / .45);}
+
+/* ---- light seam along the top of the floating home cards ---- */
+:root[data-theme="neon"] .today-card::before,
+:root[data-theme="neon"] .next-card::before,
+:root[data-theme="neon"] .plan-card::before,
+:root[data-theme="neon"] .home-activity::before{
+  left:10%;right:10%;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,rgb(var(--core-rgb) / .35) 0%,rgb(var(--core-rgb) / .35) 38%,rgb(var(--shine-rgb) / .95) 50%,rgb(var(--core-rgb) / .35) 62%,rgb(var(--core-rgb) / .35) 100%);
+  background-size:200% 100%;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 18%,#000 82%,transparent);
+}
+:root[data-theme="neon"] .today-card:hover,
+:root[data-theme="neon"] .next-card:hover{border-color:rgb(var(--speak-rgb) / .55);}
+
+/* ---- buttons: glossy ---- */
+:root[data-theme="neon"] .pill-btn{
+  background:linear-gradient(180deg,rgb(var(--core-rgb) / .10),transparent 60%),var(--panel-2);
+  border-color:rgb(var(--core-rgb) / .22);
+  box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .10);
+}
+:root[data-theme="neon"] .pill-btn:hover:not(:disabled){
+  border-color:rgb(var(--core-rgb) / .70);transform:translateY(-1px) scale(1.02);
+  box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .22),0 0 18px -3px rgb(var(--core-rgb) / .50);
+}
+:root[data-theme="neon"] .pill-btn:active:not(:disabled){transform:scale(.97);}
+:root[data-theme="neon"] .pill-btn.primary{
+  background:linear-gradient(180deg,color-mix(in srgb,var(--core) 62%,white) 0%,var(--core) 48%,color-mix(in srgb,var(--core) 80%,black) 100%);
+  color:var(--on-core);
+  box-shadow:inset 0 0 0 1px rgb(var(--shine-rgb) / .40),inset 0 1px 0 rgb(255 255 255 / .50),0 0 20px -4px rgb(var(--core-rgb) / .65);
+}
+:root[data-theme="neon"] .pill-btn.primary:hover:not(:disabled){
+  background:linear-gradient(180deg,color-mix(in srgb,var(--core) 45%,white) 0%,color-mix(in srgb,var(--core) 90%,white) 48%,var(--core) 100%);
+  box-shadow:inset 0 0 0 1px rgb(var(--shine-rgb) / .55),inset 0 1px 0 rgb(255 255 255 / .60),0 0 28px -3px rgb(var(--core-rgb) / .85);
+}
+
+/* ---- navigation: active pill glows, text lights up ---- */
+:root[data-theme="neon"] .nav{border-color:rgb(var(--core-rgb) / .28);box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .14),var(--shadow-rest);}
+:root[data-theme="neon"] .nav-ind{
+  background:linear-gradient(180deg,rgb(var(--core-rgb) / .30),rgb(var(--core-rgb) / .12));
+  box-shadow:inset 0 0 0 1px rgb(var(--core-rgb) / .60),inset 0 1px 0 rgb(var(--shine-rgb) / .35),0 0 18px -2px rgb(var(--core-rgb) / .55);
+}
+:root[data-theme="neon"] .nav button.active{color:#fff;text-shadow:0 0 10px rgb(var(--core-rgb) / .80);}
+
+/* ---- inputs: luminous focus ring ---- */
+:root[data-theme="neon"] .field:focus,
+:root[data-theme="neon"] .add-row input:focus,
+:root[data-theme="neon"] .modal input:focus,
+:root[data-theme="neon"] .modal select:focus,
+:root[data-theme="neon"] .set-row input[type=text]:focus{
+  border-color:var(--core);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .18),0 0 18px -2px rgb(var(--core-rgb) / .50);
+}
+:root[data-theme="neon"] .chat-dock:focus-within{border-color:rgb(var(--core-rgb) / .70);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .16),0 0 22px -4px rgb(var(--core-rgb) / .50);}
+
+/* ---- toggles / chips / status dots: small cyan bloom ---- */
+:root[data-theme="neon"] .toggle.on{box-shadow:0 0 14px -2px rgb(var(--core-rgb) / .65);}
+:root[data-theme="neon"] .chip.on{background:rgb(var(--core-rgb) / .10);box-shadow:0 0 14px -4px rgb(var(--core-rgb) / .55);}
+:root[data-theme="neon"] .mini-orb{box-shadow:0 0 10px var(--core),0 0 22px rgb(var(--speak-rgb) / .55);}
+:root[data-theme="neon"] .toast .t-dot{box-shadow:0 0 8px currentColor,0 0 16px rgb(var(--speak-rgb) / .45);}
+
+/* ---- Settings > Appearance preview card (applies in every theme, so the card always shows the real neon look) ---- */
+.tc-pv[data-theme-preview="neon"]{border-color:rgb(var(--core-rgb) / .40);box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .50),inset 0 0 20px -10px rgb(var(--core-rgb) / .60);}
+.tc-pv[data-theme-preview="neon"] .tc-panel{box-shadow:inset 0 1px 0 rgb(var(--shine-rgb) / .25);border-color:rgb(var(--core-rgb) / .25);}
+.tc-pv[data-theme-preview="neon"] .tc-accent{background:linear-gradient(135deg,var(--speak),var(--core) 55%,var(--think));box-shadow:0 0 14px -2px rgb(var(--core-rgb) / .80);}
+
+/* ---- motion (only when the OS allows it) ---- */
+@media (prefers-reduced-motion:no-preference){
+  :root[data-theme="neon"] .today-card::before,
+  :root[data-theme="neon"] .next-card::before,
+  :root[data-theme="neon"] .plan-card::before,
+  :root[data-theme="neon"] .home-activity::before{animation:neonSweep 7s cubic-bezier(.4,0,.2,1) infinite;}
+  :root[data-theme="neon"] .next-card::before{animation-delay:-2s;}
+  :root[data-theme="neon"] .plan-card::before{animation-delay:-3.5s;}
+  :root[data-theme="neon"] .home-activity::before{animation-delay:-5s;}
+  :root[data-theme="neon"] .nav-ind{animation:neonBreath 3.4s ease-in-out infinite;}
+}
+@keyframes neonSweep{0%{background-position:0 0;}38%,100%{background-position:200% 0;}}
+@keyframes neonBreath{0%,100%{opacity:.82;}50%{opacity:1;}}

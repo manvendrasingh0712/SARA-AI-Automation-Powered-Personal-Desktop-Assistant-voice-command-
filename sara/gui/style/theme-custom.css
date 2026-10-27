@@ -1,0 +1,24 @@
+/* ==========================================================================
+   theme-custom.css  --  the "Custom" theme (data-theme="custom"). Every token is read from --cx-* variables that
+   js/settings-plus.js computes from the two colours you pick (accent + background) and writes on <html>.
+   The fallbacks below are only used before the script has run. Load right after tokens.css (any point before the effects files is fine).
+   ========================================================================== */
+:root[data-theme="custom"], [data-theme-preview="custom"]{
+  --void:var(--cx-void,#030507); --deep:var(--cx-deep,#07090d); --panel:var(--cx-panel,#0b0e14); --panel-rgb:var(--cx-panel-rgb,11 14 20);
+  --panel-2:var(--cx-panel-2,#10141b); --line:var(--cx-line,#1c2230);
+  --core-rgb:var(--cx-core-rgb,0 183 255); --think-rgb:var(--cx-think-rgb,0 140 255); --speak-rgb:var(--cx-speak-rgb,0 231 255);
+  --text:var(--cx-text,#eaf6ff); --text-soft:var(--cx-text-soft,#a9c4dc); --muted:var(--cx-muted,#7f98b0); --faint:var(--cx-faint,#44566b);
+  --danger:var(--cx-danger,#ff5a6a); --danger-rgb:var(--cx-danger-rgb,255 90 106); --on-core:var(--cx-on-core,#0a0a0a);
+  --fg-rgb:var(--cx-fg-rgb,255 255 255); --void-rgb:var(--cx-void-rgb,3 5 7); --mesh-k:.6; --vignette:rgba(0,0,0,.55);
+  --glass-bg:rgb(var(--panel-rgb) / .78); --glass-border:rgb(var(--fg-rgb) / .10); --glow:rgb(var(--core-rgb) / .3);
+  --shadow-rest:0 1px 2px rgba(0,0,0,.45),0 10px 24px -14px rgba(0,0,0,.7);
+  --shadow-hover:0 2px 4px rgba(0,0,0,.45),0 16px 34px -14px rgba(0,0,0,.75),0 0 26px -8px rgb(var(--core-rgb) / .4);
+  --scrim:rgb(var(--void-rgb) / .8);
+  color-scheme:dark;
+}
+:root[data-theme="custom"][data-cx-mode="light"], [data-theme-preview="custom"][data-cx-mode="light"]{
+  color-scheme:light; --vignette:rgba(90,80,50,.08);
+  --shadow-rest:0 1px 2px rgb(var(--fg-rgb) / .06),0 10px 22px -14px rgb(var(--fg-rgb) / .22);
+  --shadow-hover:0 2px 4px rgb(var(--fg-rgb) / .08),0 16px 30px -16px rgb(var(--fg-rgb) / .3);
+  --success:#4a7c59; --success-rgb:74 124 89; --warning:#9a6b12; --warning-rgb:154 107 18; --info:#3f6f8f; --info-rgb:63 111 143;
+}

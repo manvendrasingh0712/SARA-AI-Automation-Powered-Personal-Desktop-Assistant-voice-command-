@@ -1,0 +1,259 @@
+/* ==========================================================================
+   tokens.css  --  ALL colours live here. Loaded FIRST; every other style/*.css reads these variables.
+   RETHEME = change (or add) a block below. Rules:
+     * colours that need transparency are stored as space-separated RGB triplets (--core-rgb: 63 216 196)
+       and used as  rgb(var(--core-rgb) / .35)  -- never hardcode rgba(63,216,196,.35) in another file.
+     * --core / --think / --speak are derived from those triplets, so they always match.
+     * a theme = one  :root[data-theme="name"]  block (js/theme.js sets data-theme + the accent-hue override).
+   Themes: sara = Terrarium (default) | paper | arctic = Sky | emerald = Mint | rose = Blush | violet = Lilac (all light)
+           | slate = Midnight | ember | cyber = Cyber Blue | aurora (all dark).  Ids are kept stable so saved prefs keep loading.
+   ========================================================================== */
+
+/* ---- shared, theme-independent tokens ---- */
+:root{
+  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --shine-rgb:255 255 255;                       /* white sheen used by spotlights / shimmers in every theme */
+  /* semantic status colours -- theme-independent on purpose; the accent-hue slider never touches these (--danger is per theme, below) */
+  --success:#5FCB8A; --success-rgb:95 203 138;
+  --warning:#E8B64A; --warning-rgb:232 182 74;
+  --info:#6CB6F0; --info-rgb:108 182 240;
+  --ease-premium: cubic-bezier(.22,1,.36,1);
+  --ease-spring: cubic-bezier(.34,1.56,.64,1);
+  --dur-fast: .16s;
+  --dur-med: .28s;
+  --glass-blur: 24px;                            /* iOS-style frosted glass (components.css adds saturate) */
+}
+
+/* ---- derived tokens (recomputed automatically per theme, incl. the accent-hue override) ---- */
+:root, :root[data-theme], [data-theme-preview]{
+  --core:rgb(var(--core-rgb));
+  /* theme-wide background wash: three soft accent blobs. --mesh-k scales it per theme (light themes / vivid dark themes use more) */
+  --bg-mesh:
+    radial-gradient(55% 45% at 10% 6%, rgb(var(--core-rgb) / calc(.20 * var(--mesh-k,1))), transparent 70%),
+    radial-gradient(50% 45% at 94% 94%, rgb(var(--think-rgb) / calc(.18 * var(--mesh-k,1))), transparent 72%),
+    radial-gradient(35% 30% at 88% 8%, rgb(var(--speak-rgb) / calc(.10 * var(--mesh-k,1))), transparent 70%);
+  --think:rgb(var(--think-rgb));
+  --speak:rgb(var(--speak-rgb));
+  --core-hover:color-mix(in srgb,var(--core) 82%,white);
+  --glass-bg:rgb(var(--panel-rgb) / .72);
+  --glass-border:rgb(var(--fg-rgb) / .08);
+  --glow:rgb(var(--core-rgb) / .22);
+  --scrim:rgb(var(--void-rgb,4 8 8) / .72);
+  /* skill cards (js/skill_cards.js reads these) follow the theme */
+  --sara-card-bg:var(--panel-2); --sara-text:var(--text); --sara-accent:var(--core);
+}
+
+/* ---- 1. SARA / Terrarium (default dark) ---- */
+/* every theme block also matches [data-theme-preview="id"] so the Settings theme cards can show a real mini-UI of any theme */
+:root, [data-theme-preview="sara"]{
+  --mesh-k:1.3;
+  --void:#080C0D; --deep:#0E1D1C; --panel:#101917; --panel-rgb:16 25 23; --panel-2:#152321; --line:#1D2C29;
+  --core-rgb:63 216 196; --think-rgb:139 111 216; --speak-rgb:232 192 143;
+  --text:#CBD8D6; --text-soft:#8FA09D; --muted:#7A8B88; --faint:#4B5957;
+  --danger:#D97A6B; --danger-rgb:217 122 107; --on-core:#08110F;
+  --fg-rgb:255 255 255; color-scheme:dark;
+  --void-rgb:8 12 13; --vignette:rgba(0,0,0,.5);
+  --shadow-rest: 0 1px 2px rgba(0,0,0,.22), 0 8px 20px -12px rgba(0,0,0,.45);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.24), 0 14px 32px -14px rgba(0,0,0,.55), 0 0 26px -6px var(--glow);
+}
+
+/* ---- EMBER (warm dark): charcoal-brown base, molten orange + hot pink + gold ---- */
+:root[data-theme="ember"], [data-theme-preview="ember"]{
+  --void:#0E0605; --deep:#2B130B; --panel:#1D0F0B; --panel-rgb:29 15 11; --panel-2:#2B1811; --line:#47281C;
+  --core-rgb:255 138 61; --think-rgb:255 69 112; --speak-rgb:255 207 90;
+  --text:#F6E7DD; --text-soft:#C4A898; --muted:#9C8274; --faint:#62493D;
+  --danger:#FF3B30; --danger-rgb:255 59 48; --on-core:#1F0C03;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.5;
+  --void-rgb:14 6 5; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- 3. VIOLET ---- */
+/* ---- LILAC (light, iOS indigo): airy lavender-white, indigo + orchid + coral ---- */
+:root[data-theme="violet"], [data-theme-preview="violet"]{
+  --void:#EFEDFC; --deep:#F9F8FF; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F5F3FE; --line:#D9D4F0;
+  --core-rgb:94 92 230; --think-rgb:191 90 242; --speak-rgb:255 107 157;
+  --text:#1A1633; --text-soft:#46406B; --muted:#666090; --faint:#A9A4C8;
+  --danger:#E5362B; --danger-rgb:229 54 43; --on-core:#FFFFFF;
+  --fg-rgb:26 22 51; color-scheme:light; --mesh-k:1.15;
+  --void-rgb:239 237 252; --vignette:rgba(94,92,230,.07);
+}
+
+/* ---- MIDNIGHT (iOS dark): true-black base, iOS system blue + purple + orange ---- */
+:root[data-theme="slate"], [data-theme-preview="slate"]{
+  --void:#050509; --deep:#10131F; --panel:#1C1C1E; --panel-rgb:28 28 30; --panel-2:#2C2C2E; --line:#3A3A3C;
+  --core-rgb:10 132 255; --think-rgb:191 90 242; --speak-rgb:255 159 10;
+  --text:#F5F5F7; --text-soft:#B0B0B6; --muted:#8E8E93; --faint:#545458;
+  --danger:#FF453A; --danger-rgb:255 69 58; --on-core:#04122B;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:.9;
+  --void-rgb:5 5 9; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- BLUSH (light): petal-white base, rose-magenta + orchid + amber ---- */
+:root[data-theme="rose"], [data-theme-preview="rose"]{
+  --void:#FFEFF3; --deep:#FFF9FB; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#FFF6F8; --line:#F3D2DC;
+  --core-rgb:212 36 114; --think-rgb:175 82 222; --speak-rgb:255 149 0;
+  --text:#2A1118; --text-soft:#5B3A44; --muted:#7E5C67; --faint:#C2A3AD;
+  --danger:#D9301F; --danger-rgb:217 48 31; --on-core:#FFFFFF;
+  --fg-rgb:42 17 24; color-scheme:light; --mesh-k:1.2;
+  --void-rgb:255 239 243; --vignette:rgba(212,36,114,.06);
+}
+
+/* ---- AURORA (futuristic dark): deep teal night, northern-lights green + violet + magenta ---- */
+:root[data-theme="aurora"], [data-theme-preview="aurora"]{
+  --void:#040E12; --deep:#0A2B2F; --panel:#0A1B20; --panel-rgb:10 27 32; --panel-2:#10282F; --line:#1B4048;
+  --core-rgb:50 230 170; --think-rgb:124 92 255; --speak-rgb:255 99 200;
+  --text:#DDF5EF; --text-soft:#9CC4BD; --muted:#7BA39C; --faint:#46706A;
+  --danger:#FF5A52; --danger-rgb:255 90 82; --on-core:#03140E;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.7;
+  --void-rgb:4 14 18; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- CYBER BLUE (futuristic dark): navy night, electric blue + cyan + magenta pop ---- */
+:root[data-theme="cyber"], [data-theme-preview="cyber"]{
+  --void:#03070F; --deep:#0A1B38; --panel:#0A1426; --panel-rgb:10 20 38; --panel-2:#112039; --line:#1C3358;
+  --core-rgb:41 151 255; --think-rgb:0 229 255; --speak-rgb:255 79 216;
+  --text:#E0ECFF; --text-soft:#9DB4D6; --muted:#7C93B8; --faint:#44587A;
+  --danger:#FF5C5C; --danger-rgb:255 92 92; --on-core:#020B1A;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.5;
+  --void-rgb:3 7 15; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- MINT (light): sea-glass white, fresh green + teal + amber ---- */
+:root[data-theme="emerald"], [data-theme-preview="emerald"]{
+  --void:#E8F7EF; --deep:#F6FDF9; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F0FAF5; --line:#CDE6DA;
+  --core-rgb:8 132 84; --think-rgb:0 168 176; --speak-rgb:255 159 10;
+  --text:#11271F; --text-soft:#35504A; --muted:#587068; --faint:#9BB3A8;
+  --danger:#E5382E; --danger-rgb:229 56 46; --on-core:#FFFFFF;
+  --fg-rgb:17 39 31; color-scheme:light; --mesh-k:1.2;
+  --void-rgb:232 247 239; --vignette:rgba(8,132,84,.06);
+}
+
+/* ---- SKY (light, iOS blue): cloud-white base, system blue + indigo + orange ---- */
+:root[data-theme="arctic"], [data-theme-preview="arctic"]{
+  --void:#EAF1FB; --deep:#F7FAFF; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F2F6FD; --line:#D3DFEF;
+  --core-rgb:0 108 235; --think-rgb:88 86 214; --speak-rgb:255 149 0;
+  --text:#0F1B2D; --text-soft:#3C4A60; --muted:#5B6B82; --faint:#9AA7BA;
+  --danger:#FF3B30; --danger-rgb:255 59 48; --on-core:#FFFFFF;
+  --fg-rgb:15 27 45; color-scheme:light; --mesh-k:1.15;
+  --void-rgb:234 241 251; --vignette:rgba(0,108,235,.06);
+}
+
+/* ---- 10. PAPER (light) -- glass, shadow, vignette and scrim are re-done for a light surface ---- */
+:root[data-theme="paper"], [data-theme-preview="paper"]{
+  --mesh-k:.7;
+  --void:#F4F1EA; --deep:#ECE7DC; --panel:#FBF9F4; --panel-rgb:251 249 244; --panel-2:#F1EDE3; --line:#DDD5C6;
+  --core-rgb:15 157 138; --think-rgb:107 84 201; --speak-rgb:181 118 58;
+  --text:#26302E; --text-soft:#4B5856; --muted:#5E6A67; --faint:#98A19E;
+  --danger:#BE4637; --danger-rgb:190 70 55; --on-core:#04201C;
+  --fg-rgb:38 48 46; color-scheme:light;
+  --void-rgb:244 241 234; --vignette:rgba(120,100,60,.10);
+  --glass-bg:rgb(var(--panel-rgb) / .82); --glass-border:rgb(var(--fg-rgb) / .10);
+  --shadow-rest: 0 1px 2px rgba(70,55,25,.10), 0 8px 20px -12px rgba(70,55,25,.28);
+  --shadow-hover: 0 2px 4px rgba(70,55,25,.12), 0 14px 32px -14px rgba(70,55,25,.34), 0 0 26px -8px var(--glow);
+  --scrim:rgb(236 231 220 / .78);
+  --success:#2E8F57; --success-rgb:46 143 87; --warning:#A8740E; --warning-rgb:168 116 14; --info:#2F72B8; --info-rgb:47 114 184;
+}
+
+/* ---- light family (Sky / Mint / Blush / Lilac): white glass, soft tinted shadows, darker status colours ---- */
+:root[data-theme="arctic"], :root[data-theme="emerald"], :root[data-theme="rose"], :root[data-theme="violet"],
+[data-theme-preview="arctic"], [data-theme-preview="emerald"], [data-theme-preview="rose"], [data-theme-preview="violet"]{
+  --glass-bg:rgb(var(--panel-rgb) / .74); --glass-border:rgb(var(--fg-rgb) / .08);
+  --shadow-rest: 0 1px 2px rgb(var(--fg-rgb) / .06), 0 10px 24px -14px rgb(var(--fg-rgb) / .24);
+  --shadow-hover: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 34px -16px rgb(var(--fg-rgb) / .30), 0 0 26px -8px var(--glow);
+  --scrim:rgb(var(--void-rgb) / .72);
+  --success:#2E8F57; --success-rgb:46 143 87; --warning:#A8740E; --warning-rgb:168 116 14; --info:#2F72B8; --info-rgb:47 114 184;
+}
+
+/* ---- NEON BLACK (futuristic dark): true-black base, electric blue + neon blue + cyan, no purple. Effects live in style/theme-neon.css ---- */
+:root[data-theme="neon"], [data-theme-preview="neon"]{
+  --void:#020305; --deep:#05090F; --panel:#05080C; --panel-rgb:5 8 12; --panel-2:#081019; --line:#0F2236;
+  --core-rgb:0 183 255; --think-rgb:0 140 255; --speak-rgb:0 231 255;
+  --text:#EAF6FF; --text-soft:#A9C4DC; --muted:#7F98B0; --faint:#44566B;
+  --danger:#FF4D5E; --danger-rgb:255 77 94; --on-core:#00121F;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:.8;
+  --void-rgb:2 3 5; --vignette:rgba(0,0,0,.7);
+  --shine-rgb:150 230 255;
+  --glass-bg:rgb(var(--panel-rgb) / .78); --glass-border:rgb(var(--core-rgb) / .20);
+  --glow:rgb(var(--core-rgb) / .38);
+  --shadow-rest: 0 1px 2px rgba(0,0,0,.7), 0 10px 26px -14px rgba(0,0,0,.9), 0 0 22px -12px rgb(var(--core-rgb) / .35);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.7), 0 18px 36px -14px rgba(0,0,0,.9), 0 0 30px -6px rgb(var(--core-rgb) / .5);
+  --scrim:rgb(2 3 5 / .82);
+}
+
+/* ---- MONO INK (minimal dark): pure black + greys, one vermilion accent ---- */
+:root[data-theme="ink"], [data-theme-preview="ink"]{
+  --void:#050505; --deep:#0A0A0A; --panel:#0C0C0C; --panel-rgb:12 12 12; --panel-2:#131313; --line:#242424;
+  --core-rgb:255 90 54; --think-rgb:150 150 150; --speak-rgb:236 236 236;
+  --text:#EDEDED; --text-soft:#A8A8A8; --muted:#7C7C7C; --faint:#484848;
+  --danger:#FF2D55; --danger-rgb:255 45 85; --on-core:#1A0600;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:0;
+  --void-rgb:5 5 5; --vignette:rgba(0,0,0,.55);
+  --glass-bg:rgb(var(--panel-rgb) / .92); --glass-border:rgb(255 255 255 / .10);
+  --glow:rgb(var(--core-rgb) / .10);
+  --shadow-rest: 0 0 0 1px rgb(255 255 255 / .03);
+  --shadow-hover: 0 14px 26px -18px rgba(0,0,0,.9), 0 0 0 1px rgb(var(--core-rgb) / .35);
+  --scrim:rgb(5 5 5 / .85);
+}
+
+/* ---- OAT & SAGE (minimal light): oat base, sage accent, clay + charcoal; matte, soft shadows ---- */
+:root[data-theme="oat"], [data-theme-preview="oat"]{
+  --void:#E9E4D8; --deep:#F1EDE2; --panel:#F7F4EC; --panel-rgb:247 244 236; --panel-2:#EEE9DC; --line:#D6CFBE;
+  --core-rgb:79 111 82; --think-rgb:139 154 126; --speak-rgb:196 154 108;
+  --text:#2B2A26; --text-soft:#55524A; --muted:#6F6B60; --faint:#A8A294;
+  --danger:#B3402F; --danger-rgb:179 64 47; --on-core:#FFFFFF;
+  --fg-rgb:43 42 38; color-scheme:light; --mesh-k:.4;
+  --void-rgb:233 228 216; --vignette:rgba(90,80,50,.08);
+  --glass-bg:rgb(var(--panel-rgb) / .82); --glass-border:rgb(var(--fg-rgb) / .10);
+  --glow:rgb(var(--core-rgb) / .16);
+  --shadow-rest: 0 1px 2px rgb(var(--fg-rgb) / .06), 0 10px 22px -14px rgb(var(--fg-rgb) / .22);
+  --shadow-hover: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 30px -16px rgb(var(--fg-rgb) / .30);
+  --scrim:rgb(var(--void-rgb) / .74);
+  --success:#4A7C59; --success-rgb:74 124 89; --warning:#9A6B12; --warning-rgb:154 107 18; --info:#3F6F8F; --info-rgb:63 111 143;
+}
+
+/* ---- GRAPHITE LIME (minimal dark): charcoal greys, one acid-lime accent ---- */
+:root[data-theme="lime"], [data-theme-preview="lime"]{
+  --void:#0F1011; --deep:#161719; --panel:#161718; --panel-rgb:22 23 24; --panel-2:#1D1E20; --line:#2B2D30;
+  --core-rgb:198 255 61; --think-rgb:140 146 138; --speak-rgb:240 240 232;
+  --text:#ECEDE8; --text-soft:#AEB0A8; --muted:#85887F; --faint:#50524C;
+  --danger:#FF5A4D; --danger-rgb:255 90 77; --on-core:#0E1400;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:0;
+  --void-rgb:15 16 17; --vignette:rgba(0,0,0,.5);
+  --glass-bg:rgb(var(--panel-rgb) / .90); --glass-border:rgb(255 255 255 / .08);
+  --glow:rgb(var(--core-rgb) / .12);
+  --shadow-rest: 0 1px 2px rgba(0,0,0,.4), 0 8px 18px -12px rgba(0,0,0,.6);
+  --shadow-hover: 0 2px 4px rgba(0,0,0,.4), 0 14px 28px -14px rgba(0,0,0,.7), 0 0 0 1px rgb(var(--core-rgb) / .30);
+  --scrim:rgb(15 16 17 / .82);
+}
+
+/* ---- reset + body ---- */
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0;
+  background:var(--bg-mesh,none), radial-gradient(ellipse 65% 50% at 50% 40%, var(--deep) 0%, var(--void) 68%), var(--void);
+  -webkit-font-smoothing:antialiased;
+  color:var(--text);
+  font-family:var(--font);
+  min-height:100vh;
+  overflow:hidden;
+  position:relative;
+}
+body::after{ /* soft vignette */
+  content:'';
+  position:fixed; inset:0;
+  background:radial-gradient(ellipse 90% 80% at 50% 50%, transparent 55%, var(--vignette) 100%);
+  pointer-events:none;
+  z-index:1;
+}
+button{font-family:inherit;}
+input,select,textarea{font-family:inherit;}
+::selection{background:var(--core);color:var(--on-core);}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+/* colour changes glide when the theme is switched (class is added by js/theme.js for ~600ms only) */
+:root.theme-anim, :root.theme-anim *{transition:background-color .45s ease,border-color .45s ease,color .45s ease,fill .45s ease,stroke .45s ease,box-shadow .45s ease !important;}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;scroll-behavior:auto !important;}
+}

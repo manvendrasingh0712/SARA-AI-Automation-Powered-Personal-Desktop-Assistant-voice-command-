@@ -1,0 +1,77 @@
+/* ==========================================================================
+   notes-plus.css  --  styles for js/notes-plus.js (smart reminders, undo bar, note tags / search / pin). Load LAST.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- smart reminder preview + quick chips */
+.rm-quick{display:flex;flex-wrap:wrap;gap:8px;max-width:640px;margin-top:16px;}
+.rm-quick .chip{font-size:12px;padding:5px 12px;}
+.rm-smart{max-width:640px;margin-top:12px;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;background:var(--panel);
+  border:1px solid rgb(var(--core-rgb) / .38);opacity:0;translate:0 6px;transition:opacity .25s ease,translate .35s var(--ease-premium,cubic-bezier(.16,1,.3,1));}
+.rm-smart[hidden]{display:none;}
+.rm-smart.show{opacity:1;translate:0 0;}
+.rm-smart-ic{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:rgb(var(--core-rgb) / .14);color:var(--core);}
+.rm-smart-ic svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.rm-smart-main{min-width:0;flex:1;}
+.rm-smart-when{font-size:13px;font-weight:600;color:var(--core);font-variant-numeric:tabular-nums;}
+.rm-smart-txt{font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rm-smart-btn{flex:none;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel-2);color:var(--text-soft);font:inherit;font-size:11.5px;padding:5px 9px;border-radius:8px;cursor:pointer;
+  transition:color .15s ease,border-color .15s ease,background .15s ease,scale .15s ease;}
+.rm-smart-btn:hover{color:var(--core);border-color:rgb(var(--core-rgb) / .5);}
+.rm-smart-btn:active{scale:.95;}
+.rm-smart-btn[hidden]{display:none;}
+.rm-smart-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+.rm-smart-x{padding:5px 7px;}
+.rm-flash{animation:rmFlash .9s ease-out;}
+@keyframes rmFlash{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb) / .5);border-color:var(--core);}100%{box-shadow:0 0 0 8px rgb(var(--core-rgb) / 0);}}
+
+/* ---------------------------------------------------------------- undo bar */
+.undo-bar{position:fixed;left:50%;bottom:98px;z-index:90;display:flex;align-items:center;gap:14px;padding:10px 12px 12px 16px;border-radius:12px;overflow:hidden;
+  background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow-hover,0 14px 34px -14px rgba(0,0,0,.7));font-size:13px;color:var(--text);
+  opacity:0;translate:-50% 14px;pointer-events:none;transition:opacity .22s ease,translate .38s var(--ease-premium,cubic-bezier(.16,1,.3,1));}
+.undo-bar[hidden]{display:none;}
+.undo-bar.show{opacity:1;translate:-50% 0;pointer-events:auto;}
+.undo-btn{display:inline-flex;align-items:center;gap:6px;border:none;background:rgb(var(--core-rgb) / .14);color:var(--core);font:inherit;font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:8px;cursor:pointer;
+  transition:background .15s ease,scale .15s ease;}
+.undo-btn:hover{background:rgb(var(--core-rgb) / .24);}
+.undo-btn:active{scale:.95;}
+.undo-btn svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.undo-prog{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--core);transform-origin:left center;animation:undoProg 6s linear forwards;}
+@keyframes undoProg{from{transform:scaleX(1);}to{transform:scaleX(0);}}
+@media (prefers-reduced-motion:reduce){.undo-prog{animation:none;opacity:0;}}
+
+/* ---------------------------------------------------------------- notes: search, tags, pin */
+.nt-tools{max-width:640px;margin:14px 0 4px;display:flex;flex-direction:column;gap:10px;}
+.nt-tools[hidden]{display:none;}
+.nt-search{display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--muted);transition:border-color .2s ease,box-shadow .25s ease;}
+.nt-search:focus-within{border-color:var(--core);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .14);}
+.nt-search svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;flex:none;}
+.nt-search input{flex:1;min-width:0;background:none;border:none;outline:none;box-shadow:none;color:var(--text);font:inherit;font-size:13px;padding:9px 0;}
+.nt-tags{display:flex;flex-wrap:wrap;gap:6px;}
+.nt-tags[hidden]{display:none;}
+.nt-tags .chip{font-size:11.5px;padding:4px 10px;}
+.nt-count{font-size:11.5px;color:var(--muted);}
+
+.note-row2.n-hide{display:none;}
+.note-row2{transition:background .25s ease;}
+.note-row2.pinned{background:linear-gradient(90deg,rgb(var(--core-rgb) / .06),transparent 70%);}
+.n-acts{display:inline-flex;align-items:center;gap:1px;flex:none;margin-left:6px;opacity:0;transition:opacity .2s ease;}
+.note-row2:hover .n-acts,.note-row2:focus-within .n-acts,.note-row2.pinned .n-acts{opacity:1;}
+.n-act{width:24px;height:24px;display:grid;place-items:center;border:none;background:none;color:var(--muted);border-radius:7px;cursor:pointer;transition:color .15s ease,background .15s ease,scale .15s ease;}
+.n-act:hover{color:var(--core);background:rgb(var(--core-rgb) / .12);}
+.n-act:active{scale:.9;}
+.n-act svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.note-row2.pinned .n-pin{color:var(--core);}
+.note-row2.pinned .n-pin svg{fill:rgb(var(--core-rgb) / .25);}
+.n-grip{display:none;width:16px;height:24px;place-items:center;color:var(--muted);cursor:grab;border-radius:6px;}
+.n-grip:active{cursor:grabbing;}
+.n-grip svg{width:13px;height:13px;fill:currentColor;stroke:none;}
+.note-row2.pinned .n-grip{display:grid;}
+.n-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.n-tag{border:none;background:rgb(var(--core-rgb) / .10);color:var(--core);font:inherit;font-size:11px;padding:2px 9px;border-radius:999px;cursor:pointer;transition:background .15s ease,scale .15s ease;}
+.n-tag:hover{background:rgb(var(--core-rgb) / .2);}
+.n-tag:active{scale:.95;}
+.note-row2.dragging{opacity:.4;}
+.note-row2.drop-before{box-shadow:0 -2px 0 0 var(--core);}
+.note-row2.drop-after{box-shadow:0 2px 0 0 var(--core);}
+@media (hover:none){.n-acts{opacity:1;}}
+html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition:opacity .01s;}

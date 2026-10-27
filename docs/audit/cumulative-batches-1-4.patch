@@ -1,0 +1,1598 @@
+diff --git a/docs/audit/PROGRESS.md b/docs/audit/PROGRESS.md
+new file mode 100644
+index 0000000..6081603
+--- /dev/null
++++ b/docs/audit/PROGRESS.md
+@@ -0,0 +1,35 @@
++# SARA AI — Repair Programme Progress
++
++Working log for the audit and repair engagement. Updated as each batch lands.
++
++- **Baseline accepted:** Phase 0 + Phase 1 audit report (2026-10-26)
++- **Pristine checkpoint:** `da343da` in the audit workspace mirror
++- **Target tree:** `C:\project`
++
++## Status key
++
++| Mark | Meaning |
++| --- | --- |
++| DONE | Implemented and verified by a test run |
++| PARTIAL | Implemented, verification limited (see note) |
++| BLOCKED | Cannot be completed from this environment |
++| TODO | Not started |
++
++## Batches
++
++| # | Batch | Status | Verified by |
++| --- | --- | --- | --- |
++| 0 | Safety checkpoint + write-back proof | IN PROGRESS | — |
++| 1 | Mock fallback returns explicit failure; mock out of production | TODO | — |
++| 2 | `toggle_media_mute` contract fix + regression tests | TODO | — |
++| 3 | Platform-guard the 19 Windows-only tests; remove unused imports | TODO | — |
++| 4 | CSS consolidation (review first, then remove) | TODO | — |
++| 5 | Gemini planner/executor tool-calling tests | TODO | — |
++| 6 | Remaining audit / architecture / GUI / security / performance | TODO | — |
++
++## Environment constraints
++
++- This session has **file access** to `C:\project` but **no shell** on that machine.
++- All verification runs on a mirrored copy, Linux, Python 3.11.
++- `winsdk` has no Linux wheel; Windows-specific behaviour is **not** verifiable here.
++- Nothing in this document claims Windows verification unless explicitly stated.
+diff --git a/health_check.py b/health_check.py
+index 15ee604..46ef9d1 100644
+--- a/health_check.py
++++ b/health_check.py
+@@ -29,9 +29,7 @@ turns the structured list into a single spoken sentence.
+ """
+ 
+ import os
+-import shutil
+ import logging
+-import urllib.request
+ 
+ logger = logging.getLogger("sara.health_check")
+ 
+diff --git a/main.py b/main.py
+index 92fc126..d84ec79 100644
+--- a/main.py
++++ b/main.py
+@@ -298,7 +298,7 @@ def _notify_already_running() -> None:
+ # sara_main.build_core_objects(...)` / `sara_main.run_sara_logic(...)`
+ # keeps working unchanged — those functions now live in
+ # sara.orchestrator.core_wiring, this is just the public alias.
+-from sara.orchestrator import build_core_objects, run_sara_logic
++from sara.orchestrator import build_core_objects, run_sara_logic  # noqa: F401 -- public alias, see comment above
+ 
+ # BUGFIX (root cause of the "preview mode, no backend connected" bug):
+ # sara/gui/app/core.py's Api.send_text_command() calls
+@@ -309,7 +309,7 @@ from sara.orchestrator import build_core_objects, run_sara_logic
+ # send_text_command() background thread (silently, since that thread has
+ # no try/except and nothing joins it) and no reply was ever pushed back
+ # to the frontend.
+-from sara.orchestrator.intent_handlers import _handle_command
++from sara.orchestrator.intent_handlers import _handle_command  # noqa: F401 -- re-export; removing it reintroduces the bug above
+ 
+ 
+ def main() -> None:
+diff --git a/sara/audio/stt/buffers.py b/sara/audio/stt/buffers.py
+index f944260..a62543f 100644
+--- a/sara/audio/stt/buffers.py
++++ b/sara/audio/stt/buffers.py
+@@ -5,7 +5,6 @@ Audio buffering/VAD/noise-floor state machines used while collecting speech.
+ from __future__ import annotations
+ 
+ 
+-import os
+ import collections
+ import threading
+ from enum import Enum, auto
+diff --git a/sara/audio/stt/helpers.py b/sara/audio/stt/helpers.py
+index 0b00986..38184c3 100644
+--- a/sara/audio/stt/helpers.py
++++ b/sara/audio/stt/helpers.py
+@@ -5,7 +5,6 @@ Small stateless helpers: RMS energy, language detection, hallucination filter.
+ from __future__ import annotations
+ 
+ 
+-import os
+ import collections
+ import math
+ import re
+diff --git a/sara/core/intent/patterns_multilingual.py b/sara/core/intent/patterns_multilingual.py
+index e3a87b1..ed1c3a1 100644
+--- a/sara/core/intent/patterns_multilingual.py
++++ b/sara/core/intent/patterns_multilingual.py
+@@ -17,7 +17,6 @@ existing intents (nothing in patterns.py is edited).
+ from __future__ import annotations
+ 
+ import re
+-import unicodedata
+ 
+ # ── Devanagari helpers ────────────────────────────────────────────────────
+ _NUKTA = "\u093c"
+diff --git a/sara/core/rag.py b/sara/core/rag.py
+index 3346650..6356c2a 100644
+--- a/sara/core/rag.py
++++ b/sara/core/rag.py
+@@ -5,14 +5,12 @@ Long-term semantic memory (RAG) for Sara AI.
+ 
+ from __future__ import annotations
+ 
+-import json
+ import logging
+ import queue
+ import re
+ import sqlite3
+ import threading
+ import time
+-import urllib.request
+ from concurrent.futures import Future, TimeoutError as FutureTimeoutError
+ from dataclasses import dataclass
+ from datetime import datetime
+diff --git a/sara/gui/app/media.py b/sara/gui/app/media.py
+index 0553367..fb62f29 100644
+--- a/sara/gui/app/media.py
++++ b/sara/gui/app/media.py
+@@ -1243,4 +1243,59 @@ class ApiMediaMixin:
+             return {"ok": False, "error": "Invalid volume level."}
+         except Exception as e:
+             print(f"[set_media_volume error] {e}")
++            return {"ok": False}
++
++    def toggle_media_mute(self):
++        """Mute/unmute the CURRENTLY SELECTED media session.
++
++        Companion to get_media_volume() / set_media_volume() above: all three
++        act on whatever session _session_cache points at, so the Music page's
++        volume slider and its mute button operate on the same target. This is
++        deliberately distinct from:
++          - toggle_master_mute(), which mutes the Windows output DEVICE, and
++          - toggle_session_mute(app_id), which mutes one EXPLICITLY NAMED app.
++
++        BUGFIX (audit finding D3): sara/gui/js/music.js:414 has always called
++        'toggle_media_mute', but no such method existed on the Api. The call
++        therefore fell through js/core.js to the preview mock (js/mock.js),
++        which answered ok({muted: ...}) -- so the button's icon flipped while
++        nothing was ever actually muted, with no error anywhere. The frontend
++        call site was correct; this method was simply missing.
++        """
++        try:
++            cached_id = _session_cache.get("app_id")
++            if not cached_id:
++                return {"ok": False, "error": "No active media session."}
++            cached_title = _session_cache.get("title")
++            cached_artist = _session_cache.get("artist")
++
++            def _work():
++                session = _pycaw_session_for(cached_id, cached_title, cached_artist)
++                if session is None:
++                    return None
++                vol = session.SimpleAudioVolume
++                vol.SetMute(not bool(vol.GetMute()), None)
++                # Re-query the CONFIRMED mute state rather than trusting our
++                # own write -- same "confirm, don't assume" pattern used by
++                # set_media_volume() and toggle_session_mute().
++                confirmed = bool(vol.GetMute())
++                # Release the COM proxies HERE, still on the COM thread --
++                # never let them live long enough to be GC'd elsewhere.
++                del vol, session
++                return confirmed
++
++            confirmed = _run_on_com_thread(_work)
++            if confirmed is None:
++                return {
++                    "ok": False,
++                    "error": "No matching Windows audio session for this app yet.",
++                }
++            return {"ok": True, "muted": confirmed}
++        except ImportError:
++            return {
++                "ok": False,
++                "error": "pycaw not installed. Run: pip install pycaw",
++            }
++        except Exception as e:
++            print(f"[toggle_media_mute error] {e}")
+             return {"ok": False}
+\ No newline at end of file
+diff --git a/sara/gui/index.html b/sara/gui/index.html
+index e0c27c0..802777e 100644
+--- a/sara/gui/index.html
++++ b/sara/gui/index.html
+@@ -36,7 +36,14 @@
+ <link rel="stylesheet" href="style/smooth.css">
+ <link rel="stylesheet" href="style/motion-pack.css">
+ <link rel="stylesheet" href="style/router-view.css">
+-<link rel="stylesheet" href="style/aurum.css">
++<!-- style/aurum.css removed: motion-pack.css GROUP "au" (line ~358) already
++     carries all 166 of its rules, re-scoped behind :where(html:not([data-fx-off~="au"])).
++     Because :where() has zero specificity and aurum.css loaded AFTER
++     motion-pack.css, aurum's unscoped copy won every conflict -- which meant
++     the user-facing "Detail effects" toggle (js/quality.js FX registry, id
++     'au') set data-fx-off="au" and nothing happened. Dropping the duplicate
++     makes that toggle work and removes ~20 KB of redundant CSS.
++     style/aurum.css and style/luxe.css are both superseded and can be deleted. -->
+ <link rel="stylesheet" href="style/flow.css">
+ <link rel="stylesheet" href="style/quality.css">
+ <link rel="stylesheet" href="style/chat-plus.css">
+@@ -713,7 +720,10 @@
+ </div>
+ 
+ <script src="js/ui.js"></script>
+-<script src="js/mock.js"></script>
++<!-- js/mock.js is intentionally NOT loaded here. It is preview-only
++     scaffolding and is fetched on demand by js/core.js (SARA._ensureMock)
++     only when there is no Python bridge at all, so it can never answer a
++     call in the packaged app. -->
+ <script src="js/core.js"></script>
+ <script src="js/prefs.js"></script>
+ <script src="js/theme.js"></script>
+diff --git a/sara/gui/js/core.js b/sara/gui/js/core.js
+index 290804e..918a8be 100644
+--- a/sara/gui/js/core.js
++++ b/sara/gui/js/core.js
+@@ -1,7 +1,8 @@
+ /* ==========================================================================
+    core.js -- THE BRIDGE. Everything that talks to Python goes through here.
+-   Owns: SARA.callApi (window.pywebview.api[name](...args), with bind-race retries and automatic
+-   fallback to js/mock.js in a plain browser), the Python->JS push handler window.saraEvent
++   Owns: SARA.callApi (window.pywebview.api[name](...args), with bind-race retries, an explicit
++   {ok:false, error:'unknown_method'} when a CONNECTED bridge lacks the name, and on-demand
++   loading of js/mock.js only in a plain browser), the Python->JS push handler window.saraEvent
+    (re-broadcast as SARA.emit('ev:<kind>', ...args) for the page files), page navigation,
+    the boot sequence (SARA.onBoot / onFirstBoot / every), and the small event bus (SARA.on / emit).
+    Backend files: sara/gui/app/events.py (push side), engine.py (Api).  Started by js/main.js.
+@@ -23,7 +24,40 @@
+   /* ---- Python bridge ---- */
+   const RETRY_ATTEMPTS = 5, RETRY_DELAY_MS = 200, GRACE_MS = 1500, T0 = performance.now();
+   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+-  SARA.isConnected = () => !!(window.pywebview && window.pywebview.api);
++
++  /* BUGFIX (bridge-bound detection): pywebview injects window.pywebview with
++     `api: {}` ALREADY PRESENT, and only fills that same object later, in one
++     shot, from _createApi() just before it fires 'pywebviewready'. So the
++     existence of window.pywebview.api proves nothing -- only a NON-EMPTY api
++     proves the bridge has actually bound. Treating the empty placeholder as
++     "connected" had two consequences: SARA.boot()'s 300ms safety net could
++     latch realBooted before a single method existed (so onBoot hooks never
++     re-ran once the real bridge arrived), and refreshConnection() hid the
++     offline strip while every call was still falling through to preview. */
++  const apiIsBound = function (api) {
++    if (!api) return false;
++    for (const k in api) { if (typeof api[k] === 'function') return true; }
++    return false;
++  };
++  SARA.isConnected = () => apiIsBound(window.pywebview && window.pywebview.api);
++
++  /* js/mock.js is PREVIEW-ONLY scaffolding. It is deliberately NOT in
++     index.html's script list any more: it is fetched on demand, the first
++     time we conclude there is no bridge at all. With a live backend it is
++     never requested, never parsed, and cannot answer a call. */
++  SARA._ensureMock = function () {
++    if (SARA.mockApi) return Promise.resolve();
++    if (!SARA._mockLoad) {
++      SARA._mockLoad = new Promise(function (resolve) {
++        const s = document.createElement('script');
++        s.src = 'js/mock.js';
++        s.onload = resolve;
++        s.onerror = function () { console.error('[api] preview mock failed to load'); resolve(); };
++        document.head.appendChild(s);
++      });
++    }
++    return SARA._mockLoad;
++  };
+ 
+   SARA.callApi = async function (name) {
+     const args = Array.prototype.slice.call(arguments, 1);
+@@ -31,17 +65,29 @@
+       const api = window.pywebview && window.pywebview.api;
+       if (api && typeof api[name] === 'function') {
+         try { return await api[name].apply(api, args); }
+-        catch (e) { console.error('[api]', name, e); return { ok: false }; }
++        catch (e) { console.error('[api]', name, e); return { ok: false, error: 'call_failed', method: name }; }
++      }
++      /* The bridge is bound but does NOT carry this name. Because binding is a
++         single _createApi() pass, that is a Python/JS contract bug (a renamed
++         or never-implemented method), not a startup race -- so report it
++         instead of quietly substituting preview data for a connected backend,
++         which is how a dead control can look like a working one. */
++      if (apiIsBound(api)) {
++        console.error('[api] no such backend method: "' + name + '" -- bridge is connected, so this is a Python/JS contract bug, not a timing race.');
++        SARA.emit('api:missing', name);
++        return { ok: false, error: 'unknown_method', method: name };
+       }
+-      // Plain browser (no pywebview object at all) and startup grace is over -> go straight to mock.
++      // Plain browser (no pywebview object at all) and startup grace is over -> go straight to preview.
+       if (!window.pywebview && performance.now() - T0 > GRACE_MS) break;
+       if (attempt < RETRY_ATTEMPTS - 1) await sleep(RETRY_DELAY_MS);
+     }
+     if (!SARA.usingMock) {
+       SARA.usingMock = true;
+-      console.warn('[api] backend bridge not connected -> using mock (' + name + ')');
++      console.warn('[api] backend bridge not connected -> preview mode (' + name + ')');
+       SARA.refreshConnection();
+     }
++    await SARA._ensureMock();
++    if (typeof SARA.mockApi !== 'function') return { ok: false, error: 'preview_unavailable', method: name };
+     return SARA.mockApi(name, args);
+   };
+ 
+diff --git a/sara/gui/js/mock.js b/sara/gui/js/mock.js
+index 786176c..f4f419d 100644
+--- a/sara/gui/js/mock.js
++++ b/sara/gui/js/mock.js
+@@ -230,7 +230,12 @@
+       case 'seek_media': setPos(a[0]); return ok();
+       case 'toggle_shuffle': S.shuffle = !!a[0]; return ok({ shuffle: S.shuffle, shuffle_supported: true });
+       case 'cycle_repeat_mode': { const o = ['none', 'track', 'list']; S.repeat = o[(o.indexOf(S.repeat) + 1) % 3]; return ok({ mode: S.repeat }); }
+-      default: return ok();
++      /* An unknown name is a contract bug, not something preview should paper
++         over: returning ok() here is what let a missing backend method look
++         like a working control. Preview is honest about what it cannot do. */
++      default:
++        console.error('[mock] no preview implementation for "' + name + '"');
++        return { ok: false, error: 'unknown_method', method: name, preview: true };
+     }
+   };
+ })();
+\ No newline at end of file
+diff --git a/sara/gui/js/tests/bridge_contract.test.js b/sara/gui/js/tests/bridge_contract.test.js
+new file mode 100644
+index 0000000..665f580
+--- /dev/null
++++ b/sara/gui/js/tests/bridge_contract.test.js
+@@ -0,0 +1,164 @@
++/* ==========================================================================
++   bridge_contract.test.js -- dependency-free tests (same style as
++   chat_state.test.js / ui_prefs_theme.test.js) for js/core.js's Python
++   bridge: SARA.callApi dispatch, bind-race handling, and the preview
++   (js/mock.js) fallback boundary.
++
++   RUN:  node sara/gui/js/tests/bridge_contract.test.js
++   (exits non-zero on any failed assertion, for CI use)
++
++   Regression cover for the Phase 1 audit findings D2 and D3:
++
++   1. A CONNECTED bridge that does not carry the requested name must return
++      an explicit {ok:false, error:'unknown_method'} -- it must NOT fall
++      through to the preview mock. Falling through is what made the Music
++      page's mute button (which called the nonexistent 'toggle_media_mute')
++      look like a working control: mock.js answered ok({muted:true}) and the
++      icon flipped while nothing was actually muted.
++
++   2. js/mock.js must never be fetched while a bridge is connected. It is no
++      longer in index.html's script list; core.js loads it on demand only
++      when there is no bridge at all.
++
++   3. window.pywebview.api exists as an EMPTY object from the moment
++      pywebview injects its api.js, and is filled in one shot later. An empty
++      api therefore means "still binding" (retry), NOT "method missing", and
++      SARA.isConnected() must report false for it.
++   ========================================================================== */
++'use strict';
++const fs = require('fs'), path = require('path'), vm = require('vm');
++const JS = path.join(__dirname, '..');
++let failed = 0, passed = 0;
++function ok(cond, msg) { if (cond) passed++; else { failed++; console.error('  FAIL: ' + msg); } }
++function eq(a, b, msg) { ok(JSON.stringify(a) === JSON.stringify(b), msg + '  (got ' + JSON.stringify(a) + ', want ' + JSON.stringify(b) + ')'); }
++function section(n) { console.log(n); }
++
++/* ---- minimal fake DOM, enough for ui.js + core.js to load and run ---- */
++function makeEnv() {
++  const stubs = {}, scripts = [], errors = [];
++  function mkStyle() {
++    const props = {};
++    return { props, setProperty(k, v) { props[k] = String(v); }, removeProperty(k) { delete props[k]; }, getPropertyValue(k) { return props[k] || ''; } };
++  }
++  function el(tag) {
++    const e = {
++      tagName: tag, style: mkStyle(), dataset: {}, children: [], hidden: false, className: '', value: '', src: '',
++      classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); }, toggle(c, f) { (f === undefined ? !this._s.has(c) : f) ? this._s.add(c) : this._s.delete(c); }, contains(c) { return this._s.has(c); } },
++      addEventListener() {}, removeEventListener() {}, setAttribute() {}, appendChild(c) { this.children.push(c); return c; },
++      querySelectorAll() { return []; }, querySelector() { return null; }, closest() { return null; },
++      insertBefore() {}, remove() {}, focus() {}, blur() {}
++    };
++    let text = '';
++    Object.defineProperty(e, 'textContent', { get() { return text; }, set(v) { text = String(v); } });
++    Object.defineProperty(e, 'innerHTML', { get() { return text; }, set(v) { text = String(v); } });
++    return e;
++  }
++  const root = el('html');
++  // head.appendChild is how core.js loads the preview mock on demand: record
++  // every script it injects, then fire onload so the await resolves.
++  const head = el('head');
++  head.appendChild = function (node) {
++    scripts.push(node.src);
++    setTimeout(function () { if (node.onload) node.onload(); }, 0);
++    return node;
++  };
++  const doc = {
++    hidden: false, body: el('body'), head: head, documentElement: root, createElement: el,
++    addEventListener() {}, querySelectorAll() { return []; }, querySelector() { return null; },
++    getElementById(id) { return stubs[id] || (stubs[id] = el('div')); }
++  };
++  const fakeConsole = Object.assign({}, console, { error() { errors.push([].slice.call(arguments).join(' ')); }, warn() {} });
++  const win = {
++    document: doc, console: fakeConsole, performance, setTimeout, clearTimeout,
++    setInterval() { return 0; }, clearInterval() {},
++    matchMedia() { return { matches: false, addEventListener() {} }; }, addEventListener() {},
++    requestAnimationFrame(f) { return setTimeout(f, 0); },
++    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
++    getComputedStyle() { return { getPropertyValue() { return ''; } }; }, CSS: {}
++  };
++  win.window = win;
++  const ctx = vm.createContext(win);
++  win.pywebview = undefined;
++  function load(name) { vm.runInContext(fs.readFileSync(path.join(JS, name), 'utf8'), ctx, { filename: name }); }
++  load('ui.js');
++  load('core.js');
++  return { win, S: win.SARA, scripts, errors, stubs };
++}
++
++/* ======================================================================= */
++section('core.js: bridge-bound detection (empty api is NOT connected)');
++(function () {
++  const env = makeEnv(), S = env.S;
++  env.win.pywebview = undefined;
++  ok(S.isConnected() === false, 'no pywebview at all -> not connected');
++  // pywebview injects `api: {}` first and fills it only at _createApi() time.
++  env.win.pywebview = { api: {} };
++  ok(S.isConnected() === false, 'empty api placeholder -> NOT connected (still binding)');
++  env.win.pywebview = { api: { get_system_stats: function () { return {}; } } };
++  ok(S.isConnected() === true, 'api carrying at least one function -> connected');
++})();
++
++section('core.js: SARA.callApi against a connected bridge');
++(async function () {
++  const env = makeEnv(), S = env.S;
++  let seen = null;
++  env.win.pywebview = { api: { get_display_name: function (a) { seen = a; return { ok: true, name: 'Khush' }; } } };
++
++  const good = await S.callApi('get_display_name', 'arg1');
++  eq(good, { ok: true, name: 'Khush' }, 'known method returns the backend result');
++  eq(seen, 'arg1', 'arguments are forwarded to the backend method');
++
++  // D3 regression: this is exactly the toggle_media_mute case.
++  const miss = await S.callApi('toggle_media_mute');
++  eq(miss, { ok: false, error: 'unknown_method', method: 'toggle_media_mute' },
++    'connected bridge + missing name -> explicit failure, never a fabricated ok()');
++  ok(env.scripts.length === 0, 'preview mock is NOT fetched while the bridge is connected');
++  ok(env.errors.some((e) => e.indexOf('toggle_media_mute') >= 0), 'the missing method is reported to the console');
++  ok(S.usingMock !== true, 'a missing method does not flip the app into preview mode');
++
++  // A backend method that throws is also an explicit failure, not an ok().
++  env.win.pywebview.api.boom = function () { throw new Error('backend blew up'); };
++  const threw = await S.callApi('boom');
++  eq(threw, { ok: false, error: 'call_failed', method: 'boom' }, 'a throwing backend method returns an explicit failure');
++
++  // The 'api:missing' event lets any page surface the problem in the UI.
++  let announced = null;
++  S.on('api:missing', function (n) { announced = n; });
++  await S.callApi('no_such_method_at_all');
++  eq(announced, 'no_such_method_at_all', "SARA.emit('api:missing') fires with the offending name");
++})();
++
++section('core.js: preview fallback only when there is no bridge at all');
++(async function () {
++  const env = makeEnv(), S = env.S;
++  env.win.pywebview = undefined;
++  const res = await S.callApi('get_display_name');
++  ok(env.scripts.length === 1 && /mock\.js$/.test(env.scripts[0]), 'js/mock.js is fetched on demand exactly once');
++  ok(S.usingMock === true, 'no bridge -> preview mode is flagged');
++  ok(res && typeof res === 'object', 'preview still answers the call');
++
++  // Second call must reuse the already-loaded mock rather than re-injecting it.
++  await S.callApi('get_system_stats');
++  ok(env.scripts.length === 1, 'the preview mock is not re-injected on later calls');
++})();
++
++/* ---- mock.js itself: an unknown name must be loud, not ok() ---- */
++section('mock.js: unknown names are explicit failures');
++(function () {
++  const src = fs.readFileSync(path.join(JS, 'mock.js'), 'utf8');
++  ok(!/default:\s*return ok\(\);/.test(src), "mock.js no longer has `default: return ok();`");
++  ok(/default:/.test(src) && /unknown_method/.test(src), 'mock.js default branch returns an unknown_method failure');
++})();
++
++section('index.html: mock.js is not in the production script list');
++(function () {
++  const html = fs.readFileSync(path.join(JS, '..', 'index.html'), 'utf8');
++  ok(!/<script src="js\/mock\.js"><\/script>/.test(html), 'index.html does not statically load js/mock.js');
++  ok(/<script src="js\/core\.js"><\/script>/.test(html), 'index.html still loads js/core.js');
++})();
++
++/* ---- results ---- */
++setTimeout(function () {
++  console.log('\n' + passed + ' passed, ' + failed + ' failed');
++  process.exit(failed ? 1 : 0);
++}, 2000);
+diff --git a/sara/gui/style/aurum.css b/sara/gui/style/aurum.css
+deleted file mode 100644
+index fe32f2e..0000000
+--- a/sara/gui/style/aurum.css
++++ /dev/null
+@@ -1,327 +0,0 @@
+-/* ==========================================================================
+-   aurum.css  --  "Aurum pack": premium animations (v2, polished). Pure CSS (+ tiny js/aurum.js for the idle effects 78-80).
+-   Theme-independent, loaded LAST. Hover/focus states are transitions merged with each element's existing transition list;
+-   everything that loops or auto-plays is inside prefers-reduced-motion:no-preference. Rules never touch layout.
+-
+- PALETTE    1 pal-open-ring  2 pal-input-beam  3 pal-item-slide  4 pal-selected-bar  5 pal-foot-rise
+-               6 pal-empty-float  7 pal-hint-brighten  8 pal-item-press
+- NOTES      9 note-title-slide  10 note-snippet-brighten  11 note-time-brighten  12 group-label-line
+-               13 reminder-time-pop  14 done-fade  15 overdue-pulse  16 dot-completion-ring
+- AUTOMATION 17 auto-card-lift  18 auto-actions-reveal  19 auto-name-accent  20 step-hover  21 remove-spin
+-               22 mode-note-rise  23 empty-float  24 auto-card-cascade
+- SECURITY   25 sec-number-lift  26 sec-event-slide  27 sec-chip-glow  28 sec-warn-pulse  29 sec-armed-pulse
+-               30 sec-mode-lift  31 sec-tool-brighten  32 sec-block-border
+- APPS       33 tile-sheen  34 tile-icon-bob  35 search-grow  36 tile-glow  37 apps-focus-dim  38 toggle-grid-dim
+- CLOCK      39 ring-glow  40 theme-pop  41 picked-ring  42 greet-rise  43 panel-rise  44 controls-pop
+- SETTINGS   45 row-focus-bar  46 name-nudge  47 sub-brighten  48 slider-value-pop  49 danger-hover-glow
+-               50 toggle-row-nudge  51 stat-focus-dim  52 kpi-focus-dim  53 chip-focus-dim  54 theme-focus-dim
+- CHAT       55 send-ready-glow  56 send-ready-lift  57 mic-fade-typing  58 dock-expand  59 session-hover
+-               60 mic-wave-glow
+- OVERLAYS   61 modal-error-shake  62 modal-actions-pop  63 modal-sub-rise  64 setup-bar-glow  65 modal-close-hover
+-               66 setup-log-in  67 sheet-head-line
+- GLOBAL     68 nav-indicator-trail  69 title-underline-glow  70 film-grain  71 light-sweep  72 active-orb-fast
+-               73 active-nav-glow  74 active-dock-tint  75 speaking-dock-glow  76 active-orb-bloom  77 focus-nav-dim
+-               78 idle-calm  79 idle-dust  80 idle-orbit  81 scrollbar-press  82 range-track-glow
+-               83 toggle-focus-ring  84 image-fade-in  85 key-cap-press  86 today-cascade  87 next-title-slide
+-               88 plan-title-slide  89 quick-text-hover  90 volume-x-spin  91 play-hover-ring  92 audio-button-pop
+-               93 sleep-option-pop  94 apps-chip-pop  95 perf-legend-dim  96 memory-ring-glow  97 weather-cascade
+-               98 source-badge-pop  99 tab-press  100 note-hover-hint
+-   ========================================================================== */
+-:root{--au-ease:var(--ease-premium,cubic-bezier(.16,1,.3,1));--au-spring:var(--ease-spring,cubic-bezier(.22,1.45,.36,1));}
+-
+-/* ---------------------------------------------------------------- PALETTE ---- */
+-/* 2 au-pal-input-beam */
+-.pal-input{transition:border-color .3s ease,box-shadow .3s ease;}
+-.pal-input:focus{border-bottom-color:var(--core);box-shadow:0 1px 0 0 var(--core);}
+-/* 3 au-pal-item-slide */
+-.pal-item{transition:translate .22s var(--au-ease),background .2s,color .2s,box-shadow .25s;}
+-.pal-item:hover{translate:3px 0;}
+-/* 4 au-pal-selected-bar */
+-.pal-item.sel{box-shadow:inset 2px 0 0 var(--core);}
+-/* 7 au-pal-hint-brighten */
+-.pal-item small{transition:color .25s;}
+-.pal-item:hover small,.pal-item.sel small{color:var(--text-soft);}
+-/* 8 au-pal-item-press */
+-.pal-item{transition:translate .22s var(--au-ease),background .2s,color .2s,box-shadow .25s,scale .2s var(--au-ease);}
+-.pal-item:active{scale:.985;}
+-/* ---------------------------------------------------------------- NOTES ---- */
+-/* 9 au-note-title-slide */
+-.n-title{transition:translate .3s var(--au-ease);}
+-.note-row2:hover .n-title{translate:4px 0;}
+-/* 10 au-note-snippet-brighten */
+-.n-snip{transition:color .3s ease;}
+-.note-row2:hover .n-snip{color:var(--text-soft);}
+-/* 11 au-note-time-brighten */
+-.n-time{transition:color .3s ease;}
+-.note-row2:hover .n-time{color:var(--text-soft);}
+-/* 12 au-group-label-line */
+-.group-label::after{content:'';display:inline-block;width:32px;height:1px;margin-left:10px;vertical-align:middle;background:linear-gradient(90deg,currentColor,transparent);opacity:.3;transition:width .45s var(--au-ease),opacity .3s;}
+-.group-label:hover::after{width:64px;opacity:.55;}
+-/* 13 au-reminder-time-pop */
+-.r-time{transition:color .3s .2s,scale .25s var(--au-spring);transform-origin:right center;}
+-.row:hover .r-time{scale:1.06;}
+-/* 14 au-done-fade */
+-.r-text{transition:color .3s .2s,opacity .4s ease;}
+-.row.done .r-text{opacity:.55;}
+-/* 16 au-dot-completion-ring */
+-.row .dot::after{content:'';position:absolute;inset:-2px;border-radius:50%;border:1.5px solid var(--core);opacity:0;pointer-events:none;}
+-/* ---------------------------------------------------------------- AUTOMATION ---- */
+-/* 17 au-auto-card-lift */
+-.auto-card{transition:border-color .2s,translate .35s var(--au-ease),box-shadow .35s ease;}
+-.auto-card:hover{translate:0 -1px;box-shadow:var(--shadow-hover);}
+-/* 18 au-auto-actions-reveal */
+-.auto-actions{opacity:.6;transition:opacity .3s ease;}
+-.auto-card:hover .auto-actions,.auto-card:focus-within .auto-actions{opacity:1;}
+-/* 19 au-auto-name-accent */
+-.a-name{transition:color .25s;}
+-.auto-card:hover .a-name{color:var(--core);}
+-/* 20 au-step-hover */
+-.rt-step{transition:border-color .2s,translate .25s var(--au-ease);}
+-.rt-step:hover,.rt-step:focus-within{border-color:rgb(var(--core-rgb) / .4);translate:2px 0;}
+-/* 21 au-remove-spin */
+-.rt-x{transition:rotate .35s var(--au-spring),color .2s,scale .2s;}
+-.rt-x:hover{rotate:90deg;scale:1.15;}
+-/* ---------------------------------------------------------------- SECURITY ---- */
+-/* 25 au-sec-number-lift */
+-.sec-num{transition:border-color .2s,translate .25s var(--au-ease),box-shadow .3s ease;}
+-.sec-num:hover{translate:0 -1px;border-color:rgb(var(--core-rgb) / .4);box-shadow:0 10px 22px -14px rgb(var(--core-rgb) / .45);}
+-/* 26 au-sec-event-slide */
+-.sec-event{transition:translate .25s var(--au-ease);}
+-.sec-event:hover{translate:3px 0;}
+-/* 27 au-sec-chip-glow */
+-.sec-chip{transition:box-shadow .3s ease;}
+-.sec-chip:hover{box-shadow:0 0 12px -2px currentColor;}
+-/* 30 au-sec-mode-lift */
+-.sec-mode{transition:border-color .25s,color .25s,translate .25s var(--au-ease);}
+-.sec-mode:hover{translate:0 -1px;}
+-/* 31 au-sec-tool-brighten */
+-.sec-tool{transition:color .2s;}
+-.sec-event:hover .sec-tool{color:var(--text);}
+-/* 32 au-sec-block-border */
+-.sec-block{transition:border-color .3s ease;}
+-.sec-block:hover{border-color:rgb(var(--core-rgb) / .28);}
+-/* ---------------------------------------------------------------- APPS ---- */
+-/* 33 au-tile-sheen */
+-.app-tile{background-image:linear-gradient(115deg,transparent 30%,rgb(var(--fg-rgb) / .07) 50%,transparent 70%);background-size:250% 100%;background-position:130% 0;background-repeat:no-repeat;transition:border-color .2s,transform .15s,background-position .9s var(--au-ease),box-shadow .3s ease,opacity .35s ease,scale .3s var(--au-ease);}
+-.app-tile:hover{background-position:-30% 0;}
+-/* 35 au-search-grow */
+-.apps-search{transition:scale .3s var(--au-ease),border-color .2s,box-shadow .25s;}
+-.apps-search:focus{scale:1.012;}
+-/* 36 au-tile-glow */
+-.app-tile:hover{box-shadow:0 10px 26px -14px rgb(var(--core-rgb) / .45);}
+-/* 37 au-apps-focus-dim */
+-.apps-grid:has(.app-tile:hover) .app-tile:not(:hover){opacity:.8;scale:.99;}
+-/* 38 au-toggle-grid-dim */
+-.tog{transition:opacity .3s ease,translate .25s var(--au-ease);}
+-.tog-grid:has(.tog:hover) .tog:not(:hover){opacity:.86;}
+-/* ---------------------------------------------------------------- CLOCK ---- */
+-/* 39 au-ring-glow */
+-.cs-ring-wrap{filter:drop-shadow(0 0 8px rgb(var(--core-rgb) / .35));}
+-/* ---------------------------------------------------------------- SETTINGS ---- */
+-/* 45 au-row-focus-bar */
+-.set-row{transition:box-shadow .3s ease;}
+-.set-row:has(input:focus,select:focus){box-shadow:inset 2px 0 0 var(--core);}
+-/* 46 au-name-nudge */
+-.s-name{transition:translate .3s var(--au-ease);}
+-.set-row:hover .s-name{translate:2px 0;}
+-/* 47 au-sub-brighten */
+-.s-sub{transition:color .3s ease;}
+-.set-row:hover .s-sub{color:var(--text-soft);}
+-/* 48 au-slider-value-pop */
+-.slider-val{transition:scale .3s var(--au-spring),color .2s;transform-origin:right center;}
+-.slider-wrap:hover .slider-val{scale:1.12;color:var(--core);}
+-/* 49 au-danger-hover-glow */
+-.danger-zone{transition:box-shadow .5s ease;}
+-.danger-zone:hover{box-shadow:inset 0 0 22px -8px rgb(var(--danger-rgb,255 77 94) / .22);}
+-/* 50 au-toggle-row-nudge */
+-.tog:hover{translate:2px 0;}
+-/* 51 au-stat-focus-dim */
+-.stat{transition:border-color .2s,transform .15s,box-shadow .35s ease,opacity .3s ease;}
+-.stat-grid:has(.stat:hover) .stat:not(:hover){opacity:.84;}
+-/* 52 au-kpi-focus-dim */
+-.an-kpi{transition:scale .28s var(--ax-ease,cubic-bezier(.22,1,.36,1)),opacity .3s ease,border-color .2s;}
+-.an-kpis:has(.an-kpi:hover) .an-kpi:not(:hover){opacity:.82;}
+-/* 53 au-chip-focus-dim */
+-.chip{transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--au-spring),scale .16s var(--au-ease),box-shadow .2s,background-size .4s var(--au-ease),opacity .3s ease;}
+-.chip-row:has(.chip:hover) .chip:not(:hover):not(.on){opacity:.78;}
+-/* 54 au-theme-focus-dim */
+-.theme-card{transition:border-color var(--dur-med,.28s),box-shadow var(--dur-med,.28s),transform var(--dur-fast,.16s) var(--ease-premium,ease),color .2s,opacity .3s ease;}
+-.theme-grid:has(.theme-card:hover) .theme-card:not(:hover):not(.on){opacity:.82;}
+-/* ---------------------------------------------------------------- CHAT ---- */
+-/* 55 au-send-ready-glow */
+-.chat-dock:has(#chatInputField:not(:placeholder-shown)) .dock-btn.send{box-shadow:0 0 0 4px rgb(var(--core-rgb) / .18),0 0 20px -2px rgb(var(--core-rgb) / .5);}
+-/* 56 au-send-ready-lift */
+-.chat-dock:has(#chatInputField:not(:placeholder-shown)) .dock-btn.send{scale:1.08;}
+-/* 57 au-mic-fade-typing */
+-.dock-btn.mic{transition:box-shadow .35s ease,transform var(--dur-fast,.12s) var(--au-spring),scale .25s var(--au-spring),background .2s,color .2s,opacity .3s ease;}
+-.chat-dock:has(#chatInputField:not(:placeholder-shown)) .dock-btn.mic{opacity:.5;}
+-/* 58 au-dock-expand */
+-.chat-dock{transition:border-color .28s,box-shadow .28s,opacity .2s,translate .3s var(--au-ease),scale .4s var(--au-ease);}
+-.chat-dock:focus-within{scale:1.006;}
+-/* 59 au-session-hover */
+-.session-switcher{transition:translate .25s var(--au-ease),border-color .2s;}
+-.session-switcher:hover{translate:0 -1px;}
+-/* 60 au-mic-wave-glow */
+-.mic-wave{filter:drop-shadow(0 0 6px rgb(var(--core-rgb) / .4));}
+-/* ---------------------------------------------------------------- OVERLAYS ---- */
+-/* 64 au-setup-bar-glow */
+-.setup-bar-fill{box-shadow:0 0 12px rgb(var(--core-rgb) / .55);}
+-/* 65 au-modal-close-hover */
+-.audio-close{transition:color .2s,scale .25s var(--au-spring);}
+-.audio-close:hover{scale:1.12;}
+-/* ---------------------------------------------------------------- GLOBAL ---- */
+-/* 68 au-nav-indicator-trail */
+-.nav-ind::after{content:'';position:absolute;inset:2px;border-radius:inherit;background:var(--core);filter:blur(9px);opacity:.3;z-index:-1;pointer-events:none;}
+-/* 69 au-title-underline-glow */
+-.page-header .page-title::after{box-shadow:0 0 10px rgb(var(--core-rgb) / .5);}
+-/* 70 au-film-grain */
+-html::before{content:'';position:fixed;inset:0;z-index:100;pointer-events:none;opacity:.03;background-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27160%27 height=%27160%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%27.9%27 numOctaves=%272%27 stitchTiles=%27stitch%27/%3E%3CfeColorMatrix values=%270 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url%28%23n%29%27/%3E%3C/svg%3E");background-size:160px 160px;}
+-/* 71 au-light-sweep */
+-html::after{content:'';position:fixed;top:-20%;bottom:-20%;left:0;width:28vw;z-index:1;pointer-events:none;opacity:0;background:linear-gradient(100deg,transparent,rgb(var(--core-rgb) / .045),transparent);transform:translateX(-40vw) skewX(-12deg);}
+-/* 73 au-active-nav-glow */
+-body.sara-active .nav{box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .06),0 0 22px -8px rgb(var(--core-rgb) / .4);}
+-/* 74 au-active-dock-tint */
+-body.sara-active .chat-dock{border-color:rgb(var(--core-rgb) / .35);}
+-/* 75 au-speaking-dock-glow */
+-body.sara-speaking .chat-dock{box-shadow:0 0 22px -6px rgb(var(--speak-rgb) / .4);}
+-/* 76 au-active-orb-bloom */
+-body.sara-active .mini-orb{box-shadow:0 0 14px var(--core),0 0 30px rgb(var(--core-rgb) / .45);}
+-/* 77 au-focus-nav-dim */
+-body.focus-mode .nav{opacity:.55;}
+-/* 78 au-idle-calm */
+-.page-header{transition:box-shadow .35s ease,opacity 1.2s ease;}
+-body.au-idle .nav{opacity:.45;}
+-body.au-idle .page-header{opacity:.6;}
+-/* 79 au-idle-dust */
+-.pm-dust{opacity:.6;transition:opacity 2s ease;}
+-:root body.au-idle .pm-dust{opacity:1;}
+-/* 80 au-idle-orbit */
+-#stage::before{transition:border-color 2s ease;}
+-body.au-idle #stage::before{border-color:rgb(var(--core-rgb) / .32);}
+-/* 81 au-scrollbar-press */
+-::-webkit-scrollbar-thumb:active{background:var(--core);}
+-/* 82 au-range-track-glow */
+-input[type=range]::-webkit-slider-runnable-track{transition:box-shadow .3s ease;}
+-input[type=range]:hover::-webkit-slider-runnable-track{box-shadow:0 0 12px rgb(var(--core-rgb) / .3);}
+-/* 83 au-toggle-focus-ring */
+-.toggle:focus-visible{box-shadow:0 0 0 3px rgb(var(--core-rgb) / .4);}
+-/* 85 au-key-cap-press */
+-kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;transition:translate .15s ease,border-bottom-width .15s ease;}
+-kbd:active{translate:0 1px;border-bottom-width:1px;}
+-/* 87 au-next-title-slide */
+-.nx-title{transition:translate .3s var(--au-ease);}
+-.next-card:hover .nx-title{translate:3px 0;}
+-/* 88 au-plan-title-slide */
+-.plan-card-title{transition:translate .3s var(--au-ease);}
+-.plan-card:hover .plan-card-title{translate:3px 0;}
+-/* 89 au-quick-text-hover */
+-.qc-name,.qc-sub{transition:color .25s;}
+-.qc-tile:hover .qc-name{color:var(--text);}
+-.qc-tile:hover .qc-sub{color:var(--text-soft);}
+-/* 90 au-volume-x-spin */
+-.volume-row .vol-x{transition:opacity .2s,rotate .35s var(--au-spring);}
+-.volume-row .vol-x:hover{rotate:90deg;}
+-/* 95 au-perf-legend-dim */
+-.perf-legend>*{transition:opacity .3s ease;}
+-.perf-legend:has(>*:hover)>*:not(:hover){opacity:.6;}
+-/* 96 au-memory-ring-glow */
+-.mr-fg{filter:drop-shadow(0 0 4px rgb(var(--core-rgb) / .5));}
+-/* 99 au-tab-press */
+-.tab{transition:color .2s,scale .2s var(--au-spring);}
+-.tab:active{scale:.95;}
+-/* 100 au-note-hover-hint */
+-.acc-note{transition:color .3s ease;}
+-.acc-note:hover{color:var(--text-soft);}
+-
+-/* ------------------------------------------- LOOPING / AUTO-PLAYING (motion allowed only) ---- */
+-@media (prefers-reduced-motion:no-preference){
+-  /* 1 au-pal-open-ring */
+-  .pal-overlay.open .pal{animation:au-ring-out 1s ease-out;}
+-  /* 5 au-pal-foot-rise */
+-  .pal-overlay.open .pal-foot{animation:au-rise-sm .5s var(--au-ease) .18s backwards;}
+-  /* 6 au-pal-empty-float */
+-  .pal-empty{animation:au-float-soft 4s ease-in-out infinite;}
+-  /* 15 au-overdue-pulse */
+-  .group-label.overdue{animation:au-soft-pulse 2.8s ease-in-out infinite;}
+-  /* 16 au-dot-completion-ring */
+-  .row.completing .dot::after{animation:au-dot-ring .6s ease-out;}
+-  /* 22 au-mode-note-rise */
+-  .mode-note{animation:au-rise-sm .6s var(--au-ease) backwards;}
+-  /* 23 au-empty-float */
+-  .rt-empty{animation:au-float-soft 4.5s ease-in-out infinite;}
+-  /* 24 au-auto-card-cascade */
+-  .page.stagger-in .page-body .auto-card{animation:au-rise-sm .5s var(--au-ease) backwards;}
+-  .page.stagger-in .page-body .auto-card:nth-of-type(2){animation-delay:60ms;}
+-  .page.stagger-in .page-body .auto-card:nth-of-type(3){animation-delay:120ms;}
+-  .page.stagger-in .page-body .auto-card:nth-of-type(n+4){animation-delay:180ms;}
+-  /* 28 au-sec-warn-pulse */
+-  .sec-warn{animation:au-soft-pulse 3s ease-in-out infinite;}
+-  /* 29 au-sec-armed-pulse */
+-  .sec-mode.sec-armed{animation:au-soft-pulse 2.6s ease-in-out infinite;}
+-  /* 34 au-tile-icon-bob */
+-  .app-tile:hover svg{animation:au-bob .9s ease;}
+-  /* 40 au-theme-pop */
+-  .cs-themes button:hover{animation:au-pop .45s var(--au-spring);}
+-  /* 41 au-picked-ring */
+-  .just-picked{animation:au-ring-out .9s ease-out;}
+-  /* 42 au-greet-rise */
+-  .overlay.open .cs-greet,.overlay.open .cs-sub{animation:au-rise-sm .5s var(--au-ease) .1s backwards;}
+-  /* 43 au-panel-rise */
+-  .overlay.open .cs-panel{animation:au-rise-sm .55s var(--au-ease) .05s backwards;}
+-  /* 44 au-controls-pop */
+-  .overlay.open .cs-controls .pill-btn{animation:au-pop-in .45s var(--au-spring) .2s backwards;}
+-  .overlay.open .cs-controls .pill-btn:nth-child(2){animation-delay:.27s;}
+-  .overlay.open .cs-controls .pill-btn:nth-child(n+3){animation-delay:.34s;}
+-  /* 61 au-modal-error-shake */
+-  .m-error{animation:au-shake .45s ease;}
+-  /* 62 au-modal-actions-pop */
+-  .overlay.open .m-actions .pill-btn{animation:au-pop-in .45s var(--au-spring) .15s backwards;}
+-  .overlay.open .m-actions .pill-btn:nth-child(2){animation-delay:.22s;}
+-  /* 63 au-modal-sub-rise */
+-  .overlay.open .m-sub{animation:au-rise-sm .5s var(--au-ease) .12s backwards;}
+-  /* 66 au-setup-log-in */
+-  .setup-log>*{animation:au-log-in .35s var(--au-ease) backwards;}
+-  /* 67 au-sheet-head-line */
+-  .overlay.open .sheet-head{background:linear-gradient(90deg,rgb(var(--core-rgb) / .45),transparent) 0 100%/100% 1px no-repeat;animation:ax-sheet-child .45s var(--ax-ease,cubic-bezier(.22,1,.36,1)) backwards,au-line-draw .9s var(--au-ease) .15s backwards;}
+-  /* 71 au-light-sweep */
+-  html::after{animation:au-sweep 20s ease-in-out infinite;}
+-  /* 72 au-active-orb-fast */
+-  body.sara-active .mini-orb{animation-duration:1.3s;}
+-  /* 84 au-image-fade-in */
+-  img{animation:au-fade .6s ease backwards;}
+-  /* 86 au-today-cascade */
+-  .today-card :is(.tc-top,.tc-cond,.tc-sub,.tc-next){animation:au-rise-sm .55s var(--au-ease) backwards;}
+-  .today-card .tc-cond{animation-delay:.06s;}
+-  .today-card .tc-sub{animation-delay:.12s;}
+-  .today-card .tc-next{animation-delay:.18s;}
+-  /* 91 au-play-hover-ring */
+-  .transport .t-play:hover{animation:au-pulse-ring .9s ease-out;}
+-  /* 92 au-audio-button-pop */
+-  .audio-btn:hover{animation:au-pop .4s var(--au-spring);}
+-  /* 93 au-sleep-option-pop */
+-  .sleep-options button:hover{animation:au-pop .4s var(--au-spring);}
+-  /* 94 au-apps-chip-pop */
+-  .ap-chip:hover,.ap-btn:hover{animation:au-pop .4s var(--au-spring);}
+-  /* 97 au-weather-cascade */
+-  .overlay.open .weather-hero>*{animation:au-rise-sm .5s var(--au-ease) backwards;}
+-  .overlay.open .weather-hero>*:nth-child(2){animation-delay:.07s;}
+-  .overlay.open .weather-hero>*:nth-child(3){animation-delay:.14s;}
+-  .overlay.open .weather-hero>*:nth-child(n+4){animation-delay:.21s;}
+-  /* 98 au-source-badge-pop */
+-  .src-badge:hover{animation:au-pop .4s var(--au-spring);}
+-}
+-
+-@keyframes au-ring-out{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb) / .4);}100%{box-shadow:0 0 0 20px rgb(var(--core-rgb) / 0);}}
+-@keyframes au-rise-sm{from{opacity:0;transform:translateY(8px);}}
+-@keyframes au-float-soft{0%,100%{translate:0 0;}50%{translate:0 -4px;}}
+-@keyframes au-soft-pulse{0%,100%{opacity:.78;}50%{opacity:1;}}
+-@keyframes au-dot-ring{0%{opacity:.8;transform:scale(1);}100%{opacity:0;transform:scale(2.2);}}
+-@keyframes au-shake{0%,100%{translate:0 0;}20%{translate:-5px 0;}40%{translate:5px 0;}60%{translate:-3px 0;}80%{translate:3px 0;}}
+-@keyframes au-bob{0%,100%{translate:0 0;}35%{translate:0 -3px;}70%{translate:0 1px;}}
+-@keyframes au-pop{0%{scale:1;}45%{scale:1.07;}100%{scale:1;}}
+-@keyframes au-pop-in{from{opacity:0;transform:scale(.9);}}
+-@keyframes au-sweep{0%,55%{opacity:0;transform:translateX(-40vw) skewX(-12deg);}65%{opacity:1;}90%{opacity:1;}100%{opacity:0;transform:translateX(140vw) skewX(-12deg);}}
+-@keyframes au-fade{from{opacity:0;}}
+-@keyframes au-log-in{from{opacity:0;transform:translateX(-8px);}}
+-@keyframes au-line-draw{from{background-size:0 1px;}}
+-@keyframes au-pulse-ring{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb) / .5);}100%{box-shadow:0 0 0 14px rgb(var(--core-rgb) / 0);}}
+\ No newline at end of file
+diff --git a/sara/gui/style/luxe.css b/sara/gui/style/luxe.css
+deleted file mode 100644
+index b7cd148..0000000
+--- a/sara/gui/style/luxe.css
++++ /dev/null
+@@ -1,167 +0,0 @@
+-/* ==========================================================================
+-   luxe.css  --  "Luxe pack": 50 new premium animations. Pure CSS, theme-independent. Load AFTER premium.css (last stylesheet).
+-   Rules: transform / opacity / translate / scale / rotate only for anything that loops; every looping effect lives in
+-   prefers-reduced-motion:no-preference; hover effects are plain transitions; fill-mode "backwards" so nothing sticks.
+-
+-   HOME      1 aurora greeting     2 caption glow        3 quick-action rise    4 quick-action icon spring
+-             5 orbit satellite     6 progress gloss      7 clock border beam    8 temperature pop
+-             9 "soon" pulse       10 plan-steps cascade 11 offline stripes     12 sleep-badge breathe
+-   CHAT     13 user bubble slide  14 Sara bubble slide  15 send nudge          16 mic halo
+-            17 placeholder fade   18 bubble hover glow
+-   MUSIC    19 album-art float    20 play-button ring   21 spectrum glow       22 seek-thumb grow
+-            23 transport spring   24 volume wobble      25 chevron nudge       26 card hover float
+-            27 album-art zoom
+-   SETTINGS 28 search focus grow  29 slider-thumb glow  30 accent swatch float 31 selected-theme halo
+-            32 card-title slide   33 mode-button lift   34 bar-segment grow    35 stat baseline
+-            36 chip fill sweep    37 toggle hover       38 label hairline      39 "ok" status glow
+-   GLOBAL   40 button halo        41 primary gradient drift 42 button-icon spring 43 press depth
+-            44 nav lift           45 modal open glow    46 toast hover         47 link glow
+-            48 dock-button pop    49 selected-chip breathe 50 status-orb bloom
+-   ========================================================================== */
+-
+-:root{--lx-ease:var(--ease-premium,cubic-bezier(.16,1,.3,1));--lx-spring:var(--ease-spring,cubic-bezier(.22,1.45,.36,1));}
+-
+-/* ---------------------------------------------------------------- HOME ---- */
+-/* 1 aurora greeting: a light band glides through the greeting text */
+-.home-greet{background:linear-gradient(100deg,var(--muted) 40%,var(--text) 50%,var(--muted) 60%) 0 0/260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+-.cc-greet{background:linear-gradient(100deg,var(--text-soft) 40%,var(--text) 50%,var(--text-soft) 60%) 0 0/260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+-/* 2 caption glow: now state-driven (smooth fade in/out while Sara is active) instead of a constant text-shadow loop */
+-.home-caption{transition:text-shadow .8s var(--lx-ease);}
+-body.sara-active .home-caption{text-shadow:0 0 14px rgb(var(--core-rgb) / .35);}
+-/* 4 quick-action icon springs on hover */
+-.qa-btn svg{transition:rotate .4s var(--lx-spring),scale .4s var(--lx-spring);}
+-.qa-btn:hover svg{rotate:-12deg;scale:1.18;}
+-/* 6 progress fills carry a moving gloss */
+-.cc-bar-fill{background-image:linear-gradient(100deg,transparent 30%,rgb(255 255 255 / .55) 50%,transparent 70%);background-size:250% 100%;background-repeat:no-repeat;background-position:130% 0;}
+-/* 7 clock card: a light travels round its border while hovered */
+-@property --lx-a{syntax:'<angle>';inherits:false;initial-value:0deg;}
+-.clock-card::before{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;opacity:0;transition:opacity .4s ease;
+-  background:conic-gradient(from var(--lx-a),transparent 0 72%,rgb(var(--core-rgb) / .9) 86%,rgb(var(--speak-rgb) / .9) 93%,transparent 100%);
+-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;
+-  animation:lx-spin 4s linear infinite;animation-play-state:paused;}
+-.clock-card:hover::before{opacity:1;animation-play-state:running;}
+-/* 8 temperature pops when the weather card is hovered */
+-.tc-temp{display:inline-block;transform-origin:left center;transition:scale .4s var(--lx-spring);}
+-.today-card:hover .tc-temp{scale:1.08;}
+-/* 5 orbit satellite around the orb */
+-#stage::before{content:'';position:absolute;inset:-5%;border-radius:50%;pointer-events:none;border:1px dashed rgb(var(--core-rgb) / .15);
+-  background:radial-gradient(circle at 50% 0,rgb(var(--speak-rgb) / .95) 0 2.5px,rgb(var(--speak-rgb) / .25) 3px,transparent 6px);}
+-/* 11 offline strip: slow barber-pole */
+-.offline-strip{background-image:repeating-linear-gradient(135deg,rgb(var(--danger-rgb) / .10) 0 10px,transparent 10px 20px);background-size:28px 28px;}
+-
+-/* --------------------------------------------------------------- CHAT ---- */
+-/* 15 send arrow nudges forward; 16 mic gets a halo */
+-.dock-btn.send svg{transition:translate .3s var(--lx-spring);}
+-.dock-btn.send:hover svg{translate:2px -1px;}
+-.dock-btn.mic{transition:box-shadow .35s ease,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s;}
+-.dock-btn.mic:hover{box-shadow:0 0 0 6px rgb(var(--core-rgb) / .12),0 0 18px -2px rgb(var(--core-rgb) / .35);}
+-/* 17 placeholder dims softly on focus */
+-#chatInputField::placeholder{transition:opacity .35s ease;}
+-#chatInputField:focus::placeholder{opacity:.35;}
+-/* 18 Sara's text and the user bubble get a soft glow when hovered */
+-.msg.user{transition:box-shadow .3s ease,border-color .3s ease;}
+-.msg.user:hover{border-color:rgb(var(--core-rgb) / .4);box-shadow:0 0 18px -8px rgb(var(--core-rgb) / .5);}
+-
+-/* -------------------------------------------------------------- MUSIC ---- */
+-/* 20 21 19 27 playing-state life */
+-.music-card.playing .mc-play{position:relative;}
+-.music-card.playing .mc-play::after{content:'';position:absolute;inset:0;border-radius:50%;border:1px solid var(--core);pointer-events:none;opacity:0;}
+-.music-card .spectrum{transition:opacity .4s ease,filter .6s ease;}
+-.music-card.playing .spectrum{filter:drop-shadow(0 0 6px rgb(var(--core-rgb) / .45));}                        /* 21 */
+-.art-block{transition:transform .24s var(--mc-ease,ease),box-shadow .4s var(--mc-ease,ease),filter .4s ease,opacity .4s ease,background-image .6s ease,scale .5s var(--lx-ease);}
+-.art-block:hover{scale:1.035;}                                                                                 /* 27 */
+-.seek-thumb{transition:left .5s linear,transform .2s var(--mc-ease,ease),box-shadow .25s ease,background-color .3s,opacity .25s ease,scale .25s var(--lx-spring);}
+-.seek-wrap:hover .seek-thumb{scale:1.3;box-shadow:0 0 14px rgb(var(--core-rgb) / .55);}                       /* 22 */
+-.mini-player .mp-btn,.mp-btn{transition:color .6s,scale .22s var(--lx-spring);}
+-.mp-btn:hover{scale:1.15;}.mp-btn:active{scale:.9;}                                                           /* 23 */
+-.vol-btn svg{transition:rotate .35s var(--lx-spring);}
+-.vol-btn:hover svg{rotate:-9deg;}                                                                              /* 24 */
+-.mc-chev{transition:transform .25s var(--mc-ease,ease),color .2s,translate .3s var(--lx-ease);}
+-.mc-head:hover .mc-chev{translate:0 2px;}                                                                      /* 25 */
+-.music-card{transition:border-color .25s var(--mc-ease,ease),box-shadow .4s var(--mc-ease,ease),translate .45s var(--lx-ease);}
+-.music-card:hover{box-shadow:var(--shadow-hover);}                                                          /* 26 */
+-
+-/* ----------------------------------------------------------- SETTINGS ---- */
+-#page-settings .set-search{transition:border-color .2s,box-shadow .2s,scale .35s var(--lx-ease);}
+-.set-search:focus{scale:1.015;}                                                                                /* 28 */
+-input[type=range]::-webkit-slider-thumb{transition:scale .2s var(--ease-spring,cubic-bezier(.22,1.45,.36,1)),box-shadow .25s ease;}
+-input[type=range]:hover::-webkit-slider-thumb{box-shadow:0 0 0 5px rgb(var(--core-rgb) / .16),0 0 14px rgb(var(--core-rgb) / .5);} /* 29 */
+-.theme-card::after{content:'';position:absolute;inset:-3px;border-radius:inherit;pointer-events:none;opacity:0;border:1px solid rgb(var(--core-rgb) / .55);box-shadow:0 0 16px rgb(var(--core-rgb) / .35);}
+-.set-card-title{transition:translate .35s var(--lx-ease);}
+-.set-card:hover .set-card-title{translate:3px 0;}                                                              /* 32 */
+-.cs-mode-btn,.sec-seg button{transition:translate .25s var(--lx-ease),border-color .2s,color .2s,background .2s;}
+-.cs-mode-btn:hover,.sec-seg button:hover{translate:0 -1px;}                                                    /* 33 */
+-.stat{transition:border-color .2s,transform .15s,box-shadow .35s ease;}
+-.stat:hover{box-shadow:inset 0 -2px 0 rgb(var(--core-rgb) / .7),0 0 16px rgb(var(--core-rgb) / .12);}          /* 35 */
+-.chip{background-image:linear-gradient(rgb(var(--core-rgb) / .12),rgb(var(--core-rgb) / .12));background-repeat:no-repeat;background-size:0% 100%;
+-  transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),box-shadow .2s,background-size .4s var(--lx-ease);}
+-.chip:hover{background-size:100% 100%;}                                                                        /* 36 */
+-.toggle{transition:background .25s,scale .3s var(--lx-spring);}
+-.toggle:hover{scale:1.07;}                                                                                     /* 37 */
+-.section-label::after{content:'';display:inline-block;width:48px;height:1px;margin-left:10px;vertical-align:middle;transform-origin:left center;background:linear-gradient(90deg,var(--line),transparent);}  /* 38 */
+-.info-row b.ok{transition:text-shadow .6s ease;text-shadow:0 0 10px rgb(var(--core-rgb) / .28);}   /* 39 static soft glow */
+-
+-/* ------------------------------------------------------------- GLOBAL ---- */
+-.pill-btn{transition:border-color .2s,color .2s,background-color .2s,box-shadow .25s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);outline:1px solid transparent;outline-offset:0;}
+-.pill-btn:hover:not(:disabled){outline-color:rgb(var(--core-rgb) / .30);outline-offset:3px;}                    /* 40 */
+-.pill-btn.primary{background-image:linear-gradient(115deg,rgb(255 255 255 / 0) 30%,rgb(255 255 255 / .22) 50%,rgb(255 255 255 / 0) 70%);background-size:250% 100%;background-position:120% 0;background-repeat:no-repeat;}
+-.pill-btn.primary:hover:not(:disabled){background-image:linear-gradient(115deg,rgb(255 255 255 / 0) 30%,rgb(255 255 255 / .22) 50%,rgb(255 255 255 / 0) 70%);background-position:-20% 0;transition:background-position .9s var(--lx-ease),border-color .2s,color .2s,background-color .2s,box-shadow .25s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);}  /* 41 */
+-#page-settings .pill-btn{transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),box-shadow .25s,translate .3s var(--lx-ease),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);}
+-.pill-btn svg,.chip svg{transition:rotate .35s var(--lx-spring),scale .35s var(--lx-spring);}
+-.pill-btn:hover svg,.chip:hover svg{rotate:8deg;scale:1.12;}                                                     /* 42 */
+-.pill-btn:active:not(:disabled){box-shadow:inset 0 2px 6px rgba(0,0,0,.35);}                                     /* 43 */
+-.nav button{transition:color .2s,transform .12s ease-out,text-shadow .3s ease,translate .3s var(--lx-ease);}
+-.nav button:hover{translate:0 -1px;}                                                                          /* 44 */
+-.toast{transition:opacity .22s,transform .22s,box-shadow .2s,scale .3s var(--lx-ease);}
+-.toast:hover{scale:1.025;}                                                                                       /* 46 */
+-.link-btn:hover{text-shadow:0 0 12px rgb(var(--core-rgb) / .5);}                                                 /* 47 */
+-.dock-btn{transition:box-shadow .2s,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s;}
+-.dock-btn:hover{scale:1.1;}.dock-btn:active{scale:.92;}                                                           /* 48 */
+-.mini-orb{transition:background .5s,box-shadow .5s,scale .3s var(--lx-spring);}
+-.mini-orb:hover{scale:1.35;}                                                                                      /* 50 */
+-
+-/* ------------------------------------------------- KEYFRAMED / LOOPING ---- */
+-@media (prefers-reduced-motion:no-preference){
+-  .home-greet,.cc-greet{animation:lx-aurora-text 11s cubic-bezier(.4,0,.2,1) infinite;}                                            /* 1 */
+-  .qa-btn{animation:lx-rise-in .6s var(--lx-ease) backwards;}                                                   /* 3 */
+-  .qa-btn:nth-child(2){animation-delay:70ms;}.qa-btn:nth-child(3){animation-delay:140ms;}.qa-btn:nth-child(n+4){animation-delay:210ms;}
+-  #stage::before{animation:lx-orbit 42s linear infinite;}                                                       /* 5 */
+-  .cc-bar-fill{animation:lx-gloss 5s cubic-bezier(.4,0,.2,1) infinite;}                                                     /* 6 */
+-  .nx-rel{animation:lx-soft-pulse 3.2s ease-in-out infinite;}                                                   /* 9 */
+-  .plan-steps li{animation:lx-step-in .5s var(--lx-ease) backwards;}                                            /* 10 */
+-  .plan-steps li:nth-child(2){animation-delay:60ms;}.plan-steps li:nth-child(3){animation-delay:120ms;}.plan-steps li:nth-child(4){animation-delay:180ms;}.plan-steps li:nth-child(n+5){animation-delay:240ms;}
+-  .offline-strip{animation:lx-stripes 1.6s linear infinite;}                                                    /* 11 */
+-  .sleep-badge{animation:lx-breathe 3.4s ease-in-out infinite;}                                                 /* 12 */
+-  .msg.user{animation-name:lx-msg-user;}                                                                        /* 13 */
+-  .msg.sara{animation-name:lx-msg-sara;}                                                                        /* 14 */
+-  .music-card.playing .art-block{animation:lx-float 6s ease-in-out infinite;}                                   /* 19 */
+-  .music-card.playing .mc-play::after{animation:lx-ring-ping 2.6s ease-out infinite;}                             /* 20 ring: transform/opacity only */
+-  .accent-pv{animation:lx-float 5s ease-in-out infinite;}                                                       /* 30 */
+-  .theme-card.on::after{animation:lx-halo 3.2s ease-in-out infinite;}                                           /* 31 */
+-  .perf-bar>*{transform-origin:left center;animation:lx-seg-grow .8s var(--lx-ease) backwards;}                 /* 34 */
+-  .perf-bar>*:nth-child(2){animation-delay:80ms;}.perf-bar>*:nth-child(3){animation-delay:160ms;}.perf-bar>*:nth-child(4){animation-delay:240ms;}.perf-bar>*:nth-child(n+5){animation-delay:320ms;}
+-  .section-label::after{animation:lx-hairline .9s var(--lx-ease) .2s backwards;}                                 /* 38 */
+-  .overlay.open .modal,.overlay.open .sheet{animation:lx-open-glow 1s ease-out;}                                /* 45 */
+-}
+-@keyframes lx-spin{to{--lx-a:360deg;}}
+-@keyframes lx-aurora-text{0%{background-position:130% 0;}34%,100%{background-position:-130% 0;}}
+-@keyframes lx-rise-in{from{opacity:0;transform:translateY(14px) scale(.96);}}
+-@keyframes lx-orbit{to{transform:rotate(360deg);}}
+-@keyframes lx-gloss{0%{background-position:130% 0;}45%,100%{background-position:-30% 0;}}
+-@keyframes lx-soft-pulse{0%,100%{opacity:.7;}50%{opacity:1;}}
+-@keyframes lx-step-in{from{opacity:0;transform:translateX(-10px);}}
+-@keyframes lx-stripes{to{background-position:28px 0;}}
+-@keyframes lx-breathe{0%,100%{opacity:.7;transform:scale(.98);}50%{opacity:1;transform:scale(1.04);}}
+-@keyframes lx-msg-user{0%{opacity:0;transform:translateX(22px) scale(.97);}65%{opacity:1;transform:translateX(-2px) scale(1.004);}100%{opacity:1;transform:none;}}
+-@keyframes lx-msg-sara{0%{opacity:0;transform:translateX(-16px);}65%{opacity:1;transform:translateX(2px);}100%{opacity:1;transform:none;}}
+-@keyframes lx-float{0%,100%{translate:0 0;}50%{translate:0 -3px;}}
+-@keyframes lx-ring-ping{0%{opacity:.5;transform:scale(1);}80%,100%{opacity:0;transform:scale(1.7);}}
+-@keyframes lx-halo{0%,100%{opacity:.25;}50%{opacity:.9;}}
+-@keyframes lx-seg-grow{from{transform:scaleX(0);}}
+-@keyframes lx-hairline{from{transform:scaleX(0);opacity:0;}}
+-@keyframes lx-open-glow{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb) / .35);}100%{box-shadow:0 0 0 18px rgb(var(--core-rgb) / 0);}}
+-
+-@media (prefers-reduced-motion:reduce){
+-  .home-greet,.cc-greet{background:none;-webkit-text-fill-color:currentColor;}
+-  #stage::before,.clock-card::before{display:none;}
+-}
+\ No newline at end of file
+diff --git a/sara/orchestrator/core_wiring.py b/sara/orchestrator/core_wiring.py
+index f5a38ef..dc81a44 100644
+--- a/sara/orchestrator/core_wiring.py
++++ b/sara/orchestrator/core_wiring.py
+@@ -42,7 +42,6 @@ from ._constants import (
+     _THREAD_ERROR_BACKOFF_S,
+ )
+ 
+-import re
+ import time
+ import logging
+ import threading
+diff --git a/sara/orchestrator/dispatcher.py b/sara/orchestrator/dispatcher.py
+index b96a73f..53d9f1d 100644
+--- a/sara/orchestrator/dispatcher.py
++++ b/sara/orchestrator/dispatcher.py
+@@ -17,8 +17,6 @@ these pieces, in particular "LLM ROUTING IS MUTUALLY EXCLUSIVE" and
+ import difflib
+ import re
+ import time
+-import sqlite3
+-from concurrent.futures import TimeoutError as _FutureTimeoutError
+ from typing import Optional as _Optional
+ 
+ from config import Config
+@@ -27,7 +25,6 @@ from sara.core.intent import detect_intent, is_negated_action_request
+ from sara.core.unmatched_log import log_unmatched
+ from sara.tools import system as system_tools
+ 
+-from .calc_utils import _safe_calc
+ from .text_utils import _extract_name
+ from .network_utils import _call_with_timeout
+ from .state import TURN_STATE
+diff --git a/sara/orchestrator/main.py b/sara/orchestrator/main.py
+index a52f9c9..52aac58 100644
+--- a/sara/orchestrator/main.py
++++ b/sara/orchestrator/main.py
+@@ -54,7 +54,7 @@ logger = logging.getLogger("sara.core_logic")
+ # sara_main.build_core_objects(...)` / `sara_main.run_sara_logic(...)`
+ # keeps working unchanged — those functions now live in
+ # sara.orchestrator.core_wiring, this is just the public alias.
+-from sara.orchestrator import build_core_objects, run_sara_logic
++from sara.orchestrator import build_core_objects, run_sara_logic  # noqa: F401 -- public alias, see comment above
+ 
+ # BUGFIX (root cause of the "preview mode, no backend connected" bug):
+ # sara/gui/app/core.py's Api.send_text_command() calls
+@@ -65,7 +65,7 @@ from sara.orchestrator import build_core_objects, run_sara_logic
+ # send_text_command() background thread (silently, since that thread has
+ # no try/except and nothing joins it) and no reply was ever pushed back
+ # to the frontend.
+-from sara.orchestrator.intent_handlers import _handle_command
++from sara.orchestrator.intent_handlers import _handle_command  # noqa: F401 -- re-export; removing it reintroduces the bug above
+ 
+ 
+ def main() -> None:
+diff --git a/sara/skills/_framework.py b/sara/skills/_framework.py
+index c901140..244e2a5 100644
+--- a/sara/skills/_framework.py
++++ b/sara/skills/_framework.py
+@@ -44,7 +44,7 @@ import re
+ import threading
+ import time
+ from dataclasses import dataclass, field
+-from typing import Any, Callable, Optional
++from typing import Callable, Optional
+ 
+ logger = logging.getLogger("sara.skills")
+ 
+diff --git a/sara/tools/reminder_followup.py b/sara/tools/reminder_followup.py
+index b4f234e..d74cad0 100644
+--- a/sara/tools/reminder_followup.py
++++ b/sara/tools/reminder_followup.py
+@@ -21,7 +21,7 @@ from __future__ import annotations
+ import re
+ from dataclasses import dataclass
+ from datetime import datetime, timedelta
+-from typing import Any, Dict, List, Optional, Sequence
++from typing import Any, Dict, Optional, Sequence
+ 
+ from sara.tools.reminder_context import classify, effective_policy, time_bucket
+ 
+diff --git a/sara/tools/reminders.py b/sara/tools/reminders.py
+index c55d220..04d51f5 100644
+--- a/sara/tools/reminders.py
++++ b/sara/tools/reminders.py
+@@ -30,7 +30,6 @@ LATENCY FIX (this revision):
+   loss of functionality.
+ """
+ 
+-import re
+ import sqlite3
+ import threading
+ import time
+diff --git a/tests/test_api_surface.py b/tests/test_api_surface.py
+index 0c5e910..25bca2c 100644
+--- a/tests/test_api_surface.py
++++ b/tests/test_api_surface.py
+@@ -251,6 +251,9 @@ EXPECTED_METHODS = {
+     "stop_sara",
+     "toggle_maximize",
+     "toggle_master_mute",
++    # Added by the D3 repair: js/music.js:414 always called this, but the
++    # method did not exist, so the call fell through to the preview mock.
++    "toggle_media_mute",
+     "toggle_music_playback",
+     "toggle_reminder",
+     "toggle_session_mute",
+@@ -284,8 +287,8 @@ EXPECTED_METHODS = {
+     "submit_feedback",
+ }
+ 
+-assert len(EXPECTED_METHODS) == 92, (
+-    "EXPECTED_METHODS must contain exactly 92 entries, found "
++assert len(EXPECTED_METHODS) == 93, (
++    "EXPECTED_METHODS must contain exactly 93 entries, found "
+     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
+ )
+ 
+diff --git a/tests/test_barge_watcher.py b/tests/test_barge_watcher.py
+index de1bdb4..09cf9ea 100644
+--- a/tests/test_barge_watcher.py
++++ b/tests/test_barge_watcher.py
+@@ -3,7 +3,6 @@ import sys
+ import time
+ from types import SimpleNamespace
+ 
+-import pytest
+ 
+ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ if _ROOT not in sys.path:
+diff --git a/tests/test_gui_assets.py b/tests/test_gui_assets.py
+new file mode 100644
+index 0000000..7eb3cf9
+--- /dev/null
++++ b/tests/test_gui_assets.py
+@@ -0,0 +1,135 @@
++"""
++Static tests for the GUI's asset wiring (index.html <link>/<script> lists).
++
++Regression cover for Phase 1 audit finding D6 and its consequence:
++
++  style/motion-pack.css was built to REPLACE animations.css, premium.css,
++  luxe.css and aurum.css, carrying their rules as groups "ax", "pm", "lx" and
++  "au", each re-scoped behind :where(html:not([data-fx-off~="<id>"])) so the
++  Quality panel's FX fine-tune switches can turn them off.
++
++  The consolidation was left half-finished: aurum.css was still linked, AFTER
++  motion-pack.css. :where() contributes zero specificity, so aurum.css's
++  unscoped copy of the same 166 rules won every conflict -- and the
++  user-facing "Detail effects" toggle (js/quality.js FX registry, id "au")
++  set data-fx-off="au" with no visible effect. luxe.css meanwhile sat on disk
++  linked by nothing.
++
++Linking a superseded stylesheet again would silently re-break its toggle, so
++that specific mistake is asserted against by name.
++"""
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++import pytest
++
++_REPO_ROOT = Path(__file__).resolve().parent.parent
++_GUI = _REPO_ROOT / "sara" / "gui"
++_INDEX_HTML = _GUI / "index.html"
++
++# Folded into style/motion-pack.css. Linking any of these again reintroduces an
++# unscoped duplicate that overrides the data-fx-off gate for its group.
++_SUPERSEDED_BY_MOTION_PACK = {
++    "animations.css": "ax",
++    "premium.css": "pm",
++    "luxe.css": "lx",
++    "aurum.css": "au",
++}
++
++# Loaded on demand by js/core.js (SARA._ensureMock), never statically.
++_LAZY_JS = {"mock.js"}
++
++# Superseded by motion-pack.css and already unlinked, but the files may still
++# be sitting in sara/gui/style/ until someone deletes them. They are inert
++# while nothing links them (and test_superseded_stylesheet_is_not_linked keeps
++# it that way), so their mere presence should not fail the suite. Delete the
++# files and drop them from this set to close the cleanup out.
++_PENDING_DELETION = {"aurum.css", "luxe.css"}
++
++
++def _html() -> str:
++    return _INDEX_HTML.read_text(encoding="utf-8")
++
++
++def _linked_css() -> set[str]:
++    return set(re.findall(r'href="style/([^"]+)"', _html()))
++
++
++def _linked_js() -> set[str]:
++    return set(re.findall(r'src="js/([^"]+)"', _html()))
++
++
++def test_every_linked_stylesheet_exists() -> None:
++    on_disk = {p.name for p in (_GUI / "style").glob("*.css")}
++    missing = sorted(_linked_css() - on_disk)
++    assert not missing, f"index.html links stylesheets that do not exist: {missing}"
++
++
++def test_every_linked_script_exists() -> None:
++    on_disk = {p.name for p in (_GUI / "js").glob("*.js")}
++    missing = sorted(_linked_js() - on_disk)
++    assert not missing, f"index.html loads scripts that do not exist: {missing}"
++
++
++def test_no_dead_stylesheets_on_disk() -> None:
++    on_disk = {p.name for p in (_GUI / "style").glob("*.css")}
++    dead = sorted(on_disk - _linked_css() - _PENDING_DELETION)
++    assert not dead, (
++        f"stylesheets on disk that nothing loads: {dead}. Either link them or "
++        f"delete them -- a dead stylesheet is a trap for the next reader."
++    )
++
++
++def test_no_dead_scripts_on_disk() -> None:
++    on_disk = {p.name for p in (_GUI / "js").glob("*.js")}
++    dead = sorted(on_disk - _linked_js() - _LAZY_JS)
++    assert not dead, f"scripts on disk that nothing loads: {dead}"
++
++
++@pytest.mark.parametrize("sheet, group", sorted(_SUPERSEDED_BY_MOTION_PACK.items()))
++def test_superseded_stylesheet_is_not_linked(sheet: str, group: str) -> None:
++    """
++    These were folded into motion-pack.css. Re-linking one puts an UNSCOPED
++    copy of its rules into the cascade, which overrides the
++    :where(html:not([data-fx-off~="<group>"])) gate and silently kills that
++    switch in the Quality panel.
++    """
++    assert sheet not in _linked_css(), (
++        f"style/{sheet} is linked again; its rules live in motion-pack.css "
++        f'GROUP "{group}". An unscoped duplicate disables the data-fx-off '
++        f'"{group}" toggle.'
++    )
++
++
++def test_every_css_fx_switch_has_a_motion_pack_group() -> None:
++    """
++    Each 'css'-type entry in js/quality.js's FX registry gates a group inside
++    motion-pack.css via <html data-fx-off="...">. A switch with no matching
++    group is a control that cannot do anything.
++    """
++    quality = (_GUI / "js" / "quality.js").read_text(encoding="utf-8")
++    motion_pack = (_GUI / "style" / "motion-pack.css").read_text(encoding="utf-8")
++
++    css_ids = re.findall(r"\['(\w+)',\s*'[^']*',\s*'[^']*',\s*'css'\]", quality)
++    assert css_ids, "could not parse the FX registry out of js/quality.js"
++
++    groups = set(re.findall(r'GROUP "(\w+)"', motion_pack))
++    orphans = sorted(set(css_ids) - groups)
++    assert not orphans, (
++        f"FX switches with no motion-pack.css group: {orphans}. "
++        f"Groups present: {sorted(groups)}"
++    )
++
++    for fx_id in css_ids:
++        assert f'data-fx-off~="{fx_id}"' in motion_pack, (
++            f'FX switch "{fx_id}" has a GROUP header but no rule is actually '
++            f'gated on data-fx-off~="{fx_id}"'
++        )
++
++
++def test_mock_js_is_lazy_not_linked() -> None:
++    """Preview scaffolding must stay out of the static script list (see D2)."""
++    assert "mock.js" not in _linked_js()
++    assert (_GUI / "js" / "mock.js").exists(), "mock.js should still exist for preview use"
+diff --git a/tests/test_gui_bridge_contract.py b/tests/test_gui_bridge_contract.py
+new file mode 100644
+index 0000000..14aeffc
+--- /dev/null
++++ b/tests/test_gui_bridge_contract.py
+@@ -0,0 +1,177 @@
++"""
++Static contract tests for the Python <-> JavaScript pywebview bridge.
++
++These are deliberately static (no browser, no pywebview, no Windows), so they
++run everywhere CI runs and catch the whole class of defect found in the Phase 1
++audit:
++
++  D3  sara/gui/js/music.js called SARA.callApi('toggle_media_mute'), but the
++      Python side implements toggle_session_mute(app_id) / toggle_master_mute().
++      Nothing failed loudly -- js/core.js fell through to the preview mock,
++      which answered ok({muted: ...}), so the Music page's mute button flipped
++      its icon while nothing was muted.
++
++  D2  js/mock.js was in index.html's script list, so that preview scaffolding
++      was live in the packaged app and could answer a call meant for Python.
++
++test_every_frontend_api_name_exists_in_python is the regression guard: any
++future rename on either side of the bridge fails CI instead of silently
++degrading a control into fabricated data.
++"""
++from __future__ import annotations
++
++import ast
++import re
++from pathlib import Path
++
++import pytest
++
++_REPO_ROOT = Path(__file__).resolve().parent.parent
++_GUI_APP = _REPO_ROOT / "sara" / "gui" / "app"
++_GUI_JS = _REPO_ROOT / "sara" / "gui" / "js"
++_INDEX_HTML = _REPO_ROOT / "sara" / "gui" / "index.html"
++
++# Names reaching Python go through js/core.js's SARA.callApi. Three call shapes
++# exist in the codebase and all three must be picked up, or the guard has holes:
++#   SARA.callApi('name', ...)            -- the common case
++#   origCall.call(SARA, 'name', ...)     -- the -plus interceptor files
++#   api('name', ...)                     -- memory-view.js's local forwarder
++_CALL_RE = re.compile(
++    r"""(?:SARA\.)?(?:callApi|origCall|api)\s*"""
++    r"""(?:\.(?:call|apply)\s*\(\s*SARA\s*,|\()\s*"""
++    r"""['"]([a-z_][a-z0-9_]*)['"]""",
++    re.VERBOSE,
++)
++
++
++def _python_api_surface() -> dict[str, str]:
++    """Every public method on the Api*Mixin classes, name -> 'file:line'."""
++    surface: dict[str, str] = {}
++    for path in sorted(_GUI_APP.rglob("*.py")):
++        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
++        for node in ast.walk(tree):
++            if not (isinstance(node, ast.ClassDef) and node.name.startswith("Api")):
++                continue
++            for item in node.body:
++                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
++                    if not item.name.startswith("_"):
++                        rel = path.relative_to(_REPO_ROOT).as_posix()
++                        surface[item.name] = f"{rel}:{item.lineno}"
++    return surface
++
++
++def _frontend_api_calls() -> dict[str, list[str]]:
++    """Every backend name the frontend asks for, name -> ['file:line', ...]."""
++    calls: dict[str, list[str]] = {}
++    for path in sorted(_GUI_JS.rglob("*.js")):
++        if "tests" in path.parts:
++            continue
++        for lineno, line in enumerate(
++            path.read_text(encoding="utf-8").splitlines(), start=1
++        ):
++            for match in _CALL_RE.finditer(line):
++                rel = path.relative_to(_REPO_ROOT).as_posix()
++                calls.setdefault(match.group(1), []).append(f"{rel}:{lineno}")
++    return calls
++
++
++def test_python_api_surface_is_discoverable() -> None:
++    """Guard the guard: if this breaks, the other tests pass vacuously."""
++    surface = _python_api_surface()
++    assert len(surface) > 50, f"expected a large Api surface, found {len(surface)}"
++    for expected in ("send_text_command", "get_system_stats", "toggle_master_mute"):
++        assert expected in surface, f"{expected} missing from the discovered Api surface"
++
++
++def test_frontend_api_calls_are_discoverable() -> None:
++    """Guard the guard, frontend side."""
++    calls = _frontend_api_calls()
++    assert len(calls) > 50, f"expected many callApi names, found {len(calls)}"
++    assert "send_text_command" in calls
++
++
++def test_every_frontend_api_name_exists_in_python() -> None:
++    """
++    Every name the GUI asks the bridge for must be implemented in Python.
++
++    A name here that Python does not implement is a dead control: with the
++    post-D2 core.js it now returns {ok: false, error: 'unknown_method'} and
++    logs, but the control is still broken for the user.
++    """
++    surface = _python_api_surface()
++    calls = _frontend_api_calls()
++
++    missing = {name: sites for name, sites in calls.items() if name not in surface}
++    assert not missing, "frontend calls backend methods that do not exist:\n" + "\n".join(
++        f"  {name!r} called from {', '.join(sites)}" for name, sites in sorted(missing.items())
++    )
++
++
++def test_mock_is_not_loaded_in_production_html() -> None:
++    """
++    js/mock.js is preview-only scaffolding. It must not be in index.html's
++    script list: js/core.js fetches it on demand only when no bridge exists.
++    """
++    html = _INDEX_HTML.read_text(encoding="utf-8")
++    assert '<script src="js/mock.js"></script>' not in html, (
++        "index.html statically loads js/mock.js -- preview scaffolding would be "
++        "live in the packaged app and could answer calls meant for Python"
++    )
++    assert '<script src="js/core.js"></script>' in html, "index.html must still load js/core.js"
++
++
++def test_mock_unknown_name_is_an_explicit_failure() -> None:
++    """mock.js's default branch must not fabricate ok() for unknown names."""
++    mock = (_GUI_JS / "mock.js").read_text(encoding="utf-8")
++    assert not re.search(r"default:\s*return ok\(\);", mock), (
++        "mock.js still has `default: return ok();` -- an unimplemented backend "
++        "method would look like a successful call"
++    )
++    assert "unknown_method" in mock, "mock.js default branch should return an unknown_method failure"
++
++
++def test_core_js_fails_loudly_on_a_connected_bridge() -> None:
++    """
++    A connected bridge missing the requested name must produce an explicit
++    failure rather than falling through to the preview mock.
++    """
++    core = (_GUI_JS / "core.js").read_text(encoding="utf-8")
++    assert "unknown_method" in core, "core.js should return an unknown_method failure"
++    assert "_ensureMock" in core, "core.js should load the preview mock on demand"
++    assert "apiIsBound" in core, (
++        "core.js must distinguish an empty (still-binding) pywebview.api from a "
++        "bound one, or a startup race is misreported as a missing method"
++    )
++
++
++@pytest.mark.parametrize(
++    "name, caller",
++    [("toggle_media_mute", "sara/gui/js/music.js")],
++)
++def test_audited_dead_controls_stay_wired(name: str, caller: str) -> None:
++    """
++    Named regression guard for controls the Phase 1 audit proved dead.
++
++    D3: the Music page's mute button called toggle_media_mute, which no mixin
++    implemented. The frontend call site was correct -- the Python method was
++    missing -- so the repair added the method rather than changing the caller.
++    Both halves are asserted here so neither can quietly disappear again.
++    """
++    surface = _python_api_surface()
++    calls = _frontend_api_calls()
++
++    assert name in surface, f"{name!r} must stay implemented on the Api"
++    sites = calls.get(name, [])
++    assert any(site.startswith(caller) for site in sites), (
++        f"{name!r} should still be called from {caller}; found: {sites}"
++    )
++
++
++def test_media_mute_methods_are_distinct() -> None:
++    """
++    The three mute paths act on different targets and must not be collapsed:
++    the selected session, one named app, and the Windows output device.
++    """
++    surface = _python_api_surface()
++    for name in ("toggle_media_mute", "toggle_session_mute", "toggle_master_mute"):
++        assert name in surface, f"{name} missing from the Api surface"
+diff --git a/tests/test_intent_multilingual.py b/tests/test_intent_multilingual.py
+index 72a4a01..a10d248 100644
+--- a/tests/test_intent_multilingual.py
++++ b/tests/test_intent_multilingual.py
+@@ -200,7 +200,6 @@ def test_slot_intents_keep_handler_group_layout():
+ 
+ def test_every_extension_pattern_was_accepted():
+     from sara.core.intent import patterns_multilingual as ml
+-    import re
+ 
+     names = dict(P._INTENT_PATTERNS)
+     missing = []
+diff --git a/tests/test_open_app_search_fallback.py b/tests/test_open_app_search_fallback.py
+index c933a28..332ae06 100644
+--- a/tests/test_open_app_search_fallback.py
++++ b/tests/test_open_app_search_fallback.py
+@@ -6,7 +6,6 @@ faked, so nothing here touches a real desktop. They do NOT prove the key
+ sequence behaves correctly on a real Windows Search UI.
+ """
+ import sys
+-import types
+ 
+ import pytest
+ 
+@@ -121,17 +120,36 @@ def routed(monkeypatch):
+     return calls
+ 
+ 
++# ---------------- Windows-only launch path ----------------
++#
++# The tests below drive sara.tools.system.apps.open_app() / close_app(), whose
++# first act is _ensure_windows() (sara/tools/system/_shared.py). On any other
++# OS that raises RuntimeError before the logic under test runs, so all 19 of
++# them failed on Linux while passing on the real target. They are skipped off
++# Windows rather than forced through with a patched _IS_WINDOWS: pretending
++# the platform check passed would report a Windows launch path as verified on
++# a machine that cannot exercise it. CI runs windows-latest, where these run
++# for real. The 29 pure schema/validation tests above stay cross-platform.
++requires_windows = pytest.mark.skipif(
++    not sys.platform.startswith("win"),
++    reason="exercises the Windows-only open_app/close_app launch path "
++           "(_ensure_windows); runs for real on the windows-latest CI job",
++)
++
++@requires_windows
+ def test_alias_uses_direct_launch(routed):
+     assert apps.open_application("chrome") == "Opened chrome."
+     assert routed == {"search": [], "direct": ["chrome"]}
+ 
+ 
++@requires_windows
+ def test_config_allowlisted_raw_name_uses_direct_launch(routed, monkeypatch):
+     monkeypatch.setattr(Config, "APP_LAUNCH_ALLOWLIST", ["blender"])
+     apps.open_application("blender")
+     assert routed == {"search": [], "direct": ["blender"]}
+ 
+ 
++@requires_windows
+ @pytest.mark.parametrize("name", ["blender", "android studio", "The Figma App."])
+ def test_unlisted_name_uses_search(routed, name):
+     result = apps.open_application(name)
+@@ -140,18 +158,21 @@ def test_unlisted_name_uses_search(routed, name):
+     assert routed["search"] == [apps._normalize_app_name(name)]
+ 
+ 
++@requires_windows
+ @pytest.mark.parametrize("name", UNSAFE_TARGETS)
+ def test_unsafe_name_never_reaches_search_or_launch(routed, name):
+     assert "couldn't" in apps.open_application(name)
+     assert routed == {"search": [], "direct": []}
+ 
+ 
++@requires_windows
+ def test_fallback_disabled_uses_old_path(routed, monkeypatch):
+     monkeypatch.setattr(Config, "APP_UNLISTED_SEARCH_FALLBACK_ENABLED", False, raising=False)
+     apps.open_application("blender")
+     assert routed == {"search": [], "direct": ["blender"]}
+ 
+ 
++@requires_windows
+ def test_restart_not_running_never_uses_search(routed, monkeypatch):
+     monkeypatch.setattr(apps, "_terminate_matching", lambda exe: apps._TerminateResult([], None, 0))
+     apps.restart_application("blender")
+@@ -247,6 +268,7 @@ def test_driver_escapes_when_nothing_opened(fakes, monkeypatch):
+     assert kb.sent[-2:] == ["enter", "esc"]
+ 
+ 
++@requires_windows
+ def test_driver_failure_returns_clean_message(monkeypatch):
+     monkeypatch.setattr(apps, "_IS_WINDOWS", True)
+ 
+diff --git a/tests/test_planning.py b/tests/test_planning.py
+index 598d7e5..47639f9 100644
+--- a/tests/test_planning.py
++++ b/tests/test_planning.py
+@@ -43,8 +43,6 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ if _PROJECT_ROOT not in sys.path:
+     sys.path.insert(0, _PROJECT_ROOT)
+ 
+-from config import Config
+-from sara.orchestrator.state import TURN_STATE
+ 
+ # ══════════════════════════════════════════════════════════════════════
+ # Schema validation / security hardening
+diff --git a/tests/test_reminder_scenarios.py b/tests/test_reminder_scenarios.py
+index d172072..ae8863e 100644
+--- a/tests/test_reminder_scenarios.py
++++ b/tests/test_reminder_scenarios.py
+@@ -4,7 +4,6 @@ ReminderManager, ReminderComposer and provider fallback chain. Only the LLM
+ providers and the speaker are faked, and time is fixed where it matters.
+ """
+ import os
+-import re
+ import sys
+ import tempfile
+ import time
+diff --git a/tests/test_stt_barge_decode.py b/tests/test_stt_barge_decode.py
+index cbd26ce..2867f69 100644
+--- a/tests/test_stt_barge_decode.py
++++ b/tests/test_stt_barge_decode.py
+@@ -2,7 +2,6 @@ import os
+ import sys
+ import threading
+ 
+-import pytest
+ 
+ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ if _ROOT not in sys.path:

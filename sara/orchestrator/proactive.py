@@ -1,0 +1,846 @@
+"""
+sara.orchestrator.proactive
+Proactive Engine — Sara's agentic layer: a background loop that perceives
+a few passive signals and speaks up on its own, without a wake word,
+when one of them crosses a threshold.
+
+Perceive -> Reason -> Act, every PROACTIVE_CHECK_INTERVAL_S seconds:
+    1. Perceive — read battery / upcoming-reminder / idle-time signals.
+       All cheap, cached reads; this runs on its own daemon thread (same
+       shape as sara/tools/reminders.py's ReminderManager poller), never
+       on the main voice loop, so it can't add latency to a real
+       conversation turn.
+    2. Reason — a rule-based threshold + a per-trigger cooldown decides
+       WHETHER to speak (fast, free, no LLM call needed just to check).
+       If a trigger fires, an OPTIONAL, isolated LLM call decides WHAT to
+       say (falls back to a plain template instantly if disabled, the
+       LLM isn't ready, or the call fails for any reason).
+    3. Act — speaks via the existing TTS engine and pushes a toast via
+       the existing `ui_update("notification", ...)` protocol
+       (sara/gui/js/app.js's window.saraEvent already handles this kind).
+
+Gating (all of these silence every trigger, checked fresh every tick):
+    - AssistantState.is_active() is False (Home page "Pause Listening")
+    - the "focus_mode" preference is on (topbar Focus Mode toggle)
+    - the "setting:proactive_mode" preference is explicitly "0" (Settings
+      page master toggle — defaults ON; only an explicit off switches it
+      off)
+
+Per-trigger gating (checked inside each individual trigger's own check
+function, on top of the master gate above):
+    - the "setting:proactive_battery" preference is explicitly "0"
+    - the "setting:proactive_reminders" preference is explicitly "0"
+    - the "setting:proactive_idle" preference is explicitly "0"
+    - the "setting:proactive_streak" preference is explicitly "0"
+  Same defaulting rule as the master toggle: missing (None) means the
+  default, which is enabled — only an explicit "0" (the Settings page
+  sub-toggle switched off) disables that one trigger. This keeps existing
+  installations that predate these keys behaving exactly as before.
+
+Design note on the LLM phrasing step: it deliberately does NOT go through
+SaraLLM.generate_response()/generate_response_stream(). Those append every
+call to the real conversation history and (if RAG is enabled) to
+long-term memory too, and can block for up to LLM_WARMUP_WAIT_S seconds
+on a cold model — none of which is appropriate for a background system
+nudge. Instead this module makes its own small, direct, stateless call
+via the same module-level client helpers sara/core/llm/engine.py's own
+summarize_text() uses (_get_ollama_client/_get_gemini_client), wrapped in
+the same never-block, always-fall-back-to-template shape used everywhere
+else in this codebase.
+"""
+
+import threading
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, Optional
+
+from config import Config
+from sara.tools.reminder_context import minutes_until as _minutes_until
+from sara.tools.reminder_followup import pick_followup as _pick_followup
+from sara.tools.reminder_followup import settings_from_config as _followup_settings
+
+_DEBUG = getattr(Config, "DEBUG_MODE", False)
+
+
+class ActivityTracker:
+    """
+    Thread-safe "time since the last real conversation turn" clock.
+
+    touch() is called by the main voice loop (sara/orchestrator/core_wiring.py
+    run_sara_logic()) on wake and on every real user turn. idle_seconds()
+    is read by ProactiveEngine's idle/break trigger. Deliberately tiny and
+    dependency-free so touching it from the hot conversation loop never
+    adds meaningful overhead.
+    """
+
+    __slots__ = ("_lock", "_last_ts", "_last_wall")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last_ts = time.monotonic()
+        # Wall-clock time of the last real interaction; None until the user
+        # has actually spoken to Sara in this run (start-up is not activity).
+        self._last_wall: Optional[datetime] = None
+
+    def touch(self) -> None:
+        with self._lock:
+            self._last_ts = time.monotonic()
+            self._last_wall = datetime.now()
+
+    def last_touch_time(self) -> Optional[datetime]:
+        with self._lock:
+            return self._last_wall
+
+    def idle_seconds(self) -> float:
+        with self._lock:
+            return time.monotonic() - self._last_ts
+
+
+def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
+    """
+    Best-effort, single-attempt, stateless rephrase of `template` into a
+    warmer, more natural sentence. Returns None (never raises) on any
+    failure so the caller can fall back to the template instantly — this
+    must never be allowed to block or crash the proactive thread.
+
+    Intentionally bypasses SaraLLM entirely (see module docstring) and
+    talks to the configured backend directly, mirroring the exact
+    client-call shape sara/core/llm/engine.py's _summarize_ollama /
+    _summarize_gemini already use, so behavior stays consistent with the
+    rest of the app (same client helpers, same config knobs).
+    """
+    try:
+        from sara.core.llm.clients import (
+            _get_gemini_client,
+            _get_ollama_client,
+            _select_llm_client,
+            _build_gemini_generate_config,
+        )
+
+        system_prompt = (
+            "You are Sara, a voice assistant. Rephrase the following short "
+            "notification into ONE brief, warm, natural sentence (max 20 "
+            "words) with the exact same meaning. Do not add anything new. "
+            f"Respond only in {lang}, no markdown, no quotes."
+        )
+
+        backend, client = _select_llm_client(Config, _get_ollama_client, _get_gemini_client)
+        if not client:
+            return None
+
+        if backend == "ollama":
+            # Single attempt, no retries, small token cap -- any failure
+            # falls to the outer except and returns None (template used).
+            resp = client.chat(
+                model=getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": template},
+                ],
+                think=False,
+                options={"temperature": 0.6, "num_predict": 60},
+                keep_alive=getattr(Config, "OLLAMA_KEEP_ALIVE", "5m"),
+            )
+            text = (resp.message.content or "").strip()
+            return text or None
+
+        from google.genai import types
+
+        # Real I/O-level timeout (short: this is best-effort and must
+        # never hang). Falls back to no http_options on an older SDK.
+        try:
+            _http_timeout_s = float(getattr(Config, "PROACTIVE_LLM_TIMEOUT_S", 3.5))
+        except (TypeError, ValueError):
+            _http_timeout_s = 3.5
+        _gen_config = _build_gemini_generate_config(
+            types,
+            _http_timeout_s,
+            system_instruction=system_prompt,
+            temperature=0.6,
+        )
+
+        resp = client.models.generate_content(
+            model=getattr(Config, "GEMINI_MODEL", "gemini-2.5-flash"),
+            contents=[{"role": "user", "parts": [{"text": template}]}],
+            config=_gen_config,
+        )
+        text = (resp.text or "").strip()
+
+        return text or None
+    except Exception as e:  # noqa: BLE001 — must never propagate
+        if _DEBUG:
+            print(f"[Proactive] LLM rephrase failed, using template: {e}")
+        return None
+
+
+class ProactiveEngine:
+    """
+    Background agent. Construct once with the shared components
+    build_core_objects() already built, start() it once the main voice
+    loop is up, and shutdown() it during app teardown — same lifecycle
+    shape as sara/tools/reminders.py's ReminderManager.
+    """
+
+    def __init__(
+        self,
+        db,
+        reminders,
+        tts,
+        ui_update: Callable[..., None],
+        activity_tracker: ActivityTracker,
+        assistant_state: Any = None,
+        lang_state: Any = None,
+        ears: Any = None,
+        reminder_composer: Any = None,
+    ) -> None:
+        self._db = db
+        self._reminders = reminders
+        self._tts = tts
+        self._ui_update = ui_update
+        self._activity = activity_tracker
+        self._assistant_state = assistant_state
+        self._lang_state = lang_state
+        self._ears = ears
+        # Optional ReminderComposer: contextual wording for reminder heads-ups.
+        self._composer = reminder_composer
+
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+        # Per-trigger-key cooldown bookkeeping (monotonic timestamps).
+        self._last_fired: Dict[str, float] = {}
+        # Reminder heads-up de-dupe — once a reminder id has been
+        # announced, never announce it again this run. The existing
+        # on-time alarm in reminders.py still fires independently at the
+        # real due time regardless of whether this heads-up ever ran.
+        self._reminder_notified_ids: set = set()
+        # Same de-dupe idea, for the upcoming_meeting trigger below —
+        # keyed by (summary, start) since Google Calendar events don't
+        # have a stable id available cheaply from get_upcoming_events().
+        self._meeting_notified_keys: set = set()
+        # Last time a "user is speaking" toast was shown per trigger, so a
+        # skipped trigger does not re-toast on every tick.
+        self._skip_toast_at: Dict[str, float] = {}
+
+    # ------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        if not getattr(Config, "PROACTIVE_ENABLED", True):
+            if _DEBUG:
+                print("[Proactive] PROACTIVE_ENABLED=False, not starting.")
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._poll_loop, daemon=True, name="sara-proactive"
+        )
+        self._thread.start()
+        if _DEBUG:
+            print("[Proactive] Background engine started.")
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def shutdown(self) -> None:
+        self.stop()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+
+    # ------------------------------------------------------------
+    # Main loop
+    # ------------------------------------------------------------
+
+    def _poll_loop(self) -> None:
+        interval = max(5, int(getattr(Config, "PROACTIVE_CHECK_INTERVAL_S", 60)))
+        while not self._stop_event.wait(timeout=interval):
+            try:
+                self._tick()
+            except Exception as e:  # noqa: BLE001 — a bad tick must never kill the thread
+                print(f"[Proactive] tick failed: {e}")
+
+    def _tick(self) -> None:
+        if not self._enabled_now():
+            return
+        self._check_battery()
+        self._check_upcoming_reminders()
+        self._check_reminder_followups()
+        self._check_upcoming_meetings()
+        self._check_idle_break()
+        self._check_streak_milestone()
+        self._check_habit_pattern()
+        self._check_scheduled_routine()
+        self._check_morning_prefetch()
+
+    # ------------------------------------------------------------
+    # Gating — respects focus mode, pause state, and the Settings toggles
+    # ------------------------------------------------------------
+
+    def _enabled_now(self) -> bool:
+        """Master gate — checked once per tick, before any trigger runs."""
+        try:
+            if self._assistant_state is not None and not self._assistant_state.is_active():
+                return False
+        except Exception:
+            pass
+        try:
+            if self._db is not None:
+                if self._db.get_preference("focus_mode") == "1":
+                    return False
+                # Default ON: only an explicit "0" (Settings page toggle
+                # switched off) disables this. Never having been set at
+                # all (None) means the default, which is enabled.
+                if self._db.get_preference("setting:proactive_mode") == "0":
+                    return False
+        except Exception:
+            pass
+        return True
+
+    def _trigger_enabled(self, key: str) -> bool:
+        """
+        Per-trigger sub-gate — checked inside each individual trigger's
+        own check function, on top of _enabled_now() above. `key` is one
+        of "battery", "reminders", "meetings", "idle", "streak", "routines"
+        and maps to the Settings page preference "setting:proactive_<key>".
+
+        Same defaulting rule as the master toggle: missing (None) means
+        the default, which is enabled — only an explicit "0" disables
+        this one trigger. This keeps existing installations that predate
+        these per-trigger keys behaving exactly as before.
+        """
+        try:
+            if self._db is not None:
+                if self._db.get_preference(f"setting:proactive_{key}") == "0":
+                    return False
+        except Exception:
+            pass
+        return True
+
+    def _cooldown_ready(self, key: str) -> bool:
+        cooldown_s = max(0, int(getattr(Config, "PROACTIVE_COOLDOWN_MINUTES", 30))) * 60
+        last = self._last_fired.get(key)
+        return last is None or (time.monotonic() - last) >= cooldown_s
+
+    def _ears_is_listening(self) -> bool:
+        """Defensive check: is STT mid-utterance right now? Never raises --
+        missing attr, wrong type, or any exception => False."""
+        try:
+            ev = getattr(self._ears, "_is_listening", None)
+            return bool(ev.is_set()) if ev is not None else False
+        except Exception:
+            return False
+
+    # ------------------------------------------------------------
+    # Triggers
+    # ------------------------------------------------------------
+
+    def _check_battery(self) -> None:
+        if not self._trigger_enabled("battery"):
+            return
+        if not self._cooldown_ready("battery"):
+            return
+        try:
+            from sara.tools.system.system_info import get_battery_raw
+
+            raw = get_battery_raw()
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] battery check failed: {e}")
+            return
+        if raw is None:
+            return  # desktop / no battery sensor
+        percent, plugged = raw
+        threshold = int(getattr(Config, "PROACTIVE_BATTERY_LOW_PERCENT", 15))
+        if plugged or percent > threshold:
+            return
+        template = f"Heads up, battery is at {percent} percent. You might want to plug in soon."
+        reason = (
+            f"Your battery was at {percent}% and not plugged in "
+            f"(the threshold is {threshold}%)."
+        )
+        if self._speak_and_notify(template, icon="ti-battery-1", color="#f87171",
+                                   trigger="battery", reason=reason):
+            self._last_fired["battery"] = time.monotonic()
+
+    def _check_upcoming_reminders(self) -> None:
+        if not self._trigger_enabled("reminders"):
+            return
+        if self._reminders is None or not hasattr(self._reminders, "get_upcoming"):
+            return
+        lead_minutes = int(getattr(Config, "PROACTIVE_REMINDER_LEAD_MINUTES", 15))
+        try:
+            upcoming = self._reminders.get_upcoming(lead_minutes)
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] reminder check failed: {e}")
+            return
+        for item in upcoming:
+            rid = item.get("id")
+            if rid is None or rid in self._reminder_notified_ids:
+                continue
+            if self._upcoming_already_notified(rid):
+                # Announced in an earlier run: remember it, never repeat it.
+                self._reminder_notified_ids.add(rid)
+                continue
+            text = item.get("text") or "something"
+            due_at = item.get("due_at", "")
+            template = f'Just a heads-up, "{text}" is coming up soon.'
+            reason = (
+                f'You have a reminder "{text}" due at {due_at}, '
+                f"which is within the next {lead_minutes} minutes."
+            )
+            listening = self._ears_is_listening()
+            composed = None if listening else self._compose_upcoming(text, due_at)
+            if self._speak_and_notify(
+                composed or template, icon="ti-alarm", color="#60a5fa",
+                trigger="reminder", reason=reason,
+                phrase=(composed is None and not listening),
+            ):
+                self._reminder_notified_ids.add(rid)
+                self._mark_upcoming_notified(rid)
+
+    def _check_upcoming_meetings(self) -> None:
+        """
+        upcoming_meeting trigger -- reads real Google Calendar events via
+        sara/tools/calendar.py and gives a spoken heads-up if one is due
+        within Config.PROACTIVE_MEETING_LEAD_MINUTES. Exact same shape as
+        _check_upcoming_reminders() above (per-trigger gate, its own
+        de-dupe set, proactive_log entry) -- just backed by Google
+        Calendar instead of Sara's own reminders table.
+        """
+        if not self._trigger_enabled("meetings"):
+            return
+        try:
+            from sara.tools import calendar as calendar_tools
+
+            lead_minutes = int(getattr(Config, "PROACTIVE_MEETING_LEAD_MINUTES", 15))
+            upcoming = calendar_tools.get_upcoming_events(days=1)
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] meeting check failed: {e}")
+            return
+
+        now = time.time()
+        for event in upcoming:
+            summary = event.get("summary") or "a meeting"
+            start_iso = event.get("start", "")
+            if not start_iso:
+                continue
+            try:
+                from datetime import datetime
+
+                start_dt = datetime.fromisoformat(start_iso)
+                # Naive datetimes (all-day events use a date-only string
+                # that datetime.fromisoformat still parses, but with no
+                # tzinfo) are compared against a naive "now" below.
+                seconds_until = (
+                    start_dt.timestamp() - now
+                    if start_dt.tzinfo
+                    else (start_dt - datetime.now()).total_seconds()
+                )
+            except (ValueError, TypeError):
+                continue
+
+            if not (0 < seconds_until <= lead_minutes * 60):
+                continue
+
+            key = (summary, start_iso)
+            if key in self._meeting_notified_keys:
+                continue
+
+            template = f"Heads up, you've got '{summary}' in {lead_minutes} minutes."
+            reason = (
+                f"Your calendar event '{summary}' is due at {start_iso}, "
+                f"which is within the next {lead_minutes} minutes."
+            )
+            if self._speak_and_notify(template, icon="ti-calendar-event", color="#34d399",
+                                       trigger="meeting", reason=reason):
+                self._meeting_notified_keys.add(key)
+
+    def _check_scheduled_routine(self) -> None:
+        """
+        "scheduled_routine" trigger — every tick, scans every saved,
+        enabled routine (sara/core/routines.py) that has a `trigger_time`
+        set, and runs any whose target time falls within +-1 minute of
+        now AND hasn't already run today (tracked per-routine via
+        PreferencesDB.get/set_routine_last_run_date — same idempotent-
+        per-day shape as the streak trigger's own per-day tracking).
+        Reuses run_routine() as-is; does not run on its own thread — a
+        slow/blocking step inside a scheduled routine simply delays this
+        tick like any other trigger's work would.
+        """
+        if not self._trigger_enabled("routines"):
+            return
+        if self._db is None or not hasattr(self._db, "list_routines"):
+            return
+
+        try:
+            all_routines = self._db.list_routines()
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] list_routines failed: {e}")
+            return
+
+        now = datetime.now()
+        today = now.strftime("%Y-%m-%d")
+
+        for routine in all_routines:
+            if not routine.get("enabled", True):
+                continue
+            name = routine.get("name")
+            trigger_time = routine.get("trigger_time")
+            if not name or not trigger_time:
+                continue
+
+            try:
+                hh, mm = trigger_time.split(":")
+                target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+            except (ValueError, AttributeError, TypeError):
+                if _DEBUG:
+                    print(f"[Proactive] routine '{name}' has a bad trigger_time {trigger_time!r}")
+                continue
+
+            if abs((now - target).total_seconds()) > 60:
+                continue
+
+            try:
+                last_run = self._db.get_routine_last_run_date(name)
+            except Exception:
+                last_run = None
+            if last_run == today:
+                continue
+
+            self._run_scheduled_routine(name, routine.get("label") or name, today)
+
+    def _run_scheduled_routine(self, name: str, label: str, today: str) -> None:
+        # Imported lazily to avoid a module-load-time dependency cycle --
+        # sara.core.routines itself only imports sara.orchestrator.
+        # intent_handlers lazily, inside its own functions, for the same
+        # reason (see routines.py's module docstring).
+        from sara.core import routines
+
+        ctx = {
+            "brain": None,
+            "tts": self._tts,
+            "ears": None,
+            "db": self._db,
+            "reminders": self._reminders,
+            "vision": None,
+            "ui_update": self._ui_update,
+            "volume_state": {},
+            "playback_state": {},
+            "confirm_state": {},
+            "user_input": f"[scheduled routine: {name}]",
+            "notes_memory": None,
+        }
+
+        try:
+            outcomes = routines.run_routine(name, ctx)
+        except Exception as e:  # noqa: BLE001 — one bad routine must never kill the proactive thread
+            print(f"[Proactive] scheduled routine '{name}' failed: {e}")
+            return
+
+        # run_routine() already speaks every step in order, as it runs
+        # (see its module docstring) -- just surface each one in the
+        # transcript here, same as every other trigger's ui_update push.
+        for outcome in outcomes:
+            text = outcome.get("text")
+            if not text:
+                continue
+            try:
+                self._ui_update("transcript", "sara", text)
+            except Exception as e:
+                print(f"[Proactive] ui_update failed for routine step: {e}")
+
+        try:
+            self._ui_update(
+                "proactive_notification", "ti-player-play", "#34d399",
+                f"Ran your '{label}' routine.", "routine",
+            )
+        except Exception as e:
+            print(f"[Proactive] ui_update (notification) failed: {e}")
+
+        try:
+            if hasattr(self._db, "log_proactive_event"):
+                # Fire-and-forget (wait=False) — logging must never add
+                # latency to the routine itself.
+                self._db.log_proactive_event(
+                    "routine", f"Ran '{label}' routine.",
+                    f"Scheduled trigger time reached for routine '{name}'.",
+                    wait=False,
+                )
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] log_proactive_event failed: {e}")
+
+        try:
+            self._db.set_routine_last_run_date(name, today, wait=False)
+        except Exception as e:
+            print(f"[Proactive] set_routine_last_run_date('{name}') failed: {e}")
+
+    def _check_morning_prefetch(self) -> None:
+        if not self._trigger_enabled("morning_prefetch"):
+            return
+        if not self._cooldown_ready("morning_prefetch"):
+            return
+        hour = datetime.now().hour
+        if hour < 7 or hour > 9:  # only attempt in a morning window
+            return
+        try:
+            from sara.tools import web as web_tools
+            web_tools.get_news()  # populates both caches as a side effect
+            self._last_fired["morning_prefetch"] = time.monotonic()
+        except Exception as e:
+            print(f"[Proactive] morning news prefetch failed: {e}")
+
+    def _check_idle_break(self) -> None:
+        if not self._trigger_enabled("idle"):
+            return
+        if not self._cooldown_ready("idle_break"):
+            return
+        idle_minutes_needed = int(getattr(Config, "PROACTIVE_IDLE_BREAK_MINUTES", 90))
+        idle_s = self._activity.idle_seconds()
+        if idle_s < (idle_minutes_needed * 60):
+            return
+        template = "You've been at it for a while, this might be a good time for a short break."
+        reason = (
+            f"It had been about {int(idle_s // 60)} minutes since we last talked "
+            f"(the threshold is {idle_minutes_needed} minutes)."
+        )
+        if self._speak_and_notify(template, icon="ti-coffee", color="#a78bfa",
+                                   trigger="idle_break", reason=reason):
+            # Resets this trigger's own cooldown clock. If the user then has a
+            # real conversation turn, ActivityTracker.touch() drops
+            # idle_seconds() back near zero and this naturally won't fire
+            # again until another full idle stretch passes; if the user stays
+            # away, it won't re-fire until PROACTIVE_COOLDOWN_MINUTES either.
+            self._last_fired["idle_break"] = time.monotonic()
+
+    def _check_streak_milestone(self) -> None:
+        if not self._trigger_enabled("streak"):
+            return
+        if self._db is None or not hasattr(self._db, "get_preference"):
+            return
+        milestone = self._db.get_preference("streak_pending_milestone")
+        if not milestone:
+            return
+        template = f"By the way, we've talked {milestone} days in a row now!"
+        reason = f"Your daily talk streak just reached {milestone} days."
+        if self._speak_and_notify(
+            template, icon="ti-flame", color="#fb923c",
+            trigger="streak", reason=reason,
+        ):
+            # Clear it so this doesn't repeat on every future tick — only fires
+            # once, right after record_interaction_day() sets it for the day
+            # the milestone was actually crossed.
+            try:
+                self._db.set_preference("streak_pending_milestone", "")
+            except Exception:
+                pass
+
+    def _check_habit_pattern(self) -> None:
+        if not self._trigger_enabled("habit"):
+            return
+        if not self._cooldown_ready("habit_pattern"):
+            return
+        if self._db is None or not hasattr(self._db, "get_recent_actions"):
+            return
+        try:
+            recent = self._db.get_recent_actions(limit=200)
+        except Exception as e:
+            print(f"[Proactive] get_recent_actions failed: {e}")
+            return
+        if not recent:
+            return
+
+        # Group by (action_name, hour-of-day), counting DISTINCT calendar
+        # days each combo appeared on, within the last 14 days.
+        cutoff = datetime.now() - timedelta(days=14)
+        buckets = defaultdict(set)  # (action_name, hour) -> {date strings}
+        for entry in recent:
+            try:
+                ts = datetime.fromisoformat(entry["timestamp"])
+            except Exception:
+                continue
+            if ts < cutoff:
+                continue
+            key = (entry["action_name"], ts.hour)
+            buckets[key].add(ts.date().isoformat())
+
+        # Pick the strongest pattern: >=3 distinct days, same action+hour.
+        best_key, best_days = None, 0
+        for key, days in buckets.items():
+            if len(days) >= 3 and len(days) > best_days:
+                best_key, best_days = key, len(days)
+
+        if best_key is None:
+            return
+
+        action_name, hour = best_key
+        display_name = action_name.replace("_", " ").replace(":", " ")
+        template = (
+            f"I've noticed you {display_name} around {hour % 12 or 12}"
+            f"{'AM' if hour < 12 else 'PM'} pretty often. Want to turn this into a routine? "
+            f"You can set it up from the Automation page."
+        )
+        reason = f"Same action ('{display_name}') seen on {best_days} different days around the same hour."
+        if self._speak_and_notify(template, icon="ti-repeat", color="#8B6FD8",
+                                   trigger="habit_detected", reason=reason):
+            self._last_fired["habit_pattern"] = time.monotonic()
+
+    # ------------------------------------------------------------
+    # Speak + notify (shared by every trigger)
+    # ------------------------------------------------------------
+
+    def _speak_and_notify(
+        self, template: str, icon: str, color: str, trigger: str, reason: str,
+        phrase: bool = True,
+    ) -> bool:
+        text = self._phrase(template) if phrase else template
+        if self._ears_is_listening():
+            _now = time.monotonic()
+            if (_now - self._skip_toast_at.get(trigger, -1e9)) < 300:
+                return False
+            self._skip_toast_at[trigger] = _now
+            # User is mid-utterance -- don't steal their turn. Toast only;
+            # caller must NOT update cooldown/de-dupe state on a skip, so
+            # this same trigger can retry next tick.
+            try:
+                self._ui_update("proactive_notification", icon, color, text, trigger, reason)
+            except Exception as e:
+                print(f"[Proactive] ui_update failed: {e}")
+            return False
+        try:
+            self._tts.speak(text, fast=True)
+        except Exception as e:
+            print(f"[Proactive] tts.speak failed: {e}")
+        try:
+            self._ui_update("transcript", "sara", text)
+            # Explicit tag (generic "notification" ki jagah) — taaki
+            # frontend ko reliably pata chale ki ye ek unprompted nudge
+            # hai, icon guess kiye bina.
+            self._ui_update("proactive_notification", icon, color, text, trigger, reason)
+        except Exception as e:
+            print(f"[Proactive] ui_update failed: {e}")
+        try:
+            if self._db is not None and hasattr(self._db, "log_proactive_event"):
+                # Fire-and-forget (wait=False) — logging must never add
+                # latency to the nudge itself.
+                self._db.log_proactive_event(trigger, text, reason, wait=False)
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] log_proactive_event failed: {e}")
+        return True
+
+    def _check_reminder_followups(self) -> None:
+        """
+        A gentle follow-up when a reminder was spoken, its time has passed,
+        and the user is verifiably still talking to Sara. All the rules live
+        in sara/tools/reminder_followup.py; at most one follow-up per tick.
+        """
+        if not self._trigger_enabled("reminders"):
+            return
+        if self._composer is None or self._reminders is None:
+            return
+        try:
+            if not hasattr(self._reminders, "followup_candidates"):
+                return
+            night_allowed = True
+            if self._db is not None:
+                for key in ("contextual_reminders", "awake_awareness"):
+                    if self._db.get_preference(f"setting:{key}") == "0":
+                        return
+                night_allowed = self._db.get_preference("setting:late_night_nudges") != "0"
+            if self._ears_is_listening():
+                return
+            candidates = self._reminders.followup_candidates()
+            if not candidates:
+                return
+            now = datetime.now()
+            plan = _pick_followup(
+                candidates,
+                self._activity.last_touch_time(),
+                now,
+                _followup_settings(Config),
+                night_allowed=night_allowed,
+            )
+            if plan is None:
+                return
+            result = self._composer.start(
+                plan.message, stage="followup", minutes_since=plan.minutes_since
+            )()
+            print(result.describe().replace("[Reminder]", "[Reminder follow-up]", 1))
+            reason = (
+                f'Your "{plan.message}" reminder was due about {plan.minutes_since} '
+                f"minutes ago and you were still talking to me, so I gave you a gentle follow-up."
+            )
+            icon = "ti-moon-stars" if plan.category == "sleep" else "ti-bell"
+            if self._speak_and_notify(
+                result.text, icon=icon, color="#818cf8",
+                trigger="reminder_followup", reason=reason, phrase=False,
+            ):
+                self._reminders.update_intel(
+                    plan.reminder_id,
+                    nudge_count=plan.nudge_number,
+                    last_nudge_at=now.isoformat(),
+                    last_message=result.text,
+                )
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] reminder follow-up failed: {e}")
+
+    def _upcoming_already_notified(self, rid: Any) -> bool:
+        """True if this reminder's heads-up was already given (survives restarts)."""
+        try:
+            if self._reminders is None or not hasattr(self._reminders, "get_intel"):
+                return False
+            return bool(self._reminders.get_intel(rid).get("upcoming_notified_at"))
+        except Exception:
+            return False
+
+    def _mark_upcoming_notified(self, rid: Any) -> None:
+        try:
+            if self._reminders is not None and hasattr(self._reminders, "update_intel"):
+                self._reminders.update_intel(
+                    rid, upcoming_notified_at=datetime.now().isoformat()
+                )
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] could not record heads-up for reminder {rid}: {e}")
+
+    def _compose_upcoming(self, text: str, due_at: str) -> Optional[str]:
+        """Contextual heads-up wording, or None to keep the legacy wording."""
+        if self._composer is None:
+            return None
+        try:
+            if (
+                self._db is not None
+                and self._db.get_preference("setting:contextual_reminders") == "0"
+            ):
+                return None
+            wait_for_text = self._composer.start(
+                text, stage="upcoming", minutes_until=_minutes_until(due_at)
+            )
+            result = wait_for_text()
+            print(result.describe().replace("[Reminder]", "[Reminder upcoming]", 1))
+            return result.text or None
+        except Exception as e:
+            if _DEBUG:
+                print(f"[Proactive] contextual heads-up failed: {e}")
+            return None
+
+    def _phrase(self, template: str) -> str:
+        if not getattr(Config, "PROACTIVE_LLM_PHRASING", True):
+            return template
+        lang = "English"
+        try:
+            if self._lang_state is not None:
+                _, code = self._lang_state.snapshot()
+                lang = {"hi": "Hindi"}.get(code, "English")
+        except Exception:
+            pass
+        rephrased = _quick_llm_rephrase(template, lang)
+        return rephrased or template

@@ -1,0 +1,55 @@
+/* ==========================================================================
+   a11y-plus.css  --  styles for js/a11y-plus.js: live region, shortcuts dialog, Accessibility card, HIGH CONTRAST, reduce-motion override,
+   strong focus ring. Load LAST.
+   <html> attributes set by the script: data-contrast="high", data-lum="dark|light" (from the active theme), data-motion="reduce",
+   data-focus="strong", data-uiscale="85..150".
+   ========================================================================== */
+.sr-only{position:absolute !important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;}
+
+/* ---------------------------------------------------------------- shortcuts dialog */
+.ax-back{position:fixed;inset:0;z-index:130;display:grid;place-items:center;padding:20px;background:rgb(var(--void-rgb,5 8 12) / .72);opacity:0;transition:opacity .22s ease;}
+.ax-back.open{opacity:1;}
+.ax-dialog{width:min(620px,100%);max-height:min(86vh,720px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-hover,0 24px 60px -20px rgba(0,0,0,.7));
+  translate:0 14px;transition:translate .38s var(--ease-premium,cubic-bezier(.16,1,.3,1));}
+.ax-back.open .ax-dialog{translate:0 0;}
+.ax-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 6px;}
+.ax-title{font-size:15px;font-weight:600;color:var(--text);}
+.ax-x{border:none;background:none;color:var(--muted);font-size:22px;line-height:1;width:30px;height:30px;border-radius:8px;cursor:pointer;transition:color .15s ease,background .15s ease;}
+.ax-x:hover{color:var(--text);background:var(--panel-2);}
+.ax-body{padding:4px 18px 16px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px 28px;}
+.ax-h{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px;font-weight:600;}
+.ax-row{display:flex;align-items:baseline;gap:12px;padding:5px 0;border-top:1px solid var(--line);}
+.ax-row:first-of-type{border-top:none;}
+.ax-keys{flex:none;min-width:92px;}
+.ax-desc{font-size:12.5px;color:var(--text-soft);line-height:1.4;}
+kbd{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:3px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--panel-2);color:var(--text);}
+
+/* ---------------------------------------------------------------- Accessibility card */
+.ax-size{display:flex;align-items:center;gap:14px;max-width:520px;margin:6px 0 8px;}
+.ax-size input[type=range]{flex:1;}
+.ax-sizeval{width:48px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;color:var(--text);}
+.ax-confirm{position:fixed;left:50%;top:18px;translate:-50% 0;z-index:140;display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:var(--panel);
+  border:1px solid rgb(var(--core-rgb) / .5);box-shadow:var(--shadow-hover,0 14px 34px -14px rgba(0,0,0,.7));font-size:13px;color:var(--text);animation:axConfirm .3s var(--ease-premium,cubic-bezier(.16,1,.3,1));}
+.ax-confirm[hidden]{display:none;}
+@keyframes axConfirm{from{opacity:0;translate:-50% -10px;}}
+
+/* ---------------------------------------------------------------- HIGHER CONTRAST (works on top of every theme) */
+html[data-contrast="high"][data-lum="dark"]{--text:#ffffff;--text-soft:#f1f1f1;--muted:#d4d4d4;--faint:#a9a9a9;--line:#8c95a6;--glass-border:rgb(255 255 255 / .6);}
+html[data-contrast="high"][data-lum="light"]{--text:#000000;--text-soft:#0f0f0f;--muted:#2a2a2a;--faint:#4d4d4d;--line:#3b3b3b;--glass-border:rgb(0 0 0 / .65);}
+html[data-contrast="high"]{--glass-bg:var(--panel);}
+html[data-contrast="high"] *{backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
+html[data-contrast="high"] body::before,html[data-contrast="high"] #stage::before,html[data-contrast="high"] :is(.pm-aura,.pm-dust,.home-sky,.orb-fx){display:none !important;}
+html[data-contrast="high"] :is(.pill-btn,.chip,.set-card,.toggle,input,select,textarea,.auto-card,.rt-tpl,.sx-preset){border-color:var(--line);}
+html[data-contrast="high"] :is(a,.link-btn){text-decoration:underline;text-underline-offset:3px;}
+html[data-contrast="high"] :disabled{opacity:.75;}
+html[data-contrast="high"] .toggle:not(.on){background:var(--panel-2);border-color:var(--text-soft);}
+html[data-contrast="high"] ::selection{background:var(--text);color:var(--void);}
+
+/* ---------------------------------------------------------------- strong focus ring */
+html[data-contrast="high"] :focus-visible,html[data-focus="strong"] :focus-visible{outline:3px solid var(--core) !important;outline-offset:3px !important;box-shadow:0 0 0 6px rgb(var(--void-rgb,0 0 0) / .9) !important;}
+
+/* ---------------------------------------------------------------- reduce motion override (the OS setting is honoured by every file already) */
+html[data-motion="reduce"] *,html[data-motion="reduce"] *::before,html[data-motion="reduce"] *::after{
+  animation-duration:.001ms !important;animation-delay:0s !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;transition-delay:0s !important;scroll-behavior:auto !important;}
+html[data-motion="reduce"] :is(.pm-aura,.pm-dust,.pm-spark,.orb-fx,.pm-edge,.pm-progress){display:none !important;}
+@media (prefers-reduced-motion:reduce){.ax-dialog,.ax-back{transition:none;translate:0 0;}.ax-confirm{animation:none;}}

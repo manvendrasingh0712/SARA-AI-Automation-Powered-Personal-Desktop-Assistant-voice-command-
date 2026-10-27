@@ -1,0 +1,1083 @@
+"""
+sara.core.tool_router
+LLM-driven tool routing for Sara AI, with a deterministic keyword-based
+fallback.
+
+WHY THIS FILE CHANGED (v2):
+The previous version of this module was pure keyword/substring matching
+("if 'weather' in lowered: ...") despite the module's own docstring and
+config.py's TOOL_CALLING_ENABLED comment both describing it as an
+"LLM-assisted" / "structured function-calling" step. It accepted a
+`model_name` argument that was never actually used to call any model.
+That mismatch is fixed here: `resolve_tool_call()` now makes a real,
+bounded-time Gemini tool-calling request (native function-calling via
+google-genai's `generate_content()` with `tools=`; this module was
+originally written against Ollama and has since been migrated) and only
+falls back to the old keyword heuristic if the LLM call is unavailable,
+times out, or
+fails for any reason -- same "never block, always degrade gracefully"
+shape used everywhere else in this codebase (RAG, proactive rephrasing,
+skills auto-discovery, etc).
+entry points:
+  1. The gate itself (has_probable_tool_intent) -- "what is"/"what's"/
+     "how much" now only count as a tool signal when the message ALSO
+     contains a digit/operator/spelled-out math keyword (see
+     _has_math_signal / _MATH_QUESTION_PHRASES below).
+  2. _resolve_tool_call_heuristic()'s OWN calculator branch -- this
+     function is not just the TOOL_CALLING_MODE="heuristic" path, it's
+     ALSO the fallback resolve_tool_call() uses whenever the LLM call
+     times out or errors. It had the exact same "what is"/"what's"
+     unconditional match, so fixing only the gate would have left the
+     bug alive (just intermittent, only firing on LLM-timeout).
+  3. A defensive validation layer (_validate_tool_result) applied at
+     the single return funnel in resolve_tool_call() -- rejects ANY
+     resolved `calculator` call (from either the LLM path or the
+     heuristic path) whose `expr` has no digit/operator, and ANY
+     resolved `open_url` call whose `url` isn't URL-shaped, downgrading
+     either to "unknown" (=no tool applies, fall back to normal chat)
+     instead of ever reaching the caller as a broken tool call.
+  4. All keyword/substring checks (gate + heuristic) now use \b
+     word-boundary regex matching instead of bare substring checks --
+     fixes false triggers like "training" matching "rain", "newsletter"
+     matching "news", "restart" matching "start", "visitor" matching
+     "visit".
+  5. A bounded-size thread pool + circuit breaker around the LLM
+     tool-call: if TOOL_CALLING_TIMEOUT_S is exceeded 3 turns in a row,
+     the LLM tool-call is skipped entirely (straight to heuristic) for a
+     cooldown window, so a hung/slow Gemini request doesn't keep adding
+     latency turn after turn. NOTE: this does not cancel the already-hung
+     background request -- it keeps occupying one of the two
+     _TOOL_CALL_EXECUTOR worker threads until the Gemini client's own
+     request timeout elapses (or the call returns). If responses keep
+     stalling, check network/API status and/or set
+     TOOL_CALLING_MODE=heuristic temporarily to isolate the cause.
+  6. _extract_after_phrases()'s terminator regex no longer truncates on
+     a bare "." -- previously "3.5", "example.com" etc. were cut short
+     at the first period, silently breaking decimal calculator
+     expressions and open_url/web_search extraction.
+
+Toggle via Config.TOOL_CALLING_MODE:
+    "llm"       (default) -- try the real LLM tool-call first, fall back
+                 to the keyword heuristic below on any failure/timeout.
+    "heuristic" -- skip the LLM call entirely, use only the keyword
+                 heuristic (old v1 behavior; useful if you don't want
+                 an extra LLM round-trip on every unmatched command,
+                 e.g. on a slower machine).
+"""
+
+from __future__ import annotations
+
+import concurrent.futures
+import re
+import threading
+import time
+from typing import Any, Dict, Optional
+
+TOOL_NAME_TO_INTENT: Dict[str, str] = {
+    "weather": "weather",
+    "news": "news",
+    "web_search": "web_search",
+    "open_url": "open_url",
+    "play_youtube": "play_youtube",
+    "play_spotify": "play_spotify",
+    "screenshot_describe": "screenshot_describe",
+    "clipboard_read": "clipboard_read",
+    "clipboard_write": "clipboard_write",
+    "open_app": "open_app",
+    "open_file": "open_file",
+    "close_app": "close_app",
+    "calculator": "calculator",
+    "set_alarm": "set_alarm",
+    "start_stopwatch": "start_stopwatch",
+    "stop_stopwatch": "stop_stopwatch",
+    "add_todo": "add_todo",
+    "list_todos": "list_todos",
+    "complete_todo": "complete_todo",
+    "delete_todo": "delete_todo",
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# Provider-neutral tool schema (OpenAI-style function-calling shape;
+# originally written for Ollama's `tools=`) -- one entry per tool in
+# TOOL_NAME_TO_INTENT above. Converted into Gemini's Tool/
+# FunctionDeclaration format at call time by _get_gemini_tools().
+# Argument keys MUST match
+# what build_fake_match() below expects for that tool_name.
+# ══════════════════════════════════════════════════════════════════════
+
+TOOLS_SCHEMA: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "weather",
+            "description": "Get the current weather or forecast for a place.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "City or place name, e.g. 'Ajmer' or 'Jaipur'. Empty string if the user didn't say a place.",
+                    }
+                },
+                "required": ["location"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "news",
+            "description": "Get recent news headlines, optionally about a specific topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {
+                        "type": "string",
+                        "description": "Topic to get news about, e.g. 'cricket' or 'technology'. Empty string for general headlines.",
+                    }
+                },
+                "required": ["topic"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web for a question or topic that isn't covered by another tool.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query."}
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_url",
+            "description": "Open a specific website URL in the browser.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to open."}
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "play_youtube",
+            "description": "Play a video or song on YouTube.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What to search for / play on YouTube."}
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "play_spotify",
+            "description": "Play a song, artist, or playlist on Spotify.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "What to search for / play on Spotify."}
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "screenshot_describe",
+            "description": "Take a screenshot of the screen and describe what's on it.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clipboard_read",
+            "description": "Read and report back whatever is currently on the clipboard.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "clipboard_write",
+            "description": "Copy the given text onto the clipboard.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The text to copy to the clipboard."}
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_app",
+            "description": "Open/launch a desktop application by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Name of the application to open, e.g. 'chrome' or 'notepad'."}
+                },
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "open_file",
+            "description": "Find a file by name in the user's common folders (Downloads, Documents, Desktop, Pictures, Music, Videos, home) and open it. Only opens it when exactly one match is found; if the name is ambiguous (multiple matches) or not found, it reports that instead of guessing.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Filename or partial filename to find and open, e.g. 'resume' or 'budget.xlsx'."}
+                },
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_app",
+            "description": "Close/quit a desktop application by name.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target": {"type": "string", "description": "Name of the application to close, e.g. 'chrome' or 'notepad'."}
+                },
+                "required": ["target"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculator",
+            "description": "Evaluate a math expression or arithmetic question.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "expr": {"type": "string", "description": "The math expression to evaluate, e.g. '12 * (3 + 4)'."}
+                },
+                "required": ["expr"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_alarm",
+            "description": "Set a clock-time alarm for a specific time of day, e.g. '7am' or '6:30pm'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "time": {"type": "string", "description": "The clock time to set the alarm for, e.g. '7am' or '6:30pm'."}
+                },
+                "required": ["time"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_stopwatch",
+            "description": "Start a stopwatch to time how long something takes.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "stop_stopwatch",
+            "description": "Stop the running stopwatch and report the elapsed time.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_todo",
+            "description": "Add a new item to the user's to-do list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "The to-do item text, e.g. 'buy milk'."}
+                },
+                "required": ["text"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_todos",
+            "description": "Read back the user's to-do list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "description": "'all' to include completed items too. Empty string for pending items only.",
+                    }
+                },
+                "required": ["scope"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "complete_todo",
+            "description": "Mark a to-do item as done, identified by its id or by matching its text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "identifier": {"type": "string", "description": "The to-do's id, or a phrase matching its text, e.g. 'buy milk'."}
+                },
+                "required": ["identifier"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_todo",
+            "description": "Delete a to-do item, identified by its id or by matching its text.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "identifier": {"type": "string", "description": "The to-do's id, or a phrase matching its text, e.g. 'buy milk'."}
+                },
+                "required": ["identifier"],
+            },
+        },
+    },
+]
+
+_TOOL_ROUTER_SYSTEM_PROMPT = (
+    "You are a tool router for a voice assistant. Read the user's message "
+    "and decide if ONE of the available tools clearly fulfills it. If so, "
+    "call that tool with the correct arguments inferred from the message. "
+    "If no tool clearly applies, do not call any tool -- just don't respond "
+    "with a function call. Only call `calculator` if the message contains "
+    "an actual numeric expression to evaluate (a number, an arithmetic "
+    "operator, or a percentage). Personal or factual questions phrased as "
+    "'what is ...?' or 'what's ...?' -- such as someone's name, a fact "
+    "about the user, or general knowledge -- are NEVER a calculator call; "
+    "if no other tool clearly fits those, don't call any tool at all."
+)
+
+# Bounded-size executor for the LLM tool-routing call, so a slow/hung
+# Gemini request can be abandoned via future.result(timeout=...) without
+# ever blocking the calling (voice-loop) thread indefinitely. Two workers
+# is plenty -- this path only runs for unmatched ("chat" intent) commands,
+# never for the fast regex-matched path, so overlap is rare.
+_TOOL_CALL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="sara-tool-router"
+)
+
+
+def _shutdown_tool_call_executor() -> None:
+    """
+    Cooperative shutdown of the module-level tool-router executor: queued
+    (not yet started) calls are cancelled, anything already running is
+    detached from, never force-killed. Safe to call more than once and
+    never raises. Mirrors network_utils._shutdown_network_executor().
+    """
+    try:
+        try:
+            _TOOL_CALL_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            # Python < 3.9: shutdown() has no cancel_futures parameter.
+            _TOOL_CALL_EXECUTOR.shutdown(wait=False)
+    except Exception as e:  # noqa: BLE001 -- shutdown must never raise
+        print(f"[ToolRouter] executor shutdown failed: {e}")
+
+# Circuit breaker: if the LLM tool-call times out this many turns IN A
+# ROW, skip the LLM entirely (go straight to heuristic) for a cooldown
+# window instead of paying the full timeout again on every subsequent
+# turn. Does NOT cancel an already-hung background request -- see the
+# module docstring (#5) for what that implies if a request is fully stuck.
+_CIRCUIT_BREAKER_THRESHOLD = 3
+_CIRCUIT_BREAKER_COOLDOWN_S = 30.0
+_circuit_breaker_lock = threading.Lock()
+_consecutive_timeouts = 0
+_circuit_open_until = 0.0
+
+
+class _FakeMatch:
+    def __init__(self, groups: tuple[Any, ...]) -> None:
+        self._groups = groups
+        self.lastindex = len(groups)
+
+    def __bool__(self) -> bool:
+        return True
+
+    def group(self, index: int = 0) -> Optional[Any]:
+        if index == 0:
+            return self._groups[0] if self._groups else None
+        if index < 0:
+            raise IndexError("group index must be non-negative")
+        try:
+            return self._groups[index - 1]
+        except IndexError:
+            return None
+
+
+def _kw_present(text: str, keywords) -> bool:
+    """
+    Word-boundary keyword check -- replaces bare `kw in text` substring
+    matching everywhere in this module. Fixes false triggers like
+    "training" matching "rain", "newsletter" matching "news", "restart"
+    matching "start", "visitor" matching "visit".
+    """
+    return any(re.search(rf"\b{re.escape(k.strip())}\b", text, re.IGNORECASE) for k in keywords)
+
+
+def _extract_after_phrases(text: str, phrases: tuple[str, ...]) -> str:
+    for phrase in phrases:
+        # BUGFIX: terminator used to include a bare "." which cut off any
+        # extracted value containing a period -- decimals ("3.5"),
+        # domains/URLs ("example.com"), versions ("3.11"), etc. A "."
+        # now only ends the capture when it's NOT immediately followed
+        # by a digit or another word character, so sentence-ending
+        # periods still work but "3.5" / "example.com" survive intact.
+        pattern = rf"\b{re.escape(phrase.strip())}\b\s+(.+?)(?:$|[?!,]|\.(?!\d)(?!\w))"
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Math-signal detection (Bug 1 fix, v3) -- shared by both the gate
+# (has_probable_tool_intent) and the defensive validation layer
+# (_validate_tool_result) below, so the two can never drift out of sync
+# about what "actually looks like math" means.
+# ══════════════════════════════════════════════════════════════════════
+
+_MATH_SIGNAL_RE = re.compile(
+    r"\d"  # any digit
+    r"|\d\s*[%+\-*/^]|[%+\-*/^]\s*\d"  # operator only counts if digit-adjacent
+    r"|\b(plus|minus|times|divided|multiplied|"
+    r"squared|cubed|square\s*root|cube\s*root|"
+    r"percent|percentage|sum\s+of|product\s+of|"
+    r"average\s+of)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_math_signal(text: str) -> bool:
+    """
+    True if `text` contains a digit, an arithmetic operator symbol
+    adjacent to a digit, or a spelled-out arithmetic keyword. Used both
+    to gate the "what is"/"what's"/"how much" phrases in
+    has_probable_tool_intent() (does this message even look like it
+    MIGHT be a math question?) and to validate a resolved calculator
+    call's `expr` argument in _validate_tool_result (is this actually
+    something the calculator tool can evaluate?).
+    """
+    return bool(_MATH_SIGNAL_RE.search(text or ""))
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Path A (default): real LLM tool-calling via Gemini's native function-
+# calling API
+# ══════════════════════════════════════════════════════════════════════
+
+_GEMINI_TOOLS_CACHE = None
+
+
+def _get_gemini_tools():
+    """
+    Converts TOOLS_SCHEMA (OpenAI-style dicts, defined above -- left
+    unchanged) into Gemini's Tool/FunctionDeclaration format, once, and
+    caches the result at module level so it isn't rebuilt on every call.
+    """
+    global _GEMINI_TOOLS_CACHE
+    if _GEMINI_TOOLS_CACHE is not None:
+        return _GEMINI_TOOLS_CACHE
+    from google.genai import types as _gtypes
+
+    declarations = []
+    for entry in TOOLS_SCHEMA:
+        fn = entry["function"]
+        declarations.append(
+            _gtypes.FunctionDeclaration(
+                name=fn["name"],
+                description=fn.get("description", ""),
+                parameters_json_schema=fn.get("parameters"),
+            )
+        )
+    _GEMINI_TOOLS_CACHE = [_gtypes.Tool(function_declarations=declarations)]
+    return _GEMINI_TOOLS_CACHE
+
+
+def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Dict[str, Any]]:
+    """
+    Returns a resolved {"name", "arguments"} dict on success, or None if
+    the LLM call itself couldn't be made (client unavailable) -- callers
+    treat None the same as any other failure and fall back to the
+    heuristic. Any error from the actual generate_content() call
+    propagates to the caller's own try/except, which logs it and falls
+    back (see resolve_tool_call() below) -- matching how every other
+    optional LLM-assist path in this codebase behaves.
+    """
+    from sara.core.llm.clients import (
+        _build_gemini_generate_config,
+        _get_gemini_client,
+        _get_ollama_client,
+        _select_llm_client,
+    )
+
+    backend, client = _select_llm_client(cfg, _get_ollama_client, _get_gemini_client)
+    if not client:
+        return None
+
+    if backend == "ollama":
+        # TOOLS_SCHEMA is already in Ollama's native
+        # {"type": "function", "function": {...}} shape -- used as-is.
+        resp = client.chat(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": _TOOL_ROUTER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_input},
+            ],
+            tools=TOOLS_SCHEMA,
+            think=False,
+            options={"num_predict": 150, "temperature": 0},
+            keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+        )
+
+        calls = resp.message.tool_calls
+        if not calls:
+            # Same legitimate "no tool applies" answer as the Gemini branch.
+            return {"name": "unknown", "arguments": {}}
+
+        call = calls[0]
+        return {
+            "name": call.function.name,
+            "arguments": dict(call.function.arguments or {}),
+        }
+
+    from google.genai import types as _gtypes
+
+    # Real I/O-level timeout for the Gemini HTTP request itself (inner
+    # layer), independent of the outer future.result(timeout=...)
+    # deadline in resolve_tool_call(), which cannot stop a thread that
+    # is already running.
+    try:
+        _http_timeout_s = float(
+            getattr(cfg, "TOOL_ROUTER_LLM_TIMEOUT_S", 12.0)
+        )
+        _http_timeout_s = max(10.0, min(30.0, _http_timeout_s))
+    except (TypeError, ValueError):
+        _http_timeout_s = 12.0
+    _gen_config = _build_gemini_generate_config(
+        _gtypes,
+        _http_timeout_s,
+        system_instruction=_TOOL_ROUTER_SYSTEM_PROMPT,
+        tools=_get_gemini_tools(),
+        max_output_tokens=150,
+    )
+
+    resp = client.models.generate_content(
+        model=model_name,
+        contents=user_input,
+        config=_gen_config,
+    )
+
+    calls = resp.function_calls
+    if not calls:
+        # Model looked at the tools and correctly decided none applies --
+        # this is a legitimate, confident "no tool" answer, not a failure.
+        return {"name": "unknown", "arguments": {}}
+
+    call = calls[0]
+    return {"name": call.name, "arguments": dict(call.args or {})}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Cheap pre-gate: is a tool call even plausible for this message?
+# ══════════════════════════════════════════════════════════════════════
+# Flattened from every keyword/phrase trigger used in
+# _resolve_tool_call_heuristic() below -- kept as one frozenset (built
+# once at import time) purely so has_probable_tool_intent() is a single
+# fast "any of these keywords present?" scan, with zero I/O and no model
+# call. This is NOT a replacement for the heuristic's per-tool logic
+# (arguments still need the real function below, or the LLM path) -- it
+# only answers "does this message even mention anything tool-shaped?",
+# used by resolve_tool_call() to skip the LLM round-trip entirely for
+# ordinary conversation that obviously isn't asking for
+# weather/news/an app/a calculation/etc.
+#
+# NOTE (Bug 1 fix, v3): "what is"/"what's"/"how much" used to be bare
+# entries here -- REMOVED. They are now handled separately below via
+# _MATH_QUESTION_PHRASES + _has_math_signal(), so they only count as a
+# tool signal when actually paired with something math-shaped.
+#
+# NOTE (Bug 2 fix): trailing spaces ("open ", "launch ", "start ") are
+# gone -- _kw_present() below strips + word-boundary matches each entry,
+# so plain "open"/"launch"/"start"/etc. work correctly without relying
+# on substring adjacency tricks.
+_TOOL_KEYWORD_GATE: frozenset[str] = frozenset(
+    {
+        "weather", "temperature", "rain", "forecast",
+        "news", "headlines",
+        "search for", "look up", "google", "find out",
+        "open url", "visit", "http://", "https://",
+        "youtube",
+        "spotify",
+        "screenshot", "describe",
+        "clipboard",
+        "open", "launch", "start",
+        "chalu", "chaloo", "shuru", "khol", "kholo", "khole", "kholde", "kholna",
+        "active kar", "activate kar", "on kar", "off kar",
+        "close", "quit", "exit", "terminate",
+        "calculate",
+        "alarm", "wake me",
+        "stopwatch",
+    }
+)
+
+_MATH_QUESTION_PHRASES: tuple[str, ...] = ("what is", "what's", "how much")
+
+
+def has_probable_tool_intent(user_input: str) -> bool:
+    """
+    Fast, pure-string "is it even worth asking the LLM to consider a
+    tool?" pre-check. Deliberately over-inclusive (a false positive here
+    just costs one bounded LLM round-trip that would've happened anyway
+    under the old always-ask behavior; a false negative costs a genuinely
+    tool-worthy message getting answered conversationally instead) --
+    the goal is only to skip the LLM tool-call for the common case of
+    plain conversation that obviously isn't asking for any of these
+    tools, not to replace the heuristic's real matching logic below.
+    """
+    lowered = (user_input or "").lower()
+    if _kw_present(lowered, _TOOL_KEYWORD_GATE):
+        return True
+    # BUGFIX (Bug 1, fix #1): "what is"/"what's"/"how much" only count
+    # as a tool signal when the message ALSO contains an actual
+    # number/operator/math keyword -- e.g. "what is 5 + 3" or "what's
+    # 20% of 400", not "what's my dog's name".
+    if any(phrase in lowered for phrase in _MATH_QUESTION_PHRASES) and _has_math_signal(lowered):
+        return True
+    return False
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Path B (fallback): the original conservative keyword heuristic (v1).
+# Used when TOOL_CALLING_MODE="heuristic", or whenever the LLM path above
+# is unavailable/times out/errors for any reason.
+# ══════════════════════════════════════════════════════════════════════
+
+
+def _resolve_app_open_heuristic(text: str) -> Optional[Dict[str, Any]]:
+    """Resolve explicit app-launch phrasing locally when the LLM is unavailable."""
+    cleaned = re.sub(r"\s+", " ", (text or "").strip()).strip(" \t\r\n,!? .")
+    if not cleaned or len(cleaned.split()) > 8:
+        return None
+
+    try:
+        from sara.tools.system.apps import (
+            _APP_ALIASES,
+            _FUZZY_AUTO_CUTOFF,
+            _fuzzy_alias,
+            _normalize_app_name,
+        )
+    except Exception:
+        return None
+
+    prefix = r"(?:(?:please|pls|sara|hey\s+sara|zara|jara)\s+)*"
+    suffix = r"(?:\s+(?:please|pls|now|na|zara|jara))?"
+    app_chars = r"(?P<app>[a-z0-9][a-z0-9 ._+\-]{0,63}?)"
+
+    action_first = re.fullmatch(
+        prefix + r"(?:open|launch|start|run)\s+(?:the\s+)?" + app_chars + suffix,
+        cleaned,
+        re.IGNORECASE,
+    )
+
+    kar_verb = r"(?:karo|kro|karna|kar\s+(?:do|de|dijiye|na)|karein|kijiye)"
+    app_first_tail = (
+        r"khol(?:o|na|de|do|le|lo|iye|dijiye)?(?:\s+(?:de|do|dijiye))?|"
+        + r"chalu\s+" + kar_verb + r"|"
+        + r"chaloo\s+" + kar_verb + r"|"
+        + r"shuru\s+" + kar_verb + r"|"
+        + r"start\s+" + kar_verb + r"|"
+        + r"launch\s+" + kar_verb + r"|"
+        + r"open\s+" + kar_verb
+    )
+
+    app_first = re.fullmatch(
+        prefix + app_chars + r"\s+(?:" + app_first_tail + r")" + suffix,
+        cleaned,
+        re.IGNORECASE,
+    )
+
+    match = action_first or app_first
+    if match is None:
+        return None
+
+    candidate = _normalize_app_name(match.group("app"))
+    alias = (
+        candidate
+        if candidate in _APP_ALIASES
+        else _fuzzy_alias(candidate, _FUZZY_AUTO_CUTOFF)
+    )
+
+    if alias is None or alias not in _APP_ALIASES:
+        return None
+
+    executable = _APP_ALIASES[alias]
+    canonical = next(
+        (name for name, target in _APP_ALIASES.items() if target == executable),
+        alias,
+    )
+    return {"name": "open_app", "arguments": {"target": canonical}}
+
+
+def _resolve_tool_call_heuristic(user_input: str) -> Dict[str, Any]:
+    text = (user_input or "").strip()
+    lowered = text.lower()
+
+    app_open = _resolve_app_open_heuristic(text)
+    if app_open is not None:
+        return app_open
+
+    if _kw_present(lowered, ("weather", "temperature", "rain", "forecast")):
+        location = _extract_after_phrases(text, ("weather in", "weather at", "in", "at"))
+        return {"name": "weather", "arguments": {"location": location}}
+
+    if _kw_present(lowered, ("news", "headlines", "latest news")):
+        topic = _extract_after_phrases(text, ("news about", "news on", "news for", "about"))
+        return {"name": "news", "arguments": {"topic": topic}}
+
+    if _kw_present(lowered, ("search for", "look up", "google", "find out")):
+        query = _extract_after_phrases(text, ("search for", "look up", "find out", "google"))
+        return {"name": "web_search", "arguments": {"query": query or text}}
+
+    if _kw_present(lowered, ("open url", "visit")) or re.search(r"https?://", lowered):
+        url = _extract_after_phrases(text, ("open url", "visit"))
+        return {"name": "open_url", "arguments": {"url": url or text}}
+
+    if _kw_present(lowered, ("youtube",)) and _kw_present(lowered, ("play", "show", "open")):
+        query = _extract_after_phrases(text, ("play", "show", "open"))
+        return {"name": "play_youtube", "arguments": {"query": query or text}}
+
+    if _kw_present(lowered, ("spotify",)) and _kw_present(lowered, ("play", "listen to", "open")):
+        query = _extract_after_phrases(text, ("play", "listen to", "open"))
+        return {"name": "play_spotify", "arguments": {"query": query or text}}
+
+    if _kw_present(lowered, ("screenshot",)) or (_kw_present(lowered, ("screen",)) and _kw_present(lowered, ("describe",))):
+        return {"name": "screenshot_describe", "arguments": {}}
+
+    if _kw_present(lowered, ("clipboard",)) and _kw_present(lowered, ("read", "show", "what's on", "what is on")):
+        return {"name": "clipboard_read", "arguments": {}}
+
+    if _kw_present(lowered, ("clipboard",)) and _kw_present(lowered, ("copy", "write", "paste", "set")):
+        snippet = _extract_after_phrases(text, ("copy", "write", "paste", "set"))
+        return {"name": "clipboard_write", "arguments": {"text": snippet}}
+
+    if _kw_present(lowered, ("alarm", "wake me")):
+        time_text = _extract_after_phrases(
+            text, ("alarm for", "alarm at", "wake me up at", "wake me at", "wake me up for", "alarm")
+        )
+        return {"name": "set_alarm", "arguments": {"time": time_text or text}}
+
+    if _kw_present(lowered, ("stopwatch",)) and _kw_present(lowered, ("start", "begin")):
+        return {"name": "start_stopwatch", "arguments": {}}
+
+    if _kw_present(lowered, ("stopwatch",)) and _kw_present(lowered, ("stop", "end")):
+        return {"name": "stop_stopwatch", "arguments": {}}
+
+    explicit_open = re.fullmatch(
+        r"(?:(?:please|pls|sara|hey\s+sara|zara|jara|can\s+you|could\s+you|would\s+you)\s+)*"
+        r"(?:open|launch|start|run)\s+(?:the\s+)?"
+        r"(?P<app>[a-z0-9][a-z0-9 ._+\-]{0,63}?)"
+        r"(?:\s+(?:please|pls|now|na|zara|jara))?[.!?]*",
+        text,
+        re.IGNORECASE,
+    )
+    if explicit_open:
+        app = explicit_open.group("app").strip()
+        if app and not re.search(
+            r"\b(?:and then|then|after that|and)\b",
+            app,
+            re.IGNORECASE,
+        ):
+            return {"name": "open_app", "arguments": {"target": app}}
+
+    if _kw_present(lowered, ("close", "quit", "exit", "terminate")):
+        app = _extract_after_phrases(text, ("close", "quit", "exit", "terminate"))
+        return {"name": "close_app", "arguments": {"target": app}}
+
+    if _kw_present(lowered, ("calculate", "what is", "what's", "how much")):
+        expression = _extract_after_phrases(text, ("calculate", "what is", "what's", "how much is"))
+        candidate_expr = expression or text
+        # BUGFIX (Bug 1, fix #1 -- applied here too, not just the gate):
+        # this heuristic is not only the TOOL_CALLING_MODE="heuristic"
+        # path, it's ALSO the fallback resolve_tool_call() uses whenever
+        # the LLM tool-call above times out or errors. Without this same
+        # math-signal guard, "what's my dog's name" could still reach
+        # calculator via the fallback path even after the gate above was
+        # fixed. "calculate" is treated as an explicit-enough trigger to
+        # still attempt the call even without a visible digit (e.g.
+        # "calculate my BMI" needs a follow-up); _validate_tool_result()
+        # in resolve_tool_call() is the final safety net either way.
+        if _has_math_signal(candidate_expr) or _kw_present(lowered, ("calculate",)):
+            return {"name": "calculator", "arguments": {"expr": candidate_expr}}
+        return {"name": "unknown", "arguments": {}}
+
+    return {"name": "unknown", "arguments": {}}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Defensive validation layer (Bug 1, fix #2 + Bug 3 fix)
+# ══════════════════════════════════════════════════════════════════════
+
+
+_URL_LIKE_RE = re.compile(r"^(https?://)?[\w-]+(\.[\w-]+)+(/\S*)?$")
+
+
+def _validate_tool_result(result: Dict[str, Any], cfg=None) -> Dict[str, Any]:
+    """Validate a tool candidate against the registered schema before dispatch."""
+    def _reject(reason: str) -> Dict[str, Any]:
+        if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
+            print(f"[ToolRouter] Rejected invalid tool result: {reason}")
+        return {"name": "unknown", "arguments": {}}
+
+    if not isinstance(result, dict):
+        return _reject("result must be a dictionary")
+
+    name = result.get("name")
+    if name == "unknown":
+        return {"name": "unknown", "arguments": {}}
+    if not isinstance(name, str) or name not in TOOL_NAME_TO_INTENT:
+        return _reject(f"unregistered tool name: {name!r}")
+
+    args = result.get("arguments")
+    if not isinstance(args, dict):
+        return _reject("arguments must be a dictionary")
+
+    function_schema = next(
+        (
+            entry.get("function")
+            for entry in TOOLS_SCHEMA
+            if entry.get("function", {}).get("name") == name
+        ),
+        None,
+    )
+    if not isinstance(function_schema, dict):
+        return _reject(f"missing schema for tool: {name}")
+
+    parameters = function_schema.get("parameters") or {}
+    properties = parameters.get("properties") or {}
+    required = parameters.get("required") or []
+    if not isinstance(properties, dict) or not isinstance(required, list):
+        return _reject(f"invalid schema for tool: {name}")
+
+    unexpected = [
+        key for key in args
+        if not isinstance(key, str) or key not in properties
+    ]
+    if unexpected:
+        return _reject(f"unexpected arguments for {name}: {unexpected!r}")
+
+    missing = [key for key in required if key not in args]
+    if missing:
+        return _reject(f"missing required arguments for {name}: {missing}")
+
+    allow_empty = {
+        "weather": {"location"},
+        "news": {"topic"},
+        "list_todos": {"scope"},
+    }
+    for key, value in args.items():
+        property_schema = properties.get(key)
+        expected_type = (
+            property_schema.get("type")
+            if isinstance(property_schema, dict)
+            else None
+        )
+        if expected_type == "string" and not isinstance(value, str):
+            return _reject(f"argument {key!r} for {name} must be a string")
+        if (
+            expected_type == "string"
+            and not value.strip()
+            and key not in allow_empty.get(name, set())
+        ):
+            return _reject(f"argument {key!r} for {name} must not be empty")
+
+    if name == "calculator" and not _has_math_signal(args.get("expr", "")):
+        return _reject("calculator expression has no numeric/operator signal")
+
+    if name == "open_url" and not _URL_LIKE_RE.match(args.get("url", "").strip()):
+        return _reject("URL is not URL-shaped")
+
+    return {"name": name, "arguments": dict(args)}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Public entry point -- same signature callers already use
+# (sara/orchestrator/intent_handlers.py: resolve_tool_call(user_input, brain.model_name))
+# ══════════════════════════════════════════════════════════════════════
+
+
+def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, Any]:
+    """
+    Return a resolved tool call candidate for an unmatched ("chat"
+    intent) command. Every return path funnels through
+    _validate_tool_result() so the defensive checks (Bug 1 fix #2, Bug 3
+    fix) apply no matter which internal path resolved the call.
+    """
+    from sara.core.intent import is_negated_action_request
+
+    if is_negated_action_request(user_input or ""):
+        return {"name": "unknown", "arguments": {}}
+
+    if cfg is None:
+        # Lazy import, mirroring the pattern used throughout this codebase
+        # (sara/skills/__init__.py, sara/orchestrator/proactive.py) to
+        # avoid any import-order surprises for a module imported this early.
+        from config import Config as cfg  # noqa: N813
+
+    mode = getattr(cfg, "TOOL_CALLING_MODE", "llm")
+
+    # PERF FIX: this used to unconditionally pay a real LLM round-trip
+    # (bounded by TOOL_CALLING_TIMEOUT_S, up to several seconds) for
+    # EVERY unmatched "chat" message before generate_response_stream()
+    # was even allowed to start -- including plain conversation that
+    # obviously wasn't asking for weather/news/an app/etc. That extra,
+    # fully sequential LLM call was the dominant source of "the response
+    # takes forever to start" latency. has_probable_tool_intent() is a
+    # near-zero-cost pure-string check; skipping straight to the
+    # heuristic (itself just string matching, effectively free) for
+    # anything that doesn't even mention a tool-shaped keyword removes
+    # that entire round-trip from the common case, with no behavior
+    # change for messages that actually do look tool-related.
+    if mode == "llm" and not has_probable_tool_intent(user_input):
+        return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
+
+    if mode == "llm":
+        global _consecutive_timeouts, _circuit_open_until
+
+        now = time.monotonic()
+        if now < _circuit_open_until:
+            if getattr(cfg, "DEBUG_MODE", False):
+                print("[ToolRouter] Circuit breaker open, skipping LLM call for this turn.")
+            return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
+
+        timeout_s = float(getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 5.0))
+        try:
+            future = _TOOL_CALL_EXECUTOR.submit(_resolve_tool_call_llm, user_input, model_name, cfg)
+            llm_result = future.result(timeout=timeout_s)
+            with _circuit_breaker_lock:
+                _consecutive_timeouts = 0
+            if llm_result is not None:
+                # A calculator call the LLM hallucinated with no numeric
+                # content gets downgraded to "unknown" here -- that's a
+                # normal "no tool applies" outcome, NOT a failure, so it
+                # returns immediately rather than falling through to the
+                # heuristic below (which could otherwise re-match the
+                # same bad phrasing via its own "what is"/"what's" branch).
+                return _validate_tool_result(llm_result, cfg)
+        except concurrent.futures.TimeoutError:
+            with _circuit_breaker_lock:
+                _consecutive_timeouts += 1
+                if _consecutive_timeouts >= _CIRCUIT_BREAKER_THRESHOLD:
+                    _circuit_open_until = time.monotonic() + _CIRCUIT_BREAKER_COOLDOWN_S
+                    _consecutive_timeouts = 0
+                    if getattr(cfg, "DEBUG_MODE", False):
+                        print(
+                            f"[ToolRouter] {_CIRCUIT_BREAKER_THRESHOLD} consecutive timeouts, "
+                            f"opening circuit breaker for {_CIRCUIT_BREAKER_COOLDOWN_S:.0f}s."
+                        )
+            # BUGFIX: bare `TimeoutError` stringifies to an EMPTY string,
+            # so the debug print below used to read
+            # "...using heuristic fallback: " with nothing after the
+            # colon -- indistinguishable from a real, silent failure at a
+            # glance. Naming it explicitly (with the actual budget that
+            # was exceeded) makes this immediately diagnosable: it means
+            # the Gemini tool-calling generate_content() call for this model is
+            # routinely taking longer than TOOL_CALLING_TIMEOUT_S, not
+            # that anything is broken. Two ways to address that directly,
+            # if the fallback firing often enough to be annoying: raise
+            # Config.TOOL_CALLING_TIMEOUT_S in .env, or set
+            # Config.TOOL_CALLING_MODE=heuristic to skip this LLM call
+            # entirely. NOTE: this does NOT cancel the background
+            # request already running against Gemini -- that request
+            # keeps occupying one of _TOOL_CALL_EXECUTOR's two worker
+            # threads until the Gemini client's own request timeout
+            # elapses or the call returns. Check network/API status if
+            # this happens.
+            if getattr(cfg, "DEBUG_MODE", False):
+                print(
+                    f"[ToolRouter] LLM tool-call exceeded its "
+                    f"{timeout_s:.1f}s budget, using heuristic fallback."
+                )
+        except Exception as e:  # noqa: BLE001 -- any other failure also degrades to the heuristic below
+            if getattr(cfg, "DEBUG_MODE", False):
+                print(f"[ToolRouter] LLM tool-call failed ({type(e).__name__}: {e}), using heuristic fallback.")
+
+    return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
+
+
+def build_fake_match(tool_name: str, arguments: Dict[str, Any]) -> Optional[_FakeMatch]:
+    """Construct a fake regex match object for an internal intent handler."""
+    if tool_name == "weather":
+        return _FakeMatch((arguments.get("location", ""),))
+    if tool_name == "news":
+        return _FakeMatch((arguments.get("topic", ""),))
+    if tool_name == "web_search":
+        return _FakeMatch((arguments.get("query", ""),))
+    if tool_name == "open_url":
+        return _FakeMatch((arguments.get("url", ""),))
+    if tool_name == "play_youtube":
+        return _FakeMatch((arguments.get("query", ""),))
+    if tool_name == "play_spotify":
+        return _FakeMatch((arguments.get("query", ""),))
+    if tool_name == "screenshot_describe":
+        return _FakeMatch(())
+    if tool_name == "clipboard_read":
+        return _FakeMatch(())
+    if tool_name == "clipboard_write":
+        return _FakeMatch((arguments.get("text", ""),))
+    if tool_name in ("open_app", "close_app", "open_file"):
+        return _FakeMatch((arguments.get("target", ""),))
+    if tool_name == "calculator":
+        return _FakeMatch((arguments.get("expr", ""),))
+    if tool_name == "set_alarm":
+        return _FakeMatch((arguments.get("time", ""),))
+    if tool_name in ("start_stopwatch", "stop_stopwatch"):
+        return _FakeMatch(())
+    if tool_name == "add_todo":
+        return _FakeMatch((arguments.get("text", ""),))
+    if tool_name == "list_todos":
+        # arguments.get("scope","") lines up with _h_list_todos()'s
+        # match.group(1) check in intent_handlers.py: "" (or missing)
+        # -> pending-only, "all"/"everything" -> include completed too.
+        return _FakeMatch((arguments.get("scope", ""),))
+    if tool_name in ("complete_todo", "delete_todo"):
+        return _FakeMatch((arguments.get("identifier", ""),))
+    return None

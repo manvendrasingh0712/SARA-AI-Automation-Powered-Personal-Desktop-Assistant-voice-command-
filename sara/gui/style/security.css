@@ -1,0 +1,31 @@
+/* ==========================================================================
+   security.css -- Settings > Security card.
+   Markup: index.html #grp-security.  JS: js/security.js.  Token colours only.
+   ========================================================================== */
+.sec-block{display:flex;flex-direction:column;gap:11px;min-width:0;}
+.sec-seg{display:flex;flex-wrap:wrap;gap:6px;min-width:0;}
+.sec-mode{flex:1 1 90px;min-width:0;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;color:var(--text-soft);font:inherit;font-size:12.5px;cursor:pointer;}
+.sec-mode[aria-pressed="true"]{border-color:var(--core);color:var(--text);}
+.sec-mode.sec-off[aria-pressed="true"]{border-color:var(--danger);}
+.sec-mode.sec-armed{border-color:var(--warning);color:var(--warning);}
+.sec-mode:focus-visible{outline:2px solid var(--core);outline-offset:2px;}
+.sec-warn{color:var(--warning);overflow-wrap:anywhere;}
+.sec-nums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.sec-num{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;min-width:0;}
+.sec-num b{font-size:22px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.sec-num span{font-size:11px;color:var(--muted);overflow-wrap:anywhere;}
+.sec-recent{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.sec-event{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;}
+.sec-empty{color:var(--muted);}
+.sec-chip{flex:none;padding:1px 8px;border:1px solid currentColor;border-radius:999px;font-size:11px;line-height:1.5;}
+.sec-danger{color:var(--danger);}
+.sec-warning{color:var(--warning);}
+.sec-success{color:var(--success);}
+.sec-neutral{color:var(--muted);}
+.sec-tool{flex:1 1 90px;min-width:0;overflow-wrap:anywhere;}
+.sec-meta{color:var(--muted);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;min-width:0;}
+@media (max-width:420px){
+  .sec-nums{gap:6px;}
+  .sec-num{padding:8px;}
+  .sec-num b{font-size:18px;}
+}

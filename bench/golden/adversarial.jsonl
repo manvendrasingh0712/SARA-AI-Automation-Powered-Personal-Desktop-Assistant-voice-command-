@@ -1,0 +1,41 @@
+{"_defaults":{"lang":"en","kind":"adversarial","style":"noisy"}}
+{"t":"bottom line of the report is we lost money","i":"chat","s":"formal","n":"substring: 'bottom' must not fire scroll_bottom"}
+{"t":"stop worrying about it","i":"chat","s":"casual","n":"substring: 'stop' must not fire stop_media or cancel_shutdown"}
+{"t":"top of the morning to you","i":"chat","s":"casual","n":"substring: 'top' must not fire scroll_top"}
+{"t":"what is love","i":"chat","s":"casual","n":"'what is' question is not maths"}
+{"t":"what's your name","i":"chat","s":"short","n":"'what's' question is not maths"}
+{"t":"how do I open chrome?","i":"chat","s":"casual","n":"question about a command, not a command"}
+{"t":"don't open chrome","i":"chat","s":"short","n":"negation of open_app"}
+{"t":"never restart my pc without asking me first","i":"chat","s":"formal","n":"negation: restart_system must not fire"}
+{"t":"what does the word volume mean","i":"chat","s":"formal","n":"keyword 'volume' inside a definition question"}
+{"t":"i couldn't sleep at all last night","i":"chat","s":"casual","n":"keyword 'sleep' in a personal statement, not sleep_system"}
+{"t":"i want to close the deal with the client tomorrow","i":"chat","s":"formal","n":"keyword 'close' in business talk, not close_app"}
+{"t":"please don't mute me in the meeting","i":"chat","s":"formal","n":"negation of mute plus polite wrapper"}
+{"t":"what is the time complexity of quicksort","i":"chat","s":"formal","n":"'what is ... time' is not time_query"}
+{"t":"what is the date of the battle of plassey","i":"chat","s":"formal","n":"general-knowledge date is not date_query"}
+{"t":"light travels faster than sound","i":"chat","s":"formal","n":"keyword 'light' is not light_mode"}
+{"t":"the dark knight is a great movie","i":"chat","s":"casual","n":"keyword 'dark' is not dark_mode"}
+{"t":"i need to restart my life","i":"chat","s":"casual","n":"figurative 'restart' is not restart_system"}
+{"t":"what's the point of waking up so early","i":"chat","s":"casual","n":"'wake up' phrase is not set_alarm and 'what's' is not maths"}
+{"t":"can you explain how a timer works","i":"chat","s":"formal","n":"explain request is not set_timer"}
+{"t":"my battery was dead all morning and i was so annoyed","i":"chat","s":"casual","n":"keyword 'battery' in a complaint, not system_info"}
+{"t":"stop me if i talk too much","i":"chat","s":"casual","n":"keyword 'stop' in a request for feedback, not stop_media"}
+{"t":"what is the meaning of life","i":"chat","s":"casual","n":"philosophical 'what is' question is not maths"}
+{"t":"how much do you love me","i":"chat","s":"casual","n":"'how much' without numbers is not calculator"}
+{"t":"the new update to my favorite show was great","i":"chat","s":"casual","n":"keyword 'update' is not open_update_settings"}
+{"t":"uh open um notepad","i":"open_app","n":"filler words around open_app"}
+{"t":"sara sara open youtube","i":"open_app","n":"wake-word echo before command"}
+{"t":"set volume to fifty","i":"set_volume","s":"short","n":"number word instead of digits"}
+{"t":"could you please kindly set a timer for ten minutes","i":"set_timer","s":"formal","n":"polite wrapper around set_timer"}
+{"t":"um what's the weather like in mumbai","i":"weather","n":"filler word before weather query"}
+{"t":"whether report for jaipur","i":"weather","n":"speech-to-text homophone whether/weather"}
+{"t":"take screenshot","i":"screenshot_describe","s":"short","n":"dropped article in speech-to-text"}
+{"t":"lock computer","i":"lock_pc","s":"short","n":"dropped article in speech-to-text"}
+{"t":"paws the music","i":"play_pause_media","n":"speech-to-text homophone paws/pause"}
+{"t":"turn off wi fi","i":"wifi_off","n":"speech-to-text splits wifi into two words"}
+{"t":"remind me to call mom at six pm","i":"reminder_add","s":"casual","n":"reminder with spoken time"}
+{"t":"so i was talking to my brother yesterday about the trip and honestly it was a lot of fun but anyway can you please set a timer for fifteen minutes because the tea is on the stove","i":"set_timer","n":"long rambling sentence with one embedded command"}
+{"t":"chrome खोलो","i":"open_app","l":"hi","n":"mixed script: English app name with Hindi verb"}
+{"t":"volume 30 कर दो","i":"set_volume","l":"hi","n":"mixed script: English keyword with Devanagari verb and digits"}
+{"t":"कल सुबह 7 बजे alarm लगा दो","i":"set_alarm","l":"hi","n":"mixed script: Hindi time phrase with English keyword"}
+{"t":"volume up","i":"set_volume","s":"short","n":"known miss: bare 'volume up' means set_volume, not chat"}

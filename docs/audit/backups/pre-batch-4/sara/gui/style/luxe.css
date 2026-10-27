@@ -1,0 +1,167 @@
+/* ==========================================================================
+   luxe.css  --  "Luxe pack": 50 new premium animations. Pure CSS, theme-independent. Load AFTER premium.css (last stylesheet).
+   Rules: transform / opacity / translate / scale / rotate only for anything that loops; every looping effect lives in
+   prefers-reduced-motion:no-preference; hover effects are plain transitions; fill-mode "backwards" so nothing sticks.
+
+   HOME      1 aurora greeting     2 caption glow        3 quick-action rise    4 quick-action icon spring
+             5 orbit satellite     6 progress gloss      7 clock border beam    8 temperature pop
+             9 "soon" pulse       10 plan-steps cascade 11 offline stripes     12 sleep-badge breathe
+   CHAT     13 user bubble slide  14 Sara bubble slide  15 send nudge          16 mic halo
+            17 placeholder fade   18 bubble hover glow
+   MUSIC    19 album-art float    20 play-button ring   21 spectrum glow       22 seek-thumb grow
+            23 transport spring   24 volume wobble      25 chevron nudge       26 card hover float
+            27 album-art zoom
+   SETTINGS 28 search focus grow  29 slider-thumb glow  30 accent swatch float 31 selected-theme halo
+            32 card-title slide   33 mode-button lift   34 bar-segment grow    35 stat baseline
+            36 chip fill sweep    37 toggle hover       38 label hairline      39 "ok" status glow
+   GLOBAL   40 button halo        41 primary gradient drift 42 button-icon spring 43 press depth
+            44 nav lift           45 modal open glow    46 toast hover         47 link glow
+            48 dock-button pop    49 selected-chip breathe 50 status-orb bloom
+   ========================================================================== */
+
+:root{--lx-ease:var(--ease-premium,cubic-bezier(.16,1,.3,1));--lx-spring:var(--ease-spring,cubic-bezier(.22,1.45,.36,1));}
+
+/* ---------------------------------------------------------------- HOME ---- */
+/* 1 aurora greeting: a light band glides through the greeting text */
+.home-greet{background:linear-gradient(100deg,var(--muted) 40%,var(--text) 50%,var(--muted) 60%) 0 0/260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.cc-greet{background:linear-gradient(100deg,var(--text-soft) 40%,var(--text) 50%,var(--text-soft) 60%) 0 0/260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+/* 2 caption glow: now state-driven (smooth fade in/out while Sara is active) instead of a constant text-shadow loop */
+.home-caption{transition:text-shadow .8s var(--lx-ease);}
+body.sara-active .home-caption{text-shadow:0 0 14px rgb(var(--core-rgb) / .35);}
+/* 4 quick-action icon springs on hover */
+.qa-btn svg{transition:rotate .4s var(--lx-spring),scale .4s var(--lx-spring);}
+.qa-btn:hover svg{rotate:-12deg;scale:1.18;}
+/* 6 progress fills carry a moving gloss */
+.cc-bar-fill{background-image:linear-gradient(100deg,transparent 30%,rgb(255 255 255 / .55) 50%,transparent 70%);background-size:250% 100%;background-repeat:no-repeat;background-position:130% 0;}
+/* 7 clock card: a light travels round its border while hovered */
+@property --lx-a{syntax:'<angle>';inherits:false;initial-value:0deg;}
+.clock-card::before{content:'';position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;opacity:0;transition:opacity .4s ease;
+  background:conic-gradient(from var(--lx-a),transparent 0 72%,rgb(var(--core-rgb) / .9) 86%,rgb(var(--speak-rgb) / .9) 93%,transparent 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:lx-spin 4s linear infinite;animation-play-state:paused;}
+.clock-card:hover::before{opacity:1;animation-play-state:running;}
+/* 8 temperature pops when the weather card is hovered */
+.tc-temp{display:inline-block;transform-origin:left center;transition:scale .4s var(--lx-spring);}
+.today-card:hover .tc-temp{scale:1.08;}
+/* 5 orbit satellite around the orb */
+#stage::before{content:'';position:absolute;inset:-5%;border-radius:50%;pointer-events:none;border:1px dashed rgb(var(--core-rgb) / .15);
+  background:radial-gradient(circle at 50% 0,rgb(var(--speak-rgb) / .95) 0 2.5px,rgb(var(--speak-rgb) / .25) 3px,transparent 6px);}
+/* 11 offline strip: slow barber-pole */
+.offline-strip{background-image:repeating-linear-gradient(135deg,rgb(var(--danger-rgb) / .10) 0 10px,transparent 10px 20px);background-size:28px 28px;}
+
+/* --------------------------------------------------------------- CHAT ---- */
+/* 15 send arrow nudges forward; 16 mic gets a halo */
+.dock-btn.send svg{transition:translate .3s var(--lx-spring);}
+.dock-btn.send:hover svg{translate:2px -1px;}
+.dock-btn.mic{transition:box-shadow .35s ease,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s;}
+.dock-btn.mic:hover{box-shadow:0 0 0 6px rgb(var(--core-rgb) / .12),0 0 18px -2px rgb(var(--core-rgb) / .35);}
+/* 17 placeholder dims softly on focus */
+#chatInputField::placeholder{transition:opacity .35s ease;}
+#chatInputField:focus::placeholder{opacity:.35;}
+/* 18 Sara's text and the user bubble get a soft glow when hovered */
+.msg.user{transition:box-shadow .3s ease,border-color .3s ease;}
+.msg.user:hover{border-color:rgb(var(--core-rgb) / .4);box-shadow:0 0 18px -8px rgb(var(--core-rgb) / .5);}
+
+/* -------------------------------------------------------------- MUSIC ---- */
+/* 20 21 19 27 playing-state life */
+.music-card.playing .mc-play{position:relative;}
+.music-card.playing .mc-play::after{content:'';position:absolute;inset:0;border-radius:50%;border:1px solid var(--core);pointer-events:none;opacity:0;}
+.music-card .spectrum{transition:opacity .4s ease,filter .6s ease;}
+.music-card.playing .spectrum{filter:drop-shadow(0 0 6px rgb(var(--core-rgb) / .45));}                        /* 21 */
+.art-block{transition:transform .24s var(--mc-ease,ease),box-shadow .4s var(--mc-ease,ease),filter .4s ease,opacity .4s ease,background-image .6s ease,scale .5s var(--lx-ease);}
+.art-block:hover{scale:1.035;}                                                                                 /* 27 */
+.seek-thumb{transition:left .5s linear,transform .2s var(--mc-ease,ease),box-shadow .25s ease,background-color .3s,opacity .25s ease,scale .25s var(--lx-spring);}
+.seek-wrap:hover .seek-thumb{scale:1.3;box-shadow:0 0 14px rgb(var(--core-rgb) / .55);}                       /* 22 */
+.mini-player .mp-btn,.mp-btn{transition:color .6s,scale .22s var(--lx-spring);}
+.mp-btn:hover{scale:1.15;}.mp-btn:active{scale:.9;}                                                           /* 23 */
+.vol-btn svg{transition:rotate .35s var(--lx-spring);}
+.vol-btn:hover svg{rotate:-9deg;}                                                                              /* 24 */
+.mc-chev{transition:transform .25s var(--mc-ease,ease),color .2s,translate .3s var(--lx-ease);}
+.mc-head:hover .mc-chev{translate:0 2px;}                                                                      /* 25 */
+.music-card{transition:border-color .25s var(--mc-ease,ease),box-shadow .4s var(--mc-ease,ease),translate .45s var(--lx-ease);}
+.music-card:hover{box-shadow:var(--shadow-hover);}                                                          /* 26 */
+
+/* ----------------------------------------------------------- SETTINGS ---- */
+#page-settings .set-search{transition:border-color .2s,box-shadow .2s,scale .35s var(--lx-ease);}
+.set-search:focus{scale:1.015;}                                                                                /* 28 */
+input[type=range]::-webkit-slider-thumb{transition:scale .2s var(--ease-spring,cubic-bezier(.22,1.45,.36,1)),box-shadow .25s ease;}
+input[type=range]:hover::-webkit-slider-thumb{box-shadow:0 0 0 5px rgb(var(--core-rgb) / .16),0 0 14px rgb(var(--core-rgb) / .5);} /* 29 */
+.theme-card::after{content:'';position:absolute;inset:-3px;border-radius:inherit;pointer-events:none;opacity:0;border:1px solid rgb(var(--core-rgb) / .55);box-shadow:0 0 16px rgb(var(--core-rgb) / .35);}
+.set-card-title{transition:translate .35s var(--lx-ease);}
+.set-card:hover .set-card-title{translate:3px 0;}                                                              /* 32 */
+.cs-mode-btn,.sec-seg button{transition:translate .25s var(--lx-ease),border-color .2s,color .2s,background .2s;}
+.cs-mode-btn:hover,.sec-seg button:hover{translate:0 -1px;}                                                    /* 33 */
+.stat{transition:border-color .2s,transform .15s,box-shadow .35s ease;}
+.stat:hover{box-shadow:inset 0 -2px 0 rgb(var(--core-rgb) / .7),0 0 16px rgb(var(--core-rgb) / .12);}          /* 35 */
+.chip{background-image:linear-gradient(rgb(var(--core-rgb) / .12),rgb(var(--core-rgb) / .12));background-repeat:no-repeat;background-size:0% 100%;
+  transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),box-shadow .2s,background-size .4s var(--lx-ease);}
+.chip:hover{background-size:100% 100%;}                                                                        /* 36 */
+.toggle{transition:background .25s,scale .3s var(--lx-spring);}
+.toggle:hover{scale:1.07;}                                                                                     /* 37 */
+.section-label::after{content:'';display:inline-block;width:48px;height:1px;margin-left:10px;vertical-align:middle;transform-origin:left center;background:linear-gradient(90deg,var(--line),transparent);}  /* 38 */
+.info-row b.ok{transition:text-shadow .6s ease;text-shadow:0 0 10px rgb(var(--core-rgb) / .28);}   /* 39 static soft glow */
+
+/* ------------------------------------------------------------- GLOBAL ---- */
+.pill-btn{transition:border-color .2s,color .2s,background-color .2s,box-shadow .25s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);outline:1px solid transparent;outline-offset:0;}
+.pill-btn:hover:not(:disabled){outline-color:rgb(var(--core-rgb) / .30);outline-offset:3px;}                    /* 40 */
+.pill-btn.primary{background-image:linear-gradient(115deg,rgb(255 255 255 / 0) 30%,rgb(255 255 255 / .22) 50%,rgb(255 255 255 / 0) 70%);background-size:250% 100%;background-position:120% 0;background-repeat:no-repeat;}
+.pill-btn.primary:hover:not(:disabled){background-image:linear-gradient(115deg,rgb(255 255 255 / 0) 30%,rgb(255 255 255 / .22) 50%,rgb(255 255 255 / 0) 70%);background-position:-20% 0;transition:background-position .9s var(--lx-ease),border-color .2s,color .2s,background-color .2s,box-shadow .25s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);}  /* 41 */
+#page-settings .pill-btn{transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),box-shadow .25s,translate .3s var(--lx-ease),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);}
+.pill-btn svg,.chip svg{transition:rotate .35s var(--lx-spring),scale .35s var(--lx-spring);}
+.pill-btn:hover svg,.chip:hover svg{rotate:8deg;scale:1.12;}                                                     /* 42 */
+.pill-btn:active:not(:disabled){box-shadow:inset 0 2px 6px rgba(0,0,0,.35);}                                     /* 43 */
+.nav button{transition:color .2s,transform .12s ease-out,text-shadow .3s ease,translate .3s var(--lx-ease);}
+.nav button:hover{translate:0 -1px;}                                                                          /* 44 */
+.toast{transition:opacity .22s,transform .22s,box-shadow .2s,scale .3s var(--lx-ease);}
+.toast:hover{scale:1.025;}                                                                                       /* 46 */
+.link-btn:hover{text-shadow:0 0 12px rgb(var(--core-rgb) / .5);}                                                 /* 47 */
+.dock-btn{transition:box-shadow .2s,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s;}
+.dock-btn:hover{scale:1.1;}.dock-btn:active{scale:.92;}                                                           /* 48 */
+.mini-orb{transition:background .5s,box-shadow .5s,scale .3s var(--lx-spring);}
+.mini-orb:hover{scale:1.35;}                                                                                      /* 50 */
+
+/* ------------------------------------------------- KEYFRAMED / LOOPING ---- */
+@media (prefers-reduced-motion:no-preference){
+  .home-greet,.cc-greet{animation:lx-aurora-text 11s cubic-bezier(.4,0,.2,1) infinite;}                                            /* 1 */
+  .qa-btn{animation:lx-rise-in .6s var(--lx-ease) backwards;}                                                   /* 3 */
+  .qa-btn:nth-child(2){animation-delay:70ms;}.qa-btn:nth-child(3){animation-delay:140ms;}.qa-btn:nth-child(n+4){animation-delay:210ms;}
+  #stage::before{animation:lx-orbit 42s linear infinite;}                                                       /* 5 */
+  .cc-bar-fill{animation:lx-gloss 5s cubic-bezier(.4,0,.2,1) infinite;}                                                     /* 6 */
+  .nx-rel{animation:lx-soft-pulse 3.2s ease-in-out infinite;}                                                   /* 9 */
+  .plan-steps li{animation:lx-step-in .5s var(--lx-ease) backwards;}                                            /* 10 */
+  .plan-steps li:nth-child(2){animation-delay:60ms;}.plan-steps li:nth-child(3){animation-delay:120ms;}.plan-steps li:nth-child(4){animation-delay:180ms;}.plan-steps li:nth-child(n+5){animation-delay:240ms;}
+  .offline-strip{animation:lx-stripes 1.6s linear infinite;}                                                    /* 11 */
+  .sleep-badge{animation:lx-breathe 3.4s ease-in-out infinite;}                                                 /* 12 */
+  .msg.user{animation-name:lx-msg-user;}                                                                        /* 13 */
+  .msg.sara{animation-name:lx-msg-sara;}                                                                        /* 14 */
+  .music-card.playing .art-block{animation:lx-float 6s ease-in-out infinite;}                                   /* 19 */
+  .music-card.playing .mc-play::after{animation:lx-ring-ping 2.6s ease-out infinite;}                             /* 20 ring: transform/opacity only */
+  .accent-pv{animation:lx-float 5s ease-in-out infinite;}                                                       /* 30 */
+  .theme-card.on::after{animation:lx-halo 3.2s ease-in-out infinite;}                                           /* 31 */
+  .perf-bar>*{transform-origin:left center;animation:lx-seg-grow .8s var(--lx-ease) backwards;}                 /* 34 */
+  .perf-bar>*:nth-child(2){animation-delay:80ms;}.perf-bar>*:nth-child(3){animation-delay:160ms;}.perf-bar>*:nth-child(4){animation-delay:240ms;}.perf-bar>*:nth-child(n+5){animation-delay:320ms;}
+  .section-label::after{animation:lx-hairline .9s var(--lx-ease) .2s backwards;}                                 /* 38 */
+  .overlay.open .modal,.overlay.open .sheet{animation:lx-open-glow 1s ease-out;}                                /* 45 */
+}
+@keyframes lx-spin{to{--lx-a:360deg;}}
+@keyframes lx-aurora-text{0%{background-position:130% 0;}34%,100%{background-position:-130% 0;}}
+@keyframes lx-rise-in{from{opacity:0;transform:translateY(14px) scale(.96);}}
+@keyframes lx-orbit{to{transform:rotate(360deg);}}
+@keyframes lx-gloss{0%{background-position:130% 0;}45%,100%{background-position:-30% 0;}}
+@keyframes lx-soft-pulse{0%,100%{opacity:.7;}50%{opacity:1;}}
+@keyframes lx-step-in{from{opacity:0;transform:translateX(-10px);}}
+@keyframes lx-stripes{to{background-position:28px 0;}}
+@keyframes lx-breathe{0%,100%{opacity:.7;transform:scale(.98);}50%{opacity:1;transform:scale(1.04);}}
+@keyframes lx-msg-user{0%{opacity:0;transform:translateX(22px) scale(.97);}65%{opacity:1;transform:translateX(-2px) scale(1.004);}100%{opacity:1;transform:none;}}
+@keyframes lx-msg-sara{0%{opacity:0;transform:translateX(-16px);}65%{opacity:1;transform:translateX(2px);}100%{opacity:1;transform:none;}}
+@keyframes lx-float{0%,100%{translate:0 0;}50%{translate:0 -3px;}}
+@keyframes lx-ring-ping{0%{opacity:.5;transform:scale(1);}80%,100%{opacity:0;transform:scale(1.7);}}
+@keyframes lx-halo{0%,100%{opacity:.25;}50%{opacity:.9;}}
+@keyframes lx-seg-grow{from{transform:scaleX(0);}}
+@keyframes lx-hairline{from{transform:scaleX(0);opacity:0;}}
+@keyframes lx-open-glow{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb) / .35);}100%{box-shadow:0 0 0 18px rgb(var(--core-rgb) / 0);}}
+
+@media (prefers-reduced-motion:reduce){
+  .home-greet,.cc-greet{background:none;-webkit-text-fill-color:currentColor;}
+  #stage::before,.clock-card::before{display:none;}
+}

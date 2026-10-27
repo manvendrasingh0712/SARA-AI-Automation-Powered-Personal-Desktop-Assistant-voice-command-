@@ -1,0 +1,2155 @@
+"""
+sara.audio.stt.engine
+SpeechToText -- the public class. Wires helpers + buffers together into the
+mic-capture -> VAD -> faster-whisper transcription pipeline.
+"""
+from __future__ import annotations
+
+from .helpers import _rms, _detect_language, _lang_from_stt_language, _is_hallucinated_repetition, _is_known_hallucination
+from .buffers import _PreBuffer, _RingBuffer, _VADFilter, _SilenceGate, _NoiseFloor, _CollectState
+
+import os
+import atexit
+import logging
+import collections
+import difflib
+import re
+import threading
+import time
+from pathlib import Path
+from typing import Callable, List, Optional
+from concurrent.futures import ThreadPoolExecutor
+
+try:
+    from sara.core.telemetry import mark_pending as _t_pending
+except Exception:  # telemetry is optional: fall back to a no-op
+    def _t_pending(*args, **kwargs) -> None:
+        return None
+
+import numpy as np
+
+
+def _optional_import_failed(dep_name: str, exc: Exception) -> None:
+    """Log a soft-disabled optional dependency without crashing this module.
+
+    Deliberately catches Exception (not just ImportError/OSError): a
+    version-incompatible transitive dependency (e.g. an sklearn/scipy build
+    that predates the installed numpy/Python ABI) can raise TypeError,
+    RuntimeError, AttributeError, etc. *during* import, not just the
+    ImportError/OSError this used to be narrowed to. Any of those must
+    still degrade this feature to "disabled", not take down STT entirely.
+    """
+    print(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
+
+
+try:
+    from faster_whisper import WhisperModel
+
+    _HAS_WHISPER = True
+except Exception as e:
+    _HAS_WHISPER = False
+    _optional_import_failed("faster-whisper", e)
+
+try:
+    import webrtcvad
+
+    _HAS_VAD = True
+except Exception as e:
+    webrtcvad = None
+    _HAS_VAD = False
+    _optional_import_failed("webrtcvad", e)
+
+try:
+    import sounddevice as sd
+
+    _HAS_SD = True
+except Exception as e:
+    _HAS_SD = False
+    _optional_import_failed("sounddevice", e)
+
+try:
+    from openwakeword.model import Model as _OWWModel
+
+    _HAS_WAKEWORD = True
+except Exception as e:
+    _OWWModel = None
+    _HAS_WAKEWORD = False
+    _optional_import_failed("openwakeword", e)
+
+try:
+    import pyaudio as _pyaudio
+
+    _HAS_PYAUDIO = True
+except Exception as e:
+    _pyaudio = None
+    _HAS_PYAUDIO = False
+    _optional_import_failed("pyaudio", e)
+
+try:
+    import audioop as _audioop
+
+    _HAS_AUDIOOP = True
+except ImportError:
+    _audioop = None
+    _HAS_AUDIOOP = False
+
+import queue
+
+from config import Config
+
+logger = logging.getLogger(__name__)
+
+# Rate-limited logging for hot-path catches (_apply_aec, is_wake_word_detected,
+# is_user_speaking): these run on every mic chunk / poll, so a persistent
+# failure would otherwise flood the log. At most one line per function name
+# per _RATE_LIMITED_LOG_INTERVAL_S seconds.
+_RATE_LIMITED_LOG_INTERVAL_S = 30.0
+_rate_limited_last_logged: dict = {}
+
+
+def _log_rate_limited(func_name: str, msg: str, *args, exc_info: bool = False) -> None:
+    now = time.monotonic()
+    last = _rate_limited_last_logged.get(func_name)
+    if last is not None and (now - last) < _RATE_LIMITED_LOG_INTERVAL_S:
+        return
+    _rate_limited_last_logged[func_name] = now
+    logger.warning(msg, *args, exc_info=exc_info)
+
+
+class TranscriptionResult(str):
+    """
+    A plain `str` subclass carrying an extra `.confidence` float
+    attribute (0.0-1.0) alongside the transcribed text itself.
+
+    WHY A str SUBCLASS (backward compatibility): every existing caller of
+    SpeechToText.listen()/._transcribe() treats the return value as a
+    plain string (`if not text:`, `.strip()`, `.lower()`, regex
+    `.search()`, comparisons, f-strings, etc.). Because TranscriptionResult
+    IS-A str, every one of those usages keeps working unchanged. New code
+    that wants the confidence value reads `.confidence` off the same
+    object.
+    """
+
+    def __new__(
+        cls, text: str, confidence: float = 0.0, speech_rate: float = 0.0
+    ) -> "TranscriptionResult":
+        obj = super().__new__(cls, text)
+        obj.confidence = float(confidence)
+        obj.speech_rate = float(speech_rate)
+        return obj
+
+# ══════════════════════════════════════════════════════════════════════
+# Audio Math & Utilities
+# ══════════════════════════════════════════════════════════════════════
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════
+# AEC input queue tuning
+# ══════════════════════════════════════════════════════════════════════
+
+_AEC_QUEUE_MAXSIZE = 100
+_AEC_QUEUE_IDLE_POLL_S = 0.5
+
+# ══════════════════════════════════════════════════════════════════════
+# Live mic audio-level push (GUI orb — js/home.js 'ev:audio_level')
+# ══════════════════════════════════════════════════════════════════════
+# Small and lossy by design, same reasoning as _AEC_QUEUE_MAXSIZE above:
+# dropping an occasional chunk just means one skipped orb update, which
+# is invisible at 10-15 pushes/sec. The real-time mic callback thread
+# only ever does a non-blocking put here (see _ingest_processed_chunk) —
+# the RMS math and the throttle-to-~10-15Hz decision both happen on
+# _level_worker's own background thread, never on the callback thread.
+_LEVEL_QUEUE_MAXSIZE = 8
+_AUDIO_LEVEL_PUSH_INTERVAL_S = float(getattr(Config, "AUDIO_LEVEL_PUSH_INTERVAL_S", 0.08))
+_AUDIO_LEVEL_MIC_PEAK_RMS = float(getattr(Config, "AUDIO_LEVEL_MIC_PEAK_RMS", 4000.0))
+
+# TUNING (accuracy — reduces hallucination on near-silent input): below
+# this raw peak amplitude (out of 1.0), a capture is treated as
+# effectively silence/noise-floor rather than quiet speech. The old
+# unconditional auto-gain (up to 8x) amplified a nearly-silent clip —
+# room tone, fan noise, a faint HVAC hum — into a "loud" signal, which is
+# exactly the kind of input Whisper is known to hallucinate boilerplate
+# phrases on (see _is_known_hallucination()'s docstring in helpers.py for
+# the established phrase list this project already guards against).
+# Skipping the gain below this floor means such clips reach the model at
+# their true (very quiet) level, which correlates with a genuinely higher
+# no_speech_prob and gets caught earlier by the existing no_speech_thr
+# filter instead of being artificially amplified into a false detection.
+_MIN_GAIN_APPLY_PEAK = 0.02
+
+# TUNING (accuracy — avoids biasing pure-English transcription toward
+# Hindi words): static, non-echoing style-guidance prompt used ONLY when
+# the turn is explicitly forced to English (manual STT_LANGUAGE == "en",
+# or SARA_LANGUAGE == "english" with no other override in play -- see
+# _get_transcribe_prompt() below).
+_STATIC_TRANSCRIBE_PROMPT_EN = (
+    "Transcribe naturally in English without translating or paraphrasing, "
+    "keep proper names exactly as spoken, do not invent words."
+)
+
+# TUNING (accuracy): matches core_wiring.py's run_sara_logic() own
+# post_tts_settle_s value (0.3s when AEC is active, else the flat
+# STT_SETTLE_MIN_GAP_S) -- used only as wait_settle()'s fallback when a
+# caller omits min_gap explicitly. core_wiring.py always passes min_gap
+# explicitly today, so this was previously dead-code-in-practice; kept
+# consistent here so any other/future caller gets the same AEC-aware
+# behavior instead of silently over- or under-settling.
+_POST_TTS_SETTLE_WITH_AEC_S = 0.3
+
+
+def _load_whisper_model_offline_first(**kwargs) -> "WhisperModel":
+    """
+    Load a faster-whisper model without the online HF-hub revision-check
+    when the model is already cached locally (the common case after the
+    very first run). huggingface_hub normally makes a network call to
+    check for a newer revision on every single load, even when nothing
+    changed -- this adds real startup latency and, if that request is
+    still in flight when the interpreter starts tearing down (e.g. a fast
+    restart), can fail outright ("cannot schedule new futures after
+    interpreter shutdown").
+
+    Strategy: try with HF_HUB_OFFLINE=1 first (uses whatever is already
+    cached, zero network calls). If that raises (most likely because this
+    exact model/revision was never downloaded before), retry once with
+    the env var restored so the normal online download path still works
+    -- first-run behavior is completely unchanged. The env var is
+    restored to its original value (present or absent) either way, so
+    this never leaks state to any other caller in the process.
+    """
+    had_var = "HF_HUB_OFFLINE" in os.environ
+    prev_value = os.environ.get("HF_HUB_OFFLINE")
+
+    def _restore() -> None:
+        if had_var:
+            os.environ["HF_HUB_OFFLINE"] = prev_value
+        else:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    try:
+        model = WhisperModel(**kwargs)
+        _restore()
+        return model
+    except Exception:
+        _restore()
+        return WhisperModel(**kwargs)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Main STT Engine
+# ══════════════════════════════════════════════════════════════════════
+
+
+class SpeechToText:
+    # See sara/core/llm/engine.py (SaraLLM._serializable) -- self.ears is
+    # exposed directly off the Api object, so this stops pywebview's js_api
+    # bridge from recursing into the live Whisper model / audio stream.
+    _serializable = False
+
+    SAMPLE_RATE: int = 16000
+    CHUNK_SIZE: int = 512
+    SAMPLE_WIDTH: int = 2
+    PRE_SPEECH_MS: int = 300
+
+    # Bounded rolling live-preview window (seconds). The provisional
+    # "live caption" preview transcribes only this many trailing seconds
+    # of the current utterance, maintained via a genuinely bounded
+    # rolling structure (see _collect_speech()'s preview_chunks deque)
+    # rather than by rebuilding/slicing the full accumulated buffer each
+    # cycle. Preview cost stays roughly constant as the utterance gets
+    # longer. The FINAL, accurate transcription (in listen()/
+    # _transcribe()) is completely unaffected and always uses the full
+    # captured audio (speech_chunks).
+    PREVIEW_WINDOW_S: float = 6.0
+
+    # v8: first recalibration happens promptly (AEC/NS shifts the ambient
+    # noise profile immediately at startup, so the energy threshold
+    # shouldn't wait the full steady-state interval to adapt once).
+    _RECALIB_FIRST_INTERVAL: float = 15.0
+    _RECALIB_INTERVAL: float = 300.0
+
+    # v8.1: mic-disconnect watchdog poll interval.
+    _WATCHDOG_INTERVAL: float = 7.0
+
+    def __init__(self, aec=None, on_audio_level=None) -> None:
+        """
+        aec: optional sara.audio.aec.AECProcessor instance, shared with the
+        TextToSpeech engine, constructed once in build_core_objects(). Raw
+        mic chunks are handed off to a dedicated background worker thread
+        which runs them through aec.process_near_end() before they reach
+        the pre-speech/ring buffers — never inline on the real-time audio
+        callback thread. If omitted, behaves exactly as before (no
+        cancellation, zero added overhead).
+
+        on_audio_level: optional callback(level: float) -- 0.0-1.0 mic
+        RMS, throttled to ~10-15Hz and pushed only while an actual
+        command/dictate listen() session is active (see
+        _ingest_processed_chunk/_level_worker below). Called from a
+        dedicated background thread, never from the real-time audio
+        callback. If omitted, behaves exactly as before (no level
+        tracking, zero added overhead).
+        """
+        self._closed = False
+        self._aec = aec
+        self._on_audio_level = on_audio_level
+        self._level_q: "queue.Queue[bytes]" = queue.Queue(maxsize=_LEVEL_QUEUE_MAXSIZE)
+
+        self._threshold_lock = threading.Lock()
+        self._energy_threshold: float = float(
+            getattr(Config, "BARGE_IN_ENERGY_THRESHOLD", 500)
+        )
+        self._manual_threshold_until: float = 0.0
+
+        self._silence_gate = _SilenceGate()
+        self._noise_floor = _NoiseFloor()
+        # BUGFIX: was hardcoding aggressiveness=2 here, which silently
+        # defeated _VADFilter's own Config.VAD_AGGRESSIVENESS fallback
+        # (see the BUGFIX comment on _VADFilter.__init__ in buffers.py) --
+        # any .env tuning of VAD_AGGRESSIVENESS had zero effect on this
+        # instance, which is the one actually used everywhere (speech
+        # collection, barge-in detection, is_user_speaking). Passing
+        # nothing lets Config.VAD_AGGRESSIVENESS (default 2, same as
+        # before) actually take effect.
+        self._vad = _VADFilter(self.SAMPLE_RATE)
+
+        self._pre_buf = _PreBuffer(
+            self.SAMPLE_RATE, self.CHUNK_SIZE, self.PRE_SPEECH_MS
+        )
+        self._ring = _RingBuffer(maxlen=300)
+
+        self._recent_transcript: str = ""
+        self._transcript_lock = threading.Lock()
+
+        self._detected_lang: str = "en"
+
+        self._wakeword_last_triggered: float = 0.0
+        self._wakeword_last_inference: float = 0.0
+
+        # Temporary one-shot diagnostics for wake pipeline isolation.
+        self._wake_diag_audio_seen = False
+        self._wake_diag_inference_seen = False
+
+        # TEMP DIAGNOSTIC: peak-score-per-second tracker for
+        # is_wake_word_detected() (see there). Initialized here so the
+        # elapsed-time check has a real starting timestamp on the very
+        # first call, instead of recomputing "now" as its own default
+        # every call.
+        self._wake_diag_window_start = time.monotonic()
+        self._wake_diag_window_max = 0.0
+
+        self._wakeword_cooldown: float = float(
+            getattr(Config, "WAKE_WORD_COOLDOWN_S", 2.0)
+        )
+
+        # Dedicated RAW microphone buffer for OpenWakeWord.
+        # Do NOT feed AEC/NS processed audio to the wake model.
+        self._wake_ring = _RingBuffer(maxlen=50)
+
+        # Sequential audio accumulator for OpenWakeWord.
+        # IMPORTANT: _wake_ring is drained only once per wake check.
+        # OpenWakeWord.predict() maintains its own streaming state, so we
+        # must never repeatedly submit the same rolling audio window.
+        self._wake_pending = bytearray()
+
+        self._wake_variants = self._build_wake_variants()
+        self._wake_re = self._compile_wake_regex(self._wake_variants)
+
+        self._recalib_event = threading.Event()
+        self._watchdog_event = threading.Event()  # v8.1: mic-disconnect watchdog
+        self._tts_active = threading.Event()
+        self._tts_stopped_at: float = 0.0
+        self._tts_state_lock = threading.Lock()
+
+        # BARGE-IN HANDOFF (see capture_barge_in_audio()/_collect_speech()
+        # below): audio snapshotted by capture_barge_in_audio() at the
+        # instant a barge-in interrupts TTS. A small, separate buffer --
+        # NOT part of self._ring -- so mark_tts_stopped()/wait_settle()
+        # can keep unconditionally clearing self._ring exactly as before
+        # without also discarding this. Guarded by the existing
+        # self._tts_state_lock above (already used for all other
+        # TTS-transition state on this class) rather than a new lock.
+        # List of raw mic-callback-sized chunks, NOT joined into one
+        # blob, so _collect_speech() can hand it straight to its normal
+        # per-chunk VAD scan -- webrtcvad requires fixed-size frames and
+        # would choke on one giant merged blob.
+        self._barge_in_handoff: List[bytes] = []
+
+        self._is_listening = threading.Event()
+
+        # v7: guards listen() so only one _collect_speech()/_transcribe()
+        # session can ever be active at a time on this instance.
+        self._listen_lock = threading.Lock()
+
+        # Guards the best-effort "live caption" preview transcribe (see
+        # _spawn_preview_transcribe()/_collect_speech() below) so only one
+        # preview transcribe is ever in flight at a time -- prevents CPU
+        # pile-up if previews start taking longer than the ~900ms cadence
+        # between them.
+        self._preview_busy = threading.Event()
+
+        # Monotonically increasing generation counter, incremented once
+        # per _collect_speech() session (see _collect_speech() below). A
+        # preview transcription started during an OLDER session captures
+        # the generation value at spawn time; if a NEWER session has
+        # since started by the time that preview finishes, its result is
+        # discarded instead of being delivered to on_partial_transcript --
+        # this stops a stale preview from updating the UI for an
+        # already-finished utterance. Only ever mutated/read from the
+        # main STT thread (_collect_speech) and read from the daemon
+        # preview thread it spawns; a plain int is sufficient here since
+        # CPython attribute reads/increments of this kind don't need an
+        # extra lock for this single-writer usage pattern.
+        self._preview_generation = 0
+
+        # v7: raw mic chunks awaiting AEC processing on a background
+        # thread (only used when aec is not None — see _audio_callback).
+        self._aec_raw_q: "queue.Queue[bytes]" = queue.Queue(maxsize=_AEC_QUEUE_MAXSIZE)
+        self._aec_drop_count = 0
+
+        # Load models directly into VRAM.
+        #
+        # TUNING (startup latency): these three loads are fully
+        # independent -- separate model objects (main Whisper, the
+        # OpenWakeWord ONNX classifier, and the small "tiny" Whisper --
+        # see its own role below), no shared state, no cross-dependency
+        # -- so they run concurrently instead of one-after-another.
+        # Previously total time-to-ready was the SUM of all three load
+        # times (each doing real disk I/O and, for the two Whisper
+        # models, a CTranslate2 session build); now it's roughly the MAX
+        # of the three, since they overlap. Assignment to self only
+        # happens AFTER all three futures resolve (via .result()), so
+        # nothing below this block (mic stream open, background threads,
+        # _log_init) ever sees a partially-loaded model set -- behavior
+        # is otherwise identical to the old sequential version, just
+        # faster to reach. The only observable side effect is that the
+        # three loaders' own print() messages may interleave in the
+        # console instead of appearing strictly in order -- cosmetic
+        # only.
+        #
+        # The tiny model loaded below is used for BOTH the STT-fallback
+        # wake-word check in is_wake_word_detected() when no custom
+        # OpenWakeWord model is configured, AND the live-caption preview
+        # in _spawn_preview_transcribe() (always, regardless of whether
+        # a custom OWW model is configured) -- see _load_fast_wake_whisper()
+        # for the full history/reasoning. Failure to load it is
+        # non-fatal: is_wake_word_detected() falls back to the main
+        # (larger, slower) self._whisper_model for its own use, while
+        # _spawn_preview_transcribe() skips preview entirely rather than
+        # falling back to the large model.
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="stt-model-load") as _pool:
+            _whisper_future = _pool.submit(self._load_faster_whisper)
+            _wakeword_future = _pool.submit(self._load_wakeword)
+            _wake_whisper_future = _pool.submit(self._load_fast_wake_whisper)
+
+            self._whisper_model = _whisper_future.result()
+            self._wakeword_model: Optional["_OWWModel"] = _wakeword_future.result()
+            self._wake_whisper_model: Optional[object] = _wake_whisper_future.result()
+
+        self._stream = None
+        self._pa = None
+        self._stream_lock = threading.Lock()
+        self._open_mic_stream()
+
+        self._start_threads()
+        atexit.register(self.close)
+        self._log_init()
+
+    # ── Wake word helpers ────────────────────────────────────────────
+
+    @staticmethod
+    def _build_wake_variants() -> List[str]:
+        cfg_words = getattr(Config, "WAKE_WORDS", None)
+
+        if cfg_words:
+            variants = [
+                w.strip().lower()
+                for w in cfg_words
+                if w and w.strip()
+            ]
+        else:
+            raw = getattr(Config, "WAKE_WORD", "hey sara")
+            variants = [
+                w.strip().lower()
+                for w in re.split(r"[,;]", raw)
+                if w.strip()
+            ]
+
+        # OpenWakeWord is the authoritative passive wake detector.
+        # Do NOT inject legacy variants such as "sara", "sarah",
+        # or "hey sarah".
+        return variants or ["hey sara"]
+
+    @staticmethod
+    def _compile_wake_regex(variants: List[str]) -> "re.Pattern":
+        escaped = sorted((re.escape(v) for v in variants), key=len, reverse=True)
+        pattern = r"\b(" + "|".join(escaped) + r")\b"
+        return re.compile(pattern, re.IGNORECASE)
+
+    def _text_has_wake_word(self, text: str) -> bool:
+        if not text:
+            return False
+        if self._wake_re.search(text) is not None:
+            return True
+
+        # Fuzzy fallback: the fast/small model used for wake checks
+        # sometimes mishears "sara" as something close ("sarah", "sada",
+        # "zara") without matching the exact regex above. Comparing
+        # against individual short words (not the whole sentence) keeps
+        # this cheap and precise -- a fuzzy match against a whole
+        # sentence would false-positive constantly, but a single word
+        # rarely coincidentally resembles "sara" this closely. Only
+        # single-word variants are fuzzy-matched (phrases like "hey
+        # sara" still need the exact regex above, or their own words to
+        # line up) -- fuzzy-matching a whole phrase word-for-word here
+        # would be a much looser, noisier match than intended.
+        if not getattr(Config, "WAKE_FUZZY_MATCH_ENABLED", True):
+            return False
+        threshold = float(getattr(Config, "WAKE_FUZZY_MATCH_THRESHOLD", 0.75))
+        words = re.findall(r"[a-zA-Z]+", text.lower())
+        single_word_variants = [v for v in self._wake_variants if " " not in v]
+        for word in words:
+            if len(word) < 3:
+                continue
+            for variant in single_word_variants:
+                ratio = difflib.SequenceMatcher(None, word, variant).ratio()
+                if ratio >= threshold:
+                    return True
+        return False
+
+    def _load_faster_whisper(self) -> Optional[object]:
+        if not _HAS_WHISPER:
+            print("[STT Error] faster-whisper not installed. Offline STT will fail.")
+            return None
+
+        model_size = getattr(Config, "WHISPER_MODEL_SIZE", "large-v3-turbo")
+
+        cpu_threads = max(4, (os.cpu_count() or 4) // 2)
+
+        print(f"[STT] Loading Faster-Whisper '{model_size}'...")
+
+        try:
+            model = _load_whisper_model_offline_first(
+                model_size_or_path=model_size,
+                device="cuda",
+                compute_type="int8_float16",
+            )
+            print("[STT] ✅ Faster Whisper loaded on GPU (CUDA, int8_float16).")
+            return model
+
+        except Exception as gpu_error:
+            print(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
+            try:
+                model = _load_whisper_model_offline_first(
+                    model_size_or_path=model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=cpu_threads,
+                )
+                print("[STT] ✅ Faster Whisper loaded on CPU (fallback).")
+                return model
+            except Exception as cpu_error:
+                print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
+                return None
+    def _load_fast_wake_whisper(self) -> Optional[object]:
+        """
+        Small/fast dedicated Whisper model used for the STT-fallback
+        wake-word check (is_wake_word_detected()) AND the live-caption
+        preview (_spawn_preview_transcribe()). Failure here is non-fatal
+        for wake detection -- is_wake_word_detected() falls back to the
+        main (larger, slower) self._whisper_model if this is None, so
+        wake detection still works either way, just without the latency
+        win. For preview, failure here means preview is skipped entirely
+        rather than falling back to the large model (see
+        _spawn_preview_transcribe()).
+        """
+        if not _HAS_WHISPER:
+            return None
+        model_size = getattr(Config, "WAKE_WORD_FAST_MODEL_SIZE", "tiny")
+        cpu_threads = max(2, (os.cpu_count() or 4) // 4)
+        print(f"[STT] Loading dedicated wake-word Whisper '{model_size}'...")
+        try:
+            model = _load_whisper_model_offline_first(
+                model_size_or_path=model_size,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=cpu_threads,
+            )
+            print("[STT] ✅ Wake-word Whisper loaded on CPU.")
+            return model
+        except Exception as e:
+            print(
+                f"[STT Warning] Dedicated wake-word model load failed "
+                f"({e}) -- wake checks will use the main model instead, "
+                f"and live preview will be skipped."
+            )
+            return None
+
+    def _load_wakeword(self) -> Optional["_OWWModel"]:
+        """
+        Load the passive wake detector.
+
+        OpenWakeWord is the ONLY passive wake detection mechanism.
+        Whisper/STT fallback is intentionally not allowed.
+        """
+        if not _HAS_WAKEWORD or not _OWWModel:
+            print(
+                "[STT Warning] OpenWakeWord is unavailable. "
+                "Passive wake detection is disabled."
+            )
+            return None
+
+        model_path = getattr(Config, "WAKE_WORD_MODEL_PATH", None)
+
+        if not model_path:
+            print(
+                "[STT Warning] WAKE_WORD_MODEL_PATH is not configured. "
+                "Passive wake detection is disabled."
+            )
+            return None
+
+        model_path = str(model_path)
+
+        if not os.path.isabs(model_path):
+            model_path = str(
+                Path(__file__).resolve().parents[3] / model_path
+            )
+
+        if not os.path.exists(model_path):
+            print(
+                f"[STT Warning] OpenWakeWord model not found: "
+                f"{model_path}. Passive wake detection is disabled."
+            )
+            return None
+
+        try:
+            model = _OWWModel(
+                wakeword_models=[model_path],
+                inference_framework="onnx",
+            )
+
+            print(
+                "[STT] ✅ OpenWakeWord loaded successfully: "
+                f"{model_path}"
+            )
+
+            # Startup test inference is intentionally silent.
+            # Successful model loading is already reported above.
+
+            return model
+
+        except Exception as e:
+            print(
+                f"[STT Warning] OpenWakeWord model load failed: {e}. "
+                "Passive wake detection is disabled."
+            )
+            return None
+
+    @property
+    def energy_threshold(self) -> float:
+        with self._threshold_lock:
+            return self._energy_threshold
+
+    @energy_threshold.setter
+    def energy_threshold(self, value: float) -> None:
+        with self._threshold_lock:
+            self._energy_threshold = value
+
+    def set_manual_energy_threshold(
+        self, value: float, suppress_recalib_s: float = 600.0
+    ) -> None:
+        """User-driven (GUI slider) sensitivity change. Unlike the plain
+        energy_threshold setter (also used internally by auto-recalibration),
+        this suppresses _run_one_recalibration() from silently overwriting
+        the value for `suppress_recalib_s` seconds, so it actually sticks."""
+        with self._threshold_lock:
+            self._energy_threshold = value
+            self._manual_threshold_until = time.monotonic() + suppress_recalib_s
+
+    def get_detected_language(self) -> str:
+        with self._transcript_lock:
+            return self._detected_lang
+
+    def set_tts_active(self, active: bool) -> None:
+        if active:
+            self._tts_active.set()
+            self._pre_buf.clear()
+        else:
+            self._tts_active.clear()
+
+    def mark_tts_stopped(self) -> None:
+        with self._tts_state_lock:
+            self._tts_stopped_at = time.monotonic()
+        self._pre_buf.clear()
+        # Still unconditionally cleared -- this is now only ever TTS
+        # echo-tail / settle-window noise. Any audio that actually
+        # mattered (a barge-in interruption) was already copied out to
+        # self._barge_in_handoff by capture_barge_in_audio() BEFORE this
+        # runs (see TTSWorker._watch_loop() in tts_worker.py), and that
+        # buffer lives separately from self._ring, so it survives this
+        # clear untouched.
+        self._ring.get_all(clear=True)
+
+    def wait_settle(self, min_gap: Optional[float] = None) -> None:
+        if min_gap is None:
+            # TUNING: AEC-aware fallback (see _POST_TTS_SETTLE_WITH_AEC_S
+            # module-level comment) instead of always using the flat
+            # STT_SETTLE_MIN_GAP_S regardless of whether AEC is active.
+            aec_active = self._aec is not None and getattr(
+                self._aec, "enabled", False
+            )
+            min_gap = (
+                _POST_TTS_SETTLE_WITH_AEC_S
+                if aec_active
+                else float(getattr(Config, "STT_SETTLE_MIN_GAP_S", 1.3))
+            )
+        with self._tts_state_lock:
+            stopped_at = self._tts_stopped_at
+        if stopped_at <= 0:
+            return
+        remaining = min_gap - (time.monotonic() - stopped_at)
+        if remaining > 0:
+            time.sleep(remaining)
+        # Same as mark_tts_stopped() above -- unconditional clear is
+        # fine here too: self._barge_in_handoff (if a barge-in captured
+        # anything) lives in its own buffer and is untouched by this.
+        self._ring.get_all(clear=True)
+        self._pre_buf.clear()
+
+    def capture_barge_in_audio(self) -> None:
+        """Called by TTSWorker._watch_loop() at the exact instant a
+        barge-in interrupts TTS (right after self._voice.stop(), before
+        self._barge_stop is set -- see there) -- i.e. BEFORE
+        mark_tts_stopped() gets a chance to run (that happens shortly
+        after, as _speak_blocking()/_speak_stream_blocking() unwind from
+        voice.stop() above) and clear self._ring.
+
+        Snapshots (copies, does NOT drain) whatever's currently sitting
+        in self._ring: with STT_HARD_MUTE_DURING_TTS (the default -- see
+        _ingest_processed_chunk()), that's exactly the audio that already
+        passed _passes_barge_in_gate() while TTS was active, i.e. the
+        start of what the user is interrupting with. Stashed as a list of
+        raw chunks (not joined into one blob) in a small dedicated
+        handoff buffer -- self._ring itself is left alone so it keeps
+        accumulating normally for the rest of this TTS-stopping window
+        (is_user_speaking() etc. still reads off it) -- so
+        mark_tts_stopped()/wait_settle() can keep unconditionally
+        clearing self._ring exactly as before without losing this.
+        _collect_speech() below consumes (and clears) this buffer at the
+        start of the very next listen() session, prepending it to that
+        session's own backlog so the interruption becomes the start of
+        the user's next command instead of being thrown away.
+
+        Defensive/never raises, matching this class's other TTS-thread-
+        facing methods (e.g. _ears_is_listening() in tts_worker.py) --
+        a failure here must never be able to interfere with the actual
+        barge-in (stopping TTS), which TTSWorker._watch_loop() always
+        does first regardless of this call's outcome.
+        """
+        if self._closed:
+            return
+        try:
+            chunks = self._ring.peek_latest(n=4)
+
+            if not chunks:
+                return
+
+            if not getattr(self, "_wake_diag_audio_seen", False):
+                self._wake_diag_audio_seen = True
+                print(
+                    f"[WakeDiag] RAW mic stream reached wake detector | "
+                    f"chunks={len(chunks)} | "
+                    f"rms={_rms(chunks[-1]):.1f}"
+                )
+            with self._tts_state_lock:
+                # BUGFIX-adjacent hardening: extend rather than overwrite. In
+                # practice _watch_loop() only calls this once per barge-in
+                # (self._speaking/self._voice.is_speaking() gate it off after
+                # the first trigger), but extending is a one-line safety net
+                # against ever silently losing a partial capture if that ever
+                # changes -- no realistic downside since this list is always
+                # drained (see _collect_speech()) before the next barge-in
+                # could possibly refill it.
+                self._barge_in_handoff.extend(chunks)
+        except Exception:
+            # Barge-in capture must never interfere with stopping TTS.
+            return
+
+    def _close_stream(self) -> None:
+        try:
+            if self._stream is not None:
+                self._stream.stop() if _HAS_SD else self._stream.stop_stream()
+                self._stream.close()
+                self._stream = None
+            if self._pa is not None:
+                self._pa.terminate()
+                self._pa = None
+        except Exception:
+            pass
+
+    def _open_mic_stream(self) -> bool:
+        with self._stream_lock:
+            self._close_stream()
+            if _HAS_SD:
+                return self._open_sd_stream()
+            return self._open_pyaudio_stream()
+
+    def _open_sd_stream(self) -> bool:
+        try:
+            self._stream = sd.RawInputStream(
+                samplerate=self.SAMPLE_RATE,
+                blocksize=self.CHUNK_SIZE,
+                dtype="int16",
+                channels=1,
+                callback=self._audio_callback,
+            )
+            self._stream.start()
+            try:
+                _dev_idx = self._stream.device
+                _dev_info = sd.query_devices(_dev_idx)
+                print(
+                    f"[STT] Mic input device (sounddevice): index={_dev_idx} "
+                    f"name='{_dev_info.get('name', '?')}'"
+                )
+            except Exception as _dev_e:
+                print(f"[STT] Could not resolve mic device info: {_dev_e}")
+            return True
+        except (sd.PortAudioError, OSError, ValueError) as e:
+            print(f"[STT Error] sounddevice open failed: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                "[STT] unexpected error type opening the sounddevice stream "
+                "(this may be a bug): %s", e
+            )
+            return False
+
+    def _open_pyaudio_stream(self) -> bool:
+        if not _HAS_PYAUDIO:
+            return False
+        try:
+            self._pa = _pyaudio.PyAudio()
+            self._stream = self._pa.open(
+                format=_pyaudio.paInt16,
+                channels=1,
+                rate=self.SAMPLE_RATE,
+                input=True,
+                frames_per_buffer=self.CHUNK_SIZE,
+                stream_callback=self._pa_callback,
+            )
+            self._stream.start_stream()
+            try:
+                _dev_info = self._pa.get_default_input_device_info()
+                print(
+                    f"[STT] Mic input device (pyaudio): index={_dev_info.get('index', '?')} "
+                    f"name='{_dev_info.get('name', '?')}'"
+                )
+            except Exception as _dev_e:
+                print(f"[STT] Could not resolve mic device info: {_dev_e}")
+            return True
+        except (OSError, ValueError) as e:
+            print(f"[STT Error] PyAudio open failed: {e}")
+            return False
+        except Exception as e:
+            logger.exception(
+                "[STT] unexpected error type opening the PyAudio stream "
+                "(this may be a bug): %s", e
+            )
+            return False
+
+    def _apply_aec(self, chunk: bytes) -> bytes:
+        if self._aec is None:
+            return chunk
+        try:
+            return self._aec.process_near_end(chunk)
+        except (ValueError, OSError) as e:
+            _log_rate_limited(
+                "_apply_aec",
+                "[STT] AEC process_near_end failed (passing raw chunk through): %s: %s",
+                type(e).__name__, e,
+            )
+            return chunk
+        except Exception as e:
+            _log_rate_limited(
+                "_apply_aec",
+                "[STT] AEC process_near_end raised an unexpected error type "
+                "(this may be a bug; passing raw chunk through): %s: %s",
+                type(e).__name__, e,
+                exc_info=True,
+            )
+            return chunk
+
+    def _passes_barge_in_gate(self, chunk: bytes) -> bool:
+        """Elevated energy+VAD check used to decide whether a single mic
+        chunk arriving while TTS is speaking is allowed into the ring
+        buffer at all (see Config.STT_HARD_MUTE_DURING_TTS and
+        _ingest_processed_chunk below). Deliberately reuses the SAME
+        TTS_BLEED_GUARD_MULTIPLIER that is_user_speaking() already uses
+        for its own (multi-chunk, majority-vote) barge-in check below —
+        one config value controls "how loud/confident does an
+        interruption need to be" everywhere, whether checked per-chunk
+        at ingestion (here) or over a rolling window (is_user_speaking).
+        This is a per-chunk gate, not a substitute for is_user_speaking's
+        sustained-speech check — a single loud transient chunk passing
+        this gate just means it's ALLOWED to be stored; it still takes
+        is_user_speaking's majority-vote over several chunks to actually
+        trigger a barge-in stop.
+        """
+        bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
+        effective_thr = self.energy_threshold * bleed_multiplier
+        if _rms(chunk) <= effective_thr:
+            return False
+        return self._vad.is_speech(chunk)
+
+    def _ingest_processed_chunk(self, chunk: bytes) -> None:
+        # Cheap, non-blocking hand-off for the GUI orb's live level meter —
+        # only while a real command/dictate listen() session is active
+        # (never during idle wake-word polling, never while TTS is
+        # speaking). Actual RMS math + throttling happen on _level_worker's
+        # background thread, not here (this may run on the real-time mic
+        # callback thread when AEC is disabled).
+        if (
+            self._on_audio_level is not None
+            and self._is_listening.is_set()
+            and not self._tts_active.is_set()
+        ):
+            try:
+                self._level_q.put_nowait(chunk)
+            except queue.Full:
+                pass
+
+        if self._tts_active.is_set():
+            # BUGFIX/hardening (mic-blocking during TTS): previously every
+            # chunk was written to self._ring during TTS regardless of
+            # loudness — barge-in detection relied entirely on
+            # is_user_speaking() filtering the ring AFTER the fact (a
+            # soft, read-time threshold), and nothing structurally
+            # prevented TTS/echo audio from sitting in the ring if some
+            # future/other caller ever read it mid-TTS. With
+            # STT_HARD_MUTE_DURING_TTS (default True), a chunk is now
+            # dropped BEFORE it ever reaches the ring unless it clears
+            # the same elevated barge-in bar. This changes nothing about
+            # today's barge-in behavior (is_user_speaking already
+            # effectively filtered out everything this drops) — it's a
+            # hardening of WHERE that filtering happens, not a behavior
+            # change.
+            if getattr(Config, "STT_HARD_MUTE_DURING_TTS", True):
+                if self._passes_barge_in_gate(chunk):
+                    self._ring.put(chunk)
+                return
+            self._ring.put(chunk)
+            return
+        self._pre_buf.push(chunk)
+        self._ring.put(chunk)
+
+    def _audio_callback(self, indata, frames, time_info, status) -> None:
+        if self._closed:
+            return
+        if status and getattr(Config, "DEBUG_MODE", False):
+            print(f"[STT] input stream status: {status}")
+
+        chunk = bytes(indata)
+
+        # OpenWakeWord must see RAW microphone PCM.
+        # AEC/NS can distort the acoustic pattern expected by the
+        # custom wake-word model.
+        self._wake_ring.put(chunk)
+
+        if self._aec is None:
+            self._ingest_processed_chunk(chunk)
+            return
+
+        try:
+            self._aec_raw_q.put_nowait(chunk)
+        except queue.Full:
+            self._aec_drop_count += 1
+            if getattr(Config, "DEBUG_MODE", False) and self._aec_drop_count % 50 == 1:
+                print(
+                    f"[STT WARNING] AEC input queue full — dropped "
+                    f"{self._aec_drop_count} mic chunk(s) so far. This means "
+                    f"something is holding up AEC processing far longer than "
+                    f"expected; investigate CPU/GPU load."
+                )
+
+    def _pa_callback(self, in_data, frame_count, time_info, status_flags):
+        if self._closed:
+            return (None, _pyaudio.paContinue if _HAS_PYAUDIO else None)
+
+        if status_flags and getattr(Config, "DEBUG_MODE", False):
+            print(f"[STT] pyaudio input status flags: {status_flags}")
+
+        # OpenWakeWord receives the RAW microphone signal.
+        self._wake_ring.put(in_data)
+
+        if self._aec is None:
+            self._ingest_processed_chunk(in_data)
+        else:
+            try:
+                self._aec_raw_q.put_nowait(in_data)
+            except queue.Full:
+                self._aec_drop_count += 1
+                if (
+                    getattr(Config, "DEBUG_MODE", False)
+                    and self._aec_drop_count % 50 == 1
+                ):
+                    print(
+                        f"[STT WARNING] AEC input queue full — dropped "
+                        f"{self._aec_drop_count} mic chunk(s) so far (pyaudio path)."
+                    )
+
+        return (None, _pyaudio.paContinue if _HAS_PYAUDIO else None)
+
+    def _aec_worker_loop(self) -> None:
+        while not self._closed:
+            try:
+                chunk = self._aec_raw_q.get(timeout=_AEC_QUEUE_IDLE_POLL_S)
+            except queue.Empty:
+                continue
+            processed = self._apply_aec(chunk)
+            self._ingest_processed_chunk(processed)
+
+    def _level_worker(self) -> None:
+        """Background consumer for the live mic level meter (see
+        _ingest_processed_chunk). Only started when on_audio_level is
+        given (_start_threads). Does the RMS math and the ~10-15Hz
+        throttling itself, so the real-time audio thread never does more
+        than a lossy queue.put_nowait()."""
+        last_push = 0.0
+        while not self._closed:
+            try:
+                chunk = self._level_q.get(timeout=_AEC_QUEUE_IDLE_POLL_S)
+            except queue.Empty:
+                continue
+            now = time.monotonic()
+            if now - last_push < _AUDIO_LEVEL_PUSH_INTERVAL_S:
+                continue
+            last_push = now
+            try:
+                level = min(1.0, _rms(chunk) / _AUDIO_LEVEL_MIC_PEAK_RMS)
+                self._on_audio_level(level)
+            except Exception:
+                pass
+
+    def _start_threads(self) -> None:
+        threading.Thread(
+            target=self._recalib_loop, daemon=True, name="stt-recalib"
+        ).start()
+        if self._aec is not None:
+            threading.Thread(
+                target=self._aec_worker_loop, daemon=True, name="stt-aec-worker"
+            ).start()
+        if self._on_audio_level is not None:
+            threading.Thread(
+                target=self._level_worker, daemon=True, name="stt-audio-level"
+            ).start()
+        # v8.1: mic-disconnect watchdog (see v8.1 CHANGES note at top of file).
+        threading.Thread(
+            target=self._watchdog_loop, daemon=True, name="stt-mic-watchdog"
+        ).start()
+
+    def _recalib_loop(self) -> None:
+        # v8: first cycle uses a short interval so the energy threshold
+        # can adapt to AEC/NS's altered noise profile promptly instead of
+        # waiting the full steady-state interval on a fresh start.
+        first_wait = min(self._RECALIB_FIRST_INTERVAL, self._RECALIB_INTERVAL)
+        woken = self._recalib_event.wait(timeout=first_wait)
+        if woken:
+            self._recalib_event.clear()
+
+        while not self._closed:
+            if not (self._is_listening.is_set() or self._tts_active.is_set()):
+                self._run_one_recalibration()
+
+            woken = self._recalib_event.wait(timeout=self._RECALIB_INTERVAL)
+            if self._closed:
+                break
+            if woken:
+                self._recalib_event.clear()
+
+    def _run_one_recalibration(self) -> None:
+        if time.monotonic() < self._manual_threshold_until:
+            return
+        chunks = self._ring.peek_latest(n=30)
+        if not chunks:
+            return
+
+        thr = self.energy_threshold
+        energies = [_rms(c) for c in chunks]
+        avg = sum(energies) / len(energies)
+        for e in energies:
+            self._noise_floor.update(e, thr)
+
+        if avg > thr * 0.5:
+            return
+
+        suggested = self._noise_floor.suggested_threshold(margin=250.0)
+        new_thr = suggested if suggested is not None else (avg + 200.0)
+        new_thr = min(max(new_thr, thr - 150.0), thr + 150.0)
+
+        self.energy_threshold = new_thr
+
+    # ── v8.1: mic-disconnect watchdog ────────────────────────────────
+    # (see v8.1 CHANGES note at top of file — this is the only addition
+    # in this revision; nothing above or below this block was touched)
+
+    def _stream_is_healthy(self) -> bool:
+        """
+        Best-effort mic stream health probe.
+
+        Deliberately NOT based on "has new audio data arrived in the ring
+        buffer recently" — complete silence (nobody talking) is a normal,
+        healthy state and would cause false-positive "dead stream"
+        detections. Instead this probes the stream object itself: does it
+        still exist, and (where the backend exposes it) does it still
+        report itself as active. Any exception while probing is treated as
+        an unhealthy stream so the watchdog errs on the side of
+        reconnecting rather than staying silently deaf.
+        """
+        with self._stream_lock:
+            stream = self._stream
+
+        if stream is None:
+            return False
+
+        try:
+            if _HAS_SD:
+                # sounddevice streams expose an `.active` bool property.
+                active = getattr(stream, "active", None)
+                return bool(active) if active is not None else True
+            else:
+                # PyAudio streams expose an `is_active()` method.
+                is_active = getattr(stream, "is_active", None)
+                if callable(is_active):
+                    return bool(is_active())
+                return True
+        except Exception:
+            return False
+
+    def _watchdog_loop(self) -> None:
+        """
+        Periodically probes the mic input stream and transparently
+        reopens it if it has died (USB unplug, driver crash, portaudio
+        callback silently stopping, etc.) so Sara doesn't go permanently
+        "deaf" with no visible error. Fully fail-safe: any exception
+        inside this loop is caught and logged so the watchdog thread
+        itself can never crash or die.
+        """
+        while not self._closed:
+            self._watchdog_event.wait(timeout=self._WATCHDOG_INTERVAL)
+            self._watchdog_event.clear()
+
+            if self._closed:
+                break
+
+            try:
+                if not self._stream_is_healthy():
+                    print(
+                        "[STT WARNING] Mic input stream appears dead "
+                        "(disconnected/crashed) — attempting to reopen..."
+                    )
+                    reopened = self._open_mic_stream()
+                    if reopened:
+                        print("[STT] ✅ Mic input stream reopened successfully.")
+                    else:
+                        print(
+                            "[STT WARNING] Mic input stream reopen attempt "
+                            "failed; will retry on next watchdog cycle."
+                        )
+            except Exception as e:
+                print(f"[STT WARNING] Watchdog check failed (non-fatal): {e}")
+
+    # ── end v8.1 watchdog block ──────────────────────────────────────
+
+    @staticmethod
+    def _endpoint_noop(_text: str) -> None:
+        """Preview callback used when adaptive endpointing runs without a caller callback."""
+
+    @staticmethod
+    def _endpoint_lang() -> str:
+        """Map Config.SARA_LANGUAGE to the endpointing hint: en | hinglish | hi."""
+        raw = str(getattr(Config, "SARA_LANGUAGE", "") or "").strip().lower()
+        if raw.startswith("hinglish"):
+            return "hinglish"
+        return "hi" if raw.startswith("hi") else "en"
+
+    def _endpoint_guard_get(self) -> object:
+        """Lazily build the per-engine EarlyCutGuard; window and back-off follow Config per turn."""
+        from sara.audio.stt.endpoint import EarlyCutGuard
+
+        window = float(getattr(Config, "ENDPOINT_EARLY_CUT_WINDOW_MS", 700))
+        step = float(getattr(Config, "ENDPOINT_EARLY_CUT_BACKOFF_MS", 100))
+        guard = getattr(self, "_endpoint_guard", None)
+        if guard is None:
+            guard = EarlyCutGuard(window, step)
+            self._endpoint_guard = guard
+        guard.window_ms, guard.backoff_step_ms = window, step
+        return guard
+
+    def endpoint_stats(self) -> dict:
+        """Adaptive-endpointing counters: endpoints, early cuts and a per-rule histogram."""
+        guard = getattr(self, "_endpoint_guard", None)
+        try:
+            if guard is not None:
+                return guard.stats()
+        except Exception:
+            pass
+        return {"endpoints": 0, "early_cuts": 0, "rules": {}}
+
+    def _endpoint_open(
+        self,
+        silence_limit: float,
+        silence_limit_n: int,
+        preview_chunks: "collections.deque[bytes]",
+        generation: int,
+        user_cb: Optional[Callable[[str], None]],
+    ) -> Optional[dict]:
+        """Per-utterance adaptive-endpoint state, or None (flag off / failure -> legacy rule)."""
+        if not getattr(Config, "VOICE_ENDPOINT_ADAPTIVE", False):
+            return None
+        try:
+            return {
+                "on": True,
+                "limit_n": silence_limit_n,
+                "limit_ms": float(silence_limit) * 1000.0,
+                "chunk_ms": 1000.0 * self.CHUNK_SIZE / self.SAMPLE_RATE,
+                "preview": preview_chunks,
+                "gen": generation,
+                "user_cb": user_cb,
+                "seq": 0,
+                "partial": None,
+                "sent": False,
+                "lang": self._endpoint_lang(),
+            }
+        except Exception:
+            print("[STT] adaptive endpoint unavailable; using legacy rule")
+            return None
+
+    @staticmethod
+    def _endpoint_cb(ep: dict, user_cb: Optional[Callable[[str], None]]) -> Callable[[str], None]:
+        """Preview callback that stamps the partial with the voice sequence at spawn time."""
+        stamp = ep["seq"]
+
+        def _cb(text: str) -> None:
+            ep["partial"] = (stamp, str(text))
+            if user_cb is not None:
+                user_cb(text)
+
+        return _cb
+
+    @staticmethod
+    def _endpoint_voice(ep: dict) -> None:
+        """Voice resumed: older partials are stale and a new silence run may preview again."""
+        ep["seq"] += 1
+        ep["sent"] = False
+
+    def _endpoint_speech_started(self) -> None:
+        """Tell the early-cut guard that speech started again."""
+        try:
+            self._endpoint_guard_get().note_next_speech_start(None)
+        except Exception:
+            print("[STT] endpoint guard failed")
+
+    def _endpoint_preview(self, ep: dict) -> None:
+        """Request the one extra preview of this silence run (skipped while one is in flight)."""
+        if self._preview_busy.is_set():
+            return
+        ep["sent"] = True
+        self._spawn_preview_transcribe(
+            b"".join(ep["preview"]), self._endpoint_cb(ep, ep["user_cb"]), ep["gen"]
+        )
+
+    def _endpoint_reached(self, ep: dict, silence_count: int, utt_chunks: int) -> bool:
+        """Adaptive replacement for `silence_count >= silence_limit_n`; failure -> legacy rule."""
+        if not ep["on"]:
+            return silence_count >= ep["limit_n"]
+        try:
+            from sara.audio.stt import endpoint as _ep
+
+            silence_ms = silence_count * ep["chunk_ms"]
+            utt_ms = utt_chunks * ep["chunk_ms"]
+            if not ep["sent"] and silence_ms >= float(
+                getattr(Config, "ENDPOINT_PREVIEW_AT_MS", 150)
+            ):
+                self._endpoint_preview(ep)
+            fresh = ep["partial"]
+            text = fresh[1] if fresh is not None and fresh[0] == ep["seq"] else None
+            floor = getattr(getattr(self, "_noise_floor", None), "floor", None)
+            noise = _ep.noise_level_from(floor, float(self.energy_threshold))
+            guard = self._endpoint_guard_get()
+            kw = {
+                "utterance_ms": utt_ms,
+                "base_ms": ep["limit_ms"],
+                "backoff_ms": guard.backoff_ms(),
+            }
+            if not _ep.decide_endpoint(text, silence_ms, noise, ep["lang"], **kw):
+                return False
+            rule = _ep.required_silence_ms(text, noise, ep["lang"], **kw)[1]
+            guard.note_endpoint(text, rule)
+            if getattr(Config, "DEBUG_MODE", False):
+                print(
+                    f"[STT] endpoint rule={rule} silence_ms={int(silence_ms)} "
+                    f"utt_ms={int(utt_ms)}"
+                )
+            return True
+        except Exception:
+            ep["on"] = False
+            print("[STT] adaptive endpoint failed; using legacy rule for this utterance")
+            return silence_count >= ep["limit_n"]
+
+    def _collect_speech(
+        self,
+        timeout: float,
+        max_duration: float,
+        silence_limit: float,
+        on_partial_transcript: Optional[Callable[[str], None]] = None,
+    ) -> bytes:
+        thr = self.energy_threshold
+        silence_limit_n = max(
+            1, int(silence_limit * (self.SAMPLE_RATE / self.CHUNK_SIZE))
+        )
+        state = _CollectState.WAITING
+        speech_chunks: List[bytes] = []
+        silence_count, trailing_silence_chunks = 0, 0
+        speech_start = 0.0
+        last_preview_time = 0.0
+        start_time = time.monotonic()
+        energy_window = collections.deque(maxlen=3)
+
+        # BOUNDED ROLLING PREVIEW WINDOW: a separate, genuinely bounded
+        # structure maintained ALONGSIDE speech_chunks (which keeps
+        # growing and remains the untouched source for the FINAL
+        # transcription). preview_chunks holds only the trailing
+        # PREVIEW_WINDOW_S seconds of audio, tracked by total byte length
+        # rather than item count (chunk sizes are not all uniform --
+        # the initial pre-buffer blob is larger than a single mic
+        # chunk). Chunks are appended in O(1) and old chunks are evicted
+        # from the left in O(1) amortized as new ones arrive, so building
+        # the preview input never requires rebuilding or scanning the
+        # whole (potentially many-seconds-long) speech_chunks buffer --
+        # see _push_preview_chunk() below.
+        preview_window_bytes = int(
+            self.SAMPLE_RATE * self.SAMPLE_WIDTH * self.PREVIEW_WINDOW_S
+        )
+        preview_chunks: "collections.deque[bytes]" = collections.deque()
+        preview_bytes_total = 0
+
+        def _push_preview_chunk(c: bytes) -> None:
+            nonlocal preview_bytes_total
+            preview_chunks.append(c)
+            preview_bytes_total += len(c)
+            while preview_bytes_total > preview_window_bytes and len(preview_chunks) > 1:
+                removed = preview_chunks.popleft()
+                preview_bytes_total -= len(removed)
+
+        self._is_listening.set()
+        # New session -> new generation. Any preview spawned by a
+        # previous session will see this advance and discard its result
+        # instead of delivering a stale caption (see
+        # _spawn_preview_transcribe()).
+        self._preview_generation += 1
+        my_generation = self._preview_generation
+        ep = self._endpoint_open(
+            silence_limit, silence_limit_n, preview_chunks, my_generation, on_partial_transcript
+        )
+        if ep is not None and on_partial_transcript is None:
+            on_partial_transcript = self._endpoint_noop
+
+        # BARGE-IN HANDOFF: prepend any audio captured by
+        # capture_barge_in_audio() at the moment a barge-in interrupted
+        # TTS (see TTSWorker._watch_loop() in tts_worker.py). Consuming
+        # it here -- right as THIS session starts pulling its own
+        # backlog off self._ring -- is what makes the interruption
+        # become the start of the user's next command instead of being
+        # lost. Cleared under the same lock immediately after reading so
+        # it's picked up by exactly one listen() call, never reused. In
+        # the normal (non-interrupted) wake->listen flow this is always
+        # empty -- capture_barge_in_audio() is only ever called from the
+        # barge-in path -- so that behavior is completely unchanged.
+        with self._tts_state_lock:
+            handoff_chunks = self._barge_in_handoff
+            self._barge_in_handoff = []
+        backlog = self._ring.get_all(clear=True)
+        if handoff_chunks:
+            backlog = handoff_chunks + list(backlog)
+
+        try:
+            pending_chunks = list(backlog)
+            while not self._closed:
+                now = time.monotonic()
+                if state is _CollectState.WAITING:
+                    if now - start_time > timeout:
+                        return b""
+                    if not pending_chunks:
+                        self._ring.wait(timeout=0.05)
+                        pending_chunks = self._ring.get_all(clear=True)
+
+                    consumed = 0
+                    for chunk in pending_chunks:
+                        consumed += 1
+                        if self._vad.is_speech(chunk) or _rms(chunk) > thr * 0.35:
+                            pre = self._pre_buf.drain()
+                            speech_chunks = [pre, chunk] if pre else [chunk]
+                            for _c in speech_chunks:
+                                _push_preview_chunk(_c)
+                            silence_count = 0
+                            speech_start = time.monotonic()
+                            _t_pending("speech_start")
+                            last_preview_time = speech_start
+                            if ep is not None:
+                                self._endpoint_speech_started()
+                            state = _CollectState.SPEAKING
+                            break
+                    pending_chunks = (
+                        pending_chunks[consumed:]
+                        if state is _CollectState.SPEAKING
+                        else []
+                    )
+
+                elif state is _CollectState.SPEAKING:
+                    if now - speech_start > max_duration:
+                        state = _CollectState.DONE
+
+                    # LIVE CAPTION PREVIEW (best-effort, non-blocking): every
+                    # ~900ms while still actively collecting speech, kick off
+                    # a background best-effort transcribe of the BOUNDED
+                    # trailing preview_chunks window (NOT the whole
+                    # accumulated speech_chunks buffer) using the fast/small
+                    # wake-word model, so the caller (see
+                    # on_partial_transcript) can show a provisional
+                    # dim/italic caption before the real, accurate
+                    # transcript is ready. Gated on self._preview_busy so
+                    # at most one preview transcribe runs at a time -- if
+                    # the previous one hasn't finished yet, this cycle is
+                    # just skipped rather than piling up more threads.
+                    if (
+                        state is _CollectState.SPEAKING
+                        and on_partial_transcript is not None
+                        and now - last_preview_time >= 0.9
+                        and not self._preview_busy.is_set()
+                    ):
+                        last_preview_time = now
+                        preview_audio = b"".join(preview_chunks)
+                        self._spawn_preview_transcribe(
+                            preview_audio,
+                            on_partial_transcript
+                            if ep is None
+                            else self._endpoint_cb(ep, ep["user_cb"]),
+                            my_generation,
+                        )
+
+                    if state is _CollectState.SPEAKING:
+                        if not pending_chunks:
+                            self._ring.wait(timeout=0.05)
+                            pending_chunks = self._ring.get_all(clear=True)
+
+                        for chunk in pending_chunks:
+                            energy = _rms(chunk)
+                            energy_window.append(energy)
+                            is_voice = self._vad.is_speech(chunk) or (
+                                sum(energy_window) / len(energy_window) > thr * 0.3
+                            )
+
+                            speech_chunks.append(chunk)
+                            _push_preview_chunk(chunk)
+                            if is_voice:
+                                silence_count, trailing_silence_chunks = 0, 0
+                                if ep is not None:
+                                    self._endpoint_voice(ep)
+                            else:
+                                silence_count += 1
+                                trailing_silence_chunks += 1
+                                if ep is None:
+                                    ended = silence_count >= silence_limit_n
+                                else:
+                                    ended = self._endpoint_reached(
+                                        ep,
+                                        silence_count,
+                                        len(speech_chunks) - trailing_silence_chunks,
+                                    )
+                                if ended:
+                                    state = _CollectState.DONE
+                                    break
+                        pending_chunks = []
+
+                if state is _CollectState.DONE:
+                    if (
+                        trailing_silence_chunks > 0
+                        and len(speech_chunks) > trailing_silence_chunks
+                    ):
+                        speech_chunks = speech_chunks[:-trailing_silence_chunks]
+                    duration = time.monotonic() - speech_start
+                    self._silence_gate.record(duration)
+                    return b"".join(speech_chunks)
+
+            return b""
+        finally:
+            self._is_listening.clear()
+
+    def _spawn_preview_transcribe(
+        self,
+        snapshot: bytes,
+        on_partial_transcript: Callable[[str], None],
+        generation: int,
+    ) -> None:
+        """
+        Best-effort, fire-and-forget "live caption" preview: transcribes
+        `snapshot` -- a BOUNDED trailing window of the speech collected so
+        far (see _collect_speech()'s preview_chunks, NOT the whole
+        accumulated buffer) -- using the dedicated small/fast Whisper
+        model (self._wake_whisper_model), NEVER the slower main model, on
+        a background thread, so the caller can show a provisional caption
+        while the user is still talking. Deliberately never touches the
+        real/accurate transcription path in listen()/_transcribe() -- any
+        exception here (transcribe error, callback raising) is swallowed
+        so a preview glitch can never crash or stall the main
+        _collect_speech() loop. self._preview_busy is set here (before
+        the thread starts) and cleared in the thread's finally block, so
+        _collect_speech() can tell a preview is still in flight and skip
+        spawning another one on top of it.
+
+        `generation` is the _preview_generation value captured by the
+        CALLING _collect_speech() session. If a newer session has started
+        (self._preview_generation has advanced) by the time this
+        background transcribe finishes, the result is discarded instead
+        of being delivered via on_partial_transcript -- this prevents a
+        stale preview from an already-finished utterance updating the UI
+        for a newer one.
+
+        SAFETY: if self._wake_whisper_model is unavailable (failed to
+        load), preview is skipped entirely rather than falling back to
+        the large main model -- see _transcribe()'s
+        `model_override is not None else self._whisper_model` fallback,
+        which would otherwise silently run preview on the slow/large
+        model.
+        """
+        if self._wake_whisper_model is None:
+            return
+
+        self._preview_busy.set()
+
+        def _run() -> None:
+            try:
+                result = self._transcribe(
+                    snapshot,
+                    beam_size_override=1,
+                    model_override=self._wake_whisper_model,
+                )
+                if result and generation == self._preview_generation:
+                    try:
+                        on_partial_transcript(str(result))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            finally:
+                self._preview_busy.clear()
+
+        threading.Thread(
+            target=_run, daemon=True, name="stt-preview-transcribe"
+        ).start()
+
+    @staticmethod
+    def _normalize_audio_float32(
+        audio_bytes: bytes, target_peak: float = 0.95
+    ) -> np.ndarray:
+        arr = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        peak = np.max(np.abs(arr))
+        # TUNING (accuracy): only auto-gain a clip whose peak is already
+        # above _MIN_GAIN_APPLY_PEAK -- see that constant's module-level
+        # comment. A clip quieter than this is treated as noise-floor, not
+        # under-recorded speech, and is left at its true (very quiet)
+        # level rather than amplified up to 8x into the model.
+        if _MIN_GAIN_APPLY_PEAK < peak < target_peak:
+            gain = min(target_peak / peak, 8.0)
+            arr = np.clip(arr * gain, -1.0, 1.0)
+        return arr
+
+    def _update_detected_language(self, text: str) -> None:
+        lang_mode = getattr(Config, "LANG_DETECTION_MODE", "auto")
+        stt_lang = getattr(Config, "STT_LANGUAGE", None)
+        with self._transcript_lock:
+            self._detected_lang = (
+                _lang_from_stt_language(stt_lang)
+                if (lang_mode == "manual" and stt_lang)
+                else _detect_language(text)
+            )
+
+    def _resolve_forced_language(self) -> Optional[str]:
+        lang_mode = getattr(Config, "LANG_DETECTION_MODE", "auto")
+        stt_lang = getattr(Config, "STT_LANGUAGE", None)
+        if lang_mode == "manual" and stt_lang:
+            return stt_lang
+
+        # POLICY: only force Hindi when the project is explicitly
+        # configured for Hindi (SARA_LANGUAGE == "hindi"). The default
+        # "hinglish" setting used to ALSO force language="hi" on every
+        # turn, biasing clearly-English and English-heavy mixed speech
+        # toward Hindi transcription. For "hinglish" (and "english")
+        # this now returns None, letting Whisper auto-detect per
+        # utterance from the audio itself -- this does NOT translate or
+        # alter transcript text, it only affects which language Whisper
+        # decodes toward. See _get_transcribe_prompt() below for the
+        # matching prompt-selection policy.
+        force_for_hindi = getattr(Config, "STT_FORCE_LANG_FOR_HINGLISH", True)
+        sara_lang = getattr(Config, "SARA_LANGUAGE", "hinglish")
+        if force_for_hindi and sara_lang == "hindi":
+            return "hi"
+        return None
+
+    # Style-guidance prompt used ONLY when the turn is explicitly forced
+    # to Hindi (forced_lang == "hi": either a manual STT_LANGUAGE == "hi"
+    # override, or SARA_LANGUAGE == "hindi"). Contains Devanagari +
+    # romanized Hindi/Hinglish style examples, which is appropriate here
+    # because the turn is *known* to be Hindi -- there is no English
+    # speech in this branch to accidentally bias.
+    _STATIC_TRANSCRIBE_PROMPT_HI = (
+        "यह बातचीत हिंदी, इंग्लिश और हिंग्लिश में हो सकती है। "
+        "Transcribe naturally without translating, keep proper names exactly as spoken, "
+        "do not invent words. Example style: 'aaj mujhe office jana hai', "
+        "'mera naam Sara hai', 'kya haal hai bhai'."
+    )
+
+    # Style-guidance prompt used when NO language is explicitly forced
+    # (forced_lang is None) and the project default is "hinglish" (or any
+    # value other than "english"). Deliberately neutral: it acknowledges
+    # that the speech may be English, Hindi, or a code-switched mix,
+    # WITHOUT the Hindi/Hinglish-specific romanized vocabulary examples
+    # used in _STATIC_TRANSCRIBE_PROMPT_HI above -- those examples were
+    # found to measurably bias Whisper's vocabulary/style even for
+    # clearly-English or English-heavy input, which is exactly what this
+    # branch must avoid.
+    _STATIC_TRANSCRIBE_PROMPT_NEUTRAL = (
+        "This conversation may be in English, Hindi, or a natural code-switched "
+        "mix of both. Transcribe exactly what is spoken, in whichever language "
+        "or mix it was actually spoken in, without translating between "
+        "languages, without switching script, and without inventing words. "
+        "Keep proper names and technical terms exactly as spoken."
+    )
+
+    def _get_transcribe_prompt(self, forced_lang: Optional[str]) -> str:
+        """
+        TUNING (accuracy): picks the style-guidance prompt appropriate
+        for this specific turn.
+
+        - forced_lang == "hi" (explicit Hindi, manual or
+          SARA_LANGUAGE == "hindi"): the speech is KNOWN to be Hindi, so
+          the Hindi/Hinglish-styled prompt is safe and helpful.
+        - forced_lang == "en" (explicit manual English): the speech is
+          KNOWN to be English, so the English-only prompt is used.
+        - forced_lang is None (auto -- the default "hinglish" mode, or
+          any unrecognized SARA_LANGUAGE): the language for THIS turn is
+          not yet known and may be English, Hindi, or a code-switched
+          mix. Using the Hindi/Hinglish-styled prompt here (as this
+          project used to do unconditionally) would bias English-heavy
+          or pure-English speech toward Hindi vocabulary/style. Instead
+          this branch uses the neutral, language-agnostic prompt, EXCEPT
+          when SARA_LANGUAGE == "english" (project explicitly configured
+          English-first with no other override in play), where the
+          English-only prompt is still the better default.
+        """
+        sara_lang = getattr(Config, "SARA_LANGUAGE", "hinglish")
+
+        if forced_lang == "hi":
+            return self._STATIC_TRANSCRIBE_PROMPT_HI
+        if forced_lang == "en":
+            return _STATIC_TRANSCRIBE_PROMPT_EN
+        if sara_lang == "english":
+            return _STATIC_TRANSCRIBE_PROMPT_EN
+        return self._STATIC_TRANSCRIBE_PROMPT_NEUTRAL
+
+    def _transcribe(
+        self,
+        audio_bytes: bytes,
+        beam_size_override: Optional[int] = None,
+        model_override: Optional[object] = None,
+    ) -> "TranscriptionResult":
+        model = model_override if model_override is not None else self._whisper_model
+        if not audio_bytes or model is None:
+            return TranscriptionResult("", 0.0)
+
+        duration_s = len(audio_bytes) / (self.SAMPLE_RATE * self.SAMPLE_WIDTH)
+        if duration_s < 0.20:
+            return TranscriptionResult("", 0.0)
+
+        try:
+            audio_np = self._normalize_audio_float32(audio_bytes)
+
+            forced_lang = self._resolve_forced_language()
+            beam_size = (
+                int(beam_size_override)
+                if beam_size_override is not None
+                else int(getattr(Config, "WHISPER_BEAM_SIZE", 3))
+            )
+            no_speech_thr = float(getattr(Config, "STT_NO_SPEECH_THRESHOLD", 0.6))
+
+            temperature = getattr(
+                Config, "STT_TEMPERATURE_FALLBACK", (0.0, 0.4, 0.8)
+            )
+
+            segments, _ = model.transcribe(
+                audio_np,
+                beam_size=beam_size,
+                best_of=beam_size,
+                temperature=temperature,
+                language=forced_lang,
+                task="transcribe",
+                initial_prompt=self._get_transcribe_prompt(forced_lang),
+                condition_on_previous_text=False,
+                vad_filter=False,  # Handled upstream by WebRTC
+                no_speech_threshold=no_speech_thr,
+                log_prob_threshold=float(
+                    getattr(Config, "STT_LOG_PROB_THRESHOLD", -1.0)
+                ),
+                compression_ratio_threshold=float(
+                    getattr(Config, "STT_COMPRESSION_RATIO_THRESHOLD", 2.4)
+                ),
+            )
+
+            segments = list(segments)
+            usable = [
+                s for s in segments if getattr(s, "no_speech_prob", 0.0) < no_speech_thr
+            ]
+            text = "".join(segment.text for segment in usable).strip()
+
+            # ── STT CONFIDENCE SIGNAL ────────────────────────────────────
+            # Mean of (1 - no_speech_prob) across the SAME `usable`
+            # segments already computed above -- free, no extra model
+            # call. Restricted to `usable` so a segment thrown away by
+            # the no_speech filter can't skew the confidence of the
+            # segments that actually made it into `text`. This value is
+            # part of the public TranscriptionResult API (`.confidence`,
+            # consumed downstream by core_wiring.py / intent_handlers.py
+            # for the destructive-action spoken confirmation gate) and is
+            # NOT used here to reject or discard any transcript --
+            # short-transcript rejection based on this signal was
+            # evaluated and intentionally NOT implemented, pending
+            # runtime evidence (see project notes) that it can reliably
+            # distinguish genuine short commands ("yes", "haan", "stop",
+            # "open chrome", "call mom", "what now?") from noise/silence
+            # hallucinations across English/Hindi/Hinglish conditions.
+            if usable:
+                confidence = sum(
+                    1.0 - getattr(s, "no_speech_prob", 0.0) for s in usable
+                ) / len(usable)
+            else:
+                confidence = 0.0
+
+            min_repeats = int(getattr(Config, "STT_HALLUCINATION_MIN_REPEATS", 3))
+            if _is_hallucinated_repetition(text, min_repeats=min_repeats):
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(f"[STT] Discarded hallucinated repetition: {text[:80]!r}...")
+                return TranscriptionResult("", 0.0)
+
+            # BUGFIX: see _HALLUCINATION_PHRASES docstring in helpers.py —
+            # catches single-shot boilerplate hallucinations (e.g.
+            # "Subtitles by the Amara.org community") that the repetition
+            # check above can't, since they only appear once per capture.
+            if _is_known_hallucination(text):
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(f"[STT] Discarded known hallucination phrase: {text[:80]!r}")
+                return TranscriptionResult("", 0.0)
+
+            if text:
+                with self._transcript_lock:
+                    self._recent_transcript = (self._recent_transcript + " " + text)[
+                        -500:
+                    ]
+                self._update_detected_language(text)
+
+            word_count = max(1, len(text.split()))
+            speech_rate = word_count / duration_s if duration_s > 0 else 0.0
+            return TranscriptionResult(text, confidence, speech_rate)
+
+        except Exception as e:
+            print(f"[STT Error] Faster-Whisper Inference Failed: {e}")
+            return TranscriptionResult("", 0.0)
+
+    def listen(
+        self,
+        mode: str = "command",
+        model_override: Optional[object] = None,
+        on_partial_transcript: Optional[Callable[[str], None]] = None,
+    ) -> "TranscriptionResult":
+        if self._closed:
+            return TranscriptionResult("", 0.0)
+
+        if not self._listen_lock.acquire(blocking=False):
+            if getattr(Config, "DEBUG_MODE", False):
+                print(
+                    f"[STT] listen(mode='{mode}') skipped — another listen() session is already active."
+                )
+            return TranscriptionResult("", 0.0)
+
+        try:
+            cfg = {
+                # v9: was a fixed 3.0s/5.0s window sized for full commands.
+                # "Sara"/"Hey Sara" is a one-second utterance -- waiting a
+                # command-sized window before even starting to transcribe
+                # was pure added latency on every single wake attempt.
+                # Now config-driven (WAKE_LISTEN_TIMEOUT_S/
+                # WAKE_LISTEN_MAX_DURATION_S), default 1.5s/1.8s.
+                "wake": {
+                    "timeout": float(getattr(Config, "WAKE_LISTEN_TIMEOUT_S", 1.5)),
+                    "max_duration": float(
+                        getattr(Config, "WAKE_LISTEN_MAX_DURATION_S", 1.8)
+                    ),
+                },
+                # v8: command max_duration reduced 20s -> 12s. A shorter
+                # capture window limits how much residual-echo-confused
+                # silence padding a single session can accumulate before
+                # forcibly ending, which limits the size of any potential
+                # hallucination blob even before the prompt fix above.
+                "command": {"timeout": 8.0, "max_duration": 12.0},
+                "dictate": {"timeout": 8.0, "max_duration": 60.0},
+            }.get(mode, {"timeout": 8.0, "max_duration": 12.0})
+
+            audio = self._collect_speech(
+                timeout=cfg["timeout"],
+                max_duration=cfg["max_duration"],
+                silence_limit=self._silence_gate.silence_limit,
+                # NEW: only "command"/"dictate" callers pass this (see
+                # core_wiring.py's ears.listen(mode="command", ...) call) --
+                # "wake" mode never does, so the live-caption preview
+                # mechanism above is naturally inert during wake-word
+                # detection without needing an explicit mode check here.
+                on_partial_transcript=on_partial_transcript,
+            )
+            if not audio:
+                return TranscriptionResult("", 0.0)
+
+            if mode == "command":
+                _t_pending("speech_end")
+
+            beam_override = (
+                int(getattr(Config, "WAKE_WORD_BEAM_SIZE", 1))
+                if mode == "wake"
+                else None
+            )
+
+            result = self._transcribe(
+                audio,
+                beam_size_override=beam_override,
+                model_override=model_override,
+            )
+
+            if mode == "command":
+                _t_pending("stt_done")
+
+            print(
+                f"[STTDiag] listen completed | "
+                f"mode={mode} | "
+                f"audio={len(audio) / (self.SAMPLE_RATE * self.SAMPLE_WIDTH):.2f}s | "
+                f"text={str(result)!r} | "
+                f"confidence={getattr(result, 'confidence', 0.0):.3f}"
+            )
+
+            return result
+        finally:
+            self._listen_lock.release()
+
+    def is_wake_word_detected(self) -> bool:
+        """
+        Passive wake detection using OpenWakeWord only.
+
+        Whisper/STT is NEVER used here.
+        """
+        if self._closed:
+            return False
+
+        model = self._wakeword_model
+
+        if not getattr(self, "_wake_diag_gate_seen", False):
+            self._wake_diag_gate_seen = True
+            _pending_now = len(self._wake_pending) if hasattr(self, "_wake_pending") else -1
+            _ring_now = len(self._wake_ring.peek_latest(9999)) if hasattr(self, "_wake_ring") else -1
+            print(
+                "[WakeDiag] is_wake_word_detected() first call | "
+                f"model_loaded={model is not None} | "
+                f"tts_active={self._tts_active.is_set()} | "
+                f"wake_pending_bytes={_pending_now} | "
+                f"wake_ring_chunks={_ring_now}"
+            )
+
+        # OpenWakeWord is the ONLY passive wake detector.
+        # No Whisper fallback.
+        if model is None:
+            if getattr(Config, "DEBUG_MODE", False):
+                print("[WakeDebug] OpenWakeWord model is unavailable.")
+            return False
+
+        now = time.monotonic()
+
+        with self._threshold_lock:
+            last_triggered = self._wakeword_last_triggered
+
+        # Prevent repeated triggers.
+        if now - last_triggered < self._wakeword_cooldown:
+            return False
+
+        # Never listen for wake word while TTS is active.
+        if self._tts_active.is_set():
+            # Discard any audio accumulated while speaking to prevent an
+            # instant backlog (and false positives from her own echo)
+            # the moment she stops.
+            self._wake_ring.get_all(clear=True)
+            self._wake_pending.clear()
+            return False
+
+        # Do not run inference more often than configured.
+        inference_interval = float(
+            getattr(
+                Config,
+                "WAKE_WORD_INFERENCE_INTERVAL_S",
+                0.08,
+            )
+        )
+
+        if now - self._wakeword_last_inference < inference_interval:
+            return False
+
+        # OpenWakeWord must consume NEW audio from the dedicated RAW
+        # microphone stream.
+        new_chunks = self._wake_ring.get_all(clear=True)
+
+        if new_chunks:
+            self._wake_pending.extend(b"".join(new_chunks))
+
+        frame_samples = int(
+            self.SAMPLE_RATE
+            * getattr(Config, "WAKE_WORD_FRAME_MS", 80)
+            / 1000
+        )
+
+        # Defensive OpenWakeWord frame size.
+        if frame_samples != 1280:
+            frame_samples = 1280
+
+        frame_bytes = frame_samples * self.SAMPLE_WIDTH
+
+        if len(self._wake_pending) < frame_bytes:
+            return False
+
+        self._wakeword_last_inference = now
+        
+        processed_any = False
+        max_score = 0.0
+        scores = {}
+
+        # Consume ALL available 80 ms frames sequentially.
+        # This prevents unbounded accumulation and real-time drift if the
+        # polling caller is slower than the ingestion rate.
+        while len(self._wake_pending) >= frame_bytes:
+            frame = np.frombuffer(
+                bytes(self._wake_pending[:frame_bytes]),
+                dtype=np.int16,
+            )
+            del self._wake_pending[:frame_bytes]
+            
+            try:
+                frame_scores = model.predict(frame)
+                processed_any = True
+                
+                # We need the highest score across the catch-up batch
+                frame_max = max(frame_scores.values(), default=0.0)
+                if frame_max > max_score:
+                    max_score = frame_max
+                    scores = frame_scores
+            except Exception as e:
+                _log_rate_limited(
+                    "is_wake_word_detected_predict",
+                    "[STT] OpenWakeWord predict failed during catch-up: %s: %s",
+                    type(e).__name__,
+                    e,
+                )
+                break
+                
+        if not processed_any:
+            return False
+
+        try:
+            threshold = float(
+                getattr(
+                    Config,
+                    "WAKE_WORD_THRESHOLD",
+                    0.50,
+                )
+            )
+
+            # TUNING (latency/hot-path cost): this diagnostic used to run
+            # unconditionally every ~1s for the entire time the wake loop
+            # is active (i.e. all idle runtime), doing string formatting
+            # + a blocking print() on a path that's already polled every
+            # WAKE_WORD_INFERENCE_INTERVAL_S (default 0.08s). Now gated
+            # behind DEBUG_MODE -- same peak-score-tracking output when
+            # actively debugging wake detection, zero cost otherwise.
+            if getattr(Config, "DEBUG_MODE", False):
+                # Track the PEAK score within each 1-second window (not
+                # just whichever frame happens to land on the throttle
+                # boundary) so a brief spike is never missed.
+                if max_score > self._wake_diag_window_max:
+                    self._wake_diag_window_max = max_score
+                if now - self._wake_diag_window_start >= 1.0:
+                    print(
+                        f"[WakeDiag] 1s-peak score={self._wake_diag_window_max:.4f} | "
+                        f"threshold={threshold:.4f} | raw={scores}"
+                    )
+                    self._wake_diag_window_start = now
+                    self._wake_diag_window_max = 0.0
+
+            if max_score >= threshold:
+                with self._threshold_lock:
+                    self._wakeword_last_triggered = now
+
+                print(
+                    f"[STT] ✅ Wake word detected | "
+                    f"score={max_score:.4f} | "
+                    f"threshold={threshold:.4f}"
+                )
+
+                return True
+
+            return False
+
+        except (ValueError, TypeError, RuntimeError) as e:
+            _log_rate_limited(
+                "is_wake_word_detected",
+                "[STT] OpenWakeWord inference failed "
+                "(no passive wake): %s: %s",
+                type(e).__name__,
+                e,
+            )
+            return False
+
+        except Exception as e:
+            _log_rate_limited(
+                "is_wake_word_detected",
+                "[STT] OpenWakeWord inference raised an unexpected "
+                "error (no passive wake): %s: %s",
+                type(e).__name__,
+                e,
+                exc_info=True,
+            )
+            return False
+
+    def decode_barge_ring(self, max_ms: int = 700) -> str | None:
+        """Decode the most recent `max_ms` of the AEC/NS-processed ring with
+        the small preview model. None on any failure, missing model or
+        timeout (~0.4 s). Never takes self._listen_lock."""
+        from sara.audio.stt.barge_decode import decode_recent
+
+        return decode_recent(self, max_ms)
+
+    def set_barge_boost(self, factor: float) -> None:
+        """Scale the TTS-time barge-in energy gate (1.0 = unchanged).
+        Never raises."""
+        try:
+            self._barge_boost = max(1.0, min(4.0, float(factor)))
+        except (TypeError, ValueError):
+            self._barge_boost = 1.0
+
+    def is_user_speaking(self, duration: float = 0.3) -> bool:
+        if self._closed:
+            return False
+        try:
+            n = max(1, int((self.SAMPLE_RATE / self.CHUNK_SIZE) * duration))
+            chunks = self._ring.peek_latest(n=n)
+            if not chunks:
+                return False
+
+            thr = self.energy_threshold
+            tts_playing = self._tts_active.is_set()
+
+            if not tts_playing:
+                return any(_rms(c) > thr for c in chunks)
+
+            bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
+            effective_thr = (
+                thr * bleed_multiplier * float(getattr(self, "_barge_boost", 1.0))
+            )
+            loud = [c for c in chunks if _rms(c) > effective_thr]
+            if not loud:
+                return False
+
+            vad_confirmed = sum(1 for c in loud if self._vad.is_speech(c))
+            return vad_confirmed >= max(1, int(len(loud) * 0.6))
+        except (ValueError, TypeError) as e:
+            _log_rate_limited(
+                "is_user_speaking",
+                "[STT] is_user_speaking check failed (treating as not speaking): %s: %s",
+                type(e).__name__, e,
+            )
+            return False
+        except Exception as e:
+            _log_rate_limited(
+                "is_user_speaking",
+                "[STT] is_user_speaking raised an unexpected error type "
+                "(this may be a bug; treating as not speaking): %s: %s",
+                type(e).__name__, e,
+                exc_info=True,
+            )
+            return False
+
+    # TUNING (robustness): validated against a fixed allow-list before
+    # touching Config, instead of accepting any string unconditionally.
+    # Previously any value (e.g. "hinglish", which sara/gui/app/settings.py
+    # never actually sends today, but a future caller could) would be
+    # written straight into Config.STT_LANGUAGE and handed to
+    # faster-whisper's model.transcribe(language=...) as-is via
+    # _resolve_forced_language() -- "hinglish" is not a valid Whisper
+    # ISO-639-1 language code, so that call would misbehave/error instead
+    # of transcribing anything. "en"/"hi"/"auto" (the only values this
+    # project's GUI currently sends) are completely unaffected by this
+    # change; an unrecognized value is now safely ignored (with a printed
+    # warning) instead of being written through blindly.
+    _VALID_STT_LANGS = frozenset({"en", "hi"})
+
+    def set_language(self, lang: str) -> None:
+        # BUGFIX: _resolve_forced_language() only honors Config.STT_LANGUAGE
+        # when Config.LANG_DETECTION_MODE == "manual" — this flag was never
+        # being set anywhere, so a manually forced language was silently
+        # ignored during transcription. Also handle "auto" so switching
+        # back actually clears the force instead of leaving it stuck.
+        lang = (lang or "").lower().strip()
+        if lang == "auto":
+            Config.LANG_DETECTION_MODE = "auto"
+            Config.STT_LANGUAGE = None
+        elif lang in self._VALID_STT_LANGS:
+            Config.STT_LANGUAGE = lang
+            Config.LANG_DETECTION_MODE = "manual"
+        else:
+            print(
+                f"[STT] set_language('{lang}') ignored -- not a recognized "
+                f"Whisper language code (expected one of {sorted(self._VALID_STT_LANGS)} "
+                f"or 'auto'). Forced language, if any, is unchanged."
+            )
+            return
+        print(f"[STT] Language set to '{lang}'.")
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._recalib_event.set()
+        self._watchdog_event.set()  # v8.1: wake watchdog thread so it exits promptly
+        self._close_stream()
+        print("[STT] Closed.")
+
+    def __enter__(self) -> "SpeechToText":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.close()
+
+    def _log_init(self) -> None:
+        wake_beam = int(getattr(Config, "WAKE_WORD_BEAM_SIZE", 1))
+        print(
+            f"[STT] Ready — "
+            f"FasterWhisper={'✓ (CPU INT8)' if self._whisper_model else '✗'} | "
+            f"VAD={'✓' if _HAS_VAD else '✗'} | "
+            f"AEC={'✓ (worker thread)' if (self._aec is not None and getattr(self._aec, 'enabled', False)) else '✗'} | "
+            f"WakeWord(OpenWakeWord)={'✓' if self._wakeword_model else '✗ (model unavailable)'} | "
+            f"WakeWords={self._wake_variants} | WakeBeam={wake_beam} | "
+            f"ForcedLang={self._resolve_forced_language()} | "
+            f"threshold={self.energy_threshold:.0f}"
+        )

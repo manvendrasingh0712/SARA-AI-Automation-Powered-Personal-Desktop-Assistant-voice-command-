@@ -1,0 +1,26 @@
+/* ==========================================================================
+   perf.css -- Settings > System > "Response speed" block.
+   Markup: index.html #perfBlock.  JS: js/perf.js.  Token colours only.
+   ========================================================================== */
+.perf-block{display:flex;flex-direction:column;gap:11px;min-width:0;}
+.perf-nums{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.perf-num{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;min-width:0;}
+.perf-num b{font-size:24px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.perf-num span{font-size:11px;color:var(--muted);}
+.perf-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--line);}
+.perf-seg{flex:1 1 0;min-width:2px;height:100%;}
+.perf-stt{background:var(--info);}
+.perf-route{background:var(--think);}
+.perf-llm{background:var(--core);}
+.perf-tool{background:var(--warning);}
+.perf-tts{background:var(--speak);}
+.perf-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:11.5px;color:var(--text-soft);}
+.perf-leg{display:inline-flex;align-items:center;gap:6px;min-width:0;}
+.perf-dot{display:inline-block;flex:none;width:8px;height:8px;border-radius:50%;}
+.perf-recent{display:flex;flex-direction:column;gap:4px;min-width:0;}
+.perf-turn{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;}
+.perf-route-name{flex:1 1 90px;min-width:0;overflow-wrap:anywhere;}
+.perf-ms{color:var(--muted);font-variant-numeric:tabular-nums;}
+.perf-out{flex:0 0 auto;color:var(--muted);}
+.perf-out.perf-good{color:var(--success);}
+.perf-out.perf-bad{color:var(--danger);}

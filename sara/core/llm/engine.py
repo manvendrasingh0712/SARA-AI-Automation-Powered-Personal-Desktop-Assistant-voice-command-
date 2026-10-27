@@ -1,0 +1,1747 @@
+"""
+sara.core.llm.engine
+SaraLLM -- the public class. Wires prompt + streaming + clients together
+into generate_response()/generate_response_stream().
+"""
+from __future__ import annotations
+
+from .prompt import _build_base_prompt, _time_of_day
+from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens
+from .clients import _get_ollama_client, _get_gemini_client
+
+
+import logging
+import re
+import threading
+import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Dict, Iterator, List, Optional, Tuple
+
+from config import Config
+
+try:
+    from sara.core.telemetry import annotate as _t_annotate, mark as _t_mark
+except Exception:  # telemetry is optional: fall back to no-ops
+    def _t_annotate(*args, **kwargs) -> None:
+        return None
+
+    def _t_mark(*args, **kwargs) -> None:
+        return None
+
+
+try:
+    from sara.core.telemetry import current_turn_id as _t_turn_id
+except Exception:  # telemetry is optional: fall back to a no-op
+    def _t_turn_id():
+        return None
+
+
+def _router():
+    """Learned-router singleton, or None when it is off or cannot be imported."""
+    try:
+        if str(getattr(Config, "ROUTER_MODE", "off") or "off").strip().lower() == "off":
+            return None
+        from sara.core.router import get_router
+
+        return get_router()
+    except Exception:
+        return None
+
+
+def _looks_rate_limited(exc: BaseException) -> bool:
+    """True for 429 / quota style errors (never logs the error text)."""
+    try:
+        code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+        text = f"{type(exc).__name__} {exc}".lower()
+        return (
+            code == 429
+            or "429" in text
+            or "resource_exhausted" in text
+            or "quota" in text
+            or "rate limit" in text
+        )
+    except Exception:
+        return False
+
+
+def _router_report(router, decision_id: str, started: float, produced: bool, escalated: bool) -> None:
+    """Hand the finished turn's outcome to the router; never raises."""
+    try:
+        router.report_done(
+            decision_id,
+            ok=produced,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            empty=not produced,
+            escalated=escalated,
+            error_code=None if produced else "no_output",
+        )
+    except Exception:
+        pass
+
+# ══════════════════════════════════════════════════════════════════════
+# Module-level compiled regexes
+# ══════════════════════════════════════════════════════════════════════
+
+logger = logging.getLogger("sara.llm.engine")
+
+
+def _current_cancel_event() -> threading.Event:
+    """Current turn's cancel event (lazy import avoids a circular import)."""
+    try:
+        from sara.orchestrator.state import TURN_STATE
+
+        return TURN_STATE.current_event()
+    except (ImportError, AttributeError) as e:
+        # Expected: lazy-import cycle / TURN_STATE not available yet.
+        logger.debug("cancel event unavailable, using a fresh Event: %s", e)
+        return threading.Event()
+    except Exception as e:  # noqa: BLE001
+        logger.exception("unexpected error getting cancel event: %s", e)
+        return threading.Event()
+
+
+# PRIORITY-7 FIX: dedicated subclass (still a RuntimeError, so any
+# existing external `except RuntimeError` handling elsewhere keeps
+# working unchanged) used ONLY for the two deterministic "client isn't
+# available at all" cases below. This lets _stream_generic() fail-fast
+# on exactly that case instead of blanket-matching RuntimeError, which
+# would also swallow-and-not-retry genuinely transient RuntimeErrors
+# raised deeper inside the ollama/genai client libraries.
+class _ClientUnavailableError(RuntimeError):
+    """Raised when the Ollama/Gemini client itself failed to load or
+    initialize. Retrying this is pointless — the client won't spawn
+    into existence on attempt 2 — so it's treated as non-retryable."""
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Localized fallback messages (v7) — used instead of raw exception text
+# anywhere a reply could reach speak_stream()/speak() and be read aloud.
+# ══════════════════════════════════════════════════════════════════════
+
+_STREAM_FAIL_MESSAGES = {
+    "english": "Sorry, I'm having trouble reaching my brain right now — could you try that again in a moment?",
+    "hindi": "Maafi chahta hoon, abhi thodi dikkat aa rahi hai — thodi der baad phir try karo.",
+    "hinglish": "Sorry yaar, abhi thoda glitch ho raha hai — thodi der baad dobara try karna.",
+}
+
+_STREAM_INTERRUPTED_MESSAGES = {
+    "english": "Hmm, my connection glitched mid-thought — that's all I've got for now.",
+    "hindi": "Hmm, beech mein connection mein dikkat aa gayi — abhi itna hi keh sakta hoon.",
+    "hinglish": "Hmm, beech mein thoda glitch ho gaya — abhi bas itna hi.",
+}
+
+# FALLBACK-DISCLOSURE FIX: single source of truth for the Ollama
+# fallback stage's label, shared between where the stage is registered
+# (generate_response_stream()) and where it's checked
+# (used_fallback_last_turn()) so the two can never silently drift apart.
+_FALLBACK_STAGE_LABEL = "ollama-fallback"
+
+# TASK A (two-tier model routing): a short, known-vocabulary command
+# ("set volume to 50", "what time is it") is routed to the smaller/
+# faster Ollama model (self._ollama_fast_model_name) instead of the
+# main one -- anything longer or open-ended (chat, multi-clause asks,
+# questions) stays on the main model. Never raises; unknown/empty
+# input is NOT simple (safer default = main model).
+_SIMPLE_QUERY_MAX_WORDS = 6
+_SIMPLE_QUERY_PATTERNS = re.compile(
+    r"\b(volume|brightness|mute|unmute|time|date|battery|pause|"
+    r"resume|stop|skip|next|previous|louder|quieter|screenshot)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_simple_query(text: str) -> bool:
+    try:
+        if not text or not text.strip():
+            return False
+        words = text.strip().split()
+        if len(words) > _SIMPLE_QUERY_MAX_WORDS:
+            return False
+        return bool(_SIMPLE_QUERY_PATTERNS.search(text))
+    except Exception:
+        return False
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Language-aware system prompt templates
+# ══════════════════════════════════════════════════════════════════════
+
+
+
+
+_SUMMARY_SYSTEM_PROMPTS = {
+    "english": (
+        "You are Sara, a voice assistant. Summarize the following article in "
+        "2 to 3 short, natural sentences suitable for being read aloud. "
+        "Do NOT use markdown. Be concise and conversational. "
+        "Respond in English."
+    ),
+    "hindi": (
+        "Aap Sara hain, ek voice assistant. Neeche diye gaye article ko "
+        "2 se 3 chhote, natural vaakyon mein summarize karo, jo bolkar "
+        "sunaye ja sakein. Markdown ka use mat karo. Chhota aur seedha "
+        "jawab do. Hindi mein jawab do."
+    ),
+    "hinglish": (
+        "Tu Sara hai, ek voice assistant. Neeche diye article ko 2 se 3 "
+        "chhote, natural sentences mein summarize kar — jo bolkar sunaya "
+        "ja sake. Markdown use nahi karna. Chhota aur seedha rakh. "
+        "Hinglish mein jawab de."
+    ),
+}
+
+_SUMMARY_FAIL_MESSAGES = {
+    "english": "Sorry, I couldn't summarize that right now — give it another try in a bit.",
+    "hindi": "Maafi chahta hoon, abhi summarize nahi ho paaya — thodi der baad try karo.",
+    "hinglish": "Sorry yaar, abhi summarize nahi ho paya — thodi der baad phir try karna.",
+}
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Main class
+# ══════════════════════════════════════════════════════════════════════
+
+
+class SaraLLM:
+    """
+    Unified LLM wrapper for Ollama (local) and Gemini API.
+    Supports English, Hindi, and Hinglish personality modes.
+    """
+
+    # BUGFIX (root cause of "preview mode, no backend connected" hanging
+    # forever, plus audio input/output overflow/underflow around startup):
+    # pywebview's inject_pywebview()/get_functions() walks dir(Api_instance)
+    # and RECURSES into every non-underscore, non-callable attribute that
+    # has a __module__ (i.e. every plain class instance) to look for nested
+    # API classes. self.brain (this SaraLLM instance) is reachable directly
+    # off the Api object, so pywebview was recursively enumerating this
+    # entire live LLM engine's internals (locks, queues, client handles) on
+    # a background thread during window creation -- slow at best, and a
+    # deadlock at worst if that walk ever touches something holding a lock
+    # the audio threads need. `_serializable = False` is pywebview's own
+    # documented flag for "don't walk into this object" -- see
+    # https://pywebview.flowrl.com/guide/interdomain (nested classes with
+    # _serializable = False are omitted).
+    _serializable = False
+
+    _VALID_LANGS = {"english", "hindi", "hinglish"}
+
+    # PRIORITY-2 FIX (revised): fixed whitelist instead of a word-count
+    # cutoff — a plain "<=2 words" rule wrongly caught short-but-real
+    # memory-dependent queries like "my name?" or "remember me". Only
+    # exact matches to obvious greetings/acknowledgements skip RAG.
+    _TRIVIAL_PROMPTS = {
+        "hi", "hello", "hey", "yo", "hii", "hiya",
+        "ok", "okay", "k", "kk", "fine",
+        "haan", "han", "ha", "haa", "nahi", "nahin", "no",
+        "hmm", "hm", "achha", "acha", "theek hai", "thik hai",
+        "thanks", "thank you", "thanks yaar", "thank you yaar", "ty",
+        "bye", "bye bye", "goodbye", "good bye", "namaste", "ok bye",
+    }
+
+    def __init__(self, cfg=None, memory=None) -> None:
+        self._cfg = cfg if cfg is not None else Config
+        # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): optional
+        # sara.core.rag.LongTermMemory instance, shared with the rest of
+        # the app (constructed once in gui_main.py's build_core_objects()).
+        # None is a fully supported value — every retrieval call below is
+        # guarded, so SaraLLM behaves EXACTLY as before this feature
+        # existed if no memory store is provided (e.g. in tests).
+        self._memory = memory
+        # PRIORITY-3 FIX: single bounded background worker (stdlib
+        # ThreadPoolExecutor, max_workers=1) reused across every call,
+        # instead of spawning a brand-new daemon thread per request for
+        # maybe_extract_fact(). Created lazily (see _fact_extract_pool
+        # property) only the first time it's actually needed, and only
+        # when a memory store is configured at all — no project-wide
+        # worker/queue mechanism was found in the files available to
+        # audit, so this is the smallest bounded stdlib option.
+        self._fact_executor: Optional[ThreadPoolExecutor] = None
+        # LIFECYCLE FIX: dedicated lock so _get_fact_extract_pool() can't
+        # race and create two executors if two requests hit it at once.
+        self._fact_executor_lock = threading.Lock()
+
+        # CIRCUIT BREAKER FIX: instance-level (NOT global/class-level --
+        # each SaraLLM owns its own breaker) state tracking consecutive
+        # PRIMARY-backend failures across turns, so an outage doesn't
+        # force every single turn to re-pay the full LLM_MAX_RETRIES
+        # backoff before falling back. time.monotonic() is used for the
+        # cooldown deadline rather than time.time() so a wall-clock
+        # adjustment (NTP sync, DST, manual change) can never cause the
+        # breaker to stay tripped forever or reset early. Guarded by its
+        # own lock (same discipline as self._history_lock above) since
+        # _stream_generic() can run concurrently across threads. See
+        # _circuit_breaker_active()/_record_success()/_record_failure()
+        # and _stream_generic() for where this is consulted/updated.
+        self._cb_lock = threading.Lock()
+        self._cb_consecutive_failures: int = 0
+        self._cb_cooldown_until: float = 0.0
+
+        # FALLBACK-DISCLOSURE FIX: which stage (see `stages` in
+        # generate_response_stream()) actually produced the most
+        # recently completed turn's tokens -- e.g. self._primary_backend
+        # or _FALLBACK_STAGE_LABEL. Updated in _stream_generic() the
+        # instant a stage proves itself by yielding its first real
+        # token (see below), so core_wiring.py can tell the user when a
+        # turn came from the much smaller local fallback model instead
+        # of it just feeling randomly "dumb". A fully-failed turn (zero
+        # tokens from every stage) deliberately leaves this untouched --
+        # it reflects the last turn that actually produced something,
+        # not every turn attempted. Guarded by its own lock (same
+        # discipline as self._cb_lock above) since _stream_generic() can
+        # run concurrently across threads (e.g. a GUI text command
+        # racing the voice loop against the same SaraLLM instance). See
+        # used_fallback_last_turn() below for the public read.
+        self._last_stage_lock = threading.Lock()
+        self._last_stage_used: Optional[str] = None
+
+        self.user_name: Optional[str] = None
+        self._tz: str = getattr(self._cfg, "SARA_TIMEZONE", "local")
+
+        raw_lang = getattr(self._cfg, "SARA_LANGUAGE", "english").lower().strip()
+        self._lang: str = raw_lang if raw_lang in self._VALID_LANGS else "english"
+
+        self._tod: str = _time_of_day(self._tz, self._lang)
+        self.system_instruction: str = ""
+        self._sys_prompt_tokens: int = 0
+
+        self._build_and_cache_system_instruction()
+
+        self._history: deque[Tuple[str, str]] = deque(
+            maxlen=self._cfg.MAX_MEMORY_EXCHANGES
+        )
+        self._history_lock = threading.Lock()
+
+        self._warm_event = threading.Event()
+        self._warmup_error: Optional[str] = None
+
+        # FALLBACK FIX: dedicated per-backend model-name attributes.
+        # self.model_name (used for display/debug) still reflects the
+        # PRIMARY backend, but _open_ollama_stream/_open_gemini_stream
+        # now always read their OWN backend's model name here, instead
+        # of the shared self.model_name — otherwise, once Gemini falls
+        # back to Ollama below, _open_ollama_stream would have sent the
+        # Gemini model string to the Ollama client.
+        self._ollama_model_name = getattr(self._cfg, "OLLAMA_MODEL", "llama3")
+        # TASK A: falls back to the main model when unset/empty, so this
+        # is a fully safe no-op default until Manav actually sets
+        # OLLAMA_FAST_MODEL.
+        self._ollama_fast_model_name = (
+            getattr(self._cfg, "OLLAMA_FAST_MODEL", "") or self._ollama_model_name
+        )
+        self._gemini_model_name = getattr(
+            self._cfg, "GEMINI_MODEL", "gemini-2.5-flash"
+        )
+        # TASK A (two-tier model routing, Gemini): mirrors
+        # self._ollama_fast_model_name below -- falls back to the main
+        # Gemini model when unset/empty, so this is a fully safe no-op
+        # default until GEMINI_FAST_MODEL is actually set in .env.
+        self._gemini_fast_model_name = (
+            getattr(self._cfg, "GEMINI_FAST_MODEL", "") or self._gemini_model_name
+        )
+
+        # Ollama-as-primary remains a fully supported LOCAL/OFFLINE mode
+        # for users without a Gemini API key (LLM_BACKEND=ollama in
+        # config.py) -- but this project's default, INTENDED setup is
+        # Gemini-primary with Ollama as the fallback (see
+        # self._fallback_enabled just below), never the reverse. Don't
+        # mistake this dual-primary code path for an oversight.
+        # CONSISTENCY FIX: the getattr default here is now "gemini" too,
+        # matching config.py's own LLM_BACKEND default -- previously it
+        # said "ollama", so a Config-like object that omitted
+        # LLM_BACKEND entirely (e.g. a hand-rolled cfg in a test) would
+        # have silently degraded to local-only Ollama instead of the
+        # intended Gemini-primary/Ollama-fallback setup.
+        self._primary_backend = getattr(self._cfg, "LLM_BACKEND", "gemini")
+        # Gemini -> Ollama automatic fallback (see _stream_generic /
+        # generate_response_stream). Only meaningful when Gemini is the
+        # primary backend -- Ollama has nowhere further to fall back to.
+        self._fallback_enabled = self._primary_backend == "gemini" and getattr(
+            self._cfg, "LLM_FALLBACK_ENABLED", True
+        )
+
+        if self._primary_backend == "ollama":
+            self.model_name = self._ollama_model_name
+            self._check_ollama()
+        else:
+            self.model_name = self._gemini_model_name
+            # Pre-load Gemini imports in background to kill cold-start latency
+            threading.Thread(
+                target=self._preload_gemini, daemon=True, name="gemini-preload"
+            ).start()
+            self._warm_event.set()
+            if self._fallback_enabled:
+                # Warm the Ollama fallback path quietly in the background
+                # too, so the FIRST time Gemini actually fails, the local
+                # model isn't also paying a cold-start penalty on top of
+                # the failed Gemini attempt(s). Failures here are fully
+                # non-fatal -- self._warm_event (which gates readiness)
+                # is untouched, and generate_response_stream() will just
+                # eat whatever extra latency remains if this hasn't
+                # finished yet by the time a fallback is actually needed.
+                threading.Thread(
+                    target=self._check_ollama,
+                    args=(False,),
+                    daemon=True,
+                    name="ollama-fallback-warmup",
+                ).start()
+
+        self._log_init()
+
+    # ── Context manager ────────────────────────────────────────────────
+
+    def __enter__(self) -> "SaraLLM":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self._shutdown_fact_executor()
+
+    def _shutdown_fact_executor(self) -> None:
+        # LIFECYCLE FIX: only tears down the pool if one was actually
+        # created (lazy init means many instances never need one).
+        # wait=True blocks until any in-flight fact-extraction finishes,
+        # but spawns no new thread and doesn't touch the LLM request path.
+        if self._fact_executor is not None:
+            self._fact_executor.shutdown(wait=True)
+
+    # ── System prompt (Cached) ────────────────────────────────────────
+
+    def _build_and_cache_system_instruction(self) -> None:
+        name = getattr(self._cfg, "SARA_NAME", "Sara")
+        self.system_instruction = _build_base_prompt(
+            name, self._tod, self._lang, self.user_name
+        )
+        self._sys_prompt_tokens = _estimate_tokens(self.system_instruction)
+
+    # ── Runtime switches ──────────────────────────────────────────────
+
+    def set_language(self, lang: str) -> None:
+        lang = lang.lower().strip()
+        if lang not in self._VALID_LANGS:
+            if getattr(self._cfg, "DEBUG_MODE", False):
+                print(f"[LLM] Unknown language '{lang}'. valid: {self._VALID_LANGS}")
+            return
+        self._lang = lang
+        self._tod = _time_of_day(self._tz, self._lang)
+        self._build_and_cache_system_instruction()
+        if getattr(self._cfg, "DEBUG_MODE", False):
+            print(f"[LLM] Language switched to '{self._lang}'.")
+
+    def get_language(self) -> str:
+        return self._lang
+
+    def set_user_name(self, name: str) -> None:
+        self.user_name = name.strip() or None
+        self._build_and_cache_system_instruction()
+
+    def get_system_prompt(self) -> str:
+        return self.system_instruction
+
+    # ── Warm-up logic ─────────────────────────────────────────────────
+
+    def _preload_gemini(self) -> None:
+        try:
+            _get_gemini_client(self._cfg)
+        except Exception:
+            pass  # Fail silently, real error will hit during generation
+
+    def _check_ollama(self, report_event: bool = True) -> None:
+        # FALLBACK FIX: report_event=False is used for the background
+        # Ollama-fallback warm-up when Gemini is primary -- that path
+        # must NOT touch self._warm_event, since that event gates
+        # generate_response_stream()'s wait for the PRIMARY backend
+        # (Gemini) being ready, not the fallback.
+        client = _get_ollama_client(self._cfg)
+        if not client:
+            if report_event:
+                self._warmup_error = "Ollama client not loaded."
+                self._warm_event.set()
+            return
+        try:
+            client.list()
+        except Exception as e:
+            if report_event:
+                self._warmup_error = f"Ollama unreachable: {e}"
+                self._warm_event.set()
+            return
+        threading.Thread(
+            target=self._warm_up_model,
+            args=(report_event,),
+            daemon=True,
+            name="llm-warmup" if report_event else "ollama-fallback-warmup-model",
+        ).start()
+
+    def _warm_up_model(self, report_event: bool = True) -> None:
+        client = _get_ollama_client(self._cfg)
+        try:
+            client.chat(
+                model=self._ollama_model_name,
+                messages=[{"role": "user", "content": "hi"}],
+                think=False,
+                options={
+                    "num_predict": 1,
+                    "num_ctx": getattr(self._cfg, "OLLAMA_NUM_CTX", 4096),
+                },
+                keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+            )
+        except Exception as e:
+            if report_event:
+                self._warmup_error = str(e)
+            elif getattr(self._cfg, "DEBUG_MODE", False):
+                print(f"[LLM] Ollama fallback warm-up failed (non-fatal): {e}")
+        finally:
+            if report_event:
+                self._warm_event.set()
+
+    def wait_until_warm(self, timeout: float = 30.0) -> WarmupResult:
+        fired = self._warm_event.wait(timeout=timeout)
+        if not fired:
+            return WarmupResult(ok=False, error="Warm-up timed out.")
+        if self._warmup_error:
+            return WarmupResult(ok=False, error=self._warmup_error)
+        return WarmupResult(ok=True)
+
+    # ── Token budget ───────────────────────────────────────────────────
+
+    def _trim_history_to_budget(
+        self, prompt: str, extra_tokens: int = 0, backend: Optional[str] = None
+    ) -> List[Tuple[str, str]]:
+        # FALLBACK FIX: `backend` lets a caller ask for the trim sized to
+        # a SPECIFIC backend's context window, instead of always reading
+        # the configured LLM_BACKEND. This matters for the Gemini ->
+        # Ollama fallback path: history trimmed to Gemini's much larger
+        # GEMINI_MAX_HISTORY_TOKENS budget would silently overflow
+        # Ollama's typically much smaller OLLAMA_NUM_CTX if reused as-is.
+        active_backend = backend or getattr(self._cfg, "LLM_BACKEND", "ollama")
+        if active_backend == "gemini":
+            ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
+            gen_tokens = 1000
+        else:
+            ctx_tokens = int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096))
+            gen_tokens = int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300))
+
+        # PRIORITY-1 FIX: extra_tokens reserves room for the RAG
+        # memory_context system message, which is injected into the
+        # prompt (_build_messages_ollama/_build_contents_gemini) but was
+        # never accounted for here before — on a small 4096-token ctx
+        # this could silently overflow the model's context window.
+        fixed_cost = self._sys_prompt_tokens + _estimate_tokens(prompt) + extra_tokens
+        available = ctx_tokens - gen_tokens - fixed_cost
+
+        if available <= 0:
+            return []
+
+        # Minimize lock duration
+        with self._history_lock:
+            snap = list(self._history)
+
+        kept: list[Tuple[str, str]] = []
+        used = 0
+        for u, a in reversed(snap):
+            cost = _estimate_tokens(u) + _estimate_tokens(a)
+            if used + cost > available:
+                break
+            kept.append((u, a))
+            used += cost
+
+        return list(reversed(kept))
+
+    # ── Message builders ───────────────────────────────────────────────
+
+    def _build_messages_ollama(
+        self,
+        prompt: str,
+        history: List[Tuple[str, str]],
+        memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
+    ) -> list:
+        msgs: list = [{"role": "system", "content": self.system_instruction}]
+        # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieved long-term
+        # memories are injected as a SEPARATE system message, not merged
+        # into self.system_instruction — that instruction string is
+        # cached (_build_and_cache_system_instruction) and shared across
+        # every call, so mutating it per-turn would either require
+        # rebuilding+re-caching on every single message (defeating the
+        # cache) or leak one turn's retrieved memories into the next
+        # turn's prompt even after they're no longer relevant.
+        if memory_context:
+            msgs.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Relevant things you remember about this user from "
+                        "past conversations (use only if actually relevant "
+                        "to the current message; ignore anything that isn't):\n"
+                        f"{memory_context}"
+                    ),
+                }
+            )
+        # CONTEXT INJECTION (NEW): same established pattern as
+        # memory_context immediately above -- a separate system message,
+        # never merged into self.system_instruction. This carries a
+        # sara.orchestrator.intent_handlers._describe_recent_entities()
+        # hint for an unresolved pronoun/reference ("it", "uska", "wo")
+        # in `prompt`. Explicitly labeled as a hint to interpret, not a
+        # fact to repeat back, so the model doesn't mistake it for
+        # something to state verbatim to the user.
+        if reference_context:
+            msgs.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Context hint (do NOT repeat this back to the user "
+                        "verbatim -- use it only to understand what a "
+                        "pronoun or reference like \"it\"/\"that\"/\"uska\"/"
+                        "\"wo\" in the user's message most likely means):\n"
+                        f"{reference_context}"
+                    ),
+                }
+            )
+        for u, a in history:
+            msgs.append({"role": "user", "content": u})
+            msgs.append({"role": "assistant", "content": a})
+        msgs.append({"role": "user", "content": prompt})
+        return msgs
+
+    def _build_contents_gemini(
+        self,
+        prompt: str,
+        history: List[Tuple[str, str]],
+        memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
+    ) -> list:
+        # PRIORITY-4 FIX: system_instruction used to ALSO be injected here
+        # as a fake user/"Understood." turn, on top of being passed via
+        # GenerateContentConfig(system_instruction=...) in
+        # _open_gemini_stream(). That was pure duplication (same prompt
+        # sent twice, doubling its token cost every single call) — the
+        # config field is the correct/native way to send it, so it's the
+        # only place it's sent now.
+        contents: list = []
+        if memory_context:
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "[System] Relevant things you remember about "
+                                f"this user from past conversations:\n{memory_context}"
+                            )
+                        }
+                    ],
+                }
+            )
+            contents.append({"role": "model", "parts": [{"text": "Understood."}]})
+        # CONTEXT INJECTION (NEW): same established fake user/"Understood."
+        # pattern as memory_context immediately above -- Gemini's contents
+        # list has no native "system" role for mid-conversation asides, so
+        # this mirrors the exact mechanism already used there rather than
+        # inventing a new one. Carries a
+        # sara.orchestrator.intent_handlers._describe_recent_entities()
+        # hint for an unresolved pronoun/reference ("it", "uska", "wo") in
+        # `prompt`, explicitly labeled as a hint to interpret, not a fact
+        # to repeat back.
+        if reference_context:
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "[System] Context hint (do NOT repeat this "
+                                "back to the user verbatim -- use it only "
+                                "to understand what a pronoun or reference "
+                                "like \"it\"/\"that\"/\"uska\"/\"wo\" in the "
+                                f"user's message most likely means):\n{reference_context}"
+                            )
+                        }
+                    ],
+                }
+            )
+            contents.append({"role": "model", "parts": [{"text": "Understood."}]})
+        for u, a in history:
+            contents.append({"role": "user", "parts": [{"text": u}]})
+            contents.append({"role": "model", "parts": [{"text": a}]})
+        contents.append({"role": "user", "parts": [{"text": prompt}]})
+        return contents
+
+    # ── History ────────────────────────────────────────────────────────
+
+    def _append_history(self, prompt: str, reply: str) -> None:
+        with self._history_lock:
+            if self._history and self._history[-1][0] == prompt:
+                self._history.pop()
+            self._history.append((prompt, reply))
+
+    def record_exchange(self, user_input: str, reply: str) -> None:
+        """
+        Public wrapper around _append_history() for callers OUTSIDE this
+        module (e.g. sara.orchestrator.intent_handlers._handle_command()).
+
+        FIX (missing conversation-history recording): only the plain-chat
+        path (generate_response_stream() -> _stream_generic() ->
+        _append_history(), above) used to ever write into self._history.
+        Every other successful turn -- a fast-path intent handler, a
+        zero-arg SIMPLE_ACTIONS result, a resolved single-tool result, or
+        a completed multi-step plan -- never got recorded, so the LLM had
+        no memory those turns happened and follow-ups like "that" / "it" /
+        "the one you just did" referencing them would fail. This wrapper
+        lets _handle_command() record those four paths using the exact
+        same dedup-aware append logic the plain-chat path already relies
+        on, without a private-method reach-across from another module and
+        without touching _append_history()'s own behavior/signature.
+
+        Guards against empty/blank input the same defensive way the rest
+        of this codebase treats optional text (e.g. summarize_text()
+        above) -- a blank prompt or reply is silently skipped rather than
+        polluting history with a no-op turn.
+        """
+        u_clean = (user_input or "").strip()
+        r_clean = (reply or "").strip()
+        if u_clean and r_clean:
+            self._append_history(u_clean, r_clean)
+
+    def load_history(self, history: List[Tuple[str, str]]) -> None:
+        if not history:
+            return
+        with self._history_lock:
+            self._history.clear()
+            limit = self._cfg.MAX_MEMORY_EXCHANGES
+            for user_prompt, assistant_reply in history[-limit:]:
+                u_clean = (user_prompt or "").strip()
+                a_clean = (assistant_reply or "").strip()
+                if u_clean and a_clean:
+                    self._history.append((u_clean, a_clean))
+
+    # ── Streaming core (Highly Optimized) ──────────────────────────────
+
+    @staticmethod
+    def _flush_sentences(buffer_str: str) -> tuple[list[str], str]:
+        parts = _split_sentences(buffer_str)
+        if len(parts) > 1:
+            ready = [_clean_markdown(s) for s in parts[:-1] if s.strip()]
+            return ready, parts[-1]
+        return [], buffer_str
+
+    @staticmethod
+    def _flush_clause(buffer_str: str) -> tuple[list[str], str]:
+        ready, remainder = _clause_flush(buffer_str)
+        clean_ready = [_clean_markdown(s) for s in ready if s.strip()]
+        return clean_ready, remainder
+
+    # ── Primary-backend circuit breaker ──────────────────────────────────
+
+    def _circuit_breaker_active(self) -> bool:
+        """Thread-safe check: True while the primary backend's breaker
+        is still tripped (inside its LLM_CIRCUIT_BREAKER_COOLDOWN_S
+        cooldown window). Once the deadline passes this reverts to
+        False on its own -- the very next turn "probes" the primary
+        normally again, per point 4 of the circuit-breaker spec."""
+        with self._cb_lock:
+            return time.monotonic() < self._cb_cooldown_until
+
+    def _circuit_breaker_record_success(self) -> None:
+        """Stage-0 (primary) succeeded -- immediately reset the failure
+        streak and clear any active trip. A single success un-trips the
+        breaker even mid-cooldown, since it proves the primary is
+        healthy again right now."""
+        with self._cb_lock:
+            self._cb_consecutive_failures = 0
+            self._cb_cooldown_until = 0.0
+
+    def _circuit_breaker_record_failure(self) -> None:
+        """Stage-0 (primary) exhausted its retries without yielding a
+        single token. Bump the consecutive-failure streak and, once it
+        reaches LLM_CIRCUIT_BREAKER_THRESHOLD, (re-)trip the breaker
+        with a fresh LLM_CIRCUIT_BREAKER_COOLDOWN_S window."""
+        threshold = int(getattr(self._cfg, "LLM_CIRCUIT_BREAKER_THRESHOLD", 3))
+        cooldown = float(getattr(self._cfg, "LLM_CIRCUIT_BREAKER_COOLDOWN_S", 60.0))
+        with self._cb_lock:
+            self._cb_consecutive_failures += 1
+            if self._cb_consecutive_failures >= threshold:
+                self._cb_cooldown_until = time.monotonic() + cooldown
+
+    def primary_breaker_active(self) -> bool:
+        """Public read of the primary-backend circuit breaker, for other
+        components (e.g. short stateless generators) that must agree with
+        chat about whether the primary backend is currently down."""
+        return self._circuit_breaker_active()
+
+    def note_primary_result(self, ok: bool) -> None:
+        """Public write to the same breaker: True resets it, False counts
+        one more consecutive failure (trips it at the usual threshold)."""
+        if ok:
+            self._circuit_breaker_record_success()
+        else:
+            self._circuit_breaker_record_failure()
+
+    def is_usable(self) -> bool:
+        """
+        Cheap, read-only reflection of the same stage-selection logic
+        _stream_generic() uses to decide whether at least one backend
+        stage is currently viable for a turn:
+          - if the primary's circuit breaker is NOT tripped, the primary
+            is presumed healthy (or hasn't failed enough in a row yet
+            to be distrusted) -- usable.
+          - if the primary's breaker IS tripped, this brain is usable
+            only when a fallback stage actually exists
+            (self._fallback_enabled) -- the exact same condition
+            _stream_generic() checks (`len(stages) > 1`) before it will
+            skip stage 0 and try the fallback instead of yielding
+            nothing at all.
+
+        This makes no network call and takes no lock beyond
+        _circuit_breaker_active()'s own -- safe for any external caller
+        (e.g. memory_consolidation's tick gate) to poll at any
+        frequency without adding latency anywhere on the hot path.
+        """
+        if not self._circuit_breaker_active():
+            return True
+        return self._fallback_enabled
+
+    def used_fallback_last_turn(self) -> bool:
+        """
+        Cheap, read-only check: did the most recently completed
+        streaming turn actually get served by the local Ollama fallback
+        stage rather than the primary backend? Backed by
+        self._last_stage_used, which _stream_generic() updates the
+        instant a stage yields its first token -- so this is an
+        in-memory read behind a single uncontended lock, no I/O, no new
+        LLM/network call, safe to poll after every turn.
+
+        NOTE: distinct from _is_fallback_reply() below, which checks
+        whether a reply STRING is one of our own canned error messages
+        -- unrelated question, easy to conflate by name.
+        """
+        with self._last_stage_lock:
+            return self._last_stage_used == _FALLBACK_STAGE_LABEL
+
+    def _stream_generic(
+        self,
+        prompt: str,
+        stages,
+        max_retries: Optional[int] = None,
+        tier_labels: Optional[Dict[str, str]] = None,
+        on_rate_limit: Optional[Callable[[str], None]] = None,
+    ) -> Iterator[str]:
+        # FALLBACK FIX: `stages` is an ordered list of (label, open_stream)
+        # pairs instead of a single open_stream callable. Stage 0 is
+        # always the primary backend and gets the normal LLM_MAX_RETRIES
+        # exponential-backoff treatment; any stage after that (currently:
+        # at most one -- the Ollama fallback when Gemini is primary) gets
+        # its own, smaller LLM_FALLBACK_MAX_RETRIES budget, since "local
+        # Ollama is also down" is usually a deterministic dead end, not
+        # something worth the same long backoff as a flaky cloud API.
+        #
+        # A stage is only abandoned in favor of the NEXT stage when it
+        # fails having yielded literally zero tokens back to the caller
+        # (e.g. Gemini refused the connection, hit a quota/rate-limit
+        # error, or DNS failed before the first chunk arrived). If a
+        # stage fails PARTWAY through a reply (some tokens already sent
+        # to the user), we do NOT silently splice in a second backend's
+        # continuation -- that would risk an incoherent, mixed-voice
+        # reply -- so the existing "interrupted" message behavior is
+        # kept as-is for that case.
+        if max_retries is None:
+            max_retries = int(getattr(self._cfg, "LLM_MAX_RETRIES", 2))
+        base_delay = float(getattr(self._cfg, "LLM_RETRY_BASE_DELAY_S", 1.5))
+        max_delay = float(getattr(self._cfg, "LLM_RETRY_MAX_DELAY_S", 8.0))
+        fallback_max_retries = int(
+            getattr(self._cfg, "LLM_FALLBACK_MAX_RETRIES", 1)
+        )
+        is_debug = getattr(self._cfg, "DEBUG_MODE", False)
+
+        cancel_event = _current_cancel_event()
+        buffer_str: str = ""
+        reply_parts: list[str] = []
+        stream_ok = False
+
+        # CIRCUIT BREAKER FIX: if the primary has racked up
+        # LLM_CIRCUIT_BREAKER_THRESHOLD consecutive zero-token failures
+        # and we're still inside the resulting cooldown, skip stage 0
+        # entirely this turn and go straight to the fallback -- but only
+        # when a fallback stage actually exists (len(stages) > 1, i.e.
+        # self._fallback_enabled). With a single-stage setup there is
+        # nothing to fall back to, so behavior there is fully unchanged:
+        # some attempt at the primary is always strictly better than
+        # yielding nothing.
+        skip_primary = len(stages) > 1 and self._circuit_breaker_active()
+        if skip_primary and is_debug:
+            print(
+                "[LLM] Circuit breaker tripped — skipping primary backend "
+                "this turn, going straight to fallback."
+            )
+
+        for stage_idx, (stage_name, open_stream) in enumerate(stages):
+            if stage_idx == 0 and skip_primary:
+                # Primary is presumed still down -- don't burn the
+                # LLM_MAX_RETRIES backoff against it again this turn.
+                continue
+            is_last_stage = stage_idx == len(stages) - 1
+            stage_retries = max_retries if stage_idx == 0 else fallback_max_retries
+            yielded_any = False
+
+            for attempt in range(stage_retries + 1):
+                buffer_str = ""
+                reply_parts.clear()
+                yielded_any = False
+                stream_ok = False
+                stream_iter = None
+
+                try:
+                    if cancel_event.is_set():
+                        return
+                    stream_iter = open_stream(attempt)
+
+                    for piece in stream_iter:
+                        if cancel_event.is_set():
+                            return
+                        if not piece:
+                            continue
+
+                        if not yielded_any:
+                            # FALLBACK-DISCLOSURE FIX: this is the first
+                            # real token this stage has produced this
+                            # turn -- it has now proven itself, so record
+                            # it as the stage serving this reply. Done
+                            # here (not after the loop) so a stage that
+                            # yields a few tokens and then dies mid-reply
+                            # still correctly reports as the stage that
+                            # served the (partial) reply.
+                            with self._last_stage_lock:
+                                self._last_stage_used = stage_name
+                            _t_mark("llm_first_token")
+                            _t_annotate(model=(tier_labels or {}).get(stage_name, stage_name))
+
+                        buffer_str += piece
+                        reply_parts.append(piece)
+                        yielded_any = True
+
+                        # Fast-path heuristic: avoid regex processing unless a
+                        # boundary trigger (whitespace/newline) is present in
+                        # the new chunk.
+                        if " " in piece or "\n" in piece:
+                            ready, buffer_str = self._flush_sentences(buffer_str)
+                            for s in ready:
+                                yield s
+
+                            ready, buffer_str = self._flush_clause(buffer_str)
+                            for s in ready:
+                                yield s
+
+                    # Yield final remainder
+                    remainder = _clean_markdown(buffer_str)
+                    if remainder:
+                        yield remainder
+
+                    stream_ok = True
+                    break
+
+                except Exception as e:
+                    if is_debug:
+                        print(
+                            f"[LLM:{stage_name}] stream error on attempt {attempt+1}: {e}"
+                        )
+                    if on_rate_limit is not None and _looks_rate_limited(e):
+                        try:
+                            on_rate_limit(stage_name)
+                        except Exception:
+                            pass
+
+                    if yielded_any:
+                        # v7: never speak the raw exception — the user already
+                        # heard/received a partial reply, so just add a short,
+                        # natural-language note instead of literal error text.
+                        yield _STREAM_INTERRUPTED_MESSAGES.get(
+                            self._lang, _STREAM_INTERRUPTED_MESSAGES["english"]
+                        )
+                        break
+
+                    # PRIORITY-7 FIX: a missing/uninitialized client is a
+                    # deterministic config problem, not a transient blip —
+                    # retrying it just burns the backoff delay for zero
+                    # chance of success. Fail fast instead. Any other
+                    # exception (network hiccup, timeout, quota/rate-limit
+                    # error, etc.) is retried exactly as before.
+                    non_transient = isinstance(e, _ClientUnavailableError)
+
+                    if attempt < stage_retries and not non_transient:
+                        delay = min(max_delay, base_delay * (2**attempt))
+                        if is_debug:
+                            print(
+                                f"[LLM:{stage_name}] Retry {attempt+1}/{stage_retries} "
+                                f"in {delay:.1f}s: {e}"
+                            )
+                        time.sleep(delay)
+                    else:
+                        # This stage is exhausted (or non-retryable) having
+                        # yielded zero tokens. Break out of the attempt loop
+                        # -- whether we now fall back to the next stage or
+                        # give up for good is decided just below, once we're
+                        # back outside this loop.
+                        break
+
+                finally:
+                    if stream_iter is not None and hasattr(stream_iter, "close"):
+                        try:
+                            stream_iter.close()
+                        except Exception:
+                            pass
+
+            if stage_idx == 0:
+                # CIRCUIT BREAKER FIX: record this turn's primary-backend
+                # outcome. A full zero-token exhaustion (retries used up,
+                # yielded_any still False) is what actually indicates
+                # "primary is down" -- a partial mid-stream interruption
+                # (yielded_any True) means the primary DID connect and
+                # start responding, so that case is deliberately left
+                # out of the failure count below.
+                if stream_ok:
+                    self._circuit_breaker_record_success()
+                elif not yielded_any:
+                    self._circuit_breaker_record_failure()
+
+            if stream_ok:
+                # This stage succeeded outright -- done.
+                break
+
+            if yielded_any:
+                # Partial reply, already communicated via the "interrupted"
+                # message above. Don't try a further backend mid-reply.
+                break
+
+            # This stage never yielded a single token. Move on to the next
+            # stage (e.g. Gemini -> Ollama) if there is one, otherwise this
+            # was the last chance and the user needs to be told.
+            if is_last_stage:
+                yield _STREAM_FAIL_MESSAGES.get(
+                    self._lang, _STREAM_FAIL_MESSAGES["english"]
+                )
+            elif is_debug:
+                print(
+                    f"[LLM] '{stage_name}' unavailable — falling back to next backend."
+                )
+
+        full_reply = "".join(reply_parts).strip()
+        # CRITICAL FIX: was `stream_ok or yielded_any` — a stream that
+        # yielded SOME tokens before failing (yielded_any=True) still
+        # got its incomplete text appended to history. Only a fully
+        # completed stream (stream_ok) should be persisted; a partial/
+        # interrupted reply is never appended, and the interrupted
+        # fallback message itself was never in reply_parts to begin
+        # with, so nothing further is needed to keep it out of history
+        # or (downstream) long-term memory.
+        if full_reply and stream_ok:
+            self._append_history(prompt, full_reply)
+
+    # ── Hot-path helpers (PRIORITY 2/3/8/9) ─────────────────────────────
+
+    def _rag_context_budget(self, backend: Optional[str] = None) -> int:
+        # PRIORITY-2 FIX: hard cap on how many tokens the ENTIRE RAG
+        # memory block (wrapper text included) may consume, so a
+        # handful of long/highly-relevant hits can never crowd out the
+        # whole 4096-token Ollama context. Uses an explicit config value
+        # if the project defines one; otherwise falls back to a small,
+        # conservative fraction of whatever context size is already
+        # configured (does NOT touch OLLAMA_NUM_CTX itself).
+        # FALLBACK FIX: optional `backend` override, same rationale as
+        # _trim_history_to_budget above.
+        configured = getattr(self._cfg, "RAG_MAX_CONTEXT_TOKENS", None)
+        if configured is not None:
+            return int(configured)
+        active_backend = backend or getattr(self._cfg, "LLM_BACKEND", "ollama")
+        if active_backend == "gemini":
+            ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
+        else:
+            ctx_tokens = int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096))
+        return max(64, int(ctx_tokens * 0.15))
+
+    def _build_capped_memory_context(
+        self, hits: list, cap: Optional[int] = None
+    ) -> Tuple[Optional[str], int]:
+        # PRIORITY-2 FIX: greedily include hits (highest-relevance first,
+        # as returned by search()) only while the running token count —
+        # PLUS a fixed allowance for the surrounding instructional
+        # wrapper text added in _build_messages_ollama/
+        # _build_contents_gemini — stays under _rag_context_budget().
+        # FALLBACK FIX: optional explicit `cap` lets the Ollama-fallback
+        # path re-cap the SAME hits to Ollama's smaller budget instead
+        # of reusing whatever cap the primary (Gemini) backend used.
+        if not hits:
+            return None, 0
+        try:
+            from sara.core.security.untrusted import drop_flagged_hits
+
+            hits = drop_flagged_hits(hits, "memory", cfg=self._cfg)
+        except Exception:
+            logger.exception("[security] memory hit filter failed; omitting memory context")
+            return None, 0
+        if not hits:
+            return None, 0
+        if cap is None:
+            cap = self._rag_context_budget()
+        wrapper_overhead = 40  # short fixed wrapper sentence, both backends
+        available = max(0, cap - wrapper_overhead)
+
+        kept_lines: list[str] = []
+        used = 0
+        for h in hits:
+            line = f"- {h.text}"
+            cost = _estimate_tokens(line)
+            if used + cost > available:
+                break
+            kept_lines.append(line)
+            used += cost
+
+        if not kept_lines:
+            return None, 0
+        context = "\n".join(kept_lines)
+        try:
+            from sara.core.security.untrusted import wrap_untrusted
+
+            wrapped = wrap_untrusted(context, "memory", cfg=self._cfg)
+        except Exception:
+            logger.exception("[security] memory wrap failed; omitting memory context")
+            return None, 0
+        extra = max(0, _estimate_tokens(wrapped) - _estimate_tokens(context))
+        return wrapped, used + wrapper_overhead + extra
+
+    def _get_fact_extract_pool(self) -> ThreadPoolExecutor:
+        # LIFECYCLE FIX: double-checked locking — the fast path (executor
+        # already exists) stays lock-free, and the lock is only taken on
+        # the rare first-call race, so this doesn't add contention to
+        # the hot path on every normal request.
+        if self._fact_executor is None:
+            with self._fact_executor_lock:
+                if self._fact_executor is None:
+                    self._fact_executor = ThreadPoolExecutor(
+                        max_workers=1, thread_name_prefix="sara-fact-extract"
+                    )
+        return self._fact_executor
+
+    def _secure_reference(self, reference_context: Optional[str]) -> Optional[str]:
+        """Wrap caller-supplied reference text as untrusted data (T5)."""
+        if not reference_context:
+            return reference_context
+        try:
+            from sara.core.security.untrusted import wrap_untrusted
+
+            return wrap_untrusted(reference_context, "reference", cfg=self._cfg)
+        except Exception:
+            logger.exception("[security] failed to wrap reference_context; dropping it")
+            return None
+
+    def _safe_extract_fact(self, prompt: str) -> None:
+        # Runs on the background pool thread, not the hot path. Wrapped
+        # in try/except here (rather than relying on callers to inspect
+        # the Future) so a failure never surfaces anywhere.
+        try:
+            self._memory.maybe_extract_fact(prompt)
+        except Exception as e:
+            if getattr(self._cfg, "DEBUG_MODE", False):
+                print(f"[LLM] Fact extraction failed (continuing): {e}")
+
+    @staticmethod
+    def _is_trivial_prompt(prompt: str) -> bool:
+        # See _TRIVIAL_PROMPTS above for rationale. Lightweight
+        # normalization only (lowercase + strip trailing punctuation) —
+        # no regex/classifier/new dependency.
+        normalized = prompt.strip().lower().strip(".,!?~ ")
+        return normalized in SaraLLM._TRIVIAL_PROMPTS
+
+    def _is_fallback_reply(self, reply: str) -> bool:
+        # PRIORITY-8 FIX: used to decide whether a reply is one of our
+        # own localized error/interrupted messages, so we don't pollute
+        # long-term memory with "sorry, I'm having trouble" exchanges.
+        # NOTE: despite the name, this has nothing to do with the Ollama
+        # fallback BACKEND -- for that, see used_fallback_last_turn().
+        reply = (reply or "").strip()
+        return reply in _STREAM_FAIL_MESSAGES.values() or reply in _STREAM_INTERRUPTED_MESSAGES.values()
+
+    def _filter_history_duplicates(self, hits: list, history: List[Tuple[str, str]]) -> list:
+        # PRIORITY-9 FIX: drop retrieved long-term-memory hits whose text
+        # is already present verbatim in the just-trimmed short-term
+        # history window, so the same exchange isn't sent to the model
+        # twice (once via history, once via the memory_context block).
+        if not hits or not history:
+            return hits
+        existing = {f"User said: {u}\nSara replied: {a}" for u, a in history}
+        return [h for h in hits if getattr(h, "text", None) not in existing]
+
+    def _start_memory2_retrieval(self, prompt: str):
+        """Start Memory 2.0 retrieval in a helper thread; None when disabled or unavailable."""
+        try:
+            import importlib
+            import threading
+            import time
+
+            if not importlib.import_module("sara.core.memory2").is_enabled():
+                return None
+            module = importlib.import_module("sara.core.memory2.retrieve")
+            budget_ms = int(getattr(self._cfg, "MEMORY2_RETRIEVAL_TIMEOUT_MS", 400) or 400)
+        except Exception:
+            return None
+        box: dict = {}
+        done = threading.Event()
+
+        def _work() -> None:
+            try:
+                box["hits"] = list(module.retrieve(prompt, timeout_ms=budget_ms))
+                box["question"] = bool(module.is_memory_question(prompt))
+            except Exception as exc:
+                logger.warning("[Memory2] retrieval helper failed (%s)", type(exc).__name__)
+            finally:
+                done.set()
+
+        threading.Thread(target=_work, name="mem2-retrieve", daemon=True).start()
+        return done, box, budget_ms, time.monotonic()
+
+    def _merge_memory2_hits(self, hits: list, job) -> list:
+        """Put Memory 2.0 hits first; add the fixed abstention line when both stores are empty."""
+        if job is None:
+            return hits
+        try:
+            import time
+
+            from sara.core.rag import MemoryHit
+
+            done, box, budget_ms, started = job
+            wait_s = max(0.0, budget_ms / 1000.0 - (time.monotonic() - started))
+            if not done.wait(wait_s) or "hits" not in box:
+                return hits
+            extra = [
+                MemoryHit(id=-int(h.id), text=h.text, score=float(h.score), source="memory2", timestamp=h.when)
+                for h in box["hits"]
+            ]
+            if not extra and not hits and box.get("question"):
+                extra = [
+                    MemoryHit(
+                        id=0,
+                        text="I have no stored memory that answers this question; say you do not know instead of guessing.",
+                        score=0.0,
+                        source="memory2",
+                        timestamp="",
+                    )
+                ]
+            return extra + list(hits) if extra else hits
+        except Exception as exc:
+            logger.warning("[Memory2] merge failed (%s)", type(exc).__name__)
+            return hits
+
+    # ── Backend stream openers ─────────────────────────────────────────
+
+    def _open_ollama_stream(
+        self,
+        prompt: str,
+        history: List[Tuple[str, str]],
+        memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
+        model_override: Optional[str] = None,
+    ):
+        client = _get_ollama_client(self._cfg)
+        if not client:
+            # PRIORITY-7 FIX: was a bare RuntimeError, indistinguishable
+            # from a transient one — see _ClientUnavailableError above.
+            raise _ClientUnavailableError("Ollama client not loaded.")
+
+        reference_context = self._secure_reference(reference_context)
+        messages = self._build_messages_ollama(prompt, history, memory_context, reference_context)
+        raw_stream = client.chat(
+            model=model_override
+            or (
+                self._ollama_fast_model_name
+                if _is_simple_query(prompt)
+                else self._ollama_model_name
+            ),
+            messages=messages,
+            stream=True,
+            think=False,
+            options={
+                "num_predict": int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300)),
+                "num_ctx": int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096)),
+                "temperature": float(getattr(self._cfg, "OLLAMA_TEMPERATURE", 0.4)),
+                "top_k": int(getattr(self._cfg, "OLLAMA_TOP_K", 40)),
+                "top_p": float(getattr(self._cfg, "OLLAMA_TOP_P", 0.9)),
+                "repeat_penalty": float(
+                    getattr(self._cfg, "OLLAMA_REPEAT_PENALTY", 1.15)
+                ),
+            },
+            keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+        )
+
+        def _iter():
+            for chunk in raw_stream:
+                yield getattr(getattr(chunk, "message", None), "content", None)
+
+        return _iter()
+
+    def _open_gemini_stream(
+        self,
+        prompt: str,
+        history: List[Tuple[str, str]],
+        memory_context: Optional[str] = None,
+        reference_context: Optional[str] = None,
+        model_override: Optional[str] = None,
+    ):
+        client = _get_gemini_client(self._cfg)
+        if not client:
+            # PRIORITY-7 FIX: was a bare RuntimeError — see _ClientUnavailableError above.
+            raise _ClientUnavailableError("Gemini client not initialized.")
+
+        from google.genai import types
+
+        reference_context = self._secure_reference(reference_context)
+        contents = self._build_contents_gemini(prompt, history, memory_context, reference_context)
+
+        raw_stream = client.models.generate_content_stream(
+            model=model_override
+            or (
+                self._gemini_fast_model_name
+                if _is_simple_query(prompt)
+                else self._gemini_model_name
+            ),
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=self.system_instruction,
+                temperature=float(getattr(self._cfg, "GEMINI_TEMPERATURE", 0.7)),
+                top_p=float(getattr(self._cfg, "GEMINI_TOP_P", 0.9)),
+                top_k=int(getattr(self._cfg, "GEMINI_TOP_K", 40)),
+                max_output_tokens=int(getattr(self._cfg, "GEMINI_MAX_OUTPUT_TOKENS", 200)),
+            ),
+        )
+
+        def _iter():
+            for chunk in raw_stream:
+                yield getattr(chunk, "text", None)
+
+        return _iter()
+
+    # ── Public streaming API ───────────────────────────────────────────
+
+    def generate_response_stream(
+        self, prompt: str, reference_context: Optional[str] = None
+    ) -> Iterator[str]:
+        """
+        Stream a chat reply for `prompt`.
+
+        reference_context (NEW, optional): a short plain-text description
+        of still-fresh ctx["context_state"]["recent_entities"] (see
+        sara.orchestrator.intent_handlers._describe_recent_entities()),
+        passed by _handle_command() only when _route_chat_message()
+        detects an unresolved pronoun/reference ("it", "uska", "wo", ...)
+        in this turn that plausibly points at one of them. Injected into
+        the prompt as an additional system-role message (Ollama) / fake
+        user+"Understood." turn (Gemini) -- the SAME established pattern
+        already used below for the RAG memory_context block -- so the
+        model treats it as "what the user is likely referring to", not a
+        fact to restate verbatim. Defaults to None, so every existing
+        caller that doesn't pass it behaves exactly as before this
+        parameter existed.
+        """
+        prompt = (prompt or "").strip()
+        if not prompt:
+            nudges = {
+                "hindi": "Bhai kuch toh poochho, main yahaan khali nahi baitha.",
+                "hinglish": "Bol yaar kuch — main sun raha hoon.",
+            }
+            yield nudges.get(self._lang, "Please provide a valid question or command.")
+            return
+
+        # v7: absorb any still-in-progress cold-start warm-up HERE, with a
+        # bounded wait, instead of racing it. Every call after the first
+        # returns instantly (the Event is already set), so this adds real
+        # latency exactly once — the first time the brain is actually used
+        # — rather than letting a cold Ollama model produce a spurious
+        # timeout on whatever happens to be the first real user command.
+        if _current_cancel_event().is_set():
+            return
+
+        _t_mark("llm_req")
+
+        warm_wait_s = float(getattr(self._cfg, "LLM_WARMUP_WAIT_S", 20.0))
+        warm = self.wait_until_warm(timeout=warm_wait_s)
+        if not warm.ok and getattr(self._cfg, "DEBUG_MODE", False):
+            print(
+                f"[LLM] Proceeding without confirmed warm-up ({warm.error}) — "
+                f"first request may be slower than usual."
+            )
+
+        # PRIORITY-5 FIX: _tod previously only refreshed on set_language()/
+        # clear_memory(), so a long-running session could keep saying
+        # "good morning" into the evening. _time_of_day() is a cheap call
+        # (time-of-day bucket lookup) so it's fine to call every turn —
+        # the EXPENSIVE part (_build_and_cache_system_instruction, which
+        # re-renders the whole prompt and re-estimates its tokens) only
+        # runs when the bucket actually changed.
+        current_tod = _time_of_day(self._tz, self._lang)
+        if current_tod != self._tod:
+            self._tod = current_tod
+            self._build_and_cache_system_instruction()
+
+        trivial = self._is_trivial_prompt(prompt)
+
+        # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieval happens on
+        # the hot path right before the LLM call, so it must be bounded
+        # and must never raise into the response — LongTermMemory.search()
+        # already guarantees both (internal embedding-call timeout,
+        # returns [] on any failure) so no extra try/except is needed
+        # here, but it's added anyway as defense-in-depth since this is
+        # a novel integration point.
+        #
+        # PRIORITY-1/2/4 FIX: history is trimmed FIRST, reserving the
+        # RAG hard-cap (_rag_context_budget()) up front rather than the
+        # exact-but-not-yet-known memory_context size. This sidesteps
+        # the chicken-and-egg problem (trimming needs the memory token
+        # cost; deduping the memory hits needs the trimmed history) with
+        # no extra pass: the reserved amount is always >= what RAG will
+        # actually use (memory_context is hard-capped to the same
+        # budget), so the context-budget math stays correct, and
+        # dedup below now runs against the REAL trimmed history.
+        rag_budget = self._rag_context_budget() if (self._memory is not None and not trivial) else 0
+        history = self._trim_history_to_budget(prompt, extra_tokens=rag_budget)
+
+        memory_context = None
+        memory_context_tokens = 0
+        hits: list = []
+        if self._memory is not None and not trivial:
+            try:
+                _m2_job = self._start_memory2_retrieval(prompt)
+                hits = self._memory.search(prompt)
+                hits = self._merge_memory2_hits(hits, _m2_job)
+                # PRIORITY-9 FIX (now against the actual trimmed history,
+                # not the full untrimmed deque — see PRIORITY-4 above):
+                # drop hits that duplicate what's already going into the
+                # history window being sent to the model.
+                hits = self._filter_history_duplicates(hits, history)
+                memory_context, memory_context_tokens = self._build_capped_memory_context(hits)
+                if memory_context and getattr(self._cfg, "DEBUG_MODE", False):
+                    print(
+                        f"[LLM] RAG retrieved {len(hits)} memor{'y' if len(hits)==1 else 'ies'} "
+                        f"(top score={hits[0].score:.2f})"
+                    )
+            except Exception as e:
+                if getattr(self._cfg, "DEBUG_MODE", False):
+                    print(f"[LLM] RAG retrieval failed (continuing without it): {e}")
+
+            # PRIORITY-3 FIX: fact extraction submitted to the bounded
+            # background pool instead of running inline — keeps this a
+            # true fire-and-forget as the original comment intended,
+            # without blocking the hot path even briefly, and without
+            # spawning an unbounded thread per request.
+            self._get_fact_extract_pool().submit(self._safe_extract_fact, prompt)
+
+        router = _router()
+        choice = None
+        override: Optional[str] = None
+        cascade_tier = None
+        tier_labels: Dict[str, str] = {}
+        try:
+            if router is not None and router.mode != "off":
+                router.note_user_turn(prompt)
+                choice = router.choose(
+                    prompt, {"memory_injected": bool(hits), "depth": router.depth()}
+                )
+                if choice.decision_id:
+                    router.bind_turn(choice.decision_id, _t_turn_id())
+                    override = router.model_for(choice, self._primary_backend)
+                    cascade_tier = router.cascade(choice)
+                    if cascade_tier is not None and cascade_tier.backend != self._primary_backend:
+                        cascade_tier = None
+                    if self._primary_backend == "ollama":
+                        legacy_model = (
+                            self._ollama_fast_model_name
+                            if _is_simple_query(prompt)
+                            else self._ollama_model_name
+                        )
+                    else:
+                        legacy_model = (
+                            self._gemini_fast_model_name
+                            if _is_simple_query(prompt)
+                            else self._gemini_model_name
+                        )
+                    used_model = override or legacy_model
+                    for tier in router.tiers():
+                        if tier.backend == self._primary_backend and tier.model == used_model:
+                            tier_labels[self._primary_backend] = tier.name
+                            break
+        except Exception:
+            logger.warning("[router] routing step failed; using the legacy model selection")
+            router, choice, override, cascade_tier = None, None, None, None
+            tier_labels = {}
+
+        def _open_primary(attempt: int):
+            extra = {"model_override": override} if override else {}
+            return (
+                self._open_ollama_stream(prompt, history, memory_context, reference_context, **extra)
+                if self._primary_backend == "ollama"
+                else self._open_gemini_stream(prompt, history, memory_context, reference_context, **extra)
+            )
+
+        # FALLBACK FIX: build an ordered list of (label, opener) stages.
+        # Stage 0 is always the configured primary backend. When Gemini
+        # is primary and LLM_FALLBACK_ENABLED is true, a second stage
+        # using the local Ollama model is appended -- _stream_generic
+        # only reaches it if Gemini fails to yield a single token (no
+        # network, quota/rate-limit exhausted, auth error, etc.).
+        stages = [(self._primary_backend, _open_primary)]
+        if cascade_tier is not None:
+
+            def _open_cascade(attempt: int, _model: str = cascade_tier.model):
+                extra = {"model_override": _model}
+                return (
+                    self._open_ollama_stream(prompt, history, memory_context, reference_context, **extra)
+                    if self._primary_backend == "ollama"
+                    else self._open_gemini_stream(prompt, history, memory_context, reference_context, **extra)
+                )
+
+            stages.append((cascade_tier.name, _open_cascade))
+            tier_labels[cascade_tier.name] = cascade_tier.name
+        if self._fallback_enabled:
+
+            def _open_ollama_fallback(attempt: int):
+                # FALLBACK FIX: don't reuse `history`/`memory_context` as
+                # computed above -- those were sized for Gemini's much
+                # larger GEMINI_MAX_HISTORY_TOKENS budget and could
+                # silently overflow Ollama's typically much smaller
+                # OLLAMA_NUM_CTX. Recompute both, sized for Ollama, from
+                # the same underlying short-term history / RAG `hits`.
+                fb_rag_budget = (
+                    self._rag_context_budget(backend="ollama")
+                    if (self._memory is not None and not trivial)
+                    else 0
+                )
+                fb_history = self._trim_history_to_budget(
+                    prompt, extra_tokens=fb_rag_budget, backend="ollama"
+                )
+                fb_hits = self._filter_history_duplicates(hits, fb_history)
+                fb_memory_context, _ = self._build_capped_memory_context(
+                    fb_hits, cap=fb_rag_budget or None
+                )
+                # FIX (alongside this feature): without passing
+                # reference_context through here too, a turn that fell
+                # back from Gemini to Ollama would silently lose the
+                # pronoun/reference hint that _open_primary() above
+                # would otherwise have included -- same content, same
+                # user turn, so the fallback stage must carry it as well.
+                return self._open_ollama_stream(prompt, fb_history, fb_memory_context, reference_context)
+
+            stages.append((_FALLBACK_STAGE_LABEL, _open_ollama_fallback))
+
+        if router is None or choice is None or not choice.decision_id:
+            yield from self._stream_generic(prompt, stages)
+        else:
+
+            def _on_rate_limit(stage: str) -> None:
+                name = tier_labels.get(stage)
+                if name:
+                    router.note_rate_limited(name)
+
+            started = time.monotonic()
+            produced = False
+            completed = False
+            try:
+                for piece in self._stream_generic(
+                    prompt,
+                    stages,
+                    tier_labels=tier_labels or None,
+                    on_rate_limit=_on_rate_limit,
+                ):
+                    if piece.strip() and not self._is_fallback_reply(piece):
+                        produced = True
+                    yield piece
+                completed = True
+            finally:
+                if completed and not _current_cancel_event().is_set():
+                    with self._last_stage_lock:
+                        served = self._last_stage_used
+                    _router_report(
+                        router,
+                        choice.decision_id,
+                        started,
+                        produced,
+                        produced and served not in (None, self._primary_backend),
+                    )
+        _t_mark("llm_done")
+
+        # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): ingest this exchange
+        # into long-term memory AFTER it completes, so future turns (even
+        # in a later session) can recall it. Fire-and-forget — add_memory()
+        # never blocks or raises. Uses self._history's own dedup rule (the
+        # most recently appended pair) rather than re-deriving the reply
+        # text here, since _stream_generic() already appended it via
+        # _append_history() as a side effect of the yield above.
+        if _current_cancel_event().is_set():
+            return
+        if self._memory is not None and not trivial:
+            with self._history_lock:
+                last_pair = self._history[-1] if self._history else None
+            if (
+                last_pair is not None
+                and last_pair[0] == prompt
+                and not self._is_fallback_reply(last_pair[1])
+                and not last_pair[0].lstrip().startswith("You are extracting durable")
+            ):
+                exchange_text = (
+                    f"User said: {last_pair[0]}\nSara replied: {last_pair[1]}"
+                )
+                self._memory.add_memory(exchange_text, source="conversation")
+
+    # ── Non-streaming ──────────────────────────────────────────────────
+
+    def generate_response(self, prompt: str) -> str:
+        return " ".join(
+            s.strip() for s in self.generate_response_stream(prompt)
+        ).strip()
+
+    # ── Summarization ─────────────────────────────────────────────────
+
+    def summarize_text(self, text: str) -> str:
+        text = (text or "").strip()
+        if not text:
+            empties = {
+                "hindi": "Bhai content hi nahi hai summarize karne ke liye.",
+                "hinglish": "Yaar kuch diya hi nahi summarize karne ko.",
+            }
+            return empties.get(self._lang, "There's no content to summarize.")
+
+        max_tokens = int(getattr(self._cfg, "OLLAMA_SUMMARY_NUM_CTX", 8192)) - 300
+        max_words = int(max_tokens * 0.75)
+        words = text.split()
+        if len(words) > max_words:
+            text = " ".join(words[:max_words]) + "..."
+
+        try:
+            from sara.core.security.untrusted import prepare_for_llm
+
+            prepared = prepare_for_llm(
+                text, "summary_input", cfg=self._cfg, lang=self._lang
+            )
+        except Exception:
+            logger.exception("[security] summarize_text guard failed")
+            return _SUMMARY_FAIL_MESSAGES.get(
+                self._lang, _SUMMARY_FAIL_MESSAGES["english"]
+            )
+        if prepared.blocked:
+            return prepared.prefix
+
+        if getattr(self._cfg, "LLM_BACKEND", "ollama") == "ollama":
+            summary = self._summarize_ollama(prepared.text)
+        else:
+            summary = self._summarize_gemini(prepared.text)
+        return f"{prepared.prefix}{summary}" if prepared.prefix else summary
+
+    def _summarize_ollama(self, text: str) -> str:
+        client = _get_ollama_client(self._cfg)
+        if not client:
+            return _SUMMARY_FAIL_MESSAGES.get(
+                self._lang, _SUMMARY_FAIL_MESSAGES["english"]
+            )
+        system_prompt = _SUMMARY_SYSTEM_PROMPTS.get(
+            self._lang, _SUMMARY_SYSTEM_PROMPTS["english"]
+        )
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.0 * attempt)
+            try:
+                resp = client.chat(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": text},
+                    ],
+                    think=False,
+                    options={
+                        "num_predict": 200,
+                        "num_ctx": getattr(self._cfg, "OLLAMA_SUMMARY_NUM_CTX", 8192),
+                    },
+                    keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+                )
+                return (resp.message.content or "").strip() or "Could not summarize."
+            except Exception as e:
+                last_exc = e
+                if getattr(self._cfg, "DEBUG_MODE", False):
+                    print(f"[LLM] summarize_ollama attempt {attempt+1} failed: {e}")
+        # BUGFIX: last_exc used to be assigned every attempt and then
+        # discarded — in production (DEBUG_MODE off) the real reason for
+        # the failure was never recorded anywhere, only the debug print
+        # above showed it. Log it unconditionally now so ops/logs always
+        # capture the actual cause, while the TTS-safe friendly message
+        # below is still what gets returned/spoken (never the raw
+        # exception text).
+        logger.error(
+            f"[LLM] summarize_ollama failed after 3 attempts: {last_exc}"
+        )
+        return _SUMMARY_FAIL_MESSAGES.get(self._lang, _SUMMARY_FAIL_MESSAGES["english"])
+
+    def _summarize_gemini(self, text: str) -> str:
+        client = _get_gemini_client(self._cfg)
+        if not client:
+            return _SUMMARY_FAIL_MESSAGES.get(
+                self._lang, _SUMMARY_FAIL_MESSAGES["english"]
+            )
+        system_prompt = _SUMMARY_SYSTEM_PROMPTS.get(
+            self._lang, _SUMMARY_SYSTEM_PROMPTS["english"]
+        )
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(3):
+            if attempt:
+                time.sleep(1.0 * attempt)
+            try:
+                from google.genai import types
+
+                resp = client.models.generate_content(
+                    model=self.model_name,
+                    contents=[{"role": "user", "parts": [{"text": text}]}],
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=0.5,
+                    ),
+                )
+                return (resp.text or "").strip() or "Could not summarize."
+            except Exception as e:
+                last_exc = e
+                if getattr(self._cfg, "DEBUG_MODE", False):
+                    print(f"[LLM] summarize_gemini attempt {attempt+1} failed: {e}")
+        # BUGFIX: same as _summarize_ollama above — surface the real
+        # exception unconditionally via logger, keep the spoken/returned
+        # text friendly and TTS-safe.
+        logger.error(
+            f"[LLM] summarize_gemini failed after 3 attempts: {last_exc}"
+        )
+        return _SUMMARY_FAIL_MESSAGES.get(self._lang, _SUMMARY_FAIL_MESSAGES["english"])
+
+    # ── Memory ────────────────────────────────────────────────────────
+
+    def clear_memory(self) -> None:
+        with self._history_lock:
+            self._history.clear()
+        self._tod = _time_of_day(self._tz, self._lang)
+        self._build_and_cache_system_instruction()
+
+    def get_history_length(self) -> int:
+        with self._history_lock:
+            return len(self._history)
+
+    def get_history_snapshot(self) -> List[Tuple[str, str]]:
+        with self._history_lock:
+            return list(self._history)
+
+    # ── Debug ─────────────────────────────────────────────────────────
+
+    def _log_init(self) -> None:
+        fallback_note = (
+            f" | fallback=ollama({self._ollama_model_name})"
+            if self._fallback_enabled
+            else ""
+        )
+        print(
+            f"[LLM] Ready — backend={self._primary_backend} | "
+            f"model={self.model_name}{fallback_note} | "
+            f"memory={self._cfg.MAX_MEMORY_EXCHANGES} exchanges | "
+            f"lang={self._lang}"
+        )

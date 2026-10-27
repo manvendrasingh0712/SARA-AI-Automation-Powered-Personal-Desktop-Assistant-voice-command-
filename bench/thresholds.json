@@ -1,0 +1,6 @@
+{
+  "max_accuracy_drop_pts": 1.0,
+  "max_false_trigger_increase_pts": 0.5,
+  "max_p95_latency_increase_pct": 25,
+  "min_rows": 300
+}

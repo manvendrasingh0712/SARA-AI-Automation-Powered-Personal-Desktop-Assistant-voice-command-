@@ -1,0 +1,35 @@
+/* ==========================================================================
+   theme-minimal.css  --  flat, matte looks for the three minimal themes:
+   ink = Mono Ink | oat = Oat & Sage | lime = Graphite Lime.
+   Colours live in style/tokens.css; this file only strips glow/gloss and sets each theme's signature detail.
+   Every rule is scoped to these three data-theme values, so no other theme is affected.
+   Load order: after theme-neon.css (last stylesheet in index.html).
+   ========================================================================== */
+
+/* ---- shared: no ambient glow, no light seam on cards, no glow on dots/tabs ---- */
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) body::before{background:none;animation:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) :is(.today-card,.next-card,.plan-card,.home-activity)::before{display:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .mini-orb{box-shadow:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .tab.active::after{box-shadow:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .nav button.active{text-shadow:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pill-btn.primary{box-shadow:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pill-btn:hover:not(:disabled){box-shadow:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .chip:hover{box-shadow:none;}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .chip.on{background:rgb(var(--core-rgb) / .10);}
+:root:is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .toggle.on{box-shadow:none;}
+
+/* ---- Mono Ink: hairlines, square-ish cards, nav indicator = a thin vermilion underline ---- */
+:root[data-theme="ink"] :is(.set-card,.modal,.today-card,.next-card,.plan-card,.home-activity){border-radius:10px;}
+:root[data-theme="ink"] .nav-ind{top:auto;bottom:3px;height:2px;border-radius:2px;background:var(--core);box-shadow:none;}
+:root[data-theme="ink"] .nav button.active{color:var(--core);}
+
+/* ---- Graphite Lime: nav indicator = solid lime pill, dark text; lime primary buttons ---- */
+:root[data-theme="lime"] :is(.set-card,.modal,.today-card,.next-card,.plan-card,.home-activity){border-radius:14px;}
+:root[data-theme="lime"] .nav-ind{background:var(--core);box-shadow:none;}
+:root[data-theme="lime"] .nav button.active{color:var(--on-core);font-weight:600;}
+
+/* ---- Oat & Sage: soft pebble nav indicator, rounder cards, paper-like inputs ---- */
+:root[data-theme="oat"] :is(.set-card,.modal,.today-card,.next-card,.plan-card,.home-activity){border-radius:24px;}
+:root[data-theme="oat"] .nav-ind{background:rgb(var(--core-rgb) / .16);box-shadow:none;}
+:root[data-theme="oat"] .nav button.active{color:var(--core);font-weight:600;}
+:root[data-theme="oat"] :is(.field,.add-row input,.modal input,.modal select,.set-row input[type=text]){color-scheme:light;border-radius:12px;}
