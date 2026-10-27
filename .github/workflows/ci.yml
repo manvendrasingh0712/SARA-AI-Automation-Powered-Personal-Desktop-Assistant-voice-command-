@@ -131,6 +131,28 @@ jobs:
           path: coverage.xml
           retention-days: 14
 
+  js-test:
+    name: Front-end tests (node)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Run front-end test suites
+        shell: bash
+        run: |
+          set -e
+          for f in sara/gui/js/tests/*.test.js; do
+            echo "::group::$f"
+            node "$f"
+            echo "::endgroup::"
+          done
   type-check:
     name: Type check (mypy, non-blocking)
     runs-on: windows-latest
