@@ -1,0 +1,415 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index bd2c795..96cce75 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -131,6 +131,35 @@ jobs:
+           path: coverage.xml
+           retention-days: 14
+ 
++  js-test:
++    name: Front-end tests (node)
++    # ubuntu-latest on purpose: these suites are dependency-free Node scripts
++    # that run the real js/ files in a `vm` against a tiny fake DOM. They need
++    # no Windows, no browser and no npm install, so there is no reason to spend
++    # a Windows runner on them. This job is ADDITIVE -- it does not change the
++    # lint or test gates above.
++    runs-on: ubuntu-latest
++    timeout-minutes: 5
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Set up Node
++        uses: actions/setup-node@v4
++        with:
++          node-version: "20"
++
++      - name: Run front-end test suites
++        shell: bash
++        run: |
++          set -e
++          # Each script exits non-zero on any failed assertion.
++          for f in sara/gui/js/tests/*.test.js; do
++            echo "::group::$f"
++            node "$f"
++            echo "::endgroup::"
++          done
++
+   type-check:
+     name: Type check (mypy, non-blocking)
+     runs-on: windows-latest
+diff --git a/docs/audit/PROGRESS.md b/docs/audit/PROGRESS.md
+index 5435fe1..ceef17c 100644
+--- a/docs/audit/PROGRESS.md
++++ b/docs/audit/PROGRESS.md
+@@ -3,20 +3,22 @@
+ Working log for the audit and repair engagement. Updated as each batch lands.
+ 
+ - **Baseline accepted:** Phase 0 + Phase 1 audit report (2026-10-26)
+-- **Pristine checkpoint:** `da343da` in the audit workspace mirror
++- **Repository checkpoint:** `144787c` "Checkpoint SARA AI after initial audit repairs" — 477 files, initial commit, verified on disk (`refs/heads/master`, reflog parent `0000…`)
++- **Audit mirror:** `da343da` (pristine) → `0594d4e` (batch 6a)
+ - **Target tree:** `C:\project`
+-- **Last updated:** 2026-10-26
++- **Last updated:** 2026-10-27
+ 
+ ## Headline
+ 
+ | Metric | Before | After |
+ | --- | --- | --- |
+-| pytest | 2009 passed, **19 failed**, 5 skipped | **2044 passed, 0 failed**, 24 skipped |
++| pytest | 2009 passed, **19 failed**, 5 skipped | **2047 passed, 0 failed**, 24 skipped |
+ | pytest wall time | 40 s | 33 s |
+ | pyflakes "real issues" (CI gate) | 0 | 0 |
+ | pyflakes unused-import warnings | 31 | 10 (all documented re-exports) |
+-| Node JS tests | 57 pass, 1 fail | 76 pass, 1 fail *(same pre-existing failure)* |
+-| Dead front-end assets | 37,111 bytes | 0 referenced |
++| Node JS tests | 57 pass, **1 fail** | **77 pass, 0 fail** |
++| Dead front-end assets | 37,111 bytes | 0 — files deleted |
++| Front-end tests run by CI | **none** | still none — see batch 6a item J (blocked) |
+ 
+ ## Status key
+ 
+@@ -37,7 +39,29 @@ Working log for the audit and repair engagement. Updated as each batch lands.
+ | 3 | Platform-guard Windows-only tests; remove dead imports | DONE | pytest 0 failed; pyflakes 31→10 |
+ | 4 | CSS consolidation reviewed, then removed | DONE | Headless-Chromium computed-style diff: 0 differences |
+ | 5 | Gemini planner/executor tool-calling tests | DONE | 17 new tests, mutation-verified |
+-| 6 | Remaining audit / architecture / GUI / security / performance | TODO | Scope undefined — instruction doc truncated at line 109 |
++| 6a | Theme order (I), asset-test cleanup (H), CI node job (J) | **PARTIAL** | I and H applied and verified. **J BLOCKED** — see below |
++| 6b | Architecture / GUI / traceability / security / performance | TODO | In progress |
++
++### Batch 6a detail
++
++Applied on top of checkpoint `144787c`. Every source file was verified
++byte-identical to the checkpointed content before editing.
++
++| Item | Status | Result |
++| --- | --- | --- |
++| **I** — `theme.js`: Lime after Oat, before Custom | **DONE** | `ui_prefs_theme.test.js` 46 passed/1 failed → **47 passed/0 failed**. All three declarations of the theme list now agree |
++| **H** — `test_gui_assets.py`: drop obsolete exemptions | **DONE** | `_PENDING_DELETION` now empty; 36 stylesheets on disk == 36 linked |
++| **J** — CI node job | **BLOCKED** | `.github/workflows/ci.yml` is a **protected path**; this session cannot write it. Paste-ready job in `docs/audit/proposed-ci-js-test-job.yml` |
++
++Three regression tests added for the three-way theme drift that caused item I
++(`test_theme_list_matches_backend_preference_list`,
++`test_every_theme_is_accepted_by_the_backend_validator`,
++`test_lime_sits_between_oat_and_custom`). Verified red by restoring the old
++order, green after.
++
++**Known divergence:** the audit mirror's `.github/workflows/ci.yml` contains
++the `js-test` job; `C:\project`'s copy does **not**, because the write was
++refused. Treat the mirror's ci.yml as proposed, not deployed.
+ 
+ ## What changed, by batch
+ 
+@@ -86,22 +110,26 @@ Working log for the audit and repair engagement. Updated as each batch lands.
+ 
+ ## Blockers
+ 
+-1. **No Git repository in `C:\project`** — still unresolved. This session has
+-   file access but no shell on that machine, so `git init` cannot be run from
+-   here. Mitigations in place: a real Git history in the audit mirror
+-   (`da343da` → `fadcedf`), pristine per-batch backups under
+-   `docs/audit/backups/`, and cumulative patches under `docs/audit/`.
+-2. **Instruction document truncated at line 109**, mid-sentence inside Phase 1.
+-   Phases 2+ never arrived, so batch 6's scope and acceptance criteria are
+-   undefined.
++1. ~~No Git repository in `C:\project`~~ — **RESOLVED 2026-10-27.** Checkpoint
++   `144787c` committed with a real author identity. Verified from `.git` on
++   disk, not taken on trust.
++2. **`.github/workflows/ci.yml` is a protected path.** This session cannot
++   write it, so batch 6a item J could not be applied. The job is prepared,
++   locally verified and delivered as
++   `docs/audit/proposed-ci-js-test-job.yml` for manual paste.
++3. **No shell on the target machine.** All verification runs on a Linux
++   mirror; nothing Windows-specific can be executed. See
++   VALIDATION_REPORT.md §5.2.
+ 
+ ## Outstanding
+ 
+ | Item | Why it is still open |
+ | --- | --- |
+-| Delete `sara/gui/style/aurum.css` and `luxe.css` from `C:\project` | No file-delete capability from this session. Both are inert (nothing links them); `_PENDING_DELETION` in `tests/test_gui_assets.py` keeps the suite green either way |
+-| `ui_prefs_theme.test.js` theme-order failure | **Pre-existing**, needs a one-line product decision — see VALIDATION_REPORT.md |
+-| Run the node JS suites in CI | They are not in `ci.yml` at all, which is why the theme failure went unnoticed. Held until the theme decision above |
+-| Windows verification of `toggle_media_mute` | Needs a run on the target machine |
++| ~~Delete `aurum.css` / `luxe.css`~~ | **DONE 2026-10-27** by the user. 36 on disk == 36 linked |
++| ~~`ui_prefs_theme.test.js` theme-order failure~~ | **FIXED** in batch 6a item I |
++| **Add the node suites to CI** | **BLOCKED** — protected path. Paste `docs/audit/proposed-ci-js-test-job.yml` into `.github/workflows/ci.yml` before `type-check:` |
++| Windows verification of `toggle_media_mute` | Needs a run on the target machine. Steps in VALIDATION_REPORT.md §3.2 |
+ | `audioop` removed in Python 3.13 | `sara/audio/stt/helpers.py:75`; blocks a future interpreter upgrade |
+-| Batch 6 scope | Awaiting the rest of the instruction document |
++| Trailing whitespace in 285 files | Cosmetic; worst is `sara/core/llm/engine.py` (48 lines). Not touched — would bloat every diff |
++| `bench/bench/results/latest.json` | Stray nested duplicate of `bench/results/latest.json` (~195 KB) |
++| Batch 6b | Architecture, GUI, traceability, security, performance — in progress |
+diff --git a/docs/audit/VALIDATION_REPORT.md b/docs/audit/VALIDATION_REPORT.md
+index 11cd8bf..793b309 100644
+--- a/docs/audit/VALIDATION_REPORT.md
++++ b/docs/audit/VALIDATION_REPORT.md
+@@ -3,9 +3,9 @@
+ What was actually verified, how, and what remains unverified. Written to be
+ read sceptically: a claim here should be checkable from the command given.
+ 
+-- **Date:** 2026-10-26
+-- **Baseline commit:** `da343da` (pristine mirror of `C:\project`)
+-- **Head commit:** `fadcedf`
++- **Date:** 2026-10-27 (batches 0–5 on 2026-10-26, batch 6a on 2026-10-27)
++- **Repository checkpoint:** `144787c` in `C:\project` — verified from `.git` on disk
++- **Audit mirror:** `da343da` (pristine) → `0594d4e` (batch 6a)
+ 
+ ---
+ 
+@@ -38,7 +38,8 @@ here* and is marked as such below.
+ | Baseline (`da343da`) | 2009 | **19** | 5 |
+ | After batch 3 | 2017 | 0 | 24 |
+ | After batch 4 | 2027 | 0 | 24 |
+-| **After batch 5 (head)** | **2044** | **0** | 24 |
++| After batch 5 | 2044 | 0 | 24 |
++| **After batch 6a (head)** | **2047** | **0** | 24 |
+ 
+ All 19 baseline failures came from a single cause: `_ensure_windows()` raising
+ `RuntimeError` in `sara/tools/system/_shared.py:38`. They were never logic
+@@ -67,7 +68,9 @@ re-export or side-effect import carrying a `# noqa: F401` and a reason.
+ | --- | --- |
+ | `bridge_contract.test.js` *(new)* | 19 passed, 0 failed |
+ | `chat_state.test.js` | 11 passed, 0 failed |
+-| `ui_prefs_theme.test.js` | 46 passed, **1 failed** — pre-existing, see §5.1 |
++| `ui_prefs_theme.test.js` | **47 passed, 0 failed** (was 46/1 — fixed in batch 6a) |
++
++**77 front-end assertions, and CI still runs none of them.** See §3.7 item J.
+ 
+ ---
+ 
+@@ -170,6 +173,63 @@ fake really exposes the production shape (`.models.generate_content`,
+ `.function_calls`, `.name`/`.args` and *not* `.message`), so the tests cannot
+ pass vacuously against a drifted double.
+ 
++### 3.7 Batch 6a — theme order, asset test, CI · **2 of 3 applied**
++
++Pre-flight, before any edit: each of the three source files was hashed against
++the checkpointed content in `C:\project`'s index — all three **CLEAN** (working
++tree == index == `144787c`), and byte-identical to the audit mirror's
++pre-change baseline. So the edits were applied to the current repository
++content, not to a stale copy.
++
++**Item I — theme ordering · VERIFIED.** The same list is declared in three
++places, and they had drifted:
++
++| Source | Position of `lime` |
++| --- | --- |
++| `sara/gui/js/theme.js` `LIST` | between `aurora` and `neon` ← the outlier |
++| `sara/gui/app/ui_prefs.py:14` `_THEMES` | between `oat` and `custom` |
++| `sara/gui/js/tests/ui_prefs_theme.test.js` | between `oat` and `custom` |
++
++So the instruction to place Lime after Oat was *supported* by the repository,
++not contradicted — two of three declarations already used that order. Nothing
++was broken at runtime: `_THEMES` is only ever used as a membership test
++(`text in _THEMES`, `ui_prefs.py:28`), never indexed, so no stored preference
++was at risk. This was display order in the picker.
++
++After the change all three agree exactly, and
++`ui_prefs_theme.test.js` goes 46 passed/1 failed → **47 passed/0 failed**.
++
++**Item H — asset test · VERIFIED.** `aurum.css` and `luxe.css` are gone from
++disk, so `_PENDING_DELETION` is empty and `test_no_dead_stylesheets_on_disk`
++now enforces the invariant with no exemptions. Asset wiring re-checked:
++36 stylesheets linked == 36 on disk, 0 missing, 0 dead; 40 scripts linked,
++41 on disk (the extra is `mock.js`, lazily loaded by design).
++
++**Item J — CI node job · BLOCKED, NOT APPLIED.**
++`.github/workflows/ci.yml` is a **protected path**; the write was refused:
++
++```
++rejected: C:\project\.github\workflows\ci.yml is a protected file
++          and cannot be written via remote tools.
++```
++
++The job is written and locally verified — `ci.yml` with it parses, jobs are
++`lint, test, js-test, type-check, bench`, `lint` and `test` keep
++`continue-on-error` unset so no gate is weakened, and the exact loop the job
++runs was executed here (19/11/47 green). It is delivered for manual paste as
++`docs/audit/proposed-ci-js-test-job.yml`.
++
++**Divergence to be aware of:** the audit mirror's `ci.yml` contains the job;
++`C:\project`'s does not. The mirror's copy is *proposed*, not deployed.
++
++**New regression tests (3)**, guarding the drift that caused item I:
++`test_theme_list_matches_backend_preference_list` (the two lists must match),
++`test_every_theme_is_accepted_by_the_backend_validator` (runs every offered
++theme through the real `normalize_ui_pref()`, so the picker can never show a
++theme the backend rejects), and `test_lime_sits_between_oat_and_custom`.
++Verified red by restoring the old order — 2 pytest failures plus the node
++suite back to 46/1 — and green after.
++
+ ---
+ 
+ ## 4. Defects found *during* the repair work
+@@ -218,29 +278,19 @@ suite from 40 s to 33 s.
+ 
+ ## 5. Known-failing and unverified
+ 
+-### 5.1 `ui_prefs_theme.test.js` — theme ordering · **NEEDS A DECISION**
+-
+-Pre-existing, present at baseline, unchanged by this work.
+-
+-```
+-FAIL: theme list
+-  got  [..., "aurora", "lime", "neon", "ink", "oat", "custom"]
+-  want [..., "aurora", "neon", "ink", "oat", "lime", "custom"]
+-```
++### 5.1 ~~`ui_prefs_theme.test.js` — theme ordering~~ · **RESOLVED in batch 6a**
+ 
+-`theme.js` places `lime` (Graphite Lime) between `aurora` and `neon`; the test
+-expects it between `oat` and `custom`. This is the **display order of the theme
+-picker** — a product decision, not a correctness question, so it has not been
+-guessed at. Both files were last modified within ~20 seconds of each other, so
+-one of the two edits was simply not carried across.
++Fixed by moving `lime` in `theme.js`; see §3.7 item I. The node suite is now
++47 passed / 0 failed, and three regression tests guard the three-way list.
+ 
+-Either answer is a one-line change:
+-- keep `theme.js` as shipped → update the expected list in the test, or
+-- the test is right → move `lime` in `theme.js`'s `LIST`.
++### 5.1a CI still does not run the front-end suites · **BLOCKED**
+ 
+-**This blocks running the node suites in CI**, which is itself worth doing:
+-`ci.yml` does not execute them at all, which is why this failure went
+-unnoticed.
++77 passing front-end assertions exist and `ci.yml` executes none of them. That
++is precisely why the theme-ordering failure sat unnoticed. The job is prepared
++and verified but could not be written — `.github/workflows/ci.yml` is a
++protected path for this session. Paste
++`docs/audit/proposed-ci-js-test-job.yml` into `ci.yml` before the
++`type-check:` job to close this.
+ 
+ ### 5.2 Not verifiable from this environment
+ 
+@@ -265,7 +315,7 @@ interpreter upgrade, not a warning.
+ ## 6. How to reproduce
+ 
+ ```bash
+-# Python suite (expect: 2044 passed, 24 skipped, 0 failed)
++# Python suite (expect: 2047 passed, 24 skipped, 0 failed)
+ python -m pytest -q
+ 
+ # CI lint gate (expect: no output after the filter)
+@@ -274,7 +324,7 @@ python -m pyflakes . | grep -v "imported but unused"
+ # Front-end suites
+ node sara/gui/js/tests/bridge_contract.test.js    # 19 passed
+ node sara/gui/js/tests/chat_state.test.js         # 11 passed
+-node sara/gui/js/tests/ui_prefs_theme.test.js     # 46 passed, 1 failed (§5.1)
++node sara/gui/js/tests/ui_prefs_theme.test.js     # 47 passed, 0 failed
+ 
+ # Order-independence
+ python -m pytest -q tests/test_planning.py tests/test_planning_gemini_backend.py
+@@ -282,4 +332,4 @@ python -m pytest -q tests/test_planning_gemini_backend.py tests/test_planning.py
+ ```
+ 
+ On Windows the 19 `@requires_windows` tests run instead of skipping, so expect
+-**2063 passed, 5 skipped**.
++**2066 passed, 5 skipped**.
+diff --git a/sara/gui/js/theme.js b/sara/gui/js/theme.js
+index a81bf11..4614c64 100644
+--- a/sara/gui/js/theme.js
++++ b/sara/gui/js/theme.js
+@@ -28,10 +28,10 @@
+     { id: 'ember',   name: 'Ember',      description: 'Molten warm',     category: 'warm',       tags: ['dark'] },
+     { id: 'cyber',   name: 'Cyber Blue', description: 'Electric',        category: 'futuristic', tags: ['dark'] },
+     { id: 'aurora',  name: 'Aurora',     description: 'Northern lights', category: 'futuristic', tags: ['dark'] },
+-    { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
+     { id: 'neon',    name: 'Neon Black', description: 'Electric blue',   category: 'futuristic', tags: ['dark'] },
+     { id: 'ink',     name: 'Mono Ink',   description: 'Black & vermilion', category: 'minimal',  tags: ['dark'] },
+     { id: 'oat',     name: 'Oat & Sage', description: 'Calm & matte',      category: 'light',    tags: ['minimal'] },
++    { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
+     { id: 'custom',  name: 'Custom',     description: 'Your colours',      category: 'minimal',  tags: ['dark', 'light'] }
+   ];
+   const ids = LIST.map((t) => t.id);
+diff --git a/tests/test_gui_assets.py b/tests/test_gui_assets.py
+index 7eb3cf9..d754bae 100644
+--- a/tests/test_gui_assets.py
++++ b/tests/test_gui_assets.py
+@@ -41,12 +41,13 @@ _SUPERSEDED_BY_MOTION_PACK = {
+ # Loaded on demand by js/core.js (SARA._ensureMock), never statically.
+ _LAZY_JS = {"mock.js"}
+ 
+-# Superseded by motion-pack.css and already unlinked, but the files may still
+-# be sitting in sara/gui/style/ until someone deletes them. They are inert
+-# while nothing links them (and test_superseded_stylesheet_is_not_linked keeps
+-# it that way), so their mere presence should not fail the suite. Delete the
+-# files and drop them from this set to close the cleanup out.
+-_PENDING_DELETION = {"aurum.css", "luxe.css"}
++# Superseded stylesheets still sitting in sara/gui/style/ awaiting deletion.
++# They are inert while nothing links them (test_superseded_stylesheet_is_not_linked
++# keeps it that way), so their presence alone should not fail the suite.
++# aurum.css and luxe.css were deleted from the working tree on 2026-10-27, so
++# this set is now empty and test_no_dead_stylesheets_on_disk enforces the
++# invariant with no exemptions.
++_PENDING_DELETION: set[str] = set()
+ 
+ 
+ def _html() -> str:
+@@ -133,3 +134,65 @@ def test_mock_js_is_lazy_not_linked() -> None:
+     """Preview scaffolding must stay out of the static script list (see D2)."""
+     assert "mock.js" not in _linked_js()
+     assert (_GUI / "js" / "mock.js").exists(), "mock.js should still exist for preview use"
++
++
++# ──────────────────────────────────────────────────────────────────────
++# Theme list: three declarations, one order
++# ──────────────────────────────────────────────────────────────────────
++#
++# The same theme list is declared in three places:
++#   sara/gui/js/theme.js            LIST      -- the picker's display order
++#   sara/gui/app/ui_prefs.py        _THEMES   -- backend validation
++#   sara/gui/js/tests/...test.js    expected  -- the assertion
++#
++# They had drifted: theme.js placed 'lime' between 'aurora' and 'neon' while
++# the other two placed it between 'oat' and 'custom', so ui_prefs_theme.test.js
++# failed. Nothing broke at runtime because _THEMES is only ever used as a
++# membership test (`text in _THEMES`), never indexed -- but three copies of one
++# list with no check between them is how that drift happened in the first place.
++
++
++def _theme_ids_from_js() -> list[str]:
++    src = (_GUI / "js" / "theme.js").read_text(encoding="utf-8")
++    body = src.split("const LIST = [", 1)[1].split("];", 1)[0]
++    return re.findall(r"id: '(\w+)'", body)
++
++
++def _theme_ids_from_python() -> list[str]:
++    src = (_GUI / "app" / "ui_prefs.py").read_text(encoding="utf-8")
++    body = src.split("_THEMES = (", 1)[1].split(")", 1)[0]
++    return re.findall(r'"(\w+)"', body)
++
++
++def test_theme_list_matches_backend_preference_list() -> None:
++    """theme.js's picker order and ui_prefs.py's _THEMES must stay in step."""
++    js_ids, py_ids = _theme_ids_from_js(), _theme_ids_from_python()
++    assert js_ids, "could not parse LIST out of theme.js"
++    assert js_ids == py_ids, (
++        "theme.js LIST and ui_prefs.py _THEMES disagree.\n"
++        f"  theme.js : {js_ids}\n"
++        f"  ui_prefs : {py_ids}"
++    )
++
++
++def test_every_theme_is_accepted_by_the_backend_validator() -> None:
++    """
++    Stronger than ordering: a theme the picker offers but the backend rejects
++    would make the swatch look broken (set_ui_pref returns 'Invalid UI
++    preference'). Exercises the real validator, not a copy of the list.
++    """
++    from sara.gui.app.ui_prefs import normalize_ui_pref
++
++    for theme_id in _theme_ids_from_js():
++        assert normalize_ui_pref("theme", theme_id) == theme_id, (
++            f"theme {theme_id!r} is offered by the picker but rejected by "
++            f"ui_prefs.normalize_ui_pref()"
++        )
++    assert normalize_ui_pref("theme", "not_a_theme") is None
++    assert normalize_ui_pref("theme", "") == "", "'' means back-to-default"
++
++
++def test_lime_sits_between_oat_and_custom() -> None:
++    """Named guard for the ordering decision made in batch 6a."""
++    ids = _theme_ids_from_js()
++    assert ids.index("oat") < ids.index("lime") < ids.index("custom")

@@ -41,12 +41,13 @@ _SUPERSEDED_BY_MOTION_PACK = {
 # Loaded on demand by js/core.js (SARA._ensureMock), never statically.
 _LAZY_JS = {"mock.js"}
 
-# Superseded by motion-pack.css and already unlinked, but the files may still
-# be sitting in sara/gui/style/ until someone deletes them. They are inert
-# while nothing links them (and test_superseded_stylesheet_is_not_linked keeps
-# it that way), so their mere presence should not fail the suite. Delete the
-# files and drop them from this set to close the cleanup out.
-_PENDING_DELETION = {"aurum.css", "luxe.css"}
+# Superseded stylesheets still sitting in sara/gui/style/ awaiting deletion.
+# They are inert while nothing links them (test_superseded_stylesheet_is_not_linked
+# keeps it that way), so their presence alone should not fail the suite.
+# aurum.css and luxe.css were deleted from the working tree on 2026-10-27, so
+# this set is now empty and test_no_dead_stylesheets_on_disk enforces the
+# invariant with no exemptions.
+_PENDING_DELETION: set[str] = set()
 
 
 def _html() -> str:
@@ -133,3 +134,65 @@ def test_mock_js_is_lazy_not_linked() -> None:
     """Preview scaffolding must stay out of the static script list (see D2)."""
     assert "mock.js" not in _linked_js()
     assert (_GUI / "js" / "mock.js").exists(), "mock.js should still exist for preview use"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Theme list: three declarations, one order
+# ──────────────────────────────────────────────────────────────────────
+#
+# The same theme list is declared in three places:
+#   sara/gui/js/theme.js            LIST      -- the picker's display order
+#   sara/gui/app/ui_prefs.py        _THEMES   -- backend validation
+#   sara/gui/js/tests/...test.js    expected  -- the assertion
+#
+# They had drifted: theme.js placed 'lime' between 'aurora' and 'neon' while
+# the other two placed it between 'oat' and 'custom', so ui_prefs_theme.test.js
+# failed. Nothing broke at runtime because _THEMES is only ever used as a
+# membership test (`text in _THEMES`), never indexed -- but three copies of one
+# list with no check between them is how that drift happened in the first place.
+
+
+def _theme_ids_from_js() -> list[str]:
+    src = (_GUI / "js" / "theme.js").read_text(encoding="utf-8")
+    body = src.split("const LIST = [", 1)[1].split("];", 1)[0]
+    return re.findall(r"id: '(\w+)'", body)
+
+
+def _theme_ids_from_python() -> list[str]:
+    src = (_GUI / "app" / "ui_prefs.py").read_text(encoding="utf-8")
+    body = src.split("_THEMES = (", 1)[1].split(")", 1)[0]
+    return re.findall(r'"(\w+)"', body)
+
+
+def test_theme_list_matches_backend_preference_list() -> None:
+    """theme.js's picker order and ui_prefs.py's _THEMES must stay in step."""
+    js_ids, py_ids = _theme_ids_from_js(), _theme_ids_from_python()
+    assert js_ids, "could not parse LIST out of theme.js"
+    assert js_ids == py_ids, (
+        "theme.js LIST and ui_prefs.py _THEMES disagree.\n"
+        f"  theme.js : {js_ids}\n"
+        f"  ui_prefs : {py_ids}"
+    )
+
+
+def test_every_theme_is_accepted_by_the_backend_validator() -> None:
+    """
+    Stronger than ordering: a theme the picker offers but the backend rejects
+    would make the swatch look broken (set_ui_pref returns 'Invalid UI
+    preference'). Exercises the real validator, not a copy of the list.
+    """
+    from sara.gui.app.ui_prefs import normalize_ui_pref
+
+    for theme_id in _theme_ids_from_js():
+        assert normalize_ui_pref("theme", theme_id) == theme_id, (
+            f"theme {theme_id!r} is offered by the picker but rejected by "
+            f"ui_prefs.normalize_ui_pref()"
+        )
+    assert normalize_ui_pref("theme", "not_a_theme") is None
+    assert normalize_ui_pref("theme", "") == "", "'' means back-to-default"
+
+
+def test_lime_sits_between_oat_and_custom() -> None:
+    """Named guard for the ordering decision made in batch 6a."""
+    ids = _theme_ids_from_js()
+    assert ids.index("oat") < ids.index("lime") < ids.index("custom")

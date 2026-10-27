@@ -3,20 +3,24 @@
 Working log for the audit and repair engagement. Updated as each batch lands.
 
 - **Baseline accepted:** Phase 0 + Phase 1 audit report (2026-10-26)
-- **Pristine checkpoint:** `da343da` in the audit workspace mirror
+- **Repository checkpoint:** `144787c` "Checkpoint SARA AI after initial audit repairs" — 477 files, initial commit, verified on disk (`refs/heads/master`, reflog parent `0000…`)
+- **CI commit:** `2ac8bbe` "Add JavaScript test suite to CI" (parent `144787c`)
+- **Audit mirror:** `da343da` (pristine) → `7409bd8` (batch 6b(3) + docs)
 - **Target tree:** `C:\project`
-- **Last updated:** 2026-10-26
+- **Uncommitted:** batches 6a, 6b(1), 6b(2), 6b(3) — awaiting the user's checkpoint
+- **Last updated:** 2026-10-28
 
 ## Headline
 
 | Metric | Before | After |
 | --- | --- | --- |
-| pytest | 2009 passed, **19 failed**, 5 skipped | **2044 passed, 0 failed**, 24 skipped |
-| pytest wall time | 40 s | 33 s |
+| pytest | 2009 passed, **19 failed**, 5 skipped | **2115 passed, 0 failed**, 19 skipped (2134 collected) |
+| pytest wall time | 40 s | 32.45 s |
 | pyflakes "real issues" (CI gate) | 0 | 0 |
 | pyflakes unused-import warnings | 31 | 10 (all documented re-exports) |
-| Node JS tests | 57 pass, 1 fail | 76 pass, 1 fail *(same pre-existing failure)* |
-| Dead front-end assets | 37,111 bytes | 0 referenced |
+| Node JS tests | 57 pass, **1 fail** | **77 pass, 0 fail** — on Node 22 *and* Node 24 |
+| Dead front-end assets | 37,111 bytes | 0 — files deleted |
+| Front-end tests run by CI | **none** | `js-test` job committed as `2ac8bbe` — **pipeline run still not observed** |
 
 ## Status key
 
@@ -37,7 +41,29 @@ Working log for the audit and repair engagement. Updated as each batch lands.
 | 3 | Platform-guard Windows-only tests; remove dead imports | DONE | pytest 0 failed; pyflakes 31→10 |
 | 4 | CSS consolidation reviewed, then removed | DONE | Headless-Chromium computed-style diff: 0 differences |
 | 5 | Gemini planner/executor tool-calling tests | DONE | 17 new tests, mutation-verified |
-| 6 | Remaining audit / architecture / GUI / security / performance | TODO | Scope undefined — instruction doc truncated at line 109 |
+| 6a | Theme order (I), asset-test cleanup (H), CI node job (J) | **DONE** | I and H applied and verified here. J applied by the user and committed as `2ac8bbe`; reviewed, but no pipeline run observed |
+| 6b | Architecture / GUI / traceability / security / performance | **IN PROGRESS** | Performance done: see D11. Remainder outstanding |
+
+### Batch 6a detail
+
+Applied on top of checkpoint `144787c`. Every source file was verified
+byte-identical to the checkpointed content before editing.
+
+| Item | Status | Result |
+| --- | --- | --- |
+| **I** — `theme.js`: Lime after Oat, before Custom | **DONE** | `ui_prefs_theme.test.js` 46 passed/1 failed → **47 passed/0 failed**. All three declarations of the theme list now agree |
+| **H** — `test_gui_assets.py`: drop obsolete exemptions | **DONE** | `_PENDING_DELETION` now empty; 36 stylesheets on disk == 36 linked |
+| **J** — CI node job | **CONFIGURED** | Applied by the user and committed as `2ac8bbe`. Reviewed: real gate, no existing gate weakened. **GitHub Actions execution not yet confirmed.** Node 24 pin now exercised by the user (v24.22.1, 19/11/47 passing) — that earlier caveat is closed |
+
+Three regression tests added for the three-way theme drift that caused item I
+(`test_theme_list_matches_backend_preference_list`,
+`test_every_theme_is_accepted_by_the_backend_validator`,
+`test_lime_sits_between_oat_and_custom`). Verified red by restoring the old
+order, green after.
+
+**Divergence resolved:** the mirror's `ci.yml` has been synced to the user's
+committed version (`2ac8bbe`), which differs from the original proposal only
+in trimmed comments and `node-version: "24"` instead of `"20"`.
 
 ## What changed, by batch
 
@@ -86,22 +112,41 @@ Working log for the audit and repair engagement. Updated as each batch lands.
 
 ## Blockers
 
-1. **No Git repository in `C:\project`** — still unresolved. This session has
-   file access but no shell on that machine, so `git init` cannot be run from
-   here. Mitigations in place: a real Git history in the audit mirror
-   (`da343da` → `fadcedf`), pristine per-batch backups under
-   `docs/audit/backups/`, and cumulative patches under `docs/audit/`.
-2. **Instruction document truncated at line 109**, mid-sentence inside Phase 1.
-   Phases 2+ never arrived, so batch 6's scope and acceptance criteria are
-   undefined.
+1. ~~No Git repository in `C:\project`~~ — **RESOLVED 2026-10-27.** Checkpoint
+   `144787c` committed with a real author identity. Verified from `.git` on
+   disk, not taken on trust.
+2. ~~`.github/workflows/ci.yml` is a protected path~~ — **RESOLVED
+   2026-10-27.** The user applied the job and committed it as `2ac8bbe`.
+   This session still cannot write that path, so any future CI change must
+   go through the user. **The pipeline has not been observed running**:
+   configured is not the same as passing.
+3. **No shell on the target machine.** All verification runs on a Linux
+   mirror; nothing Windows-specific can be executed. See
+   VALIDATION_REPORT.md §5.2.
 
 ## Outstanding
 
 | Item | Why it is still open |
 | --- | --- |
-| Delete `sara/gui/style/aurum.css` and `luxe.css` from `C:\project` | No file-delete capability from this session. Both are inert (nothing links them); `_PENDING_DELETION` in `tests/test_gui_assets.py` keeps the suite green either way |
-| `ui_prefs_theme.test.js` theme-order failure | **Pre-existing**, needs a one-line product decision — see VALIDATION_REPORT.md |
-| Run the node JS suites in CI | They are not in `ci.yml` at all, which is why the theme failure went unnoticed. Held until the theme decision above |
-| Windows verification of `toggle_media_mute` | Needs a run on the target machine |
+| ~~Delete `aurum.css` / `luxe.css`~~ | **DONE 2026-10-27** by the user. 36 on disk == 36 linked |
+| ~~`ui_prefs_theme.test.js` theme-order failure~~ | **FIXED** in batch 6a item I |
+| Confirm the `js-test` job actually passes on GitHub Actions | Committed as `2ac8bbe`, reviewed and sound by inspection, but **no run observed**. The Node 24 concern is closed: the user ran all three suites on Node v24.22.1 (19/11/47 passing). What remains unverified is the runner itself — `checkout@v4`, `setup-node@v4`, `ubuntu-latest`, the job's shell loop |
+| Windows verification of `toggle_media_mute` | Needs a run on the target machine. Steps in VALIDATION_REPORT.md §3.2 |
 | `audioop` removed in Python 3.13 | `sara/audio/stt/helpers.py:75`; blocks a future interpreter upgrade |
-| Batch 6 scope | Awaiting the rest of the instruction document |
+| Trailing whitespace in 285 files | Cosmetic; worst is `sara/core/llm/engine.py` (48 lines). Not touched — would bloat every diff |
+| `bench/bench/results/latest.json` | Stray nested duplicate of `bench/results/latest.json` (~195 KB) |
+| Batch 6b remainder | Architecture (D), GUI review (E), traceability (B), bridge sweep (C), security (F) still to do. Performance (G) done — D11 |
+
+
+## Batch 6b — progress
+
+| Item | Status | Result |
+| --- | --- | --- |
+| **G** — performance, measurable baselines | **DONE** | **D11**: ~3.5 s off startup. `import sara.orchestrator` 4,595 ms → 1,486 ms; `re.compile` during skill discovery 12,703 → 586. 9 regression tests asserting compile counts, not wall-clock |
+| **B** — end-to-end feature traceability | TODO | |
+| **C** — bridge contract / GUI wiring sweep | PARTIAL | Name-level contract enforced in CI since batch 1. Argument-arity checking not yet done |
+| **D** — architecture, threading, lifecycle, shutdown | **DONE** | **D16** found and fixed: a failing teardown step silently lost the conversation log. Full concurrency inventory in `ARCHITECTURE_REVIEW.md` |
+| **E** — GUI functionality, a11y, theme, responsiveness | TODO | → `GUI_REVIEW.md` |
+| **F** — security and privacy | **DONE** | **D17** found and fixed: `<name>.env` (this repo's own `ll.env`) was not classified secret. Privilege matrix and assistant-generated tool execution reviewed and found sound. **D18** recorded: plan steps absent from the audit log |
+
+Findings register: `docs/audit/FINDINGS.md`.

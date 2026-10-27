@@ -28,10 +28,10 @@
     { id: 'ember',   name: 'Ember',      description: 'Molten warm',     category: 'warm',       tags: ['dark'] },
     { id: 'cyber',   name: 'Cyber Blue', description: 'Electric',        category: 'futuristic', tags: ['dark'] },
     { id: 'aurora',  name: 'Aurora',     description: 'Northern lights', category: 'futuristic', tags: ['dark'] },
-    { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
     { id: 'neon',    name: 'Neon Black', description: 'Electric blue',   category: 'futuristic', tags: ['dark'] },
     { id: 'ink',     name: 'Mono Ink',   description: 'Black & vermilion', category: 'minimal',  tags: ['dark'] },
     { id: 'oat',     name: 'Oat & Sage', description: 'Calm & matte',      category: 'light',    tags: ['minimal'] },
+    { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
     { id: 'custom',  name: 'Custom',     description: 'Your colours',      category: 'minimal',  tags: ['dark', 'light'] }
   ];
   const ids = LIST.map((t) => t.id);

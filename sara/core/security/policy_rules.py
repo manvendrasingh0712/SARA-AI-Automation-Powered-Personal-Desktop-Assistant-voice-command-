@@ -40,6 +40,25 @@ _PLUS_SPACES = re.compile(r"\s*\+\s*")
 _SECRET_FILE_PATTERNS = (
     "credentials*.json", "token*.json", "client_secret*.json", "*.pem", "*.key",
     "*.pfx", "*.p12", "id_rsa*", "id_ed25519*", "*.kdbx", "*.ppk",
+    # --- added by audit batch 6b(3) ---------------------------------------
+    # The project's own .gitignore is the best available statement of what
+    # this repo considers secret, and this list was narrower than it. Each
+    # pattern below closes a real gap found by comparing the two.
+    #
+    # "*.env" is the one that mattered most: is_sensitive_parts() only
+    # special-cased the exact name ".env" and the ".env." prefix, so the
+    # extremely common `<name>.env` convention was NOT sensitive. This repo
+    # ships exactly such a file -- `ll.env`, gitignored precisely because it
+    # holds real configuration -- and `find_file`/`open_file` accepted it
+    # while correctly refusing `.env`. ("env" with no extension is
+    # deliberately NOT matched: a directory called `env` is not a secret.)
+    "*.env",
+    # Keystores, cookie jars and session dumps -- all already gitignored.
+    "*.jks", "*.keystore", "*.cookies", "cookies*.txt", "session*.json",
+    # Standard credential files that hold plaintext tokens.
+    ".git-credentials", ".netrc", "_netrc", ".npmrc", ".pypirc",
+    # SSH key types the id_rsa*/id_ed25519* entries missed.
+    "id_ecdsa*", "id_dsa*",
 )
 _SECRET_DIRS = frozenset({".ssh", ".gnupg", ".aws", ".azure"})
 _DB_NAMES = frozenset(

@@ -1029,18 +1029,86 @@ def run_sara_logic(
     except Exception as e:
         logger.critical(f"[Fatal Error \u2014 Sara logic thread] {e}", exc_info=True)
     finally:
-        if thread_supervisor is not None:
-            thread_supervisor.stop()
-        # `reminders` is a _Lazy proxy: this call waits for the background
-        # factory to finish and raises RuntimeError if it failed, so it must
-        # be wrapped -- a failure here must never block the shutdown steps below.
+        shutdown_logic_components(
+            thread_supervisor=thread_supervisor,
+            reminders=reminders,
+            proactive_engine=proactive_engine,
+            notes_memory=notes_memory,
+            tts=tts,
+            db_writer=db_writer,
+        )
+
+def shutdown_logic_components(
+    *,
+    thread_supervisor=None,
+    reminders=None,
+    proactive_engine=None,
+    notes_memory=None,
+    db_writer=None,
+    tts=None,
+) -> list:
+    """
+    Tear down everything run_sara_logic() owns, one independently-guarded
+    step at a time. Returns the list of (step_name, exception) pairs that
+    failed, so a caller or test can assert on them; the list is empty on a
+    fully clean shutdown.
+
+    BUGFIX (audit batch 6b(2)): this used to be an inline `finally:` block in
+    which only `reminders.shutdown()` was wrapped. Every other step ran
+    unguarded, in sequence, so ONE raising step silently skipped all the
+    steps after it. That ordering mattered because `db_writer.shutdown()` sat
+    second-to-last, and it is the step that FLUSHES QUEUED CONVERSATION-LOG
+    WRITES (AsyncDBWriter._flush_pending). A failure in, say, tts.shutdown()
+    -- which reaches TTSWorker._release_duck(), the chunker/synth pools and
+    the sounddevice output stream, and whose own __del__ wraps it in
+    try/except precisely because it can raise -- therefore meant the user's
+    last messages were dropped on the floor with no error anywhere.
+
+    This mirrors the pattern sara/gui/app/bootstrap.py already uses for the
+    process-level teardown, whose comment states the rule outright: "each
+    wrapped so one failing cleanup step can never block the rest of
+    shutdown". The logic thread's teardown simply never got the same
+    treatment.
+
+    Ordering is UNCHANGED from the original inline block -- only the guarding
+    is new. `db_writer` keeps its original second-to-last position, which is
+    the whole point: it must be reachable whatever failed above it.
+    """
+    failures = []
+
+    def _step(name, fn):
+        if fn is None:
+            return
         try:
-            reminders.shutdown()
-        except Exception as e:  # noqa: BLE001
-            print(f"[Shutdown] reminders shutdown failed: {e}")
-        proactive_engine.shutdown()
-        if notes_memory is not None:
-            notes_memory.close()
-        tts.shutdown()
-        db_writer.shutdown()
-        _shutdown_network_executor()
+            fn()
+        except Exception as e:  # noqa: BLE001 -- a cleanup failure must never
+            # prevent the remaining cleanup steps from running.
+            failures.append((name, e))
+            print(f"[Shutdown] {name} failed: {e}")
+
+    # The ORDER below is byte-for-byte the order the original inline finally:
+    # block used. Only the guarding changed. An earlier draft of this fix also
+    # swapped notes_memory.close() and tts.shutdown() under a "stop producers
+    # before draining" argument -- that was reverted, because tts.shutdown()
+    # already ran before db_writer.shutdown() in the original sequence, so the
+    # swap bought nothing for the flush guarantee while changing the order of
+    # proven-working teardown on no evidence.
+    if thread_supervisor is not None:
+        _step("thread_supervisor.stop", thread_supervisor.stop)
+    # `reminders` is a _Lazy proxy: this call waits for the background factory
+    # to finish and raises RuntimeError if it failed.
+    if reminders is not None:
+        _step("reminders.shutdown", reminders.shutdown)
+    if proactive_engine is not None:
+        _step("proactive_engine.shutdown", proactive_engine.shutdown)
+    if notes_memory is not None:
+        _step("notes_memory.close", notes_memory.close)
+    if tts is not None:
+        _step("tts.shutdown", tts.shutdown)
+    # db_writer LAST but one, exactly as before: it is the conversation-log
+    # flush, and it must be reachable no matter what failed above.
+    if db_writer is not None:
+        _step("db_writer.shutdown", db_writer.shutdown)
+    _step("network_executor.shutdown", _shutdown_network_executor)
+
+    return failures

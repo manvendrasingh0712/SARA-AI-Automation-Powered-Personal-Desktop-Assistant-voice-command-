@@ -1,0 +1,516 @@
+diff --git a/docs/audit/ARCHITECTURE_REVIEW.md b/docs/audit/ARCHITECTURE_REVIEW.md
+new file mode 100644
+index 0000000..a86f5f8
+--- /dev/null
++++ b/docs/audit/ARCHITECTURE_REVIEW.md
+@@ -0,0 +1,162 @@
++# SARA AI — Architecture Review
++
++Scope: module boundaries, dependency coupling, concurrency, resource lifecycle
++and shutdown. Evidence-driven; nothing here is refactored on style grounds.
++
++Date: 2026-10-27 · repo checkpoint `144787c` · mirror `6eb36c2`
++
++---
++
++## 1. Shape of the system
++
++`sara/` is seven subsystems over 50,198 production lines:
++
++| Package | Role | Modules |
++| --- | --- | --- |
++| `audio/` | STT, TTS, acoustic echo cancellation | 22 |
++| `core/` | intent, llm, memory, memory2, planning, router, security, telemetry, rag | 75 |
++| `gui/` | 16 `Api*Mixin` classes + 41 JS + 36 CSS | 23 py |
++| `orchestrator/` | dispatcher, handlers, proactive, wiring | 34 |
++| `skills/` | drop-in plugin skills | 7 |
++| `tools/` | Windows automation, reminders, web, vision | 28 |
++
++Boundaries are clean and the naming is honest — a module's name predicts its
++contents. The layering (`gui → orchestrator → core/tools → audio`) is real and
++mostly respected.
++
++## 2. Coupling
++
++| Module | Internal imports | Note |
++| --- | --- | --- |
++| `config` | imported by **82 of 195** | the single widest dependency, and at 1,652 lines also the largest root file |
++| `orchestrator/dispatcher.py` | imports 32 | integration chokepoint |
++| `orchestrator/core_wiring.py` | imports 27 | the composition root |
++
++**Verdict: leave alone.** `config` being universal is normal for a settings
++module, and it is a leaf (it imports nothing internal), so the fan-in costs
++nothing architecturally. `dispatcher` and `core_wiring` are *supposed* to know
++about everything — that is what a dispatcher and a composition root do.
++Splitting either would move the coupling, not remove it, and the audit brief is
++explicit that working architecture is not rewritten without evidence of
++benefit. No defect was found in either.
++
++### Circular imports
++
++One real cycle: `dispatcher ↔ route_chat`. It is deliberately broken — a
++call-time import at `route_chat.py:258` with a comment explaining exactly why.
++That is the correct treatment.
++
++`router.policy ↔ router.features` was a **false positive** in the Phase 1
++scan: `policy.py:8` imports `.features` under `TYPE_CHECKING`, which never
++executes.
++
++## 3. Concurrency inventory
++
++Long-lived threads and pools created in production code:
++
++| Owner | Kind | Daemon | Has stop | Torn down |
++| --- | --- | --- | --- | --- |
++| `orchestrator/db_writer.py` `AsyncDBWriter` | thread | yes | `shutdown()` | yes |
++| `orchestrator/tts_worker.py` `TTSWorker` | 2 threads | yes | `shutdown()` | yes (as `tts`) |
++| `orchestrator/proactive.py` `ProactiveEngine` | thread | yes | `stop`/`shutdown` | yes |
++| `orchestrator/supervisor.py` | thread | yes | `stop()` | yes |
++| `orchestrator/notifications.py` watcher | thread | yes | `stop`/`shutdown` | yes (bootstrap) |
++| `gui/app/helpers.py` `_PrefWriter` | thread | yes | `stop(timeout)` | yes (bootstrap) |
++| `gui/app/core.py` command worker | thread | yes | queue-drained | process exit |
++| `orchestrator/network_utils.py` | pool(4) | — | `_shutdown_network_executor` | yes |
++| `core/planning` planner + correction | pool(2)+pool(2) | — | `shutdown_planning_executors` | yes (bootstrap) |
++| `core/tool_router.py` | pool | — | `_shutdown_tool_call_executor` | yes (bootstrap) |
++| `orchestrator/core_wiring.py` init | pool(3) | — | context manager | yes |
++| `skills/_framework.py` per-skill | thread | yes | timeout-bounded | n/a |
++
++Everything long-lived is a **daemon** thread or a bounded pool, so nothing can
++wedge process exit. Teardown is split deliberately across two layers:
++
++- **`run_sara_logic()`'s `finally`** — components the logic thread owns.
++- **`bootstrap.main()` after `webview.start()` returns** — process-level
++  resources: the hotkey, the notification watcher, the three executors, the
++  preference writer, and `db.close()`.
++
++That split is sound. Both halves are reached on a normal exit.
++
++## 4. Defect found — D16, silent conversation-log loss
++
++**Severity:** Medium (data loss, on an error path, silent).
++
++`run_sara_logic()`'s `finally:` block tore down six components in sequence and
++wrapped exactly one of them (`reminders.shutdown()`) in try/except. The other
++five ran unguarded, so **one raising step skipped every step after it**.
++
++The ordering is what turned that into data loss. `db_writer.shutdown()` sat
++second-to-last, and it is the step that flushes queued conversation-log writes:
++`AsyncDBWriter` holds a `queue.SimpleQueue` drained by a **daemon** thread, so
++`_flush_pending()` at shutdown is the only thing that gets the tail of that
++queue into the database. Whatever is still queued at process exit is gone.
++
++The realistic trigger is the step immediately before it. `tts.shutdown()`
++reaches `TTSWorker._release_duck()`, the chunker/synth pools and the
++sounddevice output stream — and `TextToSpeech.__del__` wraps its own call to
++`shutdown()` in `try/except` *precisely because it can raise*. So an audio
++teardown hiccup on exit silently dropped the user's last messages.
++
++The codebase already knows the rule. `bootstrap.py` guards every one of its
++teardown steps individually, and says so: *"each wrapped so one failing cleanup
++step can never block the rest of shutdown."* The logic thread's teardown simply
++never got the same treatment.
++
++**Fix.** Extracted to `shutdown_logic_components()`: every step independently
++guarded, failures logged and **returned** rather than swallowed, producers
++(`thread_supervisor`, `proactive_engine`, `tts`) stopped before the draining
++steps (`notes_memory`, `db_writer`, network executor) so the flush cannot race
++new writes, and every component optional to match `bootstrap.py`'s None-checks
++for a boot that failed partway.
++
++The extraction is the minimum needed to make the guarantee testable — an inline
++`finally:` cannot be exercised without standing up the whole logic thread.
++
++**Verification.** `tests/test_shutdown_lifecycle.py`, 15 tests. The central one
++is parametrised over all five earlier steps and asserts the conversation-log
++flush still runs when each one raises. Verified **red** against the pre-fix
++semantics (10 failed / 5 passed), green after (15 passed).
++
++**Not verified on Windows.** The raising paths this protects — pycaw ducking,
++sounddevice stream close, COM — cannot be exercised here. The guarantee is
++established structurally and by fault injection, not by observing a real
++PortAudio failure.
++
++## 5. Checked and found sound
++
++| Area | Verdict |
++| --- | --- |
++| Daemon discipline | Every long-lived thread is a daemon; no non-daemon thread can wedge exit |
++| Executor bounds | All pools are explicitly bounded (2–4 workers) with `thread_name_prefix` set — threads are identifiable in a dump |
++| Idempotent teardown | `TextToSpeech.shutdown()` guards with `_shutdown_done`; `ThreadPoolExecutor.shutdown()` is idempotent by contract; `AsyncDBWriter.shutdown()` is safe to repeat |
++| Flush-before-close ordering | `bootstrap.py` stops the executors *before* the pref-writer flush and `db.close()` — correct order, and commented as deliberate |
++| Unbounded thread spawning | Previously fixed: `gui/app/core.py` replaced per-call threads with one bounded queue and a single long-lived worker |
++| `db.close()` on exit | Previously fixed; the comment records the WAL-not-flushed bug it closed |
++| Command queue | Bounded (`_MAX_QUEUED_COMMANDS`) with double-submit suppression |
++| Lazy-init proxy | `orchestrator/lazy.py` builds on a background thread and re-raises the factory error on first access, so a failed dependency surfaces at use rather than vanishing |
++
++## 6. Known lifecycle risk, not a defect
++
++`bootstrap.main()` joins the logic thread with `logic_thread.join(timeout=5.0)`
++and then proceeds regardless. If the logic thread has not finished its teardown
++within five seconds, the process continues to exit and the remainder of
++`shutdown_logic_components()` does not complete.
++
++This is a deliberate trade — an app that refuses to close is worse than one
++that drops a trailing log write — and the daemon design means nothing hangs.
++Worth knowing, not worth changing without evidence that the five seconds is
++actually being exceeded. Measuring that needs a Windows run.
++
++## 7. Not yet reviewed
++
++- End-to-end feature traceability (brief item B).
++- Bridge **argument arity** (item C). Name-level contract is enforced in CI
++  since batch 1; the number of arguments each JS call site passes is not yet
++  checked against the Python signature.
++- GUI review — accessibility, responsiveness, theme behaviour (item E) →
++  `GUI_REVIEW.md`.
++- Security: path handling, privilege boundaries, assistant-generated tool
++  execution (item F). Phase 1 established there is no unsafe
++  `shell`/`eval`/`exec`/`pickle`.
+diff --git a/docs/audit/FINDINGS.md b/docs/audit/FINDINGS.md
+index 500f588..53173a0 100644
+--- a/docs/audit/FINDINGS.md
++++ b/docs/audit/FINDINGS.md
+@@ -10,7 +10,7 @@ defect with a workaround, or a gap that hides defects · *Low*: hygiene.
+ **Status** — `FIXED` (applied and verified) · `BLOCKED` (cannot be done from
+ this session) · `OPEN` (not yet addressed) · `WONTFIX` (deliberate).
+ 
+-Last updated: 2026-10-27 · repo checkpoint `144787c` · mirror `c2a4f83`
++Last updated: 2026-10-27 · repo checkpoint `144787c` · mirror `6eb36c2`
+ 
+ ---
+ 
+@@ -33,6 +33,7 @@ Last updated: 2026-10-27 · repo checkpoint `144787c` · mirror `c2a4f83`
+ | D13 | Low | `audioop` removed in Python 3.13 | OPEN |
+ | D14 | Low | 285 files with trailing whitespace | OPEN |
+ | D15 | Low | `bench/bench/` stray nested duplicate | OPEN |
++| D16 | Medium | **Shutdown: one failing step silently lost the conversation log** | FIXED |
+ 
+ Details for D1–D9 are in VALIDATION_REPORT.md §3–§4. D10 is in §3.7. The rest
+ are below.
+@@ -96,6 +97,45 @@ unmeasured.
+ 
+ ---
+ 
++## D16 — one failing shutdown step silently lost the conversation log
++
++**Severity:** Medium — data loss, on an error path, with no error surfaced.
++
++**Affected files:** `sara/orchestrator/core_wiring.py` (fix),
++`sara/orchestrator/db_writer.py` (the victim), `sara/orchestrator/tts_worker.py`
++and `sara/audio/tts/engine.py` (the realistic trigger).
++
++**Root cause.** `run_sara_logic()`'s `finally:` block tore down six components
++in sequence but wrapped only `reminders.shutdown()`. The other five ran
++unguarded, so one raising step skipped every step after it —
++and `db_writer.shutdown()` sat second-to-last. That call is what flushes queued
++conversation-log writes: `AsyncDBWriter` drains a `queue.SimpleQueue` on a
++**daemon** thread, so `_flush_pending()` at shutdown is the only thing that
++gets the queue's tail into the DB.
++
++The trigger is the step immediately before: `tts.shutdown()` reaches
++`_release_duck()`, the chunker/synth pools and the sounddevice stream, and
++`TextToSpeech.__del__` wraps its own call in try/except *because it can raise*.
++
++**Correction.** Extracted to `shutdown_logic_components()` — every step
++independently guarded, failures logged and returned rather than swallowed,
++producers stopped before drainers so the flush cannot race new writes, all
++components optional.
++
++**Status:** FIXED (mirror `6eb36c2`).
++
++**Verification.** `tests/test_shutdown_lifecycle.py`, 15 tests; the central one
++is parametrised over all five earlier steps. Verified **red** against the
++pre-fix semantics (10 failed / 5 passed), green after. Full suite 2071 passed,
++0 failed.
++
++**Not verified on Windows** — the raising paths (pycaw, sounddevice, COM)
++cannot be exercised here; the guarantee is structural plus fault injection.
++
++See `ARCHITECTURE_REVIEW.md` for the full concurrency inventory.
++
++---
++
+ ## D12 — CI runs none of the 77 front-end tests
+ 
+ **Severity:** Medium — it is the reason D10 sat unnoticed.
+diff --git a/docs/audit/PROGRESS.md b/docs/audit/PROGRESS.md
+index 2429b4d..6bc7583 100644
+--- a/docs/audit/PROGRESS.md
++++ b/docs/audit/PROGRESS.md
+@@ -12,7 +12,7 @@ Working log for the audit and repair engagement. Updated as each batch lands.
+ 
+ | Metric | Before | After |
+ | --- | --- | --- |
+-| pytest | 2009 passed, **19 failed**, 5 skipped | **2056 passed, 0 failed**, 24 skipped |
++| pytest | 2009 passed, **19 failed**, 5 skipped | **2071 passed, 0 failed**, 24 skipped |
+ | pytest wall time | 40 s | 33 s |
+ | pyflakes "real issues" (CI gate) | 0 | 0 |
+ | pyflakes unused-import warnings | 31 | 10 (all documented re-exports) |
+@@ -142,7 +142,7 @@ refused. Treat the mirror's ci.yml as proposed, not deployed.
+ | **G** — performance, measurable baselines | **DONE** | **D11**: ~3.5 s off startup. `import sara.orchestrator` 4,595 ms → 1,486 ms; `re.compile` during skill discovery 12,703 → 586. 9 regression tests asserting compile counts, not wall-clock |
+ | **B** — end-to-end feature traceability | TODO | |
+ | **C** — bridge contract / GUI wiring sweep | PARTIAL | Name-level contract enforced in CI since batch 1. Argument-arity checking not yet done |
+-| **D** — architecture, threading, lifecycle, shutdown | TODO | → `ARCHITECTURE_REVIEW.md` |
++| **D** — architecture, threading, lifecycle, shutdown | **DONE** | **D16** found and fixed: a failing teardown step silently lost the conversation log. Full concurrency inventory in `ARCHITECTURE_REVIEW.md` |
+ | **E** — GUI functionality, a11y, theme, responsiveness | TODO | → `GUI_REVIEW.md` |
+ | **F** — security and privacy | PARTIAL | Phase 1 verified no unsafe exec/eval/pickle/shell. Path handling and privilege boundaries not yet reviewed |
+ 
+diff --git a/sara/orchestrator/core_wiring.py b/sara/orchestrator/core_wiring.py
+index dc81a44..58c9e46 100644
+--- a/sara/orchestrator/core_wiring.py
++++ b/sara/orchestrator/core_wiring.py
+@@ -1029,18 +1029,80 @@ def run_sara_logic(
+     except Exception as e:
+         logger.critical(f"[Fatal Error \u2014 Sara logic thread] {e}", exc_info=True)
+     finally:
+-        if thread_supervisor is not None:
+-            thread_supervisor.stop()
+-        # `reminders` is a _Lazy proxy: this call waits for the background
+-        # factory to finish and raises RuntimeError if it failed, so it must
+-        # be wrapped -- a failure here must never block the shutdown steps below.
++        shutdown_logic_components(
++            thread_supervisor=thread_supervisor,
++            reminders=reminders,
++            proactive_engine=proactive_engine,
++            notes_memory=notes_memory,
++            tts=tts,
++            db_writer=db_writer,
++        )
++
++def shutdown_logic_components(
++    *,
++    thread_supervisor=None,
++    reminders=None,
++    proactive_engine=None,
++    notes_memory=None,
++    db_writer=None,
++    tts=None,
++) -> list:
++    """
++    Tear down everything run_sara_logic() owns, one independently-guarded
++    step at a time. Returns the list of (step_name, exception) pairs that
++    failed, so a caller or test can assert on them; the list is empty on a
++    fully clean shutdown.
++
++    BUGFIX (audit batch 6b(2)): this used to be an inline `finally:` block in
++    which only `reminders.shutdown()` was wrapped. Every other step ran
++    unguarded, in sequence, so ONE raising step silently skipped all the
++    steps after it. That ordering mattered because `db_writer.shutdown()` sat
++    second-to-last, and it is the step that FLUSHES QUEUED CONVERSATION-LOG
++    WRITES (AsyncDBWriter._flush_pending). A failure in, say, tts.shutdown()
++    -- which reaches TTSWorker._release_duck(), the chunker/synth pools and
++    the sounddevice output stream, and whose own __del__ wraps it in
++    try/except precisely because it can raise -- therefore meant the user's
++    last messages were dropped on the floor with no error anywhere.
++
++    This mirrors the pattern sara/gui/app/bootstrap.py already uses for the
++    process-level teardown, whose comment states the rule outright: "each
++    wrapped so one failing cleanup step can never block the rest of
++    shutdown". The logic thread's teardown simply never got the same
++    treatment.
++
++    Ordering note: the steps are ordered so that the ones which PERSIST data
++    (notes, conversation log) come after the ones that merely stop producing
++    it, and `db_writer` is flushed before the network executor goes away.
++    """
++    failures = []
++
++    def _step(name, fn):
++        if fn is None:
++            return
+         try:
+-            reminders.shutdown()
+-        except Exception as e:  # noqa: BLE001
+-            print(f"[Shutdown] reminders shutdown failed: {e}")
+-        proactive_engine.shutdown()
+-        if notes_memory is not None:
+-            notes_memory.close()
+-        tts.shutdown()
+-        db_writer.shutdown()
+-        _shutdown_network_executor()
+\ No newline at end of file
++            fn()
++        except Exception as e:  # noqa: BLE001 -- a cleanup failure must never
++            # prevent the remaining cleanup steps from running.
++            failures.append((name, e))
++            print(f"[Shutdown] {name} failed: {e}")
++
++    # Stop producers first so nothing new is queued while we drain.
++    if thread_supervisor is not None:
++        _step("thread_supervisor.stop", thread_supervisor.stop)
++    # `reminders` is a _Lazy proxy: this call waits for the background factory
++    # to finish and raises RuntimeError if it failed.
++    if reminders is not None:
++        _step("reminders.shutdown", reminders.shutdown)
++    if proactive_engine is not None:
++        _step("proactive_engine.shutdown", proactive_engine.shutdown)
++    if tts is not None:
++        _step("tts.shutdown", tts.shutdown)
++
++    # Then persist/drain. These must run even if anything above failed.
++    if notes_memory is not None:
++        _step("notes_memory.close", notes_memory.close)
++    if db_writer is not None:
++        _step("db_writer.shutdown", db_writer.shutdown)
++    _step("network_executor.shutdown", _shutdown_network_executor)
++
++    return failures
+diff --git a/tests/test_shutdown_lifecycle.py b/tests/test_shutdown_lifecycle.py
+new file mode 100644
+index 0000000..06c2ef6
+--- /dev/null
++++ b/tests/test_shutdown_lifecycle.py
+@@ -0,0 +1,153 @@
++"""
++Regression tests for the logic thread's shutdown sequence (audit batch 6b(2)).
++
++THE DEFECT
++----------
++run_sara_logic()'s `finally:` block tore down six components in sequence, but
++only `reminders.shutdown()` was wrapped in try/except. The rest ran unguarded,
++so ONE raising step silently skipped every step after it.
++
++That ordering mattered: `db_writer.shutdown()` sat second-to-last, and it is
++the step that flushes queued conversation-log writes
++(AsyncDBWriter._flush_pending drains the SimpleQueue into the DB). The writer
++thread is a daemon with a non-persistent queue, so anything still queued when
++the process exits is gone.
++
++The realistic trigger is `tts.shutdown()`, which runs immediately before it and
++reaches TTSWorker._release_duck(), the chunker/synth thread pools and the
++sounddevice output stream. TextToSpeech.__del__ wraps its own call to
++shutdown() in try/except precisely because it can raise.
++
++Net effect: an audio-teardown hiccup on exit silently dropped the user's last
++messages from their conversation history, with no error anywhere.
++
++sara/gui/app/bootstrap.py already does this correctly for the process-level
++teardown -- "each wrapped so one failing cleanup step can never block the rest
++of shutdown". These tests pin the same guarantee onto the logic thread's
++teardown.
++"""
++from __future__ import annotations
++
++import pytest
++
++from sara.orchestrator.core_wiring import shutdown_logic_components
++
++
++class _Recorder:
++    """Records which teardown steps ran, in order."""
++
++    def __init__(self):
++        self.calls: list[str] = []
++
++    def _make(self, name, raises=None):
++        def fn():
++            self.calls.append(name)
++            if raises is not None:
++                raise raises
++        return fn
++
++
++class _Component:
++    def __init__(self, rec, name, method, raises=None):
++        self._fn = rec._make(name, raises)
++        setattr(self, method, self._fn)
++
++
++def _components(rec, failing=None):
++    """Build a full set of fake components; `failing` names one that raises."""
++    def exc(name):
++        return RuntimeError(f"{name} blew up") if failing == name else None
++
++    return dict(
++        thread_supervisor=_Component(rec, "thread_supervisor", "stop", exc("thread_supervisor")),
++        reminders=_Component(rec, "reminders", "shutdown", exc("reminders")),
++        proactive_engine=_Component(rec, "proactive_engine", "shutdown", exc("proactive_engine")),
++        tts=_Component(rec, "tts", "shutdown", exc("tts")),
++        notes_memory=_Component(rec, "notes_memory", "close", exc("notes_memory")),
++        db_writer=_Component(rec, "db_writer", "shutdown", exc("db_writer")),
++    )
++
++
++def test_clean_shutdown_runs_every_step() -> None:
++    rec = _Recorder()
++    failures = shutdown_logic_components(**_components(rec))
++    assert failures == []
++    for step in ("thread_supervisor", "reminders", "proactive_engine",
++                 "tts", "notes_memory", "db_writer"):
++        assert step in rec.calls, f"{step} was never torn down"
++
++
++@pytest.mark.parametrize(
++    "failing",
++    ["thread_supervisor", "reminders", "proactive_engine", "tts", "notes_memory"],
++)
++def test_a_failing_step_never_blocks_the_conversation_log_flush(failing: str) -> None:
++    """
++    THE regression guard. Whichever earlier step explodes,
++    db_writer.shutdown() -- the conversation-log flush -- must still run.
++    """
++    rec = _Recorder()
++    failures = shutdown_logic_components(**_components(rec, failing=failing))
++
++    assert "db_writer" in rec.calls, (
++        f"{failing}.shutdown() raised and db_writer.shutdown() was skipped -- "
++        f"queued conversation-log writes would be lost on exit"
++    )
++    # the step label is '<component>.<method>', e.g. 'tts.shutdown'
++    assert [n.split('.')[0] for n, _ in failures] == [failing]
++    assert isinstance(failures[0][1], RuntimeError)
++
++
++@pytest.mark.parametrize(
++    "failing",
++    ["thread_supervisor", "reminders", "proactive_engine", "tts", "notes_memory", "db_writer"],
++)
++def test_every_other_step_still_runs_when_one_fails(failing: str) -> None:
++    """One bad step must cost exactly one step, never the tail of the sequence."""
++    rec = _Recorder()
++    shutdown_logic_components(**_components(rec, failing=failing))
++    expected = {"thread_supervisor", "reminders", "proactive_engine",
++                "tts", "notes_memory", "db_writer"}
++    assert expected.issubset(set(rec.calls)), (
++        f"with {failing} failing, these steps never ran: "
++        f"{sorted(expected - set(rec.calls))}"
++    )
++
++
++def test_shutdown_tolerates_missing_components() -> None:
++    """
++    Boot can fail before every component exists (bootstrap.py None-checks the
++    same way), so the teardown must accept None for any of them.
++    """
++    assert shutdown_logic_components() == []
++    rec = _Recorder()
++    only_db = _Component(rec, "db_writer", "shutdown")
++    assert shutdown_logic_components(db_writer=only_db) == []
++    assert rec.calls == ["db_writer"]
++
++
++def test_producers_are_stopped_before_the_log_is_drained() -> None:
++    """
++    Ordering matters: stop the things that enqueue work before draining the
++    queue, or the flush can race new writes.
++    """
++    rec = _Recorder()
++    shutdown_logic_components(**_components(rec))
++    order = {name: i for i, name in enumerate(rec.calls)}
++    for producer in ("thread_supervisor", "proactive_engine", "tts"):
++        assert order[producer] < order["db_writer"], (
++            f"{producer} must be stopped before the conversation log is drained"
++        )
++
++
++def test_all_failures_are_reported_not_swallowed() -> None:
++    """A silent cleanup failure is how the original defect stayed invisible."""
++    rec = _Recorder()
++    comps = _components(rec)
++    comps["tts"] = _Component(rec, "tts", "shutdown", RuntimeError("audio"))
++    comps["notes_memory"] = _Component(rec, "notes_memory", "close", OSError("disk"))
++
++    failures = shutdown_logic_components(**comps)
++    names = [n.split('.')[0] for n, _ in failures]
++    assert names == ["tts", "notes_memory"]
++    assert "db_writer" in rec.calls
