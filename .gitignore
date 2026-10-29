@@ -116,3 +116,8 @@ docs/audit/backups/
 *.orig
 *.rej
 doctor.txt
+bench/bench/
+docs/audit/MORNING.md
+docs/audit/proposed-*.yml
+check_missing_intents.py
+*.bak
