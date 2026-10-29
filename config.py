@@ -511,14 +511,104 @@ class Config:
         )
     except ValueError:
         BARGE_NOAEC_THRESHOLD_BOOST = 1.5
+    # ── D31 (audit batch D22-c): streaming first-chunk path ───────────
+    # Default flipped False -> True. Measured on 11 representative replies
+    # (English, Hindi, Hinglish, numbers, abbreviations, URLs, lists) by
+    # streaming each word-by-word through the REAL decision code in
+    # engine._chunker_worker, counting characters consumed before the
+    # first chunk reaches the synthesis queue:
+    #
+    #                  legacy    v2
+    #   mean chars      51.0    46.5     (v2 saves only 4.5 -- marginal)
+    #   NO early audio  4/11     0/11    <-- the actual win
+    #   bad first chunk 3        0       <-- the other actual win
+    #
+    # The mean is NOT the reason. The reasons are:
+    #
+    # 1. Legacy produced no early audio at all for 4 of 11 replies. Its
+    #    first-chunk rule needs a strong terminator, or a soft one only
+    #    after 35 chars, and has NO word-boundary fallback -- so a reply
+    #    with no mid-text punctuation falls through to _split_adaptive,
+    #    which pushes nothing until it finds >1 segment. The user then
+    #    hears silence until the whole reply has streamed. v2's word
+    #    boundary at 60 chars bounds this: 131 -> 60 chars on one sample,
+    #    87 -> 60 on another.
+    # 2. Legacy's early flushes were sometimes defective, which is why it
+    #    "won" on mean: it emitted 'Dr.' as a complete first utterance,
+    #    cut 'The total comes to 1,234.' mid-number, and cut
+    #    'You can read it at https://example.' mid-URL. v2 refuses all
+    #    three (abbreviation, number and URL guards), so it legitimately
+    #    flushes later on those and the audio is correct instead of
+    #    early-and-wrong.
+    #
+    # Three of the four cases where v2 is later are exactly those defects.
+    # The one genuine regression is Hinglish "Haan bilkul," (38 -> 60
+    # chars), where legacy's short-but-valid clause flush is deferred to
+    # the word boundary. chunker.CLAUSE_MIN_CHARS (25) is the knob for
+    # that and is deliberately NOT touched here: a 12-character first
+    # utterance followed by a synthesis gap may well sound worse than
+    # waiting, and that is a judgement for the ear on real hardware, not
+    # a guess from a character count.
+    #
+    # NOTE: with this on, Config.TTS_FIRST_CHUNK_MIN_CHARS is bypassed for
+    # the FIRST chunk -- _chunker_worker's v2 branch either continues or
+    # sets first_pushed before the _FIRST_TRIGGER check is reached. It
+    # still governs the legacy path, which remains the fallback if
+    # first_chunk_end() ever raises. Later chunks are unaffected either
+    # way: both paths hand off to _split_adaptive once the first is out.
     VOICE_CHUNKER_V2: bool = _bool(
-        os.getenv("VOICE_CHUNKER_V2", "False"), default=False
+        os.getenv("VOICE_CHUNKER_V2", "True"), default=True
     )
     VOICE_PREWARM_MAX_PHRASES: int = _int(
         os.getenv("VOICE_PREWARM_MAX_PHRASES"), default=64
     )
+    # D41: default flipped False -> True.
+    #
+    # WHY IT WAS OFF, AND WHY THAT IS NO LONGER A REASON
+    #   The whole subsystem (sara/audio/stt/endpoint.py, 20 passing tests in
+    #   tests/test_stt_endpoint_integration.py) was finished but inert --
+    #   recorded as audit finding D32. It could not have been validated
+    #   while it was off, and until D39 it could not have FIRED even if it
+    #   had been on: _collect_speech's continuation test read
+    #   `vad.is_speech(chunk) or energy > gate`, and webrtcvad reports a
+    #   quiet room as speech 60-91% of the time on real hardware, so
+    #   `is_voice` never went False and _endpoint_reached() was never
+    #   consulted on a silence chunk. D39 made energy decide; this flag is
+    #   what that unblocked.
+    #
+    # WHAT IT CHANGES
+    #   The legacy rule waits a FIXED silence_limit (_SilenceGate._DEFAULT,
+    #   0.8s) after you stop talking, whatever you said. The adaptive rule
+    #   reads the live partial transcript and picks:
+    #     complete command ("open chrome")     -> ENDPOINT_MIN_MS   350ms
+    #     mid-sentence ("open chrome and ...") -> base + 400ms, <= MAX
+    #     no partial available yet             -> base
+    #     noisy room (level > 0.5)             -> + NOISE_EXTRA * level
+    #
+    # THE TRADE, STATED HONESTLY
+    #   Best case -450ms on the common path (a recognised command, which is
+    #   most of what SARA is asked for). Worst case +100ms, because the
+    #   adaptive ceiling is ENDPOINT_MAX_MS 900ms against the legacy fixed
+    #   800ms. Bounded both ways: decide_endpoint() never ends before
+    #   ENDPOINT_MIN_MS and always ends at ENDPOINT_MAX_MS.
+    #
+    # THE OVER-CUT GUARDS (why this is not a blind latency trade)
+    #   * utterances under 500ms never go below `base`, so a stray blip
+    #     cannot be endpointed as a finished command
+    #   * EarlyCutGuard watches for endpoints that cut a sentence short and
+    #     temporarily widens the wait by ENDPOINT_EARLY_CUT_BACKOFF_MS
+    #   * any exception inside the adaptive path falls back to the legacy
+    #     `silence_count >= silence_limit_n` rule (covered by
+    #     test_decide_exception_falls_back_to_legacy)
+    #   * set VOICE_ENDPOINT_ADAPTIVE=False in .env to return to the fixed
+    #     rule without a code change
+    #
+    # NOT YET MEASURED ON WINDOWS. The saving above is arithmetic from the
+    # rules, not an end-to-end measurement -- telemetry has had zero voice
+    # turns since 16 Oct because voice could not complete a turn at all.
+    # stt_ms/ttfa_ms on the target machine is the instrument for that.
     VOICE_ENDPOINT_ADAPTIVE: bool = _bool(
-        os.getenv("VOICE_ENDPOINT_ADAPTIVE", "False"), default=False
+        os.getenv("VOICE_ENDPOINT_ADAPTIVE", "True"), default=True
     )
     ENDPOINT_MIN_MS: int = _int(os.getenv("ENDPOINT_MIN_MS"), default=350)
     ENDPOINT_MAX_MS: int = _int(os.getenv("ENDPOINT_MAX_MS"), default=900)
@@ -579,6 +669,185 @@ class Config:
 
     # Legacy Whisper wake settings kept for compatibility with old .env files.
     # They are NOT used by passive wake detection anymore.
+    # ── D47 + D49: noise-relative capture gate ────────────────────────
+    #
+    # DEFAULT OFF, deliberately. The additive `floor + 250` formula is
+    # measurably wrong above a noise floor of ~135 -- it puts the start
+    # gate BELOW the room noise (D49) -- and the +/-150 step clamp plus
+    # the 15s/300s cadence means calibration takes about ten minutes to
+    # move, so in practice the gate is just BARGE_IN_ENERGY_THRESHOLD
+    # (D47). Fixing both together changes the gate on EVERY capture.
+    #
+    # It is off because the pipeline it would change had only just started
+    # working end to end, and the person who has to hear the difference
+    # could not test it at the time. The replacement is validated against
+    # the seven floor/speech pairs measured on the target machine (see
+    # _NoiseFloor.suggested_threshold_relative and
+    # tests/test_noise_relative_gate.py) -- on every one it clears room
+    # noise by >= 3.2x and stays >= 3.6x below the quietest speech in that
+    # same session.
+    #
+    # TO ENABLE AND VERIFY, in .env:
+    #     VOICE_GATE_NOISE_RELATIVE=True
+    #     DEBUG_MODE=True
+    # then run SARA and look for
+    #     [STT] startup calibration: noise floor NN -> threshold NNN
+    #        (start gate NN)
+    # and check that commands still start capture reliably. If they do,
+    # BARGE_IN_ENERGY_THRESHOLD stops mattering and a quiet or noisy room
+    # is handled without hand-tuning. If they do not, set it back to False
+    # and the old behaviour returns exactly.
+    # D71: REVERTED to False on 29 Oct 2026, same day D65 turned it on.
+    #
+    # The person who can actually hear it reported the regression: the
+    # previous batch "felt fast", and after the batch that made this take
+    # effect "thoda high latency lagg rahi h". That outranks my arithmetic,
+    # and the arithmetic turns out to have had a specific error in it.
+    #
+    # THE MISTAKE IN D65's JUSTIFICATION
+    #   I argued it was safe because the rule derives 96-132 in their room,
+    #   "within a few percent of the gate 105 their successful run used".
+    #   But gate 105 came from BARGE_IN_ENERGY_THRESHOLD=300 as seen by
+    #   bench/stt_doctor.py -- and the DOCTOR DOES NOT LOAD GUI
+    #   PREFERENCES. The application ran at 793 (the saved slider), i.e. a
+    #   start gate of 278, and the application is what gets judged by feel.
+    #   So I justified cutting the app's gate by 2.6x using a reference
+    #   point from a different program.
+    #
+    # WHY A LOWER GATE FEELS LIKE LATENCY
+    #   Captures open sooner -- on typing, a mouse click, a chair, a breath.
+    #   Each false start consumes a listen() window: it runs the silence
+    #   budget (480-800ms), returns empty, and retries. Speak during one and
+    #   the command is clipped, so it has to be repeated. From outside that
+    #   is indistinguishable from lag.
+    #
+    # The machinery stays and is still tested; it is the DEFAULT that was
+    # unjustified. Re-enable with VOICE_GATE_NOISE_RELATIVE=True once there
+    # is a telemetry baseline to compare against -- which needs
+    # TELEMETRY_ENABLED=True first (D68).
+    #
+    # Original D65 note follows, kept because its margin table is still the
+    # evidence for the rule itself:
+    # D65: flipped False -> True on 29 Oct 2026.
+    #
+    # WHAT CHANGED SINCE THE NOTE ABOVE WAS WRITTEN
+    #   That note says this is off because the pipeline it would change had
+    #   only just started working end to end. It now does -- wake word,
+    #   capture, endpointing, transcription, routing and tool execution were
+    #   all confirmed in main.py on the target machine, with 'Open Chrome.'
+    #   launching Chrome.
+    #
+    # WHY ENABLING IS THE LOW-RISK DIRECTION, NOT THE RISKY ONE
+    #   The user had already hand-tuned BARGE_IN_ENERGY_THRESHOLD=300 in
+    #   .env to get past a quiet microphone, giving a start gate of 105 --
+    #   and that is the configuration their successful run was measured on.
+    #   In that same room (noise floor 24-33) this rule derives a gate of
+    #   96-132. So enabling it lands within a few percent of a value already
+    #   verified to work on that hardware, while removing the need to
+    #   hand-tune it at all.
+    #
+    #   It also repairs both failure modes they actually hit, which a fixed
+    #   threshold cannot do at once:
+    #     * quiet speech (RMS 607) behind a gate of 210  -> 8s timeout
+    #     * room noise 203 under a gate of 105           -> false start
+    #
+    # MARGINS, against all seven floor/speech pairs measured on that machine
+    # (each pair from ONE session, so the levels are comparable):
+    #   worst margin OVER room noise   3.20x
+    #   worst margin UNDER speech      3.6x
+    #
+    # WHAT IS STILL NOT PROVEN
+    #   This was not A/B tested against the fixed threshold on that machine.
+    #   The evidence is that the rule reproduces a gate value already shown
+    #   to work there, plus the seven pairs above -- not a direct comparison.
+    #   DEBUG_MODE prints the derived value at boot:
+    #       [STT] startup calibration: noise floor NN -> threshold NNN
+    #          (start gate NN)
+    #   If capture becomes unreliable, VOICE_GATE_NOISE_RELATIVE=False in
+    #   .env restores the previous behaviour exactly (the additive formula
+    #   is still the else-branch, pinned by a test).
+    VOICE_GATE_NOISE_RELATIVE: bool = _bool(
+        os.getenv("VOICE_GATE_NOISE_RELATIVE", "False"), default=False
+    )
+    # Start gate as a multiple of the measured noise floor. 4.0 chosen from
+    # the measured pairs; the worst observed speech/floor ratio was 14.2x,
+    # which is what leaves room for a 4x noise margin and a 3.6x speech
+    # margin at the same time.
+    VOICE_GATE_NOISE_MULTIPLIER: float = _float(
+        os.getenv("VOICE_GATE_NOISE_MULTIPLIER"), default=4.0
+    )
+    # Floor: stops a muted or near-silent microphone driving the gate
+    # toward zero, where every chunk false-starts a capture (D45).
+    VOICE_GATE_MIN_RMS: float = _float(
+        os.getenv("VOICE_GATE_MIN_RMS"), default=90.0
+    )
+    # Ceiling: stops a very noisy room making SARA deaf to normal speech.
+    VOICE_GATE_MAX_RMS: float = _float(
+        os.getenv("VOICE_GATE_MAX_RMS"), default=650.0
+    )
+    # D47: how soon after the mic opens the FIRST calibration runs. The
+    # old first cycle was _RECALIB_FIRST_INTERVAL (15s), later than a
+    # stt_doctor run lives and later than the user's first command.
+    # _NoiseFloor needs 5 samples and the ring fills at ~31 chunks/s, so
+    # ~1.5s is enough. 0 disables the fast pass.
+    # D71: default 1.5 -> 0.0 (disabled), for the same reason as
+    # VOICE_GATE_NOISE_RELATIVE above.
+    #
+    # Turning the noise-relative rule off is NOT enough on its own. The
+    # fast first pass runs with first=True, which deliberately SKIPS the
+    # +/-150 step clamp -- so even on the additive formula it jumps the
+    # threshold straight to floor + 250 (about 280 in their room, a start
+    # gate of 98). That is the same 2.6x drop, by the other route.
+    #
+    # 0 disables it (the loop guards on `fast_s > 0`), restoring exactly
+    # what they described as fast: no early unclamped calibration, the
+    # first pass at _RECALIB_FIRST_INTERVAL (15s) with the clamp, so a
+    # short session keeps the slider's value and the gate only drifts
+    # gradually.
+    #
+    # D47's point still stands -- waiting 15s is later than a doctor run
+    # lives -- so this is a default, not a deletion. The retry loop from
+    # D69 is still there and still correct for when it is switched back on.
+    STT_RECALIB_FIRST_FAST_S: float = _float(
+        os.getenv("STT_RECALIB_FIRST_FAST_S"), default=0.0
+    )
+
+    # D69: how long the startup calibration keeps RETRYING while the engine
+    # is busy, before giving up and leaving it to the steady-state loop.
+    #
+    # It used to be a single attempt at STT_RECALIB_FIRST_FAST_S. On the
+    # target machine that attempt lost a race with the TTS warm-up (~3.3s)
+    # every single time, so the startup calibration never ran and the gate
+    # stayed at whatever BARGE_IN_ENERGY_THRESHOLD or the GUI slider last
+    # set -- 793, a gate of 278 -- which threw away the whole benefit of
+    # VOICE_GATE_NOISE_RELATIVE.
+    #
+    # 12s comfortably covers a 3.3s warm-up plus the first wake cycle.
+    # Bounded on purpose: a permanently busy engine falls through to the
+    # steady-state loop rather than spinning here.
+    STT_RECALIB_FIRST_FAST_WINDOW_S: float = _float(
+        os.getenv("STT_RECALIB_FIRST_FAST_WINDOW_S"), default=12.0
+    )
+
+    # D52: try the GPU for the small wake/preview model before the CPU.
+    #
+    # That model also runs the live-caption PREVIEW, whose partial
+    # transcript is what the adaptive endpoint reads to recognise a
+    # finished command. Measured on the target machine (D51): the partial
+    # landed at ~640ms of silence when it must land within
+    # ENDPOINT_MIN_MS (350ms) to be useful, so the 350ms "complete
+    # command" path never fired and every command waited `base` (625ms)
+    # instead. The model was pinned to the CPU by a literal while the main
+    # Whisper model ran on CUDA on the same machine.
+    #
+    # Set False to keep it on the CPU -- worth doing if the GPU is tight,
+    # since this model and the main one then share it. The loader proves
+    # the GPU can actually infer before accepting it and falls back to CPU
+    # on any failure, so the worst case is the old behaviour.
+    WAKE_MODEL_USE_GPU: bool = _bool(
+        os.getenv("WAKE_MODEL_USE_GPU", "True"), default=True
+    )
+
     WAKE_WORD_FAST_MODEL_SIZE: str = os.getenv(
         "WAKE_WORD_FAST_MODEL_SIZE", "tiny"
     )
@@ -644,6 +913,21 @@ class Config:
     )
 
     # ── Whisper transcription tuning ─────────────────────────────────────
+    # ── STT warm-up (D30) ─────────────────────────────────────────────
+    # One throwaway transcription at startup so the first spoken command
+    # does not pay the recogniser's first-run cost. Defined here rather
+    # than read via getattr() with a default, so it is genuinely
+    # configurable from .env -- the audit already recorded that pattern
+    # as "looked configurable via .env but silently was not".
+    STT_WARMUP_ENABLED: bool = _bool(
+        os.getenv("STT_WARMUP_ENABLED", "True"), default=True
+    )
+    # Must stay >= 0.20: _transcribe() discards shorter clips, so a
+    # smaller value would warm nothing while still looking enabled.
+    STT_WARMUP_SECONDS: float = _float(
+        os.getenv("STT_WARMUP_SECONDS"), default=0.25
+    )
+
     WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "medium")
     WHISPER_BEAM_SIZE: int = _int(os.getenv("WHISPER_BEAM_SIZE"), default=2)
     STT_NO_SPEECH_THRESHOLD: float = _float(
@@ -687,6 +971,30 @@ class Config:
     BARGE_IN_ENABLED: bool = _bool(os.getenv("BARGE_IN_ENABLED", "True"), default=True)
     BARGE_IN_ENERGY_THRESHOLD: int = _int(
         os.getenv("BARGE_IN_ENERGY_THRESHOLD"), default=600
+    )
+
+    # D40: webrtcvad aggressiveness, 0 (permissive) to 3 (strict).
+    #
+    # This field DID NOT EXIST. Two comments claimed it did --
+    # buffers.py's "_VADFilter now defaults to
+    # Config.VAD_AGGRESSIVENESS ... so it's tunable via .env without a
+    # code edit" and engine.py's "passing nothing lets
+    # Config.VAD_AGGRESSIVENESS actually take effect" -- but a grep across
+    # all 304 Python files found the name only in those comments and in the
+    # `getattr(Config, "VAD_AGGRESSIVENESS", 2)` fallback itself. So the
+    # fallback always returned 2 and the earlier "BUGFIX" that removed a
+    # hardcoded 2 replaced it with another one. Declaring it here is what
+    # makes those comments true.
+    #
+    # It no longer decides whether a capture starts or continues: after D39
+    # and D45 both of those gates are energy-only, because on the target
+    # machine webrtcvad called 92% of near-silent audio speech. The VAD now
+    # only ever NARROWS an energy-passed decision -- _passes_barge_in_gate
+    # and is_user_speaking both test energy first. So this tunes barge-in
+    # sensitivity (interrupting SARA mid-reply), not whether she hears you.
+    # Raising it to 3 makes interruption harder to trigger on room noise.
+    VAD_AGGRESSIVENESS: int = _int(
+        os.getenv("VAD_AGGRESSIVENESS"), default=2
     )
 
     # ── Continuous mode ───────────────────────────────────────────────────
@@ -1285,6 +1593,14 @@ class Config:
         cls.STT_SETTLE_MIN_GAP_S = max(
             _MIN_STT_SETTLE_GAP_S, min(_MAX_STT_SETTLE_GAP_S, cls.STT_SETTLE_MIN_GAP_S)
         )
+
+        # ── VAD aggressiveness clamp (D40) ───────────────────────────────
+        # webrtcvad.Vad() RAISES on anything outside 0-3, and it is
+        # constructed inside _VADFilter.__init__ during SpeechToText boot,
+        # so an out-of-range .env value would be a startup crash. Clamped
+        # here as well as in _VADFilter (which cannot assume validate() has
+        # run), so the value is in range wherever it is read from.
+        cls.VAD_AGGRESSIVENESS = max(0, min(3, cls.VAD_AGGRESSIVENESS))
 
         # ── AEC clamps ──────────────────────────────────────────────────
         if cls.AEC_SAMPLE_RATE not in _AEC_VALID_SAMPLE_RATES:

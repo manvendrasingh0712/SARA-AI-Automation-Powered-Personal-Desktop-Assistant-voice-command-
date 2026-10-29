@@ -5,7 +5,14 @@ mic-capture -> VAD -> faster-whisper transcription pipeline.
 """
 from __future__ import annotations
 
-from .helpers import _rms, _detect_language, _lang_from_stt_language, _is_hallucinated_repetition, _is_known_hallucination
+from .helpers import (
+    _rms,
+    _detect_language,
+    _lang_from_stt_language,
+    _is_hallucinated_repetition,
+    _is_known_hallucination,
+    _is_foreign_script_hallucination,
+)
 from .buffers import _PreBuffer, _RingBuffer, _VADFilter, _SilenceGate, _NoiseFloor, _CollectState
 
 import os
@@ -13,6 +20,7 @@ import atexit
 import logging
 import collections
 import difflib
+import math
 import re
 import threading
 import time
@@ -210,31 +218,47 @@ def _load_whisper_model_offline_first(**kwargs) -> "WhisperModel":
     restart), can fail outright ("cannot schedule new futures after
     interpreter shutdown").
 
-    Strategy: try with HF_HUB_OFFLINE=1 first (uses whatever is already
-    cached, zero network calls). If that raises (most likely because this
-    exact model/revision was never downloaded before), retry once with
-    the env var restored so the normal online download path still works
-    -- first-run behavior is completely unchanged. The env var is
-    restored to its original value (present or absent) either way, so
-    this never leaks state to any other caller in the process.
+    Strategy: ask for a cache-only load first, then retry once allowing a
+    download, so first-run behaviour is unchanged.
+
+    D34 FIX -- this used to express "cache only" by mutating the global
+    HF_HUB_OFFLINE environment variable and restoring it afterwards. That
+    had two defects:
+
+    1. IT WAS NOT THREAD-SAFE, and this function is genuinely called
+       concurrently. SpeechToText.__init__ loads three models in ONE
+       ThreadPoolExecutor -- _load_faster_whisper, _load_wakeword and
+       _load_fast_wake_whisper -- and two of those reach this function. So
+       thread A would set the var to "1", thread B would restore it to
+       absent, and A's retry would then run under whatever B had left
+       behind. Which attempt saw which setting was a race.
+    2. It could not work as documented anyway. faster_whisper imports
+       huggingface_hub at MODULE level (faster_whisper/utils.py), and
+       huggingface_hub reads HF_HUB_OFFLINE into a module constant when it
+       is imported. By the time this function runs, that value is already
+       frozen, so mutating os.environ here changes nothing -- the
+       "offline first, online retry" dance was reading as deliberate
+       behaviour while actually being inert.
+
+    faster_whisper's WhisperModel takes `local_files_only` as a first-class
+    argument (verified against faster-whisper 1.0.3), which is per-call,
+    thread-safe, and actually honoured. So that is what is used now. No
+    global state is touched.
+
+    NOTE ON A FAILURE THIS CANNOT FIX: if HF_HUB_OFFLINE is truthy in the
+    real environment when the process starts, huggingface_hub is offline
+    for the whole run and `local_files_only=False` cannot override it. A
+    model that was never downloaded then cannot be fetched, and the caller
+    is left with None. That is not something this function should paper
+    over -- see _load_faster_whisper, which now reports it loudly with the
+    remedy instead of letting SARA come up as a voice assistant that can
+    never transcribe.
     """
-    had_var = "HF_HUB_OFFLINE" in os.environ
-    prev_value = os.environ.get("HF_HUB_OFFLINE")
-
-    def _restore() -> None:
-        if had_var:
-            os.environ["HF_HUB_OFFLINE"] = prev_value
-        else:
-            os.environ.pop("HF_HUB_OFFLINE", None)
-
-    os.environ["HF_HUB_OFFLINE"] = "1"
     try:
-        model = WhisperModel(**kwargs)
-        _restore()
-        return model
+        return WhisperModel(local_files_only=True, **kwargs)
     except Exception:
-        _restore()
-        return WhisperModel(**kwargs)
+        # Not cached (or the cache entry is unusable): allow the download.
+        return WhisperModel(local_files_only=False, **kwargs)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -438,6 +462,11 @@ class SpeechToText:
         # (larger, slower) self._whisper_model for its own use, while
         # _spawn_preview_transcribe() skips preview entirely rather than
         # falling back to the large model.
+        # D36: set before the loaders run -- _load_faster_whisper sets it to
+        # True once it has PROVEN the model can infer, and _warm_recognisers
+        # reads it to avoid paying the first-inference cost twice.
+        self._main_model_warmed = False
+
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="stt-model-load") as _pool:
             _whisper_future = _pool.submit(self._load_faster_whisper)
             _wakeword_future = _pool.submit(self._load_wakeword)
@@ -447,6 +476,29 @@ class SpeechToText:
             self._wakeword_model: Optional["_OWWModel"] = _wakeword_future.result()
             self._wake_whisper_model: Optional[object] = _wake_whisper_future.result()
 
+        # ── D30 (audit batch D22-b): warm the recognisers before the mic ──
+        # Loading a Whisper model and RUNNING one are different costs. The
+        # load is what the futures above just paid; the first actual
+        # transcription additionally pays CTranslate2's kernel/graph
+        # bring-up, which is far larger and was being charged to whatever
+        # the user said FIRST -- the worst possible moment, because someone
+        # who waits several seconds concludes it is broken and repeats
+        # themselves, and now two turns overlap.
+        #
+        # prewarm.py pre-synthesises TTS phrases but there was no STT
+        # equivalent anywhere in this file, so nothing absorbed that cost.
+        # One throwaway recognition on silence moves it to boot, where a
+        # progress bar is already showing and nobody is waiting on a reply.
+        #
+        # PLACEMENT IS THE SAFETY ARGUMENT: this runs inside __init__,
+        # after the models are assigned and BEFORE _open_mic_stream() and
+        # _start_threads(). No caller holds a reference to self yet, so no
+        # listen() or preview transcribe can be in flight and the models
+        # cannot be used concurrently -- which is why this needs no lock
+        # and cannot delay a real command. A background thread would have
+        # raced the orchestrator's first listen() on the same model object.
+        self._warm_recognisers()
+
         self._stream = None
         self._pa = None
         self._stream_lock = threading.Lock()
@@ -455,6 +507,104 @@ class SpeechToText:
         self._start_threads()
         atexit.register(self.close)
         self._log_init()
+
+    def _warm_recognisers(self) -> None:
+        """
+        One throwaway transcription per loaded model, so the first real
+        command does not pay the recogniser's first-run cost (D30).
+
+        Both models are warmed because both are on the first command's
+        critical path: `_whisper_model` does the command itself, and
+        `_wake_whisper_model` (tiny) serves the live-caption preview and
+        the STT wake-word fallback.
+
+        Never raises: a warm-up failure must not stop SARA from starting.
+        Returns without doing anything when disabled, so the cost can be
+        removed without code changes -- set STT_WARMUP_ENABLED=False in .env
+        to take this out of the startup path entirely, which is also how to
+        A/B whether warming is implicated in any capture problem.
+
+        ISOLATION (D33): this deliberately does NOT go through
+        self._transcribe(). It calls the model directly with cheap settings
+        and discards the result, so warming shares no state and no code path
+        with a real command. See the comment on the transcribe call below.
+        """
+        if not bool(getattr(Config, "STT_WARMUP_ENABLED", True)):
+            return
+        seconds = max(0.25, float(getattr(Config, "STT_WARMUP_SECONDS", 0.25)))
+        silence = np.zeros(int(self.SAMPLE_RATE * seconds), dtype=np.float32)
+
+        targets = [
+            ("main", self._whisper_model),
+            ("wake", getattr(self, "_wake_whisper_model", None)),
+        ]
+        for label, model in targets:
+            if model is None:
+                continue
+            # D36: _load_faster_whisper now proves the main model can infer
+            # before accepting it, and that probe warms it. Warming twice
+            # would just spend the first-inference cost over again.
+            #
+            # D52 added the same probe to the wake/preview model's GPU
+            # path, so it needs the same skip -- but ONLY there. The CPU
+            # fallback in _load_fast_wake_whisper does not probe, so a
+            # model that came back from it still has its first-inference
+            # cost unpaid and must still be warmed here.
+            already = {
+                "main": "_main_model_warmed",
+                "wake": "_wake_model_warmed",
+            }.get(label)
+            if already and getattr(self, already, False):
+                continue
+            try:
+                started = time.monotonic()
+                # D33 FIX: call the model DIRECTLY rather than through
+                # self._transcribe(). _transcribe() is the live command path
+                # and it MUTATES INSTANCE STATE on any non-empty result:
+                #
+                #     self._recent_transcript = (self._recent_transcript + ...)
+                #     self._update_detected_language(text)
+                #
+                # Whisper is well known to hallucinate on pure silence
+                # ("Thank you.", boilerplate credits, and so on), and
+                # _transcribe()'s hallucination filters catch many but not
+                # all of them. Anything that slipped through would have set
+                # self._detected_lang from garbage before the user had said
+                # a single word -- and that value is read by core_wiring to
+                # pick the reply language. Warming must not be able to
+                # influence a later turn, so it no longer shares a code path
+                # with one.
+                #
+                # Also much cheaper: beam_size/best_of 1 and a single
+                # temperature, because the ONLY goal is to make CTranslate2
+                # build its kernels. Accuracy of the discarded result is
+                # irrelevant, and _transcribe()'s real settings (beam 2,
+                # 3-step temperature fallback, initial_prompt) made the
+                # warm-up several times slower than it needed to be -- paid
+                # synchronously during boot, twice.
+                #
+                # DRAINING IS LOAD-BEARING: faster-whisper's transcribe()
+                # returns a GENERATOR and does the work lazily. Without the
+                # list() below, nothing is computed and the warm-up silently
+                # does nothing at all while still appearing to succeed.
+                segments, _ = model.transcribe(
+                    silence,
+                    beam_size=1,
+                    best_of=1,
+                    temperature=0.0,
+                    task="transcribe",
+                    condition_on_previous_text=False,
+                    vad_filter=False,
+                )
+                list(segments)
+                elapsed_ms = (time.monotonic() - started) * 1000.0
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(
+                        f"[STT] warm-up ({label}) {elapsed_ms:.0f}ms "
+                        f"on {seconds:.2f}s of silence"
+                    )
+            except Exception as e:  # noqa: BLE001 -- must never block boot
+                print(f"[STT] warm-up ({label}) failed, continuing: {e}")
 
     # ── Wake word helpers ────────────────────────────────────────────
 
@@ -518,6 +668,39 @@ class SpeechToText:
                     return True
         return False
 
+    def _prove_model_can_infer(self, model: object) -> None:
+        """
+        Run one throwaway inference and let any failure propagate (D36).
+
+        Constructing a WhisperModel proves nothing: CTranslate2 resolves its
+        CUDA libraries lazily, on first use. So a partial CUDA install gives
+        a model that constructs happily and then fails every single
+        transcription -- and because _transcribe() catches inference errors
+        and returns an empty result, the only outward symptom is "SARA
+        cannot hear me".
+
+        Raising here is the point: it lets _load_faster_whisper's existing
+        GPU-to-CPU fallback actually engage, which it previously could not,
+        because construction never raised.
+
+        This also warms the model, so the work is not duplicated --
+        _warm_recognisers() skips any model already proven here.
+        """
+        seconds = max(0.25, float(getattr(Config, "STT_WARMUP_SECONDS", 0.25)))
+        silence = np.zeros(int(self.SAMPLE_RATE * seconds), dtype=np.float32)
+        segments, _ = model.transcribe(  # type: ignore[attr-defined]
+            silence,
+            beam_size=1,
+            best_of=1,
+            temperature=0.0,
+            task="transcribe",
+            condition_on_previous_text=False,
+            vad_filter=False,
+        )
+        # Draining is load-bearing: transcribe() is lazy, so without this the
+        # inference never runs and the proof proves nothing.
+        list(segments)
+
     def _load_faster_whisper(self) -> Optional[object]:
         if not _HAS_WHISPER:
             print("[STT Error] faster-whisper not installed. Offline STT will fail.")
@@ -535,7 +718,28 @@ class SpeechToText:
                 device="cuda",
                 compute_type="int8_float16",
             )
+            # D36 FIX: constructing a CUDA WhisperModel does NOT touch the
+            # CUDA libraries -- CTranslate2 resolves them lazily, on the
+            # first inference. So on a machine with a partial CUDA install
+            # the construction above SUCCEEDS, this branch reported
+            # "loaded on GPU", and every transcription then failed with
+            # "Library cublas64_12.dll is not found or cannot be loaded".
+            # The except-clause below never ran, because nothing raised
+            # here -- so the CPU fallback could not engage and SARA kept a
+            # model that cannot infer. Observed in the field exactly this
+            # way; the symptom is indistinguishable from "SARA cannot hear
+            # me", because _transcribe() swallows the inference error and
+            # returns an empty transcript.
+            #
+            # A load is therefore only accepted once it has been PROVEN to
+            # infer. The probe doubles as the warm-up (see
+            # _warm_recognisers), so this costs nothing extra.
+            self._prove_model_can_infer(model)
             print("[STT] ✅ Faster Whisper loaded on GPU (CUDA, int8_float16).")
+            self._main_model_warmed = True
+            # D37: record what was ACTUALLY accepted, so _log_init can report
+            # the real device instead of a hardcoded string.
+            self._model_device = f"{model_size} on GPU (CUDA, int8_float16)"
             return model
 
         except Exception as gpu_error:
@@ -547,11 +751,63 @@ class SpeechToText:
                     compute_type="int8",
                     cpu_threads=cpu_threads,
                 )
+                # Same proof on the CPU path: a model that cannot infer is
+                # not a usable model, whichever device it claims.
+                self._prove_model_can_infer(model)
                 print("[STT] ✅ Faster Whisper loaded on CPU (fallback).")
+                self._main_model_warmed = True
+                self._model_device = f"{model_size} on CPU (int8, {cpu_threads} threads)"
                 return model
             except Exception as cpu_error:
                 print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
+                self._report_no_stt_model(model_size, cpu_error)
                 return None
+
+    @staticmethod
+    def _report_no_stt_model(model_size: str, error: Exception) -> None:
+        """
+        D35: say plainly that speech recognition is dead, and how to fix it.
+
+        Without this, a failed model load printed one `[STT Error]` line and
+        SARA carried on to print "[STT] Ready — FasterWhisper=✗ | VAD=✓ |
+        ..." -- a line whose shape reads like success, with the one symbol
+        that matters buried among ticks. _transcribe() then returns an empty
+        result on its `model is None` guard for every single turn, so the
+        microphone, the gate, VAD, the wake word and the GUI level meter all
+        behave perfectly while nothing is ever transcribed. That is the
+        hardest possible failure to attribute from the outside, and it is
+        what made this cost days rather than minutes.
+
+        A voice assistant that cannot transcribe has lost its primary
+        function. It should say so, in terms that name the remedy.
+        """
+        text = str(error)
+        offline = "HF_HUB_OFFLINE" in text or "outgoing traffic has been disabled" in text
+        print("")
+        print("  " + "=" * 70)
+        print("  SPEECH RECOGNITION IS UNAVAILABLE -- SARA CANNOT HEAR COMMANDS")
+        print("  " + "=" * 70)
+        print(f"  The faster-whisper '{model_size}' model could not be loaded, so")
+        print("  every spoken command will produce an empty transcript. Wake word,")
+        print("  playback and the microphone level meter will still appear to work.")
+        print("")
+        if offline:
+            print("  CAUSE: the model is not in the local Hugging Face cache, and")
+            print("         offline mode is active, so it cannot be downloaded.")
+            print("")
+            print("  FIX (run once, with a working connection):")
+            print("      $env:HF_HUB_OFFLINE=0")
+            print(f"      python -c \"from faster_whisper import WhisperModel;"
+                  f" WhisperModel('{model_size}', device='cpu', compute_type='int8')\"")
+            print("")
+            print("  Then make sure HF_HUB_OFFLINE is not set to 1 in your")
+            print("  environment, or SARA will not be able to load it either:")
+            print("      [Environment]::GetEnvironmentVariable('HF_HUB_OFFLINE','User')")
+        else:
+            print("  Check that the model name in WHISPER_MODEL_SIZE is valid and")
+            print("  that there is room on disk for it.")
+        print("  " + "=" * 70)
+        print("")
     def _load_fast_wake_whisper(self) -> Optional[object]:
         """
         Small/fast dedicated Whisper model used for the STT-fallback
@@ -569,6 +825,49 @@ class SpeechToText:
         model_size = getattr(Config, "WAKE_WORD_FAST_MODEL_SIZE", "tiny")
         cpu_threads = max(2, (os.cpu_count() or 4) // 4)
         print(f"[STT] Loading dedicated wake-word Whisper '{model_size}'...")
+
+        # D52: try the GPU first, exactly as _load_faster_whisper does.
+        #
+        # This model is not only the wake probe -- it also runs the live
+        # LIVE-CAPTION PREVIEW, and that preview's partial transcript is
+        # what the adaptive endpoint reads to recognise a finished command.
+        # Measured on the target machine (D51): the partial arrived at
+        # ~640ms of silence when it has to arrive within ENDPOINT_MIN_MS
+        # (350ms) to be useful, so the "complete command" fast path never
+        # fired and every recognised command waited `base` (625ms) instead
+        # of 350ms. 288ms per command, spent waiting for an inference that
+        # was pinned to the CPU by a literal while the main model ran on
+        # CUDA on the same machine.
+        #
+        # Safety: the probe below means a GPU that cannot actually infer is
+        # rejected (CTranslate2 resolves its CUDA libraries lazily, so
+        # construction alone proves nothing -- that is D36). On any failure
+        # this falls through to the original CPU path, so the worst case is
+        # exactly today's behaviour.
+        if bool(getattr(Config, "WAKE_MODEL_USE_GPU", True)):
+            try:
+                model = _load_whisper_model_offline_first(
+                    model_size_or_path=model_size,
+                    device="cuda",
+                    compute_type="int8_float16",
+                )
+                self._prove_model_can_infer(model)
+                print(
+                    "[STT] ✅ Wake-word Whisper loaded on GPU "
+                    "(CUDA, int8_float16) -- live preview and wake checks "
+                    "share it."
+                )
+                self._wake_model_device = f"{model_size} on GPU (CUDA, int8_float16)"
+                # The probe above already ran one inference on this model,
+                # so _warm_recognisers() must not pay that cost again.
+                self._wake_model_warmed = True
+                return model
+            except Exception as gpu_error:
+                print(
+                    f"[STT] Wake-word Whisper GPU load failed "
+                    f"({gpu_error}) -- falling back to CPU."
+                )
+
         try:
             model = _load_whisper_model_offline_first(
                 model_size_or_path=model_size,
@@ -577,6 +876,7 @@ class SpeechToText:
                 cpu_threads=cpu_threads,
             )
             print("[STT] ✅ Wake-word Whisper loaded on CPU.")
+            self._wake_model_device = f"{model_size} on CPU (int8, {cpu_threads} threads)"
             return model
         except Exception as e:
             print(
@@ -880,6 +1180,50 @@ class SpeechToText:
             )
             return chunk
 
+    def _barge_in_threshold(self) -> float:
+        """
+        Energy a chunk must beat to count toward interrupting SARA.
+
+        D63: this used to be `self.energy_threshold` directly, and D65
+        broke that by making the threshold track the ROOM NOISE. Barge-in
+        and capture need different quantities:
+
+          * the CAPTURE gate must sit above room noise, so in a noisy room
+            it has to rise -- that is exactly what D65 does
+          * barge-in must clear SARA's own TTS ECHO BLEED, which is bounded
+            by playback level and has nothing to do with room noise
+
+        Multiplying a noise-scaled threshold by TTS_BLEED_GUARD_MULTIPLIER
+        (1.6, tuned against a FIXED threshold) conflated them, and made
+        interruption harder precisely where it was already hardest.
+        Measured against the seven floor/speech pairs from the target
+        machine, with BARGE_IN_ENERGY_THRESHOLD at its 600 default:
+
+            floor  speech   D65 gate   margin
+              164    2337       2971    0.79x   <-- INTERRUPTION IMPOSSIBLE
+              203    3082       2971    1.04x
+              125    4996       2286    2.19x
+
+        At floor 164 the gate sat ABOVE the user's own speech, so they
+        could not have interrupted SARA at all in that room.
+
+        The cap is the fix: barge-in may become EASIER than the configured
+        base when calibration lowers the threshold in a quiet room, but
+        never HARDER. That restores the pre-D65 ceiling exactly -- the
+        value that was observably working, since telemetry recorded
+        barge_in outcomes -- while leaving D65's capture-gate fix intact.
+
+            floor  speech   capped gate   margin
+              164    2337           960    2.43x
+              203    3082           960    3.21x
+              125    4996           960    5.20x
+
+        Config.BARGE_IN_ENERGY_THRESHOLD is literally the field named for
+        this job; `energy_threshold` is the calibrated capture value.
+        """
+        base = float(getattr(Config, "BARGE_IN_ENERGY_THRESHOLD", 600))
+        return min(float(self.energy_threshold), base)
+
     def _passes_barge_in_gate(self, chunk: bytes) -> bool:
         """Elevated energy+VAD check used to decide whether a single mic
         chunk arriving while TTS is speaking is allowed into the ring
@@ -897,7 +1241,7 @@ class SpeechToText:
         trigger a barge-in stop.
         """
         bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
-        effective_thr = self.energy_threshold * bleed_multiplier
+        effective_thr = self._barge_in_threshold() * bleed_multiplier
         if _rms(chunk) <= effective_thr:
             return False
         return self._vad.is_speech(chunk)
@@ -946,8 +1290,25 @@ class SpeechToText:
     def _audio_callback(self, indata, frames, time_info, status) -> None:
         if self._closed:
             return
+        # D60: the stream-status report is RATE-LIMITED, because an
+        # unbounded print here is self-worsening. `status` is set on
+        # overflow/underflow -- i.e. exactly when the audio device is
+        # already struggling -- and this is the real-time capture
+        # callback, running ~31 times a second. A raw print() to a Windows
+        # console costs milliseconds against a 32ms budget, so a stream in
+        # trouble printed 31 lines/second FROM THE AUDIO THREAD and made
+        # the trouble worse. The project's own brief is explicit: keep
+        # audio-device callbacks minimal and non-blocking, no I/O.
+        #
+        # _log_rate_limited() already exists in this module for the AEC
+        # error paths, so this reuses it rather than adding a second
+        # mechanism. Still gated on DEBUG_MODE, so a normal run does
+        # nothing at all here.
         if status and getattr(Config, "DEBUG_MODE", False):
-            print(f"[STT] input stream status: {status}")
+            _log_rate_limited(
+                "_audio_callback_status",
+                "[STT] input stream status: %s (rate-limited)", status,
+            )
 
         chunk = bytes(indata)
 
@@ -964,20 +1325,32 @@ class SpeechToText:
             self._aec_raw_q.put_nowait(chunk)
         except queue.Full:
             self._aec_drop_count += 1
-            if getattr(Config, "DEBUG_MODE", False) and self._aec_drop_count % 50 == 1:
-                print(
-                    f"[STT WARNING] AEC input queue full — dropped "
-                    f"{self._aec_drop_count} mic chunk(s) so far. This means "
-                    f"something is holding up AEC processing far longer than "
-                    f"expected; investigate CPU/GPU load."
-                )
+            # D60: was `print(...)` every 50th drop. A count-based limit is
+            # not a limit from the audio thread's point of view -- at ~31
+            # chunks/s a sustained AEC stall still printed every ~1.6s. The
+            # drop itself is counted unconditionally (so nothing is lost
+            # silently); only the REPORT is throttled, on time.
+            _log_rate_limited(
+                "_audio_callback_aec_full",
+                "[STT] AEC input queue full — dropped %d mic chunk(s) so far. "
+                "Something is holding up AEC processing far longer than "
+                "expected; investigate CPU/GPU load. (rate-limited)",
+                self._aec_drop_count,
+            )
 
     def _pa_callback(self, in_data, frame_count, time_info, status_flags):
         if self._closed:
             return (None, _pyaudio.paContinue if _HAS_PYAUDIO else None)
 
+        # D60: rate-limited for the same reason as the sounddevice path
+        # above -- an unbounded print from the real-time callback when the
+        # stream is already struggling.
         if status_flags and getattr(Config, "DEBUG_MODE", False):
-            print(f"[STT] pyaudio input status flags: {status_flags}")
+            _log_rate_limited(
+                "_pa_callback_status",
+                "[STT] pyaudio input status flags: %s (rate-limited)",
+                status_flags,
+            )
 
         # OpenWakeWord receives the RAW microphone signal.
         self._wake_ring.put(in_data)
@@ -989,25 +1362,56 @@ class SpeechToText:
                 self._aec_raw_q.put_nowait(in_data)
             except queue.Full:
                 self._aec_drop_count += 1
-                if (
-                    getattr(Config, "DEBUG_MODE", False)
-                    and self._aec_drop_count % 50 == 1
-                ):
-                    print(
-                        f"[STT WARNING] AEC input queue full — dropped "
-                        f"{self._aec_drop_count} mic chunk(s) so far (pyaudio path)."
-                    )
+                # D60: see the sounddevice path above.
+                _log_rate_limited(
+                    "_pa_callback_aec_full",
+                    "[STT] AEC input queue full — dropped %d mic chunk(s) so "
+                    "far (pyaudio path). (rate-limited)",
+                    self._aec_drop_count,
+                )
 
         return (None, _pyaudio.paContinue if _HAS_PYAUDIO else None)
 
     def _aec_worker_loop(self) -> None:
+        """
+        Move mic audio from the real-time callback into the ring buffer,
+        applying AEC on the way.
+
+        D61: the body is GUARDED, because this thread is the only route
+        microphone audio takes to the capture path when AEC is enabled --
+        which is the default, and the configuration the target machine
+        runs. It is a daemon thread and nothing supervises it: the
+        mic-disconnect watchdog probes the STREAM, not this worker. So a
+        single unexpected exception here used to kill the thread and leave
+        SARA permanently deaf, with the device still open, the callback
+        still firing, the GUI level meter still moving, and NOTHING logged.
+
+        That is the same shape as D34/D35 -- deaf with no error -- which
+        cost about twelve days before it was found. _apply_aec() already
+        swallows its own errors, but _ingest_processed_chunk() does not:
+        it runs _passes_barge_in_gate() (numpy over the raw bytes) and the
+        ring/pre-buffer writes, any of which could raise on a malformed or
+        short chunk.
+
+        One bad chunk must cost one chunk, not the microphone. The error is
+        rate-limited because if it recurs it recurs ~31 times a second.
+        """
         while not self._closed:
             try:
                 chunk = self._aec_raw_q.get(timeout=_AEC_QUEUE_IDLE_POLL_S)
             except queue.Empty:
                 continue
-            processed = self._apply_aec(chunk)
-            self._ingest_processed_chunk(processed)
+            try:
+                processed = self._apply_aec(chunk)
+                self._ingest_processed_chunk(processed)
+            except Exception as e:  # noqa: BLE001 -- see docstring
+                _log_rate_limited(
+                    "_aec_worker_loop",
+                    "[STT] AEC worker dropped one chunk (%s: %s). The worker "
+                    "is STILL RUNNING; if this repeats, microphone audio is "
+                    "being degraded. (rate-limited)",
+                    type(e).__name__, e,
+                )
 
     def _level_worker(self) -> None:
         """Background consumer for the live mic level meter (see
@@ -1052,14 +1456,91 @@ class SpeechToText:
         # v8: first cycle uses a short interval so the energy threshold
         # can adapt to AEC/NS's altered noise profile promptly instead of
         # waiting the full steady-state interval on a fresh start.
+        # D47: a FAST first pass, before the 15s one. _NoiseFloor needs 5
+        # samples to report a floor and the ring fills at ~31 chunks/s, so
+        # ~1.5s is enough -- and it has to happen this early because the
+        # old first cycle at 15s was already later than a stt_doctor run
+        # lives, and later than the user's first command.
+        # D71: the getattr fallback is 0.0, matching the Config default.
+        # It read 1.5 while Config said 0.0, so a test double without the
+        # attribute would have run a fast pass production does not run.
+        # Only doubles reach the fallback -- Config always has the field --
+        # but a fallback that disagrees with its own default is how a
+        # behaviour comes back after being switched off.
+        fast_s = float(getattr(Config, "STT_RECALIB_FIRST_FAST_S", 0.0))
+        if fast_s > 0 and not self._recalib_event.wait(timeout=fast_s):
+            # D69: RETRY while the engine is busy instead of giving up.
+            #
+            # This used to be a single attempt at fast_s, skipped silently
+            # if a listen or TTS was in flight. On the target machine it was
+            # skipped every time and the startup calibration never ran at
+            # all: TTS warm-up takes ~3.3s there and the attempt lands at
+            # 1.5s, so _tts_active was always set. The next chance is
+            # _RECALIB_FIRST_INTERVAL (15s), by which point the user is
+            # usually mid-command, and after that _RECALIB_INTERVAL (300s).
+            # A 50-second session therefore kept the gate at whatever
+            # BARGE_IN_ENERGY_THRESHOLD (or the GUI slider) last set --
+            # observed as 793, gate 278 -- so D65's whole benefit was lost
+            # to a one-shot that lost a race with the TTS warm-up.
+            #
+            # Polling for a window keeps the fast path's intent (calibrate
+            # before the first command) without depending on winning that
+            # race. The deadline is bounded so a permanently busy engine
+            # cannot spin here forever -- it just falls through to the
+            # steady-state loop as before.
+            deadline = time.monotonic() + float(
+                getattr(Config, "STT_RECALIB_FIRST_FAST_WINDOW_S", 12.0)
+            )
+            ran = False
+            while not self._closed and time.monotonic() < deadline:
+                if self._is_listening.is_set() or self._tts_active.is_set():
+                    if self._recalib_event.wait(timeout=0.25):
+                        break
+                    continue
+                # D61: guarded -- this is code added in this same audit, and
+                # an unguarded startup call would kill the thread before the
+                # steady-state loop below ever runs.
+                try:
+                    self._run_one_recalibration(first=True)
+                    ran = True
+                except Exception as e:  # noqa: BLE001
+                    _log_rate_limited(
+                        "_recalib_loop_first",
+                        "[STT] startup calibration failed (%s: %s); "
+                        "continuing with the configured threshold.",
+                        type(e).__name__, e,
+                    )
+                break
+            if not ran and not self._closed and getattr(Config, "DEBUG_MODE", False):
+                # Say so. A silent skip is why this went unnoticed.
+                print(
+                    "[STT] startup calibration skipped: the engine stayed "
+                    "busy (listening or speaking) for the whole window; the "
+                    "gate keeps its configured value until the next cycle."
+                )
+
         first_wait = min(self._RECALIB_FIRST_INTERVAL, self._RECALIB_INTERVAL)
         woken = self._recalib_event.wait(timeout=first_wait)
         if woken:
             self._recalib_event.clear()
 
         while not self._closed:
+            # D61: guarded for the same reason as the AEC worker, one step
+            # less severe -- a dead recalibration thread does not make SARA
+            # deaf, it freezes the energy threshold at whatever it last
+            # had, so the gate silently stops following the room. Also
+            # daemon, also unsupervised.
             if not (self._is_listening.is_set() or self._tts_active.is_set()):
-                self._run_one_recalibration()
+                try:
+                    self._run_one_recalibration()
+                except Exception as e:  # noqa: BLE001
+                    _log_rate_limited(
+                        "_recalib_loop",
+                        "[STT] threshold recalibration failed (%s: %s); the "
+                        "loop continues with the previous threshold. "
+                        "(rate-limited)",
+                        type(e).__name__, e,
+                    )
 
             woken = self._recalib_event.wait(timeout=self._RECALIB_INTERVAL)
             if self._closed:
@@ -1067,7 +1548,15 @@ class SpeechToText:
             if woken:
                 self._recalib_event.clear()
 
-    def _run_one_recalibration(self) -> None:
+    def _run_one_recalibration(self, first: bool = False) -> None:
+        """
+        Re-derive the energy threshold from the measured noise floor.
+
+        `first=True` is the one-off startup calibration (D47): it is allowed
+        to move the threshold straight to the suggested value instead of
+        being clamped to +/-150, because the clamp is a stability device for
+        the steady state and at boot there is nothing yet to stabilise.
+        """
         if time.monotonic() < self._manual_threshold_until:
             return
         chunks = self._ring.peek_latest(n=30)
@@ -1081,13 +1570,93 @@ class SpeechToText:
             self._noise_floor.update(e, thr)
 
         if avg > thr * 0.5:
+            # D70: say why calibration declined, instead of returning in
+            # silence. This guard exists so the gate is never derived from
+            # the user's own voice -- correct, and it must stay. But it
+            # fires identically for SUSTAINED room audio, and then nothing
+            # anywhere says the room is simply too loud to measure.
+            #
+            # On the target machine this hid an entire session's worth of
+            # odd behaviour. A YouTube track was playing (the log shows
+            # `[volume-match] title='Tu_Har_Lamha...'`) and reached the mic
+            # at RMS ~980 against a start gate of 278, so captures opened on
+            # the music: a 5.58s capture transcribed as 'Yes.', two Thai
+            # hallucinations from a Hindi song ('ออบนคร้ม', 'โอเป็นครู' --
+            # both correctly discarded by D43), a 0.12s capture, and a wake
+            # score of 0.6586 barely over its 0.6 threshold. Every one of
+            # those traces to the music, and nothing said so.
+            #
+            # NOTE the consequence, which is a real limitation and not
+            # fixed here: because this bails, VOICE_GATE_NOISE_RELATIVE can
+            # LOWER the gate in a quiet room but can never RAISE it in a
+            # loud one -- the loud-room measurement is exactly what it
+            # refuses to take. Distinguishing sustained noise from a person
+            # talking needs evidence across attempts, and getting it wrong
+            # raises the gate until SARA goes deaf, so it wants its own
+            # batch and a measurement. Recorded as D70.
+            if getattr(Config, "DEBUG_MODE", False):
+                _log_rate_limited(
+                    "_recalib_too_loud",
+                    "[STT] calibration declined: the room averaged RMS %.0f, "
+                    "over half the current threshold %.0f, so it cannot be "
+                    "told apart from speech. The gate stays at %.0f (start "
+                    "gate %.0f) -- anything louder than that opens a capture, "
+                    "so music or a fan nearby will produce spurious "
+                    "transcripts. (rate-limited)",
+                    avg, thr, thr, thr * 0.35,
+                )
             return
 
-        suggested = self._noise_floor.suggested_threshold(margin=250.0)
+        # D49: prefer the noise-RELATIVE suggestion when enabled. The
+        # additive `floor + 250` form cannot hold a margin once the caller
+        # multiplies it by 0.35 -- above a floor of ~135 it puts the start
+        # gate BELOW the room noise it came from, which is the D45
+        # false-start condition arriving via calibration instead of via the
+        # VAD. The target machine measured floors of 164 and 203.
+        if bool(getattr(Config, "VOICE_GATE_NOISE_RELATIVE", False)):
+            suggested = self._noise_floor.suggested_threshold_relative(
+                gate_multiplier=float(
+                    getattr(Config, "VOICE_GATE_NOISE_MULTIPLIER", 4.0)
+                ),
+                gate_min=float(getattr(Config, "VOICE_GATE_MIN_RMS", 90.0)),
+                gate_max=float(getattr(Config, "VOICE_GATE_MAX_RMS", 650.0)),
+            )
+        else:
+            suggested = self._noise_floor.suggested_threshold(margin=250.0)
         new_thr = suggested if suggested is not None else (avg + 200.0)
-        new_thr = min(max(new_thr, thr - 150.0), thr + 150.0)
+
+        # D47: the +/-150 step clamp means moving 600 down to a
+        # floor-derived ~283 takes three cycles -- 15s + 300s + 300s, about
+        # ten minutes -- and inside a bench/stt_doctor.py run the engine
+        # does not live long enough for even the first cycle. So within any
+        # session a user experiences, the threshold was effectively just
+        # BARGE_IN_ENERGY_THRESHOLD. The startup calibration skips the
+        # clamp so the gate reaches the right order of magnitude at once;
+        # every later cycle keeps it, so ordinary drift stays gradual.
+        if not first:
+            new_thr = min(max(new_thr, thr - 150.0), thr + 150.0)
 
         self.energy_threshold = new_thr
+        if first and getattr(Config, "DEBUG_MODE", False):
+            floor = getattr(self._noise_floor, "floor", None)
+            # Name what this supersedes. The GUI's saved mic-sensitivity
+            # preference is restored moments earlier (see
+            # orchestrator/history.py) and prints its own threshold, so
+            # without this the two lines silently contradict each other and
+            # a reader cannot tell which value is live. `moved` is the
+            # change this calibration actually made, so a no-op reads as a
+            # no-op rather than as an override.
+            moved = abs(new_thr - thr) > 1.0
+            print(
+                f"[STT] startup calibration: noise floor "
+                f"{('%.0f' % floor) if floor is not None else '?'} "
+                f"-> threshold {new_thr:.0f} (start gate {new_thr * 0.35:.0f})"
+                + (
+                    f", superseding {thr:.0f}"
+                    if moved
+                    else " (unchanged)"
+                )
+            )
 
     # ── v8.1: mic-disconnect watchdog ────────────────────────────────
     # (see v8.1 CHANGES note at top of file — this is the only addition
@@ -1387,7 +1956,74 @@ class SpeechToText:
                     consumed = 0
                     for chunk in pending_chunks:
                         consumed += 1
-                        if self._vad.is_speech(chunk) or _rms(chunk) > thr * 0.35:
+                        # D45: STARTING a capture must not be decided by
+                        # webrtcvad either. This read
+                        #
+                        #   self._vad.is_speech(chunk) or _rms(chunk) > thr * 0.35
+                        #
+                        # and D39's comment claimed leaving the `or` here was
+                        # safe because "a false start is cheap again once a
+                        # capture can end". THAT WAS WRONG, and the target
+                        # machine proved it on the very next run:
+                        #
+                        #   [STT] endpoint rule=base silence_ms=800 utt_ms=64
+                        #   listen completed | audio=0.32s | text=''
+                        #   listen() returned after 1.12s
+                        #
+                        # with stage 3 measuring room noise at RMS 29 and
+                        # stage 5 showing webrtcvad voicing 112 of 123 chunks
+                        # of that same near-silent clip. Energy cannot have
+                        # started that capture (29 is far below this gate's
+                        # 210), so VAD started it on room tone, before the
+                        # user spoke. Every number matches a false start
+                        # exactly: 300ms pre-buffer + one 32ms trigger chunk
+                        # returned as 0.32s of audio, 2 list entries counted
+                        # as utt_ms=64, the endpoint then firing correctly
+                        # after 800ms of silence.
+                        #
+                        # A false start is not cheap. It CONSUMES the
+                        # listen() call: the window opens on noise, ends
+                        # 800ms later with nothing, and the user's actual
+                        # speech arrives after it has already closed. Before
+                        # D39 this was invisible only because capture never
+                        # ended -- it ran the full 12s and usually caught the
+                        # speech anyway. D39 did not create this; it removed
+                        # what was masking it.
+                        #
+                        # So energy decides both gates. Margins on the
+                        # measured hardware: speech RMS 1599 against a 210
+                        # start gate (7.6x), room noise RMS 29 (6.3x below
+                        # the 180 continuation gate). Nothing is lost by
+                        # dropping VAD, because _pre_buf already holds
+                        # PRE_SPEECH_MS (300ms) of history, so a gate that
+                        # triggers a chunk later still captures the onset.
+                        #
+                        # CORRECTION (D47). This comment originally claimed
+                        # "a quiet speaker gets a lower gate automatically"
+                        # because _run_one_recalibration() re-derives the
+                        # threshold from the measured noise floor. That is
+                        # true in principle and MISLEADING in practice, so
+                        # do not rely on it: the first calibration waits
+                        # _RECALIB_FIRST_INTERVAL (15s), every later one
+                        # waits _RECALIB_INTERVAL (300s), each step is
+                        # clamped to +/-150, and the loop skips a cycle
+                        # entirely while _is_listening is set. Moving 600
+                        # down to a floor-derived ~283 therefore takes three
+                        # steps, i.e. about ten minutes -- and inside a
+                        # bench/stt_doctor.py run the engine does not live
+                        # long enough for even the first one to fire.
+                        #
+                        # So within any session a user actually experiences,
+                        # thr is effectively the BARGE_IN_ENERGY_THRESHOLD
+                        # default. On a quiet microphone that makes this gate
+                        # the binding constraint -- see D47/D48/D49. Until
+                        # that is resolved, a quiet mic is tuned by setting
+                        # BARGE_IN_ENERGY_THRESHOLD in .env.
+                        #
+                        # VAD is untouched at its other call sites
+                        # (_passes_barge_in_gate, is_user_speaking) -- this
+                        # is only about who decides a capture window.
+                        if _rms(chunk) > thr * 0.35:
                             pre = self._pre_buf.drain()
                             speech_chunks = [pre, chunk] if pre else [chunk]
                             for _c in speech_chunks:
@@ -1446,8 +2082,52 @@ class SpeechToText:
                         for chunk in pending_chunks:
                             energy = _rms(chunk)
                             energy_window.append(energy)
-                            is_voice = self._vad.is_speech(chunk) or (
-                                sum(energy_window) / len(energy_window) > thr * 0.3
+                            # D39: ENDING a capture must not be decided by
+                            # webrtcvad. This test used to be
+                            #
+                            #   vad.is_speech(chunk) or (avg > thr * 0.3)
+                            #
+                            # and webrtcvad at aggressiveness 2 reports a
+                            # quiet room as speech most of the time: measured
+                            # on the target machine, 74/123 and 112/123 chunks
+                            # voiced on 4s clips containing roughly 1s of
+                            # speech (bench/stt_doctor.py stage 5 runs the
+                            # same _VADFilter over the same 1024-byte chunks
+                            # this loop uses, so those are literally this
+                            # is_speech() call's return values).
+                            #
+                            # Under `or`, that made the energy term
+                            # unreachable: is_voice stayed True through
+                            # silence, silence_count never incremented, the
+                            # endpoint never fired and EVERY command ran to
+                            # max_duration (12s) -- after which Whisper
+                            # hallucinated on the trailing silence
+                            # ('こんにちは!' on a captured 12.26s where the
+                            # user said "open chrome" and stopped). The energy
+                            # term was healthy in that very run (room noise
+                            # 125 against this gate's 180); it simply never
+                            # got a vote.
+                            #
+                            # Energy decides, because energy is the signal
+                            # that actually separates speech from a quiet
+                            # room here: measured speech is RMS 2337-2660
+                            # against a 180 gate, 13x of headroom. Dropping
+                            # VAD costs nothing in sensitivity either, since
+                            # the START gate above is thr * 0.35 (210) --
+                            # anything loud enough to begin a capture is
+                            # comfortably loud enough to sustain one at 180.
+                            #
+                            # Unchanged where webrtcvad is absent:
+                            # _VADFilter.is_speech() returns False
+                            # unconditionally there, so that path was already
+                            # energy-only. The START gate is deliberately left
+                            # alone -- it is meant to be sensitive, and a
+                            # false start is cheap again once a capture can
+                            # end. See D32 for calibrating this gate to the
+                            # measured noise floor instead of a constant.
+                            is_voice = (
+                                sum(energy_window) / len(energy_window)
+                                > thr * 0.3
                             )
 
                             speech_chunks.append(chunk)
@@ -1462,10 +2142,47 @@ class SpeechToText:
                                 if ep is None:
                                     ended = silence_count >= silence_limit_n
                                 else:
+                                    # D46: this passed
+                                    # `len(speech_chunks) - trailing_silence_chunks`,
+                                    # a count of LIST ENTRIES -- but
+                                    # speech_chunks[0] is the drained
+                                    # _pre_buf BLOB, PRE_SPEECH_MS (300ms,
+                                    # ~9 chunks) joined into one bytes
+                                    # object by _PreBuffer.drain(). So the
+                                    # utterance length was under-reported by
+                                    # about 8 chunks (~256ms) on every turn.
+                                    #
+                                    # Seen in the target machine's trace as
+                                    # `utt_ms=896` for a capture that
+                                    # returned `audio=1.15s`: 36 chunk-
+                                    # equivalents counted as 28 entries,
+                                    # exactly the 9-chunk blob collapsing to
+                                    # one.
+                                    #
+                                    # It matters because required_silence_ms()
+                                    # refuses to endpoint below `base` while
+                                    # utterance_ms < _SHORT_UTTERANCE_MS
+                                    # (500ms) -- a guard meant for stray
+                                    # blips. Under-reporting pushed genuine
+                                    # 500-760ms commands under that bar, so
+                                    # they waited `base` (625ms) instead of
+                                    # ENDPOINT_MIN_MS (350ms). Measuring
+                                    # bytes restores the designed boundary
+                                    # rather than moving it.
+                                    _voiced = (
+                                        len(speech_chunks)
+                                        - trailing_silence_chunks
+                                    )
+                                    _voiced_bytes = sum(
+                                        len(c) for c in speech_chunks[:_voiced]
+                                    )
+                                    _bytes_per_chunk = (
+                                        self.CHUNK_SIZE * self.SAMPLE_WIDTH
+                                    )
                                     ended = self._endpoint_reached(
                                         ep,
                                         silence_count,
-                                        len(speech_chunks) - trailing_silence_chunks,
+                                        _voiced_bytes / _bytes_per_chunk,
                                     )
                                 if ended:
                                     state = _CollectState.DONE
@@ -1529,12 +2246,99 @@ class SpeechToText:
         self._preview_busy.set()
 
         def _run() -> None:
+            # D51: time this. The preview's latency decides how much of the
+            # adaptive endpoint's "complete command" fast path is collected,
+            # and until this line existed it had to be INFERRED.
+            #
+            # D72 CORRECTED THIS INSTRUMENT. It used to print a binary
+            # "in budget | TOO SLOW" against ENDPOINT_MIN_MS minus
+            # ENDPOINT_PREVIEW_AT_MS, and D51's own note claimed that being
+            # over that budget meant the command "fell back to base (625ms)"
+            # and the 288ms saving "was never collected".
+            #
+            # Both were wrong, and replaying the real decide_endpoint()
+            # against the seven measured previews is what showed it:
+            # _endpoint_reached() re-reads ep["partial"] on EVERY 32ms tick,
+            # so a LATE partial is still used the moment it lands. The
+            # endpoint therefore fires at about
+            # ENDPOINT_PREVIEW_AT_MS + preview_ms, not at base:
+            #
+            #   preview 218 282 313 344 375 390 485 ms
+            #   fires   384 448 480 512 544 544 640 ms   (all rule=complete)
+            #   ideal 352ms, base-if-no-partial 640ms
+            #
+            # So the budget is not a cliff: overshooting it costs the
+            # overshoot, not the whole saving. Mean cost of the measured
+            # distribution is 155ms per command, not 288ms. Only a preview
+            # that never lands at all falls back to base.
+            #
+            # The old line therefore said TOO SLOW seven times out of seven
+            # while the fast path was in fact firing seven times out of
+            # seven, just late -- a verdict that would have justified
+            # changing ENDPOINT_PREVIEW_AT_MS to fix a cliff that does not
+            # exist. This prints the real cost in milliseconds instead.
+            # Debug-gated, no transcript text logged.
+            _started = time.monotonic()
             try:
                 result = self._transcribe(
                     snapshot,
                     beam_size_override=1,
                     model_override=self._wake_whisper_model,
                 )
+                if getattr(Config, "DEBUG_MODE", False):
+                    _took = (time.monotonic() - _started) * 1000.0
+                    _at = float(getattr(Config, "ENDPOINT_PREVIEW_AT_MS", 150))
+                    _min = float(getattr(Config, "ENDPOINT_MIN_MS", 350))
+                    _max = float(getattr(Config, "ENDPOINT_MAX_MS", 900))
+                    _chunk = (
+                        float(getattr(self, "CHUNK_SIZE", 512))
+                        / float(getattr(self, "SAMPLE_RATE", 16000) or 16000)
+                        * 1000.0
+                    ) or 32.0
+                    # D72b: the base the endpoint ACTUALLY races against.
+                    #
+                    # It is not ENDPOINT_MIN + (MAX-MIN)/2. _endpoint_open()
+                    # passes base_ms=_SilenceGate.silence_limit*1000, which
+                    # is 800ms on a fresh engine, 450ms once the recent
+                    # utterances average under 1.5s (the normal state for
+                    # short commands) and 1200ms after long dictation,
+                    # clamped into [MIN, MAX]. Reading the fallback instead
+                    # of this is how the earlier figures came out wrong --
+                    # the same mistake as D71's, a number taken from a
+                    # default rather than from the running system.
+                    _gate = getattr(self, "_silence_gate", None)
+                    _limit = getattr(_gate, "silence_limit", None)
+                    _base = (
+                        min(_max, max(_min, float(_limit) * 1000.0))
+                        if _limit is not None
+                        else _min + 0.5 * (_max - _min)
+                    )
+                    # Each is the first tick at which that rule can fire;
+                    # whichever comes first is what ends the turn. A tie
+                    # goes to "complete" -- at the same tick the partial is
+                    # present, so required_silence_ms returns MIN.
+                    _t_done = math.ceil(max(_min, _at + _took) / _chunk) * _chunk
+                    _t_base = math.ceil(_base / _chunk) * _chunk
+                    _ideal = math.ceil(_min / _chunk) * _chunk
+                    _fires = min(_t_done, _t_base)
+                    _wasted = _t_done > _t_base
+                    if _wasted:
+                        _verdict = (
+                            f"the {_base:.0f}ms base rule fired first, so "
+                            f"this preview changed nothing"
+                        )
+                    elif _fires <= _ideal:
+                        _verdict = "free -- it landed inside ENDPOINT_MIN_MS"
+                    else:
+                        _verdict = (
+                            f"saved {_t_base - _fires:.0f}ms against the "
+                            f"{_base:.0f}ms base rule"
+                        )
+                    print(
+                        f"[STT] preview took {_took:.0f}ms -> endpoint fires "
+                        f"~{_fires:.0f}ms (ideal {_ideal:.0f}ms, "
+                        f"+{_fires - _ideal:.0f}ms); {_verdict}"
+                    )
                 if result and generation == self._preview_generation:
                     try:
                         on_partial_transcript(str(result))
@@ -1748,6 +2552,29 @@ class SpeechToText:
             if _is_known_hallucination(text):
                 if getattr(Config, "DEBUG_MODE", False):
                     print(f"[STT] Discarded known hallucination phrase: {text[:80]!r}")
+                return TranscriptionResult("", 0.0)
+
+            # D43: the two filters above are phrase-shaped and
+            # repetition-shaped, and the target machine produced a
+            # hallucination that is neither --
+            #
+            #   [STTDiag] listen completed | audio=12.26s | text='こんにちは!'
+            #
+            # on a capture where the user said "open chrome" and stopped.
+            # It passed both filters, reached the router, matched no command
+            # and was dispatched to the LLM as conversation, so the command
+            # was silently lost. SARA_LANGUAGE is clamped to
+            # english/hindi/hinglish, so a transcript written in a script
+            # none of those use is invented text, not a mis-heard command.
+            # Inert when STT_LANGUAGE pins a language explicitly -- see the
+            # note on _is_foreign_script_hallucination in helpers.py.
+            if _is_foreign_script_hallucination(
+                text, getattr(Config, "STT_LANGUAGE", None)
+            ):
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(
+                        f"[STT] Discarded foreign-script hallucination: {text[:80]!r}"
+                    )
                 return TranscriptionResult("", 0.0)
 
             if text:
@@ -2064,8 +2891,13 @@ class SpeechToText:
                 return any(_rms(c) > thr for c in chunks)
 
             bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
+            # D63: same cap as _passes_barge_in_gate -- the two must agree
+            # about how loud an interruption has to be, and neither may
+            # inherit D65's noise-scaled capture threshold.
             effective_thr = (
-                thr * bleed_multiplier * float(getattr(self, "_barge_boost", 1.0))
+                self._barge_in_threshold()
+                * bleed_multiplier
+                * float(getattr(self, "_barge_boost", 1.0))
             )
             loud = [c for c in chunks if _rms(c) > effective_thr]
             if not loud:
@@ -2143,9 +2975,28 @@ class SpeechToText:
 
     def _log_init(self) -> None:
         wake_beam = int(getattr(Config, "WAKE_WORD_BEAM_SIZE", 1))
+        # D35: do not call it "Ready" when the one component that makes this
+        # a speech engine is missing. The old line said "Ready" with
+        # FasterWhisper=✗ among five ticks, which reads as success.
+        state = "Ready" if self._whisper_model is not None else "DEGRADED (no STT model)"
         print(
-            f"[STT] Ready — "
-            f"FasterWhisper={'✓ (CPU INT8)' if self._whisper_model else '✗'} | "
+            f"[STT] {state} — "
+            # D37: this used to read '✓ (CPU INT8)' -- a HARDCODED string,
+            # printed regardless of the device actually in use. On a machine
+            # where CUDA worked, the load line said "loaded on GPU" and this
+            # line said "CPU INT8" two lines later, which is how a GPU claim
+            # became unverifiable from the logs. It now reports what
+            # _load_faster_whisper recorded.
+            f"FasterWhisper="
+            f"{'✓ ' + getattr(self, '_model_device', 'loaded, device unknown') if self._whisper_model else '✗'} | "
+            # D52: report the PREVIEW model's device too. It was being
+            # recorded and never read -- dead code that looks like a
+            # feature, which is the trap D59 was reverted for. It matters
+            # because this is the model whose partial transcript gates the
+            # 350ms endpoint path (D51), so "is it on the GPU" is the
+            # question a trace has to answer.
+            f"Preview="
+            f"{getattr(self, '_wake_model_device', 'none') if self._wake_whisper_model else '✗'} | "
             f"VAD={'✓' if _HAS_VAD else '✗'} | "
             f"AEC={'✓ (worker thread)' if (self._aec is not None and getattr(self._aec, 'enabled', False)) else '✗'} | "
             f"WakeWord(OpenWakeWord)={'✓' if self._wakeword_model else '✗ (model unavailable)'} | "

@@ -59,9 +59,33 @@ class SemanticBargeIn:
             return default
 
     def _aec_available(self) -> bool:
+        """
+        Is echo cancellation actually running?
+
+        D62: this tested only that the AEC OBJECT EXISTS -- the same defect
+        D42 fixed in core_wiring.run_sara_logic(), in a second place that
+        was missed. sara/audio/aec.py catches its own ImportError at module
+        level and sets _HAS_AEC_LIB = False; AECProcessor.__init__ then sets
+        `self.enabled = Config.AEC_ENABLED and _HAS_AEC_LIB`, and
+        CONSTRUCTION STILL SUCCEEDS. So on a machine without the
+        `aec-audio-processing` wheel, `_ears._aec` is a live object with
+        enabled=False and this read True.
+        
+        The consequence here is the opposite of D42's and worse. This
+        decides whether to apply BARGE_NOAEC_THRESHOLD_BOOST (1.5), which
+        exists to stop SARA's own voice tripping barge-in when nothing is
+        cancelling the echo. Reading True meant the boost was skipped
+        exactly when it was needed, so SARA could interrupt herself
+        mid-reply and treat her own speech as the user's next command.
+
+        `hasattr` still returns True when the attribute is missing
+        entirely: a stand-in `ears` that never had an `_aec` attribute is a
+        test double, not a machine without AEC, and must not be penalised.
+        """
         if not hasattr(self._ears, "_aec"):
             return True
-        return getattr(self._ears, "_aec", None) is not None
+        aec = getattr(self._ears, "_aec", None)
+        return aec is not None and bool(getattr(aec, "enabled", False))
 
     def _set_boost(self, value: float) -> None:
         fn = getattr(self._ears, "set_barge_boost", None)

@@ -58,13 +58,149 @@ def normalize_intent_text(text: str) -> str:
     return normalized
 
 
+# D74: an utterance that OPENS with a negation, with the wake-word and
+# politeness prefixes absorbed the same way _NEGATED_ACTION_PATTERNS[0]
+# absorbs them.
+#
+# "stop" is deliberately absent: "stop the music" is stop_media, a real
+# command, so treating it as a negation marker would break it. "pause" and
+# "cancel" are absent for the same reason (pause_media, cancel_shutdown).
+_OPENING_NEGATION = re.compile(
+    r"^\s*(?:(?:please|sara|hey\s+sara)[,\s]+)*"
+    r"(?:do\s+not|don'?t|dont|never(?:\s+ever)?|must\s+not|"
+    r"should\s+not|shouldn'?t|can'?t|cannot|won'?t|will\s+not|"
+    r"no\s+need\s+to|not)\s+"
+    r"(?:(?:you|please|ever|again|just|really)\s+)*",
+    re.IGNORECASE | re.UNICODE,
+)
+
+# Hinglish/Hindi put the negation AFTER the verb ("... mat karo", "...
+# नहीं करना"), and _NEGATED_ACTION_PATTERNS covers that shape with the same
+# _ACTION_VERBS limitation. That half is NOT fixed here, on purpose:
+#
+#   * The 558-case leak measured below is entirely English-prefix. The
+#     Hinglish gap has not been measured, so fixing it in the same change
+#     would be shipping an unmeasured edit alongside a measured one.
+#
+#   * A first attempt at it regressed a golden row immediately. The closing
+#     form `\s*(?:मत|नहीं|नही|ना)...$` matched the "ना" INSIDE "भरना" in
+#     'टू-डू में जोड़ो बिजली का बिल भरना' ("add paying the electricity bill
+#     to the to-do list"), turning a valid add_todo into chat. Devanagari
+#     has no usable \b, so the particle needs an explicit preceding space.
+#
+#   * Worse, bare trailing "na"/"ना" is usually EMPHASIS in Hinglish, not
+#     negation -- "volume up kar do na" means *please* turn it up. Treating
+#     it as negation would refuse commands the user is asking for more
+#     insistently, which is a far worse failure than the one being fixed.
+#
+# So the Hinglish side needs its own measurement and its own particle set
+# (mat / nahi / nahin / मत / नहीं / नही, with bare na/ना excluded). Recorded
+# as open rather than guessed at.
+
+
+def _negated_remainder_is_an_action(normalized: str) -> bool:
+    """
+    D74: decide "is the rest of this an action?" by MATCHING it, instead of
+    checking the verb against a hand-kept allowlist.
+
+    THE DEFECT THIS REPLACES
+        _NEGATED_ACTION_PATTERNS gates every alternative on
+        _ACTION_VERBS -- about 30 verbs. The pattern set has ~130 intents,
+        and the verbs they use (set, increase, decrease, dim, max, min,
+        maximize, minimize, snap, move, resize, scroll, zoom, switch,
+        press, paste, copy, type, undo, redo, add, mark, remind, show,
+        read, list, find, search, calculate, summarize, empty,
+        hibernate...) were never added to it. Each new intent shipped its
+        pattern and not its verb.
+
+        Measured on the project's own golden commands: of 840 negated
+        phrasings ("don't X" / "do not X" / "never X" built from
+        intents_en*), **558 slipped the guard and matched an intent** --
+        including 18 tier-3 (`do not empty recycle bin`,
+        `do not hibernate my pc`, `do not put the computer to sleep`) and
+        60 tier-2 (`do not lock my laptop`, `do not press the enter key`,
+        `do not paste it`, `do not cancel all my reminders`).
+
+        A negated destructive command executing is the worst failure this
+        router can have, and it was 66% of them.
+
+    WHY MATCHING THE REMAINDER IS THE RIGHT TEST
+        The verb list was only ever a proxy for "the rest of this is an
+        action request". The matcher answers that question exactly, for
+        every intent, including ones registered later by a skill -- so this
+        cannot fall behind the pattern set the way the list did.
+
+        It also cannot over-trigger the way a bare "starts with don't"
+        rule would: it fires only when the remainder genuinely resolves to
+        a non-chat intent. "don't worry about it" leaves "worry about it",
+        which is chat, so nothing happens. If a "do not disturb" intent is
+        ever added, "do not disturb" leaves "disturb", also chat, so it
+        keeps working.
+
+    RECURSION
+        detect_intent() calls this BEFORE matching, so this must use
+        _detect_intent_cached(), which does not consult the negation guard.
+        Going through detect_intent() here would recurse.
+    """
+    if not normalized:
+        return False
+
+    opening = _OPENING_NEGATION.match(normalized)
+    if opening is None:
+        return False
+
+    remainder = normalized[opening.end():].strip(" ,.!?।")
+    if not remainder:
+        return False
+
+    # The remainder has to be tried the SAME way detect_intent() tries a
+    # whole utterance, or the guard is weaker than the matcher it guards
+    # and the difference is exactly what leaks.
+    #
+    # Measured: checking only _detect_intent_cached() left 15 of the 840
+    # negated phrasings still routing to an intent, every one of them from
+    # intents_en_noisy with an STT-style misspelling --
+    #   "don't set brightness two 70", "don't paste it hear",
+    #   "don't snap the window to the write", "don't switch two study mode"
+    # -- because detect_intent() recovers those through _correct_typos()
+    # and this did not. Mirroring its escalation closes them.
+    #
+    # _resolve_known_app_open() is likewise a separate route in
+    # detect_intent(), so "don't open spotify" has to be asked about there
+    # too or it leaks the same way.
+    candidates = [remainder]
+    try:
+        corrected = _correct_typos(remainder)
+        if corrected and corrected != remainder:
+            candidates.append(corrected)
+    except Exception:  # noqa: BLE001 - never let the guard break routing
+        pass
+
+    for candidate in candidates:
+        try:
+            intent, _match = _detect_intent_cached(candidate)
+        except Exception:  # noqa: BLE001
+            continue
+        if intent and intent != "chat":
+            return True
+        try:
+            if _resolve_known_app_open(candidate) is not None:
+                return True
+        except Exception:  # noqa: BLE001
+            continue
+    return False
+
+
 def is_negated_action_request(text: str) -> bool:
     """Detect clear English/Hinglish/Hindi negated action requests before routing."""
     normalized = normalize_intent_text(text)
-    return bool(
-        normalized
-        and any(pattern.search(normalized) for pattern in _NEGATED_ACTION_PATTERNS)
-    )
+    if not normalized:
+        return False
+    if any(pattern.search(normalized) for pattern in _NEGATED_ACTION_PATTERNS):
+        return True
+    # D74: the verb-allowlist patterns above miss 66% of negated commands;
+    # this asks the matcher instead. See _negated_remainder_is_an_action.
+    return _negated_remainder_is_an_action(normalized)
 
 # O2: guards every mutation of the module-level _INTENT_PATTERNS /
 # _INTENT_GATES lists/dicts done by register_intent() below. Without
@@ -144,6 +280,49 @@ _ROUTES = ()
 _TYPO_MIN_WORD_LEN = 5
 _TYPO_CUTOFF = 0.8
 _TRIGGER_VOCAB = set()
+
+# ── D29: explicit speech-to-text homophone map (rescue pass only) ──────
+# _correct_typos()'s docstring already names homophone correction as its
+# job, but the fuzzy mechanism cannot do it:
+#   * _TYPO_MIN_WORD_LEN = 5 skips "two" (3), "hear" (4), "paws" (4),
+#     "no" (2) outright -- and those are exactly the words ASR confuses;
+#   * difflib compares spelling, and homophones are words that sound alike
+#     while being spelled differently, so "two"/"to" and "write"/"right"
+#     never come within _TYPO_CUTOFF of each other.
+#
+# So this is an explicit map rather than a heuristic. Every entry below is
+# taken from a real row in bench/golden -- nothing speculative:
+#   "switch two study mode"               two   -> to
+#   "set brightness two 70"               two   -> to
+#   "snap window two the left"            two   -> to
+#   "snap the window to the write"        write -> right
+#   "paste it hear"                       hear  -> here
+#   "paws the music"                      paws  -> pause
+#   "forget everything you no about me"   no    -> know
+#
+# SAFETY comes from WHERE this is applied, not from the map being cautious:
+# _correct_typos() runs only as a second attempt after the exact-spelling
+# pass has already returned no intent. A command that works today never
+# reaches it, so no existing behaviour can change -- and an ordinary
+# sentence that gets rewritten ("I have two options" -> "I have to
+# options") still has to satisfy some pattern's full structure to become a
+# command, which it does not. _TYPO_PROTECTED is still honoured.
+_HOMOPHONES = {
+    "two": "to",
+    "write": "right",
+    "hear": "here",
+    "paws": "pause",
+    "no": "know",
+}
+
+# ASR also splits closed compounds into two words, which no per-word map
+# can repair. Applied to the whole string in the same rescue pass.
+# Evidence: "turn off wi fi" (golden note: "speech-to-text splits wifi
+# into two words").
+_SPLIT_COMPOUNDS = (
+    (re.compile(r"\bwi\s+fi\b", re.IGNORECASE), "wifi"),
+    (re.compile(r"\bblue\s+tooth\b", re.IGNORECASE), "bluetooth"),
+)
 
 try:  # words the typo-rescue pass must never "correct" into a command word
     from .patterns_multilingual import TYPO_PROTECTED as _TYPO_PROTECTED
@@ -372,6 +551,13 @@ def _correct_typos(text: str) -> str:
     comes back unchanged, or changed in a way that still fails to match
     any regex's location/structure requirements.
     """
+    # D29: repair split compounds first -- these span two words, so a
+    # per-word loop cannot see them.
+    for pattern, replacement in _SPLIT_COMPOUNDS:
+        new_text = pattern.sub(replacement, text)
+        if new_text != text:
+            text = new_text
+
     words = text.split()
     if not words:
         return text
@@ -379,6 +565,15 @@ def _correct_typos(text: str) -> str:
     out = []
     for w in words:
         bare = _TYPO_WORD_RE.sub("", w.lower())
+        # D29: explicit homophones come before the length/vocab checks --
+        # every one of them is shorter than _TYPO_MIN_WORD_LEN or is itself
+        # a real word, so the fuzzy path below can never reach them.
+        # _TYPO_PROTECTED still wins, so a word listed there is never
+        # rewritten by any mechanism.
+        if bare not in _TYPO_PROTECTED and bare in _HOMOPHONES:
+            out.append(_HOMOPHONES[bare])
+            changed = True
+            continue
         if len(bare) < _TYPO_MIN_WORD_LEN or bare in _TRIGGER_VOCAB or bare in _TYPO_PROTECTED:
             out.append(w)
             continue

@@ -48,7 +48,10 @@ def render(rows: list[tuple]) -> str:
     """Format rows as an aligned plain-text table (milliseconds)."""
     table: list[tuple] = [_HEADERS]
     for ts, *rest in rows:
-        clock = time.strftime("%H:%M:%S", time.localtime(ts)) if ts else "-"
+        # Date as well as clock: deciding whether a row came from the
+        # session you just ran or from one days ago is the whole point of
+        # looking, and %H:%M:%S alone cannot answer it.
+        clock = time.strftime("%d %H:%M:%S", time.localtime(ts)) if ts else "-"
         table.append((clock, *[_cell(v) for v in rest]))
     widths = [max(len(str(row[i])) for row in table) for i in range(len(_HEADERS))]
     return "\n".join(

@@ -117,8 +117,99 @@ def _safe_calc(expression: str) -> str:
         return "I couldn't calculate that \u2014 please check the expression."
 
 
+# ── D77: spoken numbers ─────────────────────────────────────────────────
+#
+# _parse_duration_to_seconds() was digit-only, so every duration said out
+# loud failed outright:
+#
+#     "set a timer for ten minutes"   -> "Sorry, I couldn't understand
+#                                         the duration 'ten minutes'."
+#     "set a timer for half an hour"  -> same
+#
+# The router matched set_timer correctly in both cases, which is why the
+# bench never showed it: bench/golden checks the INTENT, not the slot. The
+# adversarial row "long rambling sentence with one embedded command" is
+# recorded as passing while the timer it embeds does nothing -- its slot
+# captures "fifteen minutes because the tea is on the stove", and the
+# number word is what defeats the parser, not the trailing words (a slot
+# with a digit tolerates trailing text fine).
+#
+# NOTE ON DUPLICATION: sara/core/memory2/timeparse.py has its own smaller
+# _NUMWORD (1-12, plus Hindi "ek"/"एक") for relative DATE windows. Merging
+# them would couple memory2 to the orchestrator for no benefit, so they
+# stay separate -- but a test pins that they agree wherever they overlap,
+# because two tables that must not contradict each other is exactly the
+# shape of the D74/D75 defects.
+_NUMBER_WORDS = {
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
+    "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
+    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+_NUMBER_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fourty": 40,  # common misspelling
+    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+
+
+def _digits_for_number_words(text: str) -> str:
+    """
+    Rewrite spoken number words as digits, leaving everything else alone.
+
+    Handles the compound forms a duration actually uses -- "forty five",
+    "forty-five", "twenty two" -- by combining a tens word with a
+    following unit word. "half an hour" and "half hour" are rewritten to
+    "30 minutes" before anything else, because "half" is not a count.
+
+    Deliberately conservative: a digit already in the text is never
+    touched, and a word that is not a number is copied through unchanged.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+
+    out = re.sub(r"\bhalf\s+(?:an?\s+)?hour\b", "30 minutes", text, flags=re.I)
+    out = re.sub(r"\bhalf\s+(?:a\s+)?minute\b", "30 seconds", out, flags=re.I)
+
+    tokens = re.split(r"(\W+)", out)  # keeps separators, so spacing survives
+    result = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        low = tok.lower()
+        if low in _NUMBER_TENS:
+            value = _NUMBER_TENS[low]
+            # look past one separator for a unit word: "forty five", "forty-five"
+            if (
+                i + 2 < len(tokens)
+                and tokens[i + 1].strip() in ("", "-")
+                and tokens[i + 2].lower() in _NUMBER_WORDS
+                and _NUMBER_WORDS[tokens[i + 2].lower()] < 10
+            ):
+                value += _NUMBER_WORDS[tokens[i + 2].lower()]
+                i += 3
+            else:
+                i += 1
+            result.append(str(value))
+            continue
+        if low in _NUMBER_WORDS:
+            # "a"/"an" only count as 1 in front of a unit ("an hour"), never
+            # on their own -- otherwise "a bit" would become "1 bit".
+            if low in ("a", "an"):
+                nxt = tokens[i + 2].lower() if i + 2 < len(tokens) else ""
+                if not re.match(r"^(?:hour|hr|minute|min|second|sec)s?$", nxt):
+                    result.append(tok)
+                    i += 1
+                    continue
+            result.append(str(_NUMBER_WORDS[low]))
+            i += 1
+            continue
+        result.append(tok)
+        i += 1
+    return "".join(result)
+
+
 def _parse_duration_to_seconds(text: str):
-    text = text.lower().strip()
+    text = _digits_for_number_words(str(text or "")).lower().strip()
     total = 0
     found = False
     for pattern, multiplier in [

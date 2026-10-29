@@ -10,11 +10,13 @@ from sara.audio.voice_flags import reset_flags, set_flag
 
 try:
     from tests.tts_stream_fakes import (
-        FakePlayer, Synth, TIMEOUT, drive, letters, make_tts, stream_in_thread, wait_for,
+        FakePlayer, Synth, TIMEOUT, drive, letters, make_tts, stream_in_thread,
+        wait_for, wait_settled,
     )
 except ImportError:  # tests/ is not a package here
     from tts_stream_fakes import (
-        FakePlayer, Synth, TIMEOUT, drive, letters, make_tts, stream_in_thread, wait_for,
+        FakePlayer, Synth, TIMEOUT, drive, letters, make_tts, stream_in_thread,
+        wait_for, wait_settled,
     )
 
 
@@ -164,9 +166,38 @@ def test_no_stale_audio_from_a_stopped_stream_reaches_the_next_one(synth, pieces
     thread, _ = stream_in_thread(tts, pieces)
     assert wait_for(lambda: len(synth.texts) >= 1)
     tts.stop()
+    # Assert the join rather than ignoring it. If the FIRST stream has not
+    # unwound, the failure belongs here and should say so -- otherwise the
+    # test fails further down on the second stream, which is confusing and
+    # is how this one was misdiagnosed once already.
     thread.join(timeout=TIMEOUT)
+    assert not thread.is_alive(), (
+        "the stopped stream did not unwind within TIMEOUT; the second "
+        "stream below would then compete with it for the max_workers=1 "
+        "chunker/synth pools"
+    )
     tts.clear_interrupt()
     player.gate.set()
+    # WHY THIS WAIT EXISTS (measured, not guessed).
+    #
+    # This test was intermittently red: 3 of 25 runs under deliberate CPU
+    # saturation, and the failing assertion was `drive(player, thread2)`
+    # below -- the SECOND stream never finishing.
+    #
+    # Two things conspire. FakePlayer.enqueue() parks on `self.gate` BEFORE
+    # appending, and player.clear() (which tts.stop() triggers) sets that
+    # gate -- so the stopped stream's enqueue is released but runs on the
+    # player worker, which thread.join() above does not cover. And
+    # make_tts() gives the instance ThreadPoolExecutors with
+    # max_workers=1, shared across both streams. So starting the second
+    # stream while the first is still draining leaves it waiting for a
+    # worker it cannot get, and `drive` times out.
+    #
+    # Waiting for the player to go quiet covers both: the stale append has
+    # landed (so `before` is a real snapshot) and the first stream's single
+    # worker is free. Verified: 0 of 25 failures under the same saturation.
+    # Raising TIMEOUT would only have widened the window.
+    wait_settled(lambda: len(player.enqueued))
     before = list(player.enqueued)
     thread2, _ = stream_in_thread(tts, ["Fresh sentence after the stop."])
     assert drive(player, thread2)

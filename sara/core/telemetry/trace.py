@@ -11,6 +11,7 @@ public function ever raises into its caller.
 from __future__ import annotations
 
 import functools
+import atexit
 import hashlib
 import json
 import logging
@@ -305,16 +306,54 @@ def end_turn(outcome: str = "ok", turn_id: Optional[str] = None, **kv: Any) -> N
 
 
 @_safe(lambda: None)
-def _sweep() -> None:
-    """Finalise turns that ended more than 20 s ago without a tts_done."""
+def _sweep(min_age_s: Optional[float] = None) -> None:
+    """
+    Finalise turns that ended more than `min_age_s` ago without a tts_done
+    (default _FINALISE_AFTER_END_S, 20 s).
+
+    The wait exists so a turn still has a chance to record ttfa_ms when TTS
+    finishes after end_turn. At shutdown there is no such chance left, so
+    _flush_at_exit() passes 0.0 and takes the rows without ttfa rather than
+    losing them entirely -- see D53b.
+    """
+    bar = _FINALISE_AFTER_END_S if min_age_s is None else max(0.0, min_age_s)
     now = _now()
     with _lock:
         due = [
             t for t in _active.values()
-            if t.ended_at is not None and now - t.ended_at >= _FINALISE_AFTER_END_S
+            if t.ended_at is not None and now - t.ended_at >= bar
         ]
         records = [_finalise_locked(t) for t in due]
     _store.submit(records)
+
+
+def _flush_at_exit() -> None:
+    """
+    Persist ended-but-unwritten turns on the way out.
+
+    D53b, measured: a turn that ends within _FINALISE_AFTER_END_S of the
+    process exiting was lost completely, because the store's writer is a
+    daemon thread killed at exit with its queue still full. That is always
+    the last turn of a session.
+
+    atexit handlers run while the interpreter is still alive and before
+    daemon threads are torn down, so submitting here and then draining on
+    THIS thread is what gets the rows to disk. Turns still in flight (no
+    end_turn) are deliberately left alone: they have no outcome, so a row
+    for them would be a guess.
+
+    Never raises. A failure to log must never become a failure to exit.
+    """
+    try:
+        if not _enabled:
+            return
+        _sweep(min_age_s=0.0)
+        _store.drain_now()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+atexit.register(_flush_at_exit)
 
 
 @_safe(list)

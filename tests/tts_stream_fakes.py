@@ -123,6 +123,44 @@ def letters(texts):
     return "".join(t.replace(" ", "") for t in texts)
 
 
+def wait_settled(measure, quiet_s=0.05, timeout=TIMEOUT):
+    """
+    Wait until `measure()` stops changing for `quiet_s`, then return it.
+
+    Needed because FakePlayer.enqueue() parks on `self.gate` BEFORE it
+    appends, and player.clear() (which tts.stop() triggers) sets that gate.
+    So a stopped stream's enqueue is released but runs on the player worker
+    rather than the stream thread -- thread.join() does not cover it, and a
+    snapshot taken straight afterwards races the append.
+
+    It also serves a second purpose that turned out to be the one that
+    actually mattered: make_tts() hands out ThreadPoolExecutors with
+    max_workers=1, shared across streams, so starting a new stream while a
+    stopped one is still draining leaves the new one waiting for a worker
+    it cannot get. Waiting for the player to go quiet means the previous
+    stream's worker is free.
+
+    Measured on test_no_stale_audio_from_a_stopped_stream_reaches_the_next_one:
+    3 of 25 runs failed under deliberate CPU saturation without this wait,
+    0 of 25 with it. The failing assertion was the SECOND stream never
+    finishing -- not the snapshot -- which is why the first explanation
+    written here was wrong. Raising TIMEOUT would only have widened the
+    window; waiting for quiet is deterministic.
+    """
+    deadline = time.monotonic() + timeout
+    last = measure()
+    stable_since = time.monotonic()
+    while time.monotonic() < deadline:
+        time.sleep(0.005)
+        now = measure()
+        if now != last:
+            last = now
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= quiet_s:
+            return now
+    return last
+
+
 def wait_for(predicate, timeout=TIMEOUT):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

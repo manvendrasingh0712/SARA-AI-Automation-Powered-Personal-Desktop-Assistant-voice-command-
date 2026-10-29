@@ -227,8 +227,75 @@ class _NoiseFloor:
         return arr[len(arr) // 2]
 
     def suggested_threshold(self, margin: float = 250.0) -> Optional[float]:
+        """
+        Additive suggestion: floor + margin.
+
+        D49: this cannot hold a RATIO once the caller multiplies it. The
+        capture start gate is `threshold * 0.35`, so
+
+            gate = 0.35 * (floor + 250) = 0.35*floor + 87.5
+            gate > floor   requires   87.5 > 0.65*floor   ->  floor < 134.6
+
+        i.e. **above a noise floor of ~135 the gate this produces sits
+        BELOW the room noise it was derived from**, which is the D45
+        false-start condition reached through the calibration path instead
+        of through the VAD. The target machine measured floors of 164 and
+        203, so this is not hypothetical for that hardware.
+
+        Kept because it is the long-standing behaviour and other callers
+        may rely on it; `suggested_threshold_relative()` is the fixed form.
+        """
         f = self.floor
         return (f + margin) if f is not None else None
+
+    def suggested_threshold_relative(
+        self,
+        gate_multiplier: float = 4.0,
+        start_gate_fraction: float = 0.35,
+        gate_min: float = 90.0,
+        gate_max: float = 650.0,
+    ) -> Optional[float]:
+        """
+        Noise-RELATIVE suggestion: a threshold whose start gate sits a fixed
+        MULTIPLE of the measured noise floor above it, clamped.
+
+        Holds its margin at every floor, which `floor + margin` cannot:
+
+            gate      = clamp(gate_multiplier * floor, gate_min, gate_max)
+            threshold = gate / start_gate_fraction
+
+        gate_multiplier=4.0 was chosen against the seven floor/speech pairs
+        measured on the target machine (each pair from ONE session, so the
+        levels are comparable):
+
+            floor  24  speech 2202   gate  96   4.0x over noise  22.9x under speech
+            floor  25  speech 3131   gate 100   4.0x over noise  31.3x under speech
+            floor  29  speech 1599   gate 116   4.0x over noise  13.8x under speech
+            floor  33  speech  607   gate 132   4.0x over noise   4.6x under speech
+            floor 125  speech 4996   gate 500   4.0x over noise  10.0x under speech
+            floor 164  speech 2337   gate 650   4.0x over noise   3.6x under speech
+            floor 203  speech 3082   gate 650   3.2x over noise   4.7x under speech
+
+        So on every measured session the gate clears room noise by at least
+        3.2x and stays at least 3.6x below the quietest speech in that same
+        session. The worst observed speech/floor ratio was 14.2x, which is
+        what leaves room for both margins at once.
+
+        gate_min (90) stops a near-silent or muted microphone driving the
+        gate toward zero, where everything false-starts. gate_max (650)
+        stops a very noisy room making SARA deaf. At the user's measured
+        quiet floor of 33 this yields a gate of 132, close to the 105 they
+        had already verified works by hand.
+
+        Returns None until the floor has enough samples to be meaningful,
+        so "not calibrated yet" stays distinguishable from a real value.
+        """
+        f = self.floor
+        if f is None:
+            return None
+        frac = start_gate_fraction if start_gate_fraction > 0 else 0.35
+        gate = min(float(gate_max), max(float(gate_min), float(gate_multiplier) * f))
+        return gate / frac
 
 
 class _CollectState(Enum):

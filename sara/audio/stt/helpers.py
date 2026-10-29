@@ -9,6 +9,7 @@ import collections
 import math
 import re
 import struct
+from typing import Optional
 
 import numpy as np
 
@@ -250,3 +251,80 @@ def _is_hallucinated_repetition(text: str, min_repeats: int = 3) -> bool:
             return True
 
     return False
+
+# ══════════════════════════════════════════════════════════════════════
+# D43: foreign-script hallucination filter
+# ══════════════════════════════════════════════════════════════════════
+#
+# OBSERVED ON THE TARGET MACHINE
+#   [STTDiag] listen completed | mode=command | audio=12.26s | text='こんにちは!'
+#
+#   The user said "open chrome" and stopped. Neither existing filter
+#   caught it: _is_hallucinated_repetition() only matches repeated loops,
+#   and _HALLUCINATION_PHRASES is a list of English YouTube boilerplate.
+#   So a phantom transcript reached the router, matched no command pattern,
+#   and was dispatched to the LLM as conversation -- the command was lost
+#   with no error anywhere.
+#
+# WHY A SCRIPT CHECK IS SOUND HERE RATHER THAN A GUESS
+#   Config.validate() clamps SARA_LANGUAGE to exactly
+#   ("english", "hindi", "hinglish"), so everything SARA is built to hear
+#   is written in Latin or Devanagari. A transcript made up of CJK, Hangul,
+#   Arabic, Hebrew, Thai, Cyrillic or Greek letters is therefore not a
+#   mis-heard command, it is Whisper inventing text on near-silent audio --
+#   the same failure mode _HALLUCINATION_PHRASES exists for, in a script
+#   that list could never enumerate.
+#
+# THE ESCAPE HATCH, WHICH IS WHY THIS IS SAFE
+#   Config.STT_LANGUAGE is deliberately free-form (any Whisper code), so a
+#   user CAN pin Japanese. This filter is therefore inert whenever
+#   STT_LANGUAGE is set: an explicitly pinned language means the user
+#   intends that script and Whisper should be trusted. It only guards the
+#   default auto-detect path.
+#
+# The test is on LETTERS only -- digits, punctuation, spaces and emoji are
+# ignored, so "99" or "!!" never decides the outcome -- and it needs a
+# clear majority, not a single stray character, so one borrowed glyph
+# inside a real command cannot discard it.
+
+# Unicode ranges SARA's three supported languages are written in.
+_ALLOWED_SCRIPT_RANGES = (
+    (0x0000, 0x024F),  # Basic Latin, Latin-1, Latin Extended-A/B
+    (0x0900, 0x097F),  # Devanagari (Hindi)
+    (0xA8E0, 0xA8FF),  # Devanagari Extended
+    (0x1E00, 0x1EFF),  # Latin Extended Additional
+)
+
+# A transcript needs this share of its letters outside those ranges before
+# it is treated as invented. Well above a stray glyph, well below "half
+# the sentence", which no genuine command would reach.
+_FOREIGN_SCRIPT_RATIO = 0.6
+
+# Below this many letters the ratio is not meaningful -- a 1-letter
+# transcript would trivially be "100% foreign".
+_FOREIGN_SCRIPT_MIN_LETTERS = 2
+
+
+def _in_allowed_script(ch: str) -> bool:
+    cp = ord(ch)
+    return any(lo <= cp <= hi for lo, hi in _ALLOWED_SCRIPT_RANGES)
+
+
+def _is_foreign_script_hallucination(
+    text: str, stt_language: Optional[str] = None
+) -> bool:
+    """
+    True when `text` is predominantly written in a script none of SARA's
+    supported languages use, and no explicit STT language was pinned.
+
+    Inert when `stt_language` is set -- see the module note above.
+    """
+    if stt_language:
+        return False
+    if not text:
+        return False
+    letters = [ch for ch in text if ch.isalpha()]
+    if len(letters) < _FOREIGN_SCRIPT_MIN_LETTERS:
+        return False
+    foreign = sum(1 for ch in letters if not _in_allowed_script(ch))
+    return (foreign / len(letters)) >= _FOREIGN_SCRIPT_RATIO

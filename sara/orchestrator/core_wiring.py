@@ -16,7 +16,27 @@ try:
         end_turn as _t_end,
         mark_pending as _t_pending,
     )
-except Exception:  # telemetry is optional: fall back to no-ops
+except Exception as _telemetry_import_error:  # optional: fall back to no-ops
+    # D67: say so. This fallback is SILENT, and a silent degradation here
+    # means every voice turn is discarded with no error anywhere -- the
+    # recorder is simply not there. Telemetry is genuinely optional, so the
+    # fallback itself is right; printing nothing is not.
+    #
+    # This is the last unexplained candidate for the 05:54 session writing
+    # ZERO voice rows while reporting no errors. Everything else was
+    # eliminated by measurement: tracing was ON (the saved preference reads
+    # '1'), the code path from listen() to _t_begin to _t_end has no early
+    # exit, the store never reported "persistence disabled", retention is
+    # clamped to >= 1 day so pruning cannot remove fresh rows, and
+    # _sweep()/_flush_at_exit() were both verified to persist a tool-only
+    # turn (no tts_done) at t+23s. If the import is fine, this line costs
+    # one grep; if it is not, it names the cause on the next boot.
+    print(
+        "[Telemetry] UNAVAILABLE -- voice turns will NOT be recorded this "
+        f"session: {type(_telemetry_import_error).__name__}: "
+        f"{_telemetry_import_error}"
+    )
+
     def _t_begin(*args, **kwargs) -> str:
         return ""
 
@@ -710,9 +730,30 @@ def run_sara_logic(
         
     start_memory_consolidation(db, brain, notes_memory)
 
+    # D42: this tested only that the AEC OBJECT EXISTS, not that it is
+    # actually cancelling echo. AECProcessor.__init__ sets
+    #
+    #     self.enabled = bool(Config.AEC_ENABLED) and _HAS_AEC_LIB
+    #
+    # and construction succeeds even when `aec-audio-processing` is missing
+    # -- the import failure is caught at module level and only prints a
+    # warning. So on a machine without that wheel, `_aec` was a live object
+    # with enabled=False, this read True, and SARA then took BOTH of the
+    # shortcuts that only AEC makes safe: the per-turn mic settle dropped
+    # from STT_SETTLE_MIN_GAP_S (1.3s) to 0.3s, and the wake ack was fired
+    # non-blocking. With no echo cancellation actually running, SARA's own
+    # ack goes into the microphone and gets transcribed as the user's
+    # command.
+    #
+    # engine.py's own Ready line already had this right --
+    #   AEC={'✓ (worker thread)' if (self._aec is not None
+    #        and getattr(self._aec, 'enabled', False)) else '✗'}
+    # -- so the two reports could disagree about the same AEC. That line is
+    # the correct one; this now matches it.
     aec_active = (
         bool(getattr(Config, "AEC_ENABLED", True))
         and getattr(ears, "_aec", None) is not None
+        and bool(getattr(getattr(ears, "_aec", None), "enabled", False))
     )
     post_tts_settle_s = (
         _POST_TTS_SETTLE_WITH_AEC_S
@@ -727,6 +768,71 @@ def run_sara_logic(
         print(
             f"[Logic] Post-TTS mic settle: {post_tts_settle_s}s (AEC active={aec_active})"
         )
+
+    # D53: say out loud whether tracing is recording, and where.
+    #
+    # It was previously invisible. Config.TELEMETRY_ENABLED defaults to True,
+    # but sara/gui/app/perf_api.py's _apply_saved() re-applies a PERSISTED
+    # "ui:telemetry_enabled" preference the first time the GUI asks for a
+    # perf summary -- which the dashboard does on load. So a user who once
+    # switched tracing off in the GUI has it switched off in every later
+    # session, with nothing printed and no error.
+    #
+    # The failure mode that cost a whole measurement session: speak ~15
+    # commands as instructed, then run bench/voice_latency.py and be told
+    # "no turns recorded", with no way to tell a telemetry problem from a
+    # voice problem. One line at boot removes that ambiguity.
+    try:
+        from sara.core.telemetry import is_enabled as _t_is_enabled
+        from sara.core.telemetry.store import db_path as _t_db_path
+
+        if _t_is_enabled():
+            print(f"[Telemetry] recording ON -> {_t_db_path()}")
+        else:
+            # D68: name the SOURCE, do not guess it. The first version of
+            # this message blamed the GUI preference outright. On the target
+            # machine that was wrong and cost a round trip: the saved
+            # preference read '1' (ON) while the app still reported OFF,
+            # because `_enabled` is initialised from
+            # Config.TELEMETRY_ENABLED at import and the GUI preference is
+            # only re-applied later, when the performance panel first asks
+            # for a summary. So the two can disagree, and a message that
+            # names only one of them sends the reader to the wrong file.
+            _cfg_on = bool(getattr(Config, "TELEMETRY_ENABLED", True))
+            _saved = None
+            try:
+                _saved = db.get_preference("ui:telemetry_enabled")
+            except Exception:
+                pass
+            print(
+                "[Telemetry] recording OFF -- no turns will be measured this "
+                "session."
+            )
+            print(
+                f"[Telemetry]   TELEMETRY_ENABLED (.env/config) = {_cfg_on}"
+                + ("   <-- this is what disabled it" if not _cfg_on else "")
+            )
+            print(
+                f"[Telemetry]   saved GUI preference            = "
+                f"{_saved!r}"
+                + (
+                    "   <-- this is what disabled it"
+                    if _cfg_on and str(_saved).strip() not in ("1", "None")
+                    else ""
+                )
+            )
+            if not _cfg_on:
+                print(
+                    "[Telemetry]   fix: set TELEMETRY_ENABLED=True in .env "
+                    "and restart"
+                )
+            else:
+                print(
+                    "[Telemetry]   fix: re-enable tracing in the GUI's "
+                    "performance panel"
+                )
+    except Exception as e:
+        print(f"[Telemetry] state unknown ({e})")
 
     wake_words_display = ", ".join(
         getattr(Config, "WAKE_WORDS", None) or [Config.WAKE_WORD]
@@ -785,9 +891,18 @@ def run_sara_logic(
             # removes the fixed 1-1.5s tax per wake cycle. Without AEC we
             # keep it blocking, since the mic would otherwise pick up our
             # own ack and STT could misfire on it.
+            #
+            # D20 FIX (audit batch B): this call passed block=True
+            # unconditionally, so the behaviour the comment above describes
+            # was never actually implemented -- every wake cycle waited for
+            # the ack to finish synthesising AND playing before listen()
+            # began. block=True is also TTSWorker.speak()'s default, so
+            # dropping the argument would not have helped; the aec_active
+            # test has to be explicit. The no-AEC branch deliberately keeps
+            # blocking, for the reason stated above.
             ack = getattr(Config, "WAKE_ACK_PHRASE", "Yes?")
             try:
-                tts.speak(ack, fast=True, block=True)
+                tts.speak(ack, fast=True, block=not aec_active)
             except Exception as e:
                 # Ack failing must NEVER stop the command-listening cycle.
                 print(f"[Logic] wake-ack speak failed (continuing): {e}")
@@ -926,11 +1041,38 @@ def run_sara_logic(
                 session_control: dict = {}
                 with STATE_LOCK:
                     turn_gen, turn_cancel = TURN_STATE.begin()
-                    _t_begin(
+                    # D67: keep the returned id and say it. The no-op stub
+                    # installed by the import fallback above returns "",
+                    # while the real begin_turn() returns a 12-hex id -- so
+                    # this one line separates "the recorder is not there"
+                    # from "the recorder is there and the row is being lost
+                    # later", which is the exact ambiguity that left the
+                    # 05:54 session with zero voice rows and no explanation.
+                    _turn_id = _t_begin(
                         "voice",
                         text=user_input,
                         lang=getattr(brain, "get_language", lambda: None)(),
                     )
+                    if _DEBUG:
+                        # D68: begin_turn() allocates and RETURNS a turn id
+                        # before it checks whether recording is enabled
+                        # (trace.py: `turn_id = new_turn_id()` then
+                        # `if not _enabled: return turn_id`). So a plain id
+                        # here looked like proof of recording while nothing
+                        # was being written -- this instrument misled me on
+                        # the target machine. Ask the recorder directly.
+                        try:
+                            from sara.core.telemetry import is_enabled as _t_on
+                            _rec = _t_on()
+                        except Exception:
+                            _rec = False
+                        if not _turn_id:
+                            _state = "<<NO-OP STUB -- telemetry unavailable>>"
+                        elif not _rec:
+                            _state = f"{_turn_id} <<NOT RECORDED -- tracing off>>"
+                        else:
+                            _state = _turn_id
+                        print(f"[Telemetry] voice turn begun: {_state}")
                     reply_text = _handle_command(
                         user_input,
                         brain,
@@ -950,6 +1092,12 @@ def run_sara_logic(
                     )
 
                 _t_end("cancelled" if turn_cancel.is_set() else "ok")
+                if _DEBUG and _turn_id:
+                    # Pair with the line above: a turn that begins and never
+                    # ends is dropped by _sweep() (it only finalises turns
+                    # with ended_at set), so seeing both halves is what rules
+                    # that out.
+                    print(f"[Telemetry] voice turn ended: {_turn_id}")
                 if turn_cancel.is_set():
                     logger.info("[Logic] turn cancelled by Stop; dropping late result")
                     continue

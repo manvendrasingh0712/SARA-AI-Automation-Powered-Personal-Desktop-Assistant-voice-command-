@@ -65,6 +65,54 @@ def _looks_rate_limited(exc: BaseException) -> bool:
         return False
 
 
+# D54: how long the SERVER itself asked us to wait.
+#
+# Google returns this on a quota 429, both as a structured
+# google.rpc.RetryInfo detail and inside the message text:
+#
+#   'retryDelay': '23746s'
+#   "Please retry in 6h35m46.05359687s"
+#
+# A DAILY quota is the case that matters. On the target machine every LLM
+# turn made two attempts with a 1.5s sleep between them against a free-tier
+# daily limit that resets in six and a half hours -- roughly 4s of pure
+# waste per turn, for an attempt that could not possibly succeed.
+#
+# Returns None when the server said nothing, so "no advice" and "wait zero"
+# stay distinguishable. Never raises, and never returns the error text:
+# _looks_rate_limited() above sets the convention that these payloads are
+# not logged.
+_RETRY_DELAY_RE = re.compile(
+    r"""['"]retryDelay['"]\s*:\s*['"](\d+(?:\.\d+)?)s['"]"""
+)
+
+
+def _server_retry_after_s(exc: BaseException) -> Optional[float]:
+    """Seconds the server asked us to wait, or None if it did not say."""
+    try:
+        details = getattr(exc, "details", None)
+        if isinstance(details, dict):
+            details = details.get("error", {}).get("details")
+        if isinstance(details, (list, tuple)):
+            for d in details:
+                if not isinstance(d, dict):
+                    continue
+                if "RetryInfo" not in str(d.get("@type", "")):
+                    continue
+                raw = str(d.get("retryDelay", "")).strip().rstrip("s")
+                if raw:
+                    return float(raw)
+    except Exception:
+        pass
+    try:
+        m = _RETRY_DELAY_RE.search(str(exc))
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return None
+
+
 def _router_report(router, decision_id: str, started: float, produced: bool, escalated: bool) -> None:
     """Hand the finished turn's outcome to the router; never raises."""
     try:
@@ -966,6 +1014,22 @@ class SaraLLM:
                     # exception (network hiccup, timeout, quota/rate-limit
                     # error, etc.) is retried exactly as before.
                     non_transient = isinstance(e, _ClientUnavailableError)
+
+                    # D54: do not retry what the server already told us
+                    # cannot succeed yet. If it asked for longer than
+                    # max_delay -- the longest this loop would ever sleep --
+                    # another attempt is guaranteed to fail, so spend the
+                    # fallback's time instead of the backoff's.
+                    if not non_transient:
+                        asked = _server_retry_after_s(e)
+                        if asked is not None and asked > max_delay:
+                            non_transient = True
+                            if is_debug:
+                                print(
+                                    f"[LLM:{stage_name}] server asked to wait "
+                                    f"{asked:.0f}s (> max_delay {max_delay:.0f}s) "
+                                    f"-- not retrying, falling back now"
+                                )
 
                     if attempt < stage_retries and not non_transient:
                         delay = min(max_delay, base_delay * (2**attempt))

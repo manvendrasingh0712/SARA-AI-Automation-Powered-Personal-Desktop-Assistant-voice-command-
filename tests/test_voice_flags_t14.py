@@ -19,7 +19,14 @@ def _row():
 
 def test_row_metadata():
     row = _row()
-    assert row.default is False
+    # D41: flipped False -> True. The subsystem was complete and tested but
+    # inert (audit finding D32), and until D39 it could not fire at all --
+    # a permissive VAD held `is_voice` True so the endpoint decision was
+    # never reached on a silence chunk. Must stay in step with
+    # Config.VOICE_ENDPOINT_ADAPTIVE: get_flag() reads Config, reset_flags()
+    # writes this registry value, so a mismatch makes "reset to defaults"
+    # change behaviour. See the long note on the Config field.
+    assert row.default is True
     assert row.task == "T14"
     assert row.label == "Smarter end-of-speech detection"
     assert row.description
@@ -32,11 +39,14 @@ def test_keys_unique_and_on_config():
 
 
 def test_set_get_reset_roundtrip():
-    assert vf.set_flag("VOICE_ENDPOINT_ADAPTIVE", True) is True
-    assert vf.get_flag("VOICE_ENDPOINT_ADAPTIVE") is True
-    assert vf.flags_state()["VOICE_ENDPOINT_ADAPTIVE"] is True
-    vf.reset_flags()
+    # D41: sets the flag AWAY from its new default (True) so the reset
+    # assertion still proves something. Setting it to the default would
+    # make the final check pass whether reset_flags() worked or not.
+    assert vf.set_flag("VOICE_ENDPOINT_ADAPTIVE", False) is True
     assert vf.get_flag("VOICE_ENDPOINT_ADAPTIVE") is False
+    assert vf.flags_state()["VOICE_ENDPOINT_ADAPTIVE"] is False
+    vf.reset_flags()
+    assert vf.get_flag("VOICE_ENDPOINT_ADAPTIVE") is True
 
 
 def test_unknown_key_rejected():

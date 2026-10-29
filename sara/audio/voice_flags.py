@@ -66,8 +66,12 @@ VOICE_FLAGS: tuple[VoiceFlag, ...] = (
         task="T13",
     ),
     VoiceFlag(
+        # D31: default flipped to True alongside Config's. Both must agree --
+        # get_flag() reads Config and only falls back to this default when the
+        # attribute is missing, while reset_flags() writes THIS value back, so
+        # a mismatch would make "reset to defaults" silently change behaviour.
         key="VOICE_CHUNKER_V2",
-        default=False,
+        default=True,
         label="Faster first words",
         description=(
             "Starts speaking a long reply at the first safe pause, without "
@@ -76,8 +80,13 @@ VOICE_FLAGS: tuple[VoiceFlag, ...] = (
         task="T13",
     ),
     VoiceFlag(
+        # D41: default flipped to True alongside Config's. Both must agree --
+        # same reason as VOICE_CHUNKER_V2 above: get_flag() reads Config and
+        # only falls back to this default when the attribute is missing,
+        # while reset_flags() writes THIS value back, so a mismatch would
+        # make "reset to defaults" silently change behaviour.
         key="VOICE_ENDPOINT_ADAPTIVE",
-        default=False,
+        default=True,
         label="Smarter end-of-speech detection",
         description=(
             "Answers sooner after a finished command and waits longer when "

@@ -108,3 +108,11 @@ check_patches.py
 Thumbs.db
 desktop.ini
 ll.env
+
+# ---------- Local audit scratch (keep locally, never push) ----------
+backups/
+docs/audit/backups/
+*.patch
+*.orig
+*.rej
+doctor.txt

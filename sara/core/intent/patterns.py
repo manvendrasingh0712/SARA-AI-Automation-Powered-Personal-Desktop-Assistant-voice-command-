@@ -17,9 +17,21 @@ changes far more often than the matching logic in engine.py.
 # open-ended prefix would just reintroduce the exact "matches mid-
 # sentence" bug this fix removes, since `.*` would happily eat any
 # amount of leading chatter to reach the verb.
+# D28 FIX (audit batch D22-a): the politeness words were here but the
+# speech disfluencies were not, so "um restart chrome" and "uh switch to
+# spotify" missed while "please restart chrome" worked. These are the
+# fillers the golden set actually contains ("uh", "um"), plus their obvious
+# lengthenings. Each alternative ends in a space and the whole group is
+# anchored at ^, so this only ever strips leading words -- "um" cannot
+# match inside "umbrella", and nothing mid-sentence is touched.
+_DISFLUENCY = r"(?:uh+|um+|erm?|hmm+)\s+"
+# Same fillers, but as an optional slot placed AFTER the command verb, so
+# "uh open um notepad" captures "notepad" and not "um notepad".
+_OPT_DISFL = r"(?:" + _DISFLUENCY + r")?"
+
 _FILLER = (
     r"^[\s,]*(?:please |sara |hey sara |can you |could you |zara |"
-    r"ek baar |jara )*"
+    r"ek baar |jara |" + _DISFLUENCY + r")*"
 )
 
 # LAYER 3 shape-bound app name: 1-4 whitespace-separated tokens, each
@@ -213,7 +225,25 @@ _INTENT_PATTERNS = [
     ("screenshot_describe", [
         r"what'?s (?:on|showing on) (?:my |the )?screen",
         r"describe (?:my |the )?screen",
-        r"take a screenshot",
+        # D78: was r"take a screenshot" -- the article was REQUIRED and the
+        # compound spelling was not accepted, so three of the four ways this
+        # is actually said went to chat:
+        #     "take screenshot"    -> chat   (bench/golden/adversarial row
+        #                                     32: "dropped article in
+        #                                     speech-to-text")
+        #     "take screen shot"   -> chat   (Whisper writes it as two words
+        #                                     at least as often as one)
+        #     "capture screen"     -> chat
+        # Only "take a screenshot" worked, and dropping an unstressed "a"
+        # is one of the most common things an STT engine does.
+        r"(?:take|grab|capture) (?:a )?screen\s?shot",
+        r"(?:take|grab|capture) (?:a |the |my )?screen\b(?!\s*(?:shot|settings|resolution))",
+        # The bare noun, ANCHORED. Unanchored it would fire on any sentence
+        # containing the word -- "where do screenshots go", "that
+        # screenshot was blurry" -- so _FILLER (^ plus the wake/politeness
+        # prefixes) and `$` bound it to the one-word command, the same
+        # shape D73 and D76 needed.
+        _FILLER + r"screen\s?shot$",
         r"what (?:is|am i looking at) (?:on screen|on my screen|here)",
         r"look at (?:my )?screen",
     ]),
@@ -238,9 +268,12 @@ _INTENT_PATTERNS = [
     ]),
 
     # ── Context Follow-ups ─────────────────────────────────────────────
+    # D28 FIX (audit batch D22-a): the bare ^ anchor meant any leading
+    # filler broke the match -- "please what about tomorrow" missed. _FILLER
+    # already carries its own ^[\s,]* anchor, so it replaces it directly.
     ("followup_query", [
-        r"^(?:and |aur )?what about (.+?)\??$",
-        r"^(?:and |aur )?how about (.+?)\??$",
+        _FILLER + r"(?:and |aur )?what about (.+?)\??$",
+        _FILLER + r"(?:and |aur )?how about (.+?)\??$",
         r"^aur (.+?) (?:ka|ki|mein|me) (?:kya|kaisa|kaisi)(?:\s+hai)?\??$",
     ]),
 
@@ -260,7 +293,27 @@ _INTENT_PATTERNS = [
     # ── Spotify ────────────────────────────────────────────────────────
     ("play_spotify", [
         r"play (.+?) on spotify",
-        r"^spotify (.+)$",
+        # D24 FIX (audit batch D-local): this was a bare `^spotify (.+)$`
+        # catch-all, so ANY sentence starting with "spotify " had the rest
+        # captured as a track name -- including requests to close it:
+        #     "spotify close karo"   -> play track "close karo"
+        #     "spotify band kar do"  -> play track "band kar do"
+        #     "spotify बंद करो"       -> play track "बंद करो"
+        # play_spotify sits at index 30 and close_app at 139, so it always
+        # won. Asking SARA to close Spotify started music instead, which is
+        # a wrong ACTION, not just a wrong label.
+        #
+        # This is the same defect shape the `press_key` entry below already
+        # records removing ("it was a bare catch-all with no end marker at
+        # all"). Here the shorthand is worth keeping -- "spotify bohemian
+        # rhapsody" is a real phrasing -- so instead of deleting the pattern
+        # it now refuses to treat a window/app command verb as a track name.
+        r"^spotify (?!(?:"
+        r"band|bandh|close|closed|quit|exit|kill|stop|pause|off"
+        r"|khol|kholo|kholdo|open|launch|start|run|chalu|shuru"
+        r"|minimize|maximize|restart"
+        r"|बंद|बन्द|क्लोज|खोल|खोलो|ऑफ|रोको|रुको|बदं"
+        r")\b)(.+)$",
         r"play (.+?) (?:on |using )?spotify",
         r"open spotify and play (.+)",
     ]),
@@ -315,12 +368,59 @@ _INTENT_PATTERNS = [
         r"volume (?:to |at )?(\d{1,3})%?",
         r"(?:increase|raise|turn up) (?:the )?volume(?: by (\d+)%?)?",
         r"(?:decrease|lower|turn down|reduce) (?:the )?volume(?: by (\d+)%?)?",
+        # D73: object-first word order, which is how people actually say it
+        # out loud. The four patterns above all require the VERB first
+        # ("turn up the volume"), so bare "volume up" / "volume down" fell
+        # through to `chat`. bench/golden/adversarial.jsonl records row 41
+        # as "known miss: bare 'volume up' means set_volume, not chat", so
+        # this was a recognised gap rather than a judgement call.
+        #
+        # Direction is not encoded in the intent (increase and decrease
+        # both map to set_volume and are re-read downstream), so up/down
+        # share one alternative, exactly as the verb forms do.
+        #
+        # ANCHORED, and that is the whole point. _detect_intent_cached uses
+        # pattern.search(), so the obvious unanchored form
+        #     r"(?:volume|sound) (?:up|down)..."
+        # matches the substring "volume up" ANYWHERE. A probe caught it
+        # taking over three phrases that correctly went to chat before:
+        #     "don't turn the volume up"   -> set_volume   (a NEGATED command)
+        #     "volume up mat karo"         -> set_volume   (negated, Hinglish)
+        #     "what is the volume up to"   -> set_volume   (a question)
+        # The negation guard does not save these: _ACTION_VERBS has no
+        # "turn up", so is_negated_action_request() returns False and the
+        # match stands. None of the three is in bench/golden, so the row
+        # diff showed zero regressions -- the probe is what found them.
+        #
+        # _FILLER anchors at ^ and absorbs the wake/politeness prefixes
+        # ("sara volume up", "please volume down"); the trailing $ is what
+        # keeps the three phrases above out. This is the same shape the
+        # D19 fix used on `unmute` for the same class of over-match.
+        #
+        # "sound up" is deliberately NOT included: the set_volume gate is
+        # ("volume",), a plain substring test, so any `sound` alternative
+        # here is unreachable. Widening the gate would change matching for
+        # all five patterns and was not measured, so it was not done.
+        _FILLER + r"volume (?:up|down)(?: by (\d+)%?)?$",
     ]),
     ("mute", [
         r"(?:mute|silence)(?: (?:the )?(?:volume|sound|audio|mic|microphone))?",
     ]),
     ("unmute", [
-        r"(?:unmute|restore|enable)(?: (?:the )?(?:volume|sound|audio|mic|microphone))?",
+        # D19 FIX (audit batch C): the audio object used to be OPTIONAL for
+        # every alternative -- `(?:unmute|restore|enable)(?: ...)?` -- so the
+        # pattern reduced to a bare match on "unmute", "restore" OR "enable"
+        # with no object at all. "enable" and "restore" are generic verbs, so
+        # unmute silently swallowed other intents:
+        #     "enable the bluetooth"         -> unmute (want bluetooth_on)
+        #     "enable airplane mode"         -> unmute (want open_airplane_mode_settings)
+        #     "restore my minimized windows" -> unmute (want restore_windows)
+        # Bare "unmute" is unambiguous and stays. "restore"/"enable" now
+        # REQUIRE the audio object, which is the only reading in which they
+        # mean unmute at all. Still zero capturing groups, so this pattern
+        # remains mergeable by engine._merge_groupless().
+        r"\bunmute\b"
+        r"|(?:restore|enable)\s+(?:the\s+)?(?:volume|sound|audio|mic|microphone)\b",
     ]),
 
     # ════════════════════════════════════════════════════════════════════
@@ -412,10 +512,43 @@ _INTENT_PATTERNS = [
         r"maximize (?:my )?window",
     ]),
     ("minimize_active_window", [
-        r"minimize (?:this|the|current) window",
+        # D21 FIX (audit batch C): the alternation allowed exactly ONE
+        # determiner, so "minimize the current window" (determiner +
+        # "current") missed and fell through to chat. Determiner and
+        # qualifier are now independent optional groups. Still bounded by
+        # the literal "window", and "minimize" is an unambiguous command
+        # verb, so this cannot match ordinary chat.
+        r"minimize\s+(?:(?:this|the|my)\s+)?(?:current\s+|active\s+)?window",
     ]),
     ("close_active_window", [
-        r"close (?:this|the|current) window",
+        # D76: was r"close (?:this|the|current) window" -- one required
+        # determiner out of three, and no end boundary. Two defects:
+        #
+        # MISSED PHRASINGS, each falling through to close_app (position 139,
+        # after this one at 55) with a nonsense app name:
+        #     "close window"             -> close_app['window']
+        #     "close active window"      -> close_app['active window']
+        #     "close the active window"  -> close_app['active window']
+        #     "close my window"          -> close_app['my window']
+        # close_app then looks for a running process by that name. On
+        # Windows that is not merely a no-op -- "window" is a substring of
+        # real process names, so the wrong thing can be closed.
+        # bench/golden/intents_en_noisy.jsonl row 55 is "close window".
+        #
+        # OVER-MATCH, which was already live: with no boundary after
+        # "window", search() matched "close the window" INSIDE
+        #     "close the windows explorer"  -> close_active_window
+        # so asking to close Windows Explorer closed whatever was in front.
+        # "close windows terminal" and "close windows security" escaped only
+        # because they lack a determiner.
+        #
+        # The `$` is what fixes that half: "window" must end the utterance,
+        # so "windows <anything>" cannot match and still reaches close_app.
+        # Consistent with the ~39 other patterns in this file that anchor
+        # with `$`. Trailing politeness ("close the window please") is NOT
+        # covered -- it was not covered before either, and _FILLER only
+        # absorbs leading prefixes.
+        r"close (?:(?:this|the|my|current|active)\s+)*window$",
     ]),
     ("snap_window_left", [
         r"snap (?:this |the |current )?window (?:to the )?left",
@@ -437,11 +570,11 @@ _INTENT_PATTERNS = [
     # after "karo"/"kro" the way the old unanchored `.+?` effectively
     # could when re.search() was free to match anywhere.
     ("restart_application", [
-        _FILLER + r"\brestart\b (?:the )?(" + _APP_NAME + r")(?:\s+app(?:lication)?)?$",
+        _FILLER + r"\brestart\b (?:the )?" + _OPT_DISFL + r"(" + _APP_NAME + r")(?:\s+app(?:lication)?)?$",
         _FILLER + r"(" + _APP_NAME + r") (?:ko )?restart (?:karo|kro)[\s.!]*$",
     ]),
     ("switch_to_application", [
-        _FILLER + r"\bswitch\b to (?:the )?(" + _APP_NAME + r")(?:\s+app(?:lication)?)?$",
+        _FILLER + r"\bswitch\b to (?:the )?" + _OPT_DISFL + r"(" + _APP_NAME + r")(?:\s+app(?:lication)?)?$",
         _FILLER + r"(" + _APP_NAME + r") (?:pe|par) switch karo[\s.!]*$",
         _FILLER + r"(" + _APP_NAME + r") (?:pe|par) jao[\s.!]*$",
     ]),
@@ -488,7 +621,21 @@ _INTENT_PATTERNS = [
 
     # ── Keyboard / Typing ─────────────────────────────────────────────
     ("typing_text", [
-        r"type (?:this )?(?:for me)?[:\s]+(.+)",
+        # D21 FIX (audit batch C): this read
+        #     r"type (?:this )?(?:for me)?[:\s]+(.+)"
+        # where the literal "type " already consumed the only space, so
+        # [:\s]+ demanded a SECOND separator. "type this: X" therefore
+        # missed entirely -- `(?:this )?` needs "this" + a space, but the
+        # text has "this:", so it matched empty and then [:\s]+ failed on
+        # "t". Only "type: X" or "type  X" (double space) ever worked.
+        #
+        # The colon is now mandatory, for exactly the reason the "write"
+        # pattern below already requires one: "type" appears in ordinary
+        # chat ("what type of file is this", "this type of problem"), and
+        # a pattern matching bare "type <anything>" would capture the rest
+        # of such a sentence as dictation text. So "type X" without a
+        # colon is deliberately NOT matched -- same contract as "write".
+        r"\btype\b(?: this)?(?: for me)?:\s*(.+)",
         r"type out[:\s]+(.+)",
         # "write" (unlike "type") is an everyday word in ordinary chat
         # ("write my essay", "write a poem about..."), and the old
@@ -519,7 +666,13 @@ _INTENT_PATTERNS = [
         r"copy (?:the )?selected (?:text|content)",
     ]),
     ("paste_clipboard", [
-        r"paste(?: (?:it|this|that|here))?$",
+        # D21 FIX (audit batch C): the optional group accepted exactly ONE
+        # of it/this/that/here, so the natural "paste it here" -- two of
+        # them -- missed and fell through to chat with no later stage to
+        # recover it (has_probable_tool_intent("paste it here") is False).
+        # Split into two independent optional groups. Still anchored on $,
+        # so "paste my essay into the doc" cannot match.
+        r"paste(?:\s+(?:it|this|that))?(?:\s+here)?$",
         r"paste (?:from )?clipboard",
     ]),
     ("select_all", [
@@ -584,12 +737,27 @@ _INTENT_PATTERNS = [
         r"go down (?:the )?page",
         r"page down",
     ]),
+    # D26 FIX (audit batch D22-a): both of these were
+    #     r"(?:go to |scroll to )?(?:the )?\btop\b(?: of (?:the )?page)?"
+    # with the VERB optional and the OBJECT optional, so each reduced to a
+    # bare \btop\b / \bbottom\b and fired on ordinary prose:
+    #     "bottom line of the report is we lost money" -> scroll_bottom
+    #     "top of the morning to you"                  -> scroll_top
+    # The golden set carries both with the note "substring: 'bottom' must
+    # not fire scroll_bottom", so this was a known-wrong behaviour.
+    #
+    # Same family as D19: when every part is optional the pattern matches a
+    # bare keyword. Now at least one of the two must be present -- a scroll
+    # verb, or the literal "of the page". "go two bottom of the page" (a
+    # to/two homophone row) still matches on the second pattern.
     ("scroll_top", [
-        r"(?:go to |scroll to )?(?:the )?\btop\b(?: of (?:the )?page)?",
+        r"(?:go|scroll|jump|move)\s+(?:to\s+)?(?:the\s+)?top\b(?:\s+of\s+(?:the\s+)?page)?",
+        r"\btop\s+of\s+(?:the\s+)?page\b",
         r"beginning of (?:the )?page",
     ]),
     ("scroll_bottom", [
-        r"(?:go to |scroll to )?(?:the )?\bbottom\b(?: of (?:the )?page)?",
+        r"(?:go|scroll|jump|move)\s+(?:to\s+)?(?:the\s+)?bottom\b(?:\s+of\s+(?:the\s+)?page)?",
+        r"\bbottom\s+of\s+(?:the\s+)?page\b",
         r"end of (?:the )?page",
     ]),
     # ── Network Controls ──────────────────────────────────────────────
@@ -664,9 +832,13 @@ _INTENT_PATTERNS = [
     ("open_videos", [
         r"open (?:my )?videos?(?: folder)?",
     ]),
+    # D28 FIX (audit batch D22-a): both patterns required the determiner,
+    # so "uh open pc" missed on two counts -- the leading filler, and the
+    # dropped "this" that speech-to-text routinely produces. Anchored on $
+    # and limited to the two literal targets, so this cannot widen into
+    # open_app's territory ("open pc" is this intent, "open notepad" is not).
     ("open_this_pc", [
-        r"open this pc",
-        r"open my computer",
+        _FILLER + r"open (?:this |my )?(?:pc|computer)$",
     ]),
     ("open_recycle_bin", [
         r"open (?:the )?recycle bin",
@@ -789,8 +961,16 @@ _INTENT_PATTERNS = [
         r"service (.+?) (?:band karo|roko)",
     ]),
 
+    # D26 FIX (audit batch D22-a): the first pattern had no end anchor, so
+    # any sentence containing "what is the time" matched regardless of what
+    # followed:
+    #     "what is the time complexity of quicksort" -> time_query
+    # The golden set carries this with the note "'what is ... time' is not
+    # time_query". SARA would answer the clock instead of the question.
+    # "time" must now end the request (optionally followed by "now"), which
+    # keeps "what's the time", "what's time" and "what is the current time".
     ("time_query", [
-        r"what(?:'?s| is) (?:the )?(?:current )?time",
+        r"what(?:'?s| is) (?:the )?(?:current )?time\b(?:\s+(?:now|right\s+now))?\s*\??$",
         r"what time is it",
         r"tell me the time",
     ]),
@@ -888,10 +1068,10 @@ _INTENT_PATTERNS = [
     # bounding alone can't rule out (e.g. "gym start karna hai" -- "gym"
     # and "karna" and "hai" are each individually app-name-shaped).
     ("open_app", [
-        _FILLER + r"\bopen\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
-        _FILLER + r"\blaunch\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
-        _FILLER + r"\bstart\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
-        _FILLER + r"\brun\b (?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\bopen\b " + _OPT_DISFL + r"(?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\blaunch\b " + _OPT_DISFL + r"(?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\bstart\b " + _OPT_DISFL + r"(?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\brun\b " + _OPT_DISFL + r"(?!https?://)(" + _APP_NAME + r")(?:\s+app)?$",
     ]),
     # "end" deliberately dropped from the verb alternation below (it was
     # present in the original: close|quit|exit|kill|end). Even fully
@@ -905,7 +1085,7 @@ _INTENT_PATTERNS = [
     # later, it should go through the Layer-4 rejection list too rather
     # than being re-added bare.
     ("close_app", [
-        _FILLER + r"\b(?:close|quit|exit|kill)\b(?: the)? (" + _APP_NAME + r")(?:\s+app)?$",
+        _FILLER + r"\b(?:close|quit|exit|kill)\b(?: the)? " + _OPT_DISFL + r"(" + _APP_NAME + r")(?:\s+app)?$",
         _FILLER + r"\b(?:force quit|force close)\b(?: the)? (" + _APP_NAME + r")(?:\s+app)?$",
     ]),
 ]
@@ -930,6 +1110,22 @@ _NON_APP_TOKENS = frozenset({
     "ki", "ka", "ke", "ko", "se", "me", "mein", "nahi",
     "kuch", "bss", "bas", "apna", "apni", "mera", "meri",
     "wala", "wali", "liye", "jab", "time", "mile",
+    # ── D23 (audit batch D-local): Devanagari equivalents ───────────────
+    # Layer 4 (_captured_app_name_is_rejected in engine.py) is the last
+    # defence for the four app-name intents, and it worked only on
+    # ROMANISED function words. The Devanagari open_app/close_app patterns
+    # added in patterns_multilingual.py capture a free app name in
+    # Devanagari too, so the same guard needs the same vocabulary in that
+    # script -- otherwise "कुछ काम करना है" shapes would be accepted as
+    # app names by a guard that is only watching for "kuch kaam karna hai".
+    "करने", "करना", "करनी", "करूंगा", "करूँगा", "करूंगी", "करूँगी",
+    "करता", "करती", "करके", "कर",
+    "रहा", "रही", "रहे",
+    "सोच", "सोचता", "सोचती", "चाहता", "चाहती", "चाहिए",
+    "हूं", "हूँ", "था", "थी", "थे", "है", "हो", "हैं",
+    "की", "का", "के", "को", "से", "में", "नहीं",
+    "कुछ", "बस", "अपना", "अपनी", "मेरा", "मेरी",
+    "वाला", "वाली", "लिए", "जब", "समय", "मिले", "काम",
 })
 
 # ── Cheap pre-filter gates ──────────────────────────────────────────────
@@ -1048,7 +1244,13 @@ _INTENT_GATES = {
     "open_pictures": ("picture",),
     "open_music": ("music",),
     "open_videos": ("video",),
-    "open_this_pc": ("this pc", "my computer"),
+    # D28: the gate required the determiner too ("this pc" / "my computer"),
+    # so the widened pattern above was still never reached for "open pc" or
+    # "open computer" -- the regex matched but the pre-filter had already
+    # skipped it. Same shape as the calculator gate problem (D27): a gate
+    # narrower than its own patterns. The pattern is anchored on $ and
+    # limited to two literal targets, so the broader gate costs nothing.
+    "open_this_pc": ("this pc", "my computer", " pc", "computer"),
     "open_recycle_bin": ("recycle",),
     "open_file_explorer": ("explorer",),
     "open_control_panel": ("control panel",),

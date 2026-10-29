@@ -301,10 +301,38 @@ class TextToSpeech:
             session_options.enable_cpu_mem_arena = True
 
             available = _ort.get_available_providers()
-            use_gpu = (
-                getattr(Config, "KOKORO_USE_GPU", True)
-                and "CUDAExecutionProvider" in available
-            )
+            wanted_gpu = bool(getattr(Config, "KOKORO_USE_GPU", True))
+            use_gpu = wanted_gpu and "CUDAExecutionProvider" in available
+            # D55: say when GPU was asked for and silently not given.
+            #
+            # config.py prints "[Debug] TTS engine : Kokoro ONNX (GPU
+            # requested=True)" at startup, and this function prints
+            # "active=CPUExecutionProvider" about fifty log lines later. A
+            # reader of the first line reasonably concludes TTS is on the
+            # GPU. On the target machine it was not: the installed
+            # `onnxruntime` wheel ships no CUDA provider (available was
+            # ['AzureExecutionProvider', 'CPUExecutionProvider']), and
+            # synthesis-to-first-audio measured p50 1250ms -- the largest
+            # controllable share of time-to-first-audio after the LLM.
+            #
+            # Note this is NOT a missing CUDA toolkit: the main Whisper
+            # model loads on CUDA on that same machine. It is the wrong
+            # onnxruntime package, which is why the remedy is named here
+            # rather than left to be guessed.
+            if wanted_gpu and not use_gpu:
+                print(
+                    "[TTS] GPU was requested (KOKORO_USE_GPU=True) but "
+                    "onnxruntime has no CUDAExecutionProvider, so synthesis "
+                    "runs on CPU."
+                )
+                print(
+                    "[TTS]   available providers: "
+                    f"{available}"
+                )
+                print(
+                    "[TTS]   to use the GPU: pip uninstall -y onnxruntime && "
+                    "pip install onnxruntime-gpu"
+                )
             if use_gpu:
                 providers = [
                     (
@@ -404,7 +432,20 @@ class TextToSpeech:
         self._volume: float = float(getattr(Config, "TTS_VOLUME", 1.0))
 
         if getattr(Config, "DEBUG_MODE", False):
-            aec_status = "wired" if self._aec is not None else "not provided"
+            # D62: "wired" used to mean only that an object was handed in.
+            # AECProcessor constructs successfully with enabled=False when
+            # the `aec-audio-processing` wheel is missing, so this printed
+            # "AEC: wired" on a machine doing no echo cancellation at all --
+            # the same misreporting as D37's Ready line and D42's
+            # aec_active. Distinguishing the three states costs one line and
+            # is the difference between a log you can trust and one you
+            # cannot.
+            if self._aec is None:
+                aec_status = "not provided"
+            elif getattr(self._aec, "enabled", False):
+                aec_status = "wired"
+            else:
+                aec_status = "provided but DISABLED (no echo cancellation)"
             print(
                 f"[TTS v12] Ready | Active Engine: KOKORO-ONNX (in-process) | AEC: {aec_status}"
             )

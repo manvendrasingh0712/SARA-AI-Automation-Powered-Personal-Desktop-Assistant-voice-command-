@@ -132,11 +132,24 @@ def _get_embedding_vector(cfg, text: str):
                 )
                 time.sleep(delay_s)
                 continue
+            # D56: a 5xx from a remote service is an expected condition, not
+            # a defect in this code, and the traceback is identical every
+            # time -- the same three frames inside google.genai plus
+            # tenacity. On the target machine gemini-embedding-001 returned
+            # HTTP 500 on most turns, so this printed a full traceback per
+            # turn and buried the failures that are worth reading.
+            #
+            # The status is already classified above, so use it: keep
+            # exc_info for anything we could NOT classify as server-side,
+            # where not knowing the call path is the actual problem. The
+            # one-line message below still carries status, model, text
+            # length and the exception type either way.
+            server_side = isinstance(status, int) and 500 <= status <= 599
             logger.error(
                 "[Embeddings] Gemini embed_content() FAILED after %d attempt(s) "
                 "(model=%s, chars=%d, status=%s): %s: %s",
                 attempt + 1, model, len(text), status, type(e).__name__, e,
-                exc_info=True,
+                exc_info=not server_side,
             )
             return None
     embeddings = getattr(result, "embeddings", None)

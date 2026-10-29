@@ -325,6 +325,56 @@ _hadd("paste_clipboard", [r"(?:यहाँ|यहां|इधर)\s*पेस�
 _hadd("select_all", [r"(?:सब\s*कुछ|सारा|सब)\s*सेलेक्ट\s*" + H_DO], ("सेलेक्ट",))
 _hadd("undo", [r"(?:वो|वह|ये|यह)?\s*अनडू\s*" + H_DO], ("अनडू",))
 
+# ── D23 (audit batch D-local): Devanagari open_app / close_app ──────────
+# H_OPEN and H_CLOSE already existed but were only ever wired to SPECIFIC
+# named targets (wifi, bluetooth, tabs, downloads, task manager, file
+# explorer). There was no generic Devanagari open_app/close_app at all, so
+# every one of these fell through to chat:
+#
+#     "chrome खोलो"        (ASCII app name + Devanagari verb)
+#     "क्रोम खोलो"          (both Devanagari)
+#     "नोटपैड बंद करो"
+#     "chrome खोल दो"
+#
+# while the romanised equivalents ("chrome kholo", "notepad band karo")
+# worked -- because the romanised pattern's app-name capture is
+# [A-Za-z0-9...], ASCII only, and its verb alternation has no Devanagari.
+# Mixed-script commands are a core requirement, so this is the gap that
+# mattered most of the three classes left in D22.
+#
+# SAFETY, deliberately mirroring the romanised pattern at _add("open_app")
+# rather than inventing a looser shape:
+#   * anchored ^...$ -- the WHOLE utterance must be "<name> <open verb>",
+#     which is what stops an ordinary sentence containing "खोलो" from
+#     matching;
+#   * the app name is at most 3 whitespace-separated tokens, non-greedy;
+#   * exactly ONE capturing group (group 1 = the app name), which is the
+#     contract _captured_app_name_is_rejected() in engine.py depends on;
+#   * open_app/close_app are in _APP_NAME_REJECT_INTENTS, so layer 4
+#     re-checks the capture against _NON_APP_TOKENS -- extended with
+#     Devanagari function words in patterns.py for exactly this reason;
+#   * open_app sits at index 138 and close_app at 139 in _INTENT_PATTERNS,
+#     AFTER every specific target (close_active_window 55, new_tab 80,
+#     close_tab 81, open_downloads 96, open_file_explorer 104,
+#     open_task_manager 106), so "टास्क मैनेजर खोलो" still resolves to
+#     open_task_manager and never to open_app.
+_H_APP_NAME = (
+    r"([A-Za-z0-9ऀ-ॿ][A-Za-z0-9+\-.ऀ-ॿ]*"
+    r"(?:\s+[A-Za-z0-9ऀ-ॿ][A-Za-z0-9+\-.ऀ-ॿ]*){0,2}?)"
+)
+_H_POLITE = r"(?:(?:सारा|ज़रा|जरा|कृपया|please|pls|sara)\s+)*"
+
+_hadd(
+    "open_app",
+    [r"^[\s,]*" + _H_POLITE + _H_APP_NAME + r"\s+(?:ऐप\s+)?(?:" + H_OPEN + r")\s*$"],
+    ("खोल", "ओपन"),
+)
+_hadd(
+    "close_app",
+    [r"^[\s,]*" + _H_POLITE + _H_APP_NAME + r"\s+(?:ऐप\s+)?(?:को\s+)?(?:" + H_CLOSE + r")\s*$"],
+    ("बंद", "बन्द", "क्लोज", "क्लोज़"),
+)
+
 
 # ── English priority fixes found by the benchmark ────────────────────────
 _REORDER = (
@@ -357,6 +407,14 @@ def reorder(intent_patterns: list) -> None:
         intent_patterns.insert(j, entry)
 
 
+# Intents the base table deliberately leaves ungated, so that every
+# utterance is tested against their patterns. See the D27 note in apply()
+# below and engine.register_intent()'s docstring: a gate is omitted "only
+# if no safe substring gate exists for this intent". Adding a multilingual
+# gate to one of these would narrow it to those keywords alone.
+_BASE_INTENTS_WITHOUT_GATE = frozenset({"calculator"})
+
+
 def apply(intent_patterns: list, intent_gates: dict) -> None:
     """Append the extra patterns to their intents and extend the gates."""
     index = {name: pos for pos, (name, _) in enumerate(intent_patterns)}
@@ -378,8 +436,33 @@ def apply(intent_patterns: list, intent_gates: dict) -> None:
         if intent in intent_gates:
             old = tuple(intent_gates[intent])
             intent_gates[intent] = old + tuple(g for g in gate if g.lower() not in old)
-        elif gate:
+        elif gate and intent not in _BASE_INTENTS_WITHOUT_GATE:
             intent_gates[intent] = tuple(g.lower() for g in gate)
+        # D27 FIX (audit batch D22-a): the `elif` used to CREATE a gate for
+        # any intent that had none, which silently narrowed that intent to
+        # the multilingual keywords only.
+        #
+        # `calculator` is deliberately ungated -- engine.register_intent()'s
+        # docstring states a gate may be omitted "only if no safe substring
+        # gate exists for this intent (matches the existing `calculator`
+        # convention in patterns.py -- the one remaining intent with no
+        # gate)", because no substring can express "contains arithmetic".
+        # Adding the Hinglish rows below with a ("kitna", "kya") gate
+        # therefore imposed a gate where the design says there must be none,
+        # and every ENGLISH calculator form stopped routing:
+        #
+        #     "calculate 245 * 12"  -> chat      "25 * 4 kitna hota hai" -> calculator
+        #     "what is 5 + 3"       -> chat      "5 + 3 kitna hai"       -> calculator
+        #     "compute 100 / 4"     -> chat
+        #     "solve 12 * 12"       -> chat
+        #
+        # The regexes matched fine throughout -- only the pre-filter blocked
+        # them, which is why this looked like a pattern problem and was not.
+        #
+        # Verified by AST-diffing the base _INTENT_GATES literal against the
+        # post-merge dict: `calculator` is the ONLY intent that gained a gate
+        # this way, so this restores the documented convention and changes
+        # nothing else.
     reorder(intent_patterns)
 
 

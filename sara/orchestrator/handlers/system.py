@@ -9,6 +9,7 @@ monolithic intent_handlers.py -- see that module's docstring, in
 particular the SECURITY HARDENING note covering _h_open_app()/
 _h_close_app().
 """
+import re
 import time
 
 from config import Config
@@ -77,24 +78,85 @@ def _h_system_info(match, ctx):
     return _quick(ctx, system_tools.get_system_summary())
 
 
+# D75: the direction words, in one place.
+#
+# They used to be two inline tuples inside _h_set_volume's except branch,
+# and the relative/absolute fix below needs the same two lists. Two copies
+# of a list that must agree is how the D74 defect happened (a guard whose
+# verb list fell behind the router it guarded), so there is one copy.
+#
+# Matched on WORD boundaries, not as substrings. The inline version used
+# `"up" in lowered_input`, which also fires on "setup", "backup" and
+# "upload" -- it never mattered because only a no-number utterance reached
+# it, but the fix below consults these on the numbered path too.
+_VOLUME_UP_WORDS = ("up", "increase", "raise", "louder", "higher")
+_VOLUME_DOWN_WORDS = ("down", "decrease", "lower", "reduce", "quieter", "softer")
+
+_VOLUME_DIRECTION_RE = {
+    1: re.compile(r"\b(?:%s)\b" % "|".join(_VOLUME_UP_WORDS), re.IGNORECASE),
+    -1: re.compile(r"\b(?:%s)\b" % "|".join(_VOLUME_DOWN_WORDS), re.IGNORECASE),
+}
+
+# "by 10" / "by 10%" -- the marker that a number is a DELTA, not a target.
+_VOLUME_BY_AMOUNT_RE = re.compile(r"\bby\s+\d", re.IGNORECASE)
+
+
+def _volume_direction(text: str) -> int:
+    """+1 for a louder request, -1 for quieter, 0 when no direction is given."""
+    if not isinstance(text, str):
+        return 0
+    for sign in (1, -1):
+        if _VOLUME_DIRECTION_RE[sign].search(text):
+            return sign
+    return 0
+
+
 def _h_set_volume(match, ctx):
     if not match:
         return None
     volume_state = ctx["volume_state"]
+    user_input = ctx.get("user_input") or ""
     try:
         level = int(match.group(1))
-        volume_state["last"] = level
-        return _quick(ctx, system_tools.set_volume(level))
     except (TypeError, ValueError, IndexError):
-        lowered_input = ctx["user_input"].lower()
-        if any(w in lowered_input for w in ("up", "increase", "raise", "louder")):
-            return _quick(ctx, system_tools.adjust_volume(10))
-        if any(
-            w in lowered_input
-            for w in ("down", "decrease", "lower", "reduce", "quieter")
-        ):
-            return _quick(ctx, system_tools.adjust_volume(-10))
+        # No number captured: a bare direction, e.g. "volume up" (D73) or
+        # "turn down the volume".
+        direction = _volume_direction(user_input)
+        if direction:
+            return _quick(ctx, system_tools.adjust_volume(direction * 10))
         return _quick(ctx, "What volume level would you like?")
+
+    # D75: a captured number is not always a target.
+    #
+    # set_volume folds raising and lowering into one intent, and its
+    # patterns capture the amount in both readings:
+    #
+    #   "set volume to 40"            -> 40 is a TARGET
+    #   "turn up the volume by 10"    -> 10 is a DELTA
+    #
+    # The handler treated every captured number as a target, so:
+    #
+    #   "turn up the volume by 10"    -> set_volume(10)    -> went QUIETER
+    #   "turn down the volume by 20"  -> set_volume(20)    -> from 10, went LOUDER
+    #   "increase the volume by 15"   -> set_volume(15)
+    #
+    # i.e. asking for a small change in one direction produced a jump in
+    # the other. Pre-existing in the `(?: by (\d+)%?)?` groups of the
+    # increase/decrease patterns; D73's object-first alternative inherited
+    # it for "volume up by 10".
+    #
+    # A number is a delta only when the utterance says BOTH a direction and
+    # "by N". "set volume to 40" has no direction word and stays absolute;
+    # "volume up" has no number and never reaches here.
+    direction = _volume_direction(user_input)
+    if direction and _VOLUME_BY_AMOUNT_RE.search(user_input):
+        # volume_state["last"] deliberately not written: a delta is not a
+        # level, and recording it as one would make the next relative
+        # change compound off a wrong base.
+        return _quick(ctx, system_tools.adjust_volume(direction * level))
+
+    volume_state["last"] = level
+    return _quick(ctx, system_tools.set_volume(level))
 
 
 def _h_set_brightness(match, ctx):

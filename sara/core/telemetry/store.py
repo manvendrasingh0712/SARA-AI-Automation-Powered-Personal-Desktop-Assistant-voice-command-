@@ -117,6 +117,41 @@ class TraceStore:
                 with self._lock:
                     self.dropped += 1
 
+    def drain_now(self, timeout_s: float = 2.0) -> int:
+        """
+        Write whatever is queued, on the CALLING thread. For shutdown.
+
+        D53b: the writer is a daemon thread, so at interpreter exit it is
+        killed with whatever is still in its queue. Measured: a turn that
+        ends within _FINALISE_AFTER_END_S of the process exiting never
+        reaches disk at all -- which is always the LAST turn of a session,
+        often the one being investigated.
+
+        Bounded by `timeout_s` and never raises: a shutdown path must not
+        be able to hang or crash the app on its way out.
+        """
+        if not self.ok:
+            return 0
+        batch: list[dict[str, Any]] = []
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        while time.monotonic() < deadline:
+            try:
+                item = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            if item is STOP:
+                continue
+            batch.append(item)
+            if len(batch) >= _BATCH_ROWS * 4:
+                break
+        if not batch:
+            return 0
+        try:
+            self.flush(batch)
+        except Exception:  # noqa: BLE001 -- shutdown must stay silent
+            return 0
+        return len(batch)
+
     def flush(self, batch: list[dict[str, Any]]) -> None:
         """Insert one batch; on any error persistence is disabled for the session."""
         if not self.ok or not batch:
