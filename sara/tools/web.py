@@ -810,6 +810,8 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
 # ============================================================
 # WEATHER
 # ============================================================
+# wttr.in serves plain text only to command-line clients.
+_WTTR_USER_AGENT = "curl/8.4.0"
 
 def get_weather(location: str) -> str:
     """
@@ -823,11 +825,12 @@ def get_weather(location: str) -> str:
     spoken aloud by TTS. This is now detected and rejected before it can
     reach the caller.
     """
-    if not location or not location.strip():
-        return "Please specify a location for the weather report."
-
-    location = _clamp_text_length(location.strip(), _MAX_LOCATION_LENGTH, "weather location")
-    cache_key = f"weather:{location.lower()}"
+    # No place named ("aaj mausam kaisa hai", "will it rain today"): wttr.in
+    # answers for the caller's own location when the path is empty.
+    location = (location or "").strip()
+    if location:
+        location = _clamp_text_length(location, _MAX_LOCATION_LENGTH, "weather location")
+    cache_key = f"weather:{location.lower() or '@here'}"
     cached = _cache_get(cache_key)
     if cached:
         return cached
@@ -835,7 +838,12 @@ def get_weather(location: str) -> str:
     def _do_fetch():
         url = f"https://wttr.in/{urllib.parse.quote(location)}?format=3"
         # OPTIMIZATION 7: shared session (connection pooling + transport retry).
-        resp = _session.get(url, timeout=_WEATHER_TIMEOUT_SECONDS)
+        # wttr.in picks its output by User-Agent: the session's browser UA
+        # gets the full HTML page, a command-line UA gets the format=3 line
+        # (E2E test 2026-10-29: every lookup failed this way).
+        resp = _session.get(
+            url, timeout=_WEATHER_TIMEOUT_SECONDS, headers={"User-Agent": _WTTR_USER_AGENT}
+        )
         resp.raise_for_status()
         # OPTIMIZATION 5: wttr.in doesn't always send a charset header,
         # which can make requests guess the wrong encoding and mangle the

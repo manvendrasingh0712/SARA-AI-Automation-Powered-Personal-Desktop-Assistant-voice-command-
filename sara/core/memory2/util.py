@@ -71,6 +71,9 @@ def subject_label(subject: object) -> str:
 def fact_text(subject: str, predicate: str, obj: str) -> str:
     """Human sentence for a fact, e.g. "user lives in Jaipur"."""
     template = _TEMPLATES.get(predicate)
+    if template is None and predicate.startswith("has_") and predicate != "has_pet":
+        # Relationship predicates (schema.RELATIONS): "user's sister is Riya".
+        template = "{s}'s " + predicate[4:].replace("_", " ") + " is {o}"
     if template is None:
         template = "{s} " + predicate.replace("_", " ") + " {o}"
     return template.format(s=subject, o=obj)

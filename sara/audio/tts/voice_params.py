@@ -146,6 +146,16 @@ class _VoiceParams:
 # of a real correctness bug. Removed.
 def _build_params(lang: str) -> _VoiceParams:
     """Per-language voice routing, read fresh from Config every call."""
+    if lang == "hinglish" and str(getattr(Config, "KOKORO_HINGLISH_PHONEMES", "hi")).lower() == "en":
+        # Romanized Hinglish through the Hindi phonemizer switches to
+        # English rules for every Latin word anyway ("language switches ...
+        # 'hi' phoneset" in the log). Option: English phonemes, same Hindi
+        # voice. Devanagari ("hi") always keeps the Hindi phonemizer.
+        return _VoiceParams(
+            voice=getattr(Config, "KOKORO_VOICE_HI", "hf_alpha"),
+            lang_code=getattr(Config, "KOKORO_LANG_EN", "en-us"),
+            speed=float(getattr(Config, "KOKORO_SPEED_EN", 1.0)),
+        )
     if lang in ("hi", "hinglish"):
         # BUGFIX (Bug 2a): a Hinglish sentence contains real Hindi words
         # that need Hindi phonemes, not English ones — route it to the

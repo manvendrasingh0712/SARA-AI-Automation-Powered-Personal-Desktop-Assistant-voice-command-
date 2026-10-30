@@ -101,7 +101,11 @@ def _extract_facts(brain, conversation_text: str, max_facts: int) -> List[str]:
         conversation=conversation_text, max_facts=max_facts
     )
     try:
-        raw = brain.generate_response(prompt)
+        # generate_task() keeps the reply's line breaks (this parser is line
+        # based; generate_response() joins sentences with spaces, merging
+        # every fact into one) and keeps the prompt out of chat history.
+        task = getattr(brain, "generate_task", None)
+        raw = task(prompt, max_tokens=600) if callable(task) else brain.generate_response(prompt)
     except Exception as e:
         logger.warning(f"[MemoryConsolidation] LLM extraction call failed: {e}")
         return []

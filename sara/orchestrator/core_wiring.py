@@ -342,6 +342,9 @@ def build_core_objects(ui_update):
         def record(self, ok: bool) -> None:
             brain.note_primary_result(ok)
 
+        def trip_for(self, seconds: float) -> None:
+            brain.trip_primary_for(seconds)
+
     def _reminder_breaker():
         # Only once the brain is built, so a reminder never waits for it.
         try:
@@ -1012,7 +1015,16 @@ def run_sara_logic(
                         }
                         brain_lang = _brain_lang_map.get(detected_lang)
                         if brain_lang:
-                            brain.set_language(brain_lang)
+                            # Per-turn, so a voice turn that flips en/hi
+                            # does not rebuild the system prompt (and lose
+                            # Ollama's prefix cache). The dispatcher refines
+                            # it from the transcript text, which can also
+                            # tell Hinglish apart.
+                            turn_setter = getattr(brain, "set_turn_language", None)
+                            if callable(turn_setter):
+                                turn_setter(brain_lang)
+                            else:
+                                brain.set_language(brain_lang)
                     except Exception as e:
                         print(f"[Logic] brain.set_language (auto) failed (continuing): {e}")
                 else:

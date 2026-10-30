@@ -120,14 +120,34 @@ def test_user_direct_handler_runs_as_before(spy, monkeypatch):
     assert spy.calls == 1
 
 
-def test_user_direct_t3_simple_action_runs_as_before(spy, monkeypatch):
-    calls: list[int] = []
-    monkeypatch.setattr(dispatcher, "detect_intent", lambda text: ("shutdown_system", None))
+def _fake_shutdown(monkeypatch, calls):
+    monkeypatch.setattr(
+        dispatcher, "detect_intent",
+        lambda text: ("shutdown_system", None) if "shut" in text else ("chat", None),
+    )
     monkeypatch.delitem(dispatcher._INTENT_HANDLERS, "shutdown_system", raising=False)
     monkeypatch.setitem(
         dispatcher.system_tools.SIMPLE_ACTIONS, "shutdown_system",
         lambda: calls.append(1) or "bye",
     )
+
+
+def test_user_direct_shutdown_asks_first(spy, monkeypatch):
+    # E2E 2026-10-30: a clearly typed "shutdown the computer" powered the
+    # PC off with no question asked. Irreversible actions now always ask.
+    calls: list[int] = []
+    _fake_shutdown(monkeypatch, calls)
+    state: dict = {}
+    assert "Are you sure you want to shut down the system?" in run("shut the pc down", state)
+    assert calls == []
+    assert run("yes", state) == "bye"
+    assert calls == [1]
+
+
+def test_user_direct_t3_simple_action_runs_when_confirmation_is_off(spy, monkeypatch):
+    monkeypatch.setattr(Config, "CONFIRM_DESTRUCTIVE_ACTIONS", False, raising=False)
+    calls: list[int] = []
+    _fake_shutdown(monkeypatch, calls)
     assert run("shut the pc down", {}) == "bye"
     assert calls == [1]
 

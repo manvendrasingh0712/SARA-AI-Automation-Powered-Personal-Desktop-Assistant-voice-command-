@@ -24,6 +24,7 @@ from sara.core.llm.clients import (
     _build_gemini_generate_config,
     _get_gemini_client,
     _get_ollama_client,
+    ollama_load_options,
 )
 
 # Failure kinds (strings, so they log and compare easily).
@@ -164,7 +165,7 @@ def _ollama_call(cfg: Any, prompt: str, system: str, timeout_s: float, max_token
             {"role": "user", "content": prompt},
         ],
         think=False,
-        options={"temperature": 0.6, "num_predict": max_tokens},
+        options={"temperature": 0.6, "num_predict": max_tokens, **ollama_load_options(cfg)},
         keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
     )
     return (resp.message.content or "").strip()
@@ -232,6 +233,16 @@ def generate_short(
                     breaker.record(False)
                 except Exception:  # noqa: BLE001
                     pass
+                if kind == QUOTA and hasattr(breaker, "trip_for"):
+                    # A daily quota says how long it lasts; honour it.
+                    try:
+                        from sara.core.llm.engine import _server_retry_after_s
+
+                        asked = _server_retry_after_s(e)
+                        if asked:
+                            breaker.trip_for(asked)
+                    except Exception:  # noqa: BLE001
+                        pass
             continue
 
         if not text:

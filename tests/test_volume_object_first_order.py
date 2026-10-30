@@ -170,28 +170,32 @@ def test_brightness_is_not_swallowed() -> None:
     )
 
 
-def test_sound_up_is_not_claimed_because_the_gate_blocks_it() -> None:
+def test_sound_gate_widening_was_measured() -> None:
     """
-    Documents a deliberate omission. An earlier draft included
-    `(?:volume|sound) (?:up|down)`, but the set_volume gate is
-    ("volume",) -- a plain substring test in _detect_intent_cached -- so
-    any `sound` alternative is unreachable dead code.
-
-    Widening the gate to ("volume", "sound") would change matching for all
-    five set_volume patterns and was not measured, so it was not done. This
-    test pins the reason, so that if someone adds "sound up" later they
-    also have to touch the gate and re-measure.
+    The set_volume gate was ("volume",) on purpose: widening it was not
+    measured (D73). It now admits "sound"/"audio"/"louder"/"quieter"/
+    "softer" for "turn the sound up" and "make it louder" (E2E held-out
+    test 2026-10-29), measured against the D73 requirement: golden router
+    bench row diff unchanged (590 rows, 99.3 %, 0/60 false triggers) and
+    the over-match probes below still stay chat. The pre-existing patterns
+    all spell "volume" literally, so the wider gate only reaches the new
+    anchored ones.
     """
+    from sara.core.intent import detect_intent
     from sara.core.intent import patterns as P
 
     gates = getattr(P, "INTENT_GATES", None) or getattr(P, "_INTENT_GATES", {})
     gate = gates.get("set_volume")
     assert gate is not None, "set_volume lost its keyword gate"
-    assert "sound" not in gate, (
-        "the set_volume gate now admits 'sound'. That is a real widening "
-        "across all five patterns -- re-run the golden row diff and the "
-        "over-match probes before keeping it (D73)"
-    )
+    for probe in (
+        "sound engineering is a cool career",
+        "the movie was louder than i expected",
+        "that sounds good",
+        "can you tell me how to turn the sound up",
+        "audio quality of this mic is bad",
+    ):
+        detect_intent.cache_clear()
+        assert detect_intent(probe)[0] == "chat", probe
     got, _m = ie.detect_intent("sound up")
     assert got != "set_volume", (
         "'sound up' now routes to set_volume, which means the gate changed; "

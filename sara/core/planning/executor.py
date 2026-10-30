@@ -55,7 +55,12 @@ from .schema import (
     StepStatus,
     validate_tool_arguments,
 )
-from sara.core.llm.clients import _get_gemini_client, _get_ollama_client, _select_llm_client
+from sara.core.llm.clients import (
+    _get_gemini_client,
+    _get_ollama_client,
+    _select_llm_client,
+    ollama_load_options,
+)
 
 logger = logging.getLogger("sara.core.planning.executor")
 
@@ -263,6 +268,7 @@ def _request_step_correction(
             options={
                 "num_predict": 150,
                 "temperature": 0.2,
+                **ollama_load_options(cfg),
             },
             keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
         )

@@ -127,7 +127,6 @@ def test_generic_app_intents_come_last() -> None:
         "मुझे क्या करना चाहिए",
         "दरवाज़ा मत खोलो अभी",
         "मेरा नाम क्या है",
-        "आज मौसम कैसा है",
         "यह काम बंद नहीं हुआ",
     ],
 )
@@ -139,6 +138,15 @@ def test_ordinary_devanagari_chat_is_not_an_app_command(text: str) -> None:
     """
     got, _ = detect_intent(text)
     assert got == "chat", f"{text!r} false-triggered {got!r}"
+
+
+def test_devanagari_weather_question_is_weather_not_an_app() -> None:
+    """ "आज मौसम कैसा है" ("how is the weather today") was listed above as
+    chat; since the 2026-10-29 router fix it is the weather intent with an
+    empty place (= the user's own location) -- still never an app command."""
+    got, match = detect_intent("आज मौसम कैसा है")
+    assert got == "weather"
+    assert match.group(1) == ""
 
 
 def test_non_app_tokens_covers_devanagari() -> None:

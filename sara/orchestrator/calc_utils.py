@@ -83,8 +83,21 @@ def _ast_eval(expr: str):
     return _eval_node(tree)
 
 
+_NUM = r"(\d+(?:\.\d+)?)"
+_PCT = r"\s*(?:%|percent|per cent|pratishat)"
+# "15 percent of 2400" / "15% of 2400"  ->  (15/100*2400)
+_PERCENT_OF_RE = re.compile(_NUM + _PCT + r"\s+of\s+" + _NUM, re.IGNORECASE)
+# Hinglish "2400 ka 15 percent"  ->  (15/100*2400)
+_KA_PERCENT_RE = re.compile(_NUM + r"\s+ka\s+" + _NUM + _PCT, re.IGNORECASE)
+
+
+def _normalize_percent(expr: str) -> str:
+    expr = _PERCENT_OF_RE.sub(lambda m: f"({m.group(1)}/100*{m.group(2)})", expr)
+    return _KA_PERCENT_RE.sub(lambda m: f"({m.group(2)}/100*{m.group(1)})", expr)
+
+
 def _safe_calc(expression: str) -> str:
-    expr = expression.strip()
+    expr = _normalize_percent(expression.strip())
     expr = (
         expr.replace("^", "**")
         .replace("\u00d7", "*")

@@ -57,6 +57,7 @@ except Exception:  # noqa: BLE001
 
 import re
 import logging
+import threading
 
 import win32api
 import win32con
@@ -335,14 +336,19 @@ def main() -> None:
         poll_interval_s=_OLLAMA_POLL_INTERVAL_S,
     )
 
-    ollama_ready = ollama_manager.start()
+    # In the background: the window used to wait for Ollama before it even
+    # appeared (41 s on a cold boot, 9 s warm). The brain polls for the
+    # server itself before warming the model (SaraLLM._check_ollama), and
+    # regex commands never need it.
+    def _start_ollama() -> None:
+        if not ollama_manager.start():
+            logger.warning(
+                "Ollama could not be started or reached. "
+                "SARA will continue; local Ollama-dependent "
+                "features may be unavailable."
+            )
 
-    if not ollama_ready:
-        logger.warning(
-            "Ollama could not be started or reached. "
-            "SARA will continue startup; local Ollama-dependent "
-            "features may be unavailable."
-        )
+    threading.Thread(target=_start_ollama, name="ollama-start", daemon=True).start()
 
     try:
         from sara.gui.app import main as webview_main

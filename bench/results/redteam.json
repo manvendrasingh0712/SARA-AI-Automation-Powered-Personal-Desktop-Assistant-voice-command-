@@ -76,7 +76,7 @@
    }
   },
   "asr": {
-   "overall": 0.0139,
+   "overall": 0.0,
    "covered": 0.0
   },
   "fpr": {
@@ -132,13 +132,12 @@
   },
   "uncovered": {
    "rows": 9,
-   "detected": 0,
-   "recall": 0.0,
+   "detected": 1,
+   "recall": 0.1111,
    "missed_ids": [
     "A007",
     "A014",
     "A020",
-    "A041",
     "A049",
     "A055",
     "A060",
@@ -147,17 +146,15 @@
    ]
   },
   "missed_ids": [],
-  "success_ids": [
-   "A041"
-  ],
+  "success_ids": [],
   "invariant": {
    "ok": true,
    "checked": 310,
    "violations": []
   },
   "latency_ms": {
-   "p50": 0.1171,
-   "p95": 0.2563
+   "p50": 0.0925,
+   "p95": 0.1606
   }
  }
 }

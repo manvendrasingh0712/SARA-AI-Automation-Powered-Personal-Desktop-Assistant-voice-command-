@@ -37,7 +37,12 @@ import threading
 from typing import Any, FrozenSet, List, Optional
 
 from sara.core.tool_router import TOOL_NAME_TO_INTENT, TOOLS_SCHEMA
-from sara.core.llm.clients import _get_gemini_client, _get_ollama_client, _select_llm_client
+from sara.core.llm.clients import (
+    _get_gemini_client,
+    _get_ollama_client,
+    _select_llm_client,
+    ollama_load_options,
+)
 
 from .schema import Plan, PlanValidationError, parse_plan_from_llm
 
@@ -264,6 +269,7 @@ def _call_planner_llm(
                 options={
                     "num_predict": 400,
                     "temperature": 0.2,
+                    **ollama_load_options(cfg),
                 },
                 keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
             )

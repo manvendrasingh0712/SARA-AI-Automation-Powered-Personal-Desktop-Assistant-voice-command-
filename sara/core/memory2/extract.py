@@ -9,6 +9,7 @@ from typing import Any, Iterator
 
 from . import guard
 from .extract_validate import parse_json, to_epoch, validate
+from .relations import relation_facts
 from .types import ExtractResult
 
 __all__ = ["build_prompt", "parse_json", "validate", "is_rate_limited", "run_extraction_pass"]
@@ -21,7 +22,9 @@ _NUDGE = "\n\nYour previous reply was not valid JSON. Return ONLY valid JSON mat
 _PREDICATES = (
     "lives_in, works_at, studies_at, name_is, birthday, preferred_language, wake_time, "
     "relationship_status, favorite_color, favorite_food, age, likes, dislikes, knows, uses, "
-    "interested_in, has_pet, speaks, plays"
+    "interested_in, has_pet, speaks, plays, has_mother, has_father, has_sister, has_brother, "
+    "has_son, has_daughter, has_wife, has_husband, has_partner, has_friend, has_roommate, "
+    "has_boss, has_colleague, has_cousin, has_grandmother, has_grandfather"
 )
 _PROMPT = """You extract structured memory from a user's OWN messages. Reply with ONE JSON object only: no prose, no code fences.
 
@@ -35,7 +38,9 @@ Rules:
 7. confidence and importance are numbers from 0 to 1. category is a short label such as location, work, education, preference, relationship, event, other.
 8. Questions, commands, requests and reminders ("remind me...", "do you remember...", "open...") are NOT facts about the user. Asking to play music or a video, set an alarm or a reminder is a command: extract no facts and no events from it.
 9. Use a predicate from the list whenever one fits. Otherwise use "note" and write the whole fact as one short English sentence in "object". Never invent new predicate names.
-10. Keep every text under 200 characters. If nothing qualifies return {{"entities":[],"facts":[],"events":[]}}.
+10. When the user names a relative, friend, roommate, boss or colleague ("my sister is Riya", "mere dost ka naam Rohan hai"), add a fact with subject "user", predicate has_<relation> (has_sister, has_friend, ...) and the person's name as object. Facts about that person then use the person's NAME as subject ("Riya works at Infosys" -> subject "Riya"). One sentence can hold both: "my sister's name is Priya and she lives in Pune" gives TWO facts, (user, has_sister, Priya) AND (Priya, lives_in, Pune). Never drop the second one.
+11. Something the user did or that happened on a day ("kal maine dentist appointment liya", "aaj maine phone kharida", "I had an interview today") is an EVENT, not a fact: give a short English summary and resolve its time.
+12. Keep every text under 200 characters. If nothing qualifies return {{"entities":[],"facts":[],"events":[]}}.
 
 Schema:
 {{"entities":[{{"name":"","type":"person|place|org|thing"}}],"facts":[{{"turn":1,"subject":"user","predicate":"lives_in","object":"Jaipur","time":null,"confidence":0.9,"category":"location"}}],"events":[{{"turn":1,"summary":"","time":null,"entities":[],"importance":0.5}}]}}
@@ -66,15 +71,31 @@ def _chunks(items: list, size: int) -> Iterator[list]:
         yield items[i : i + size]
 
 
+_PAYLOAD_KEYS = ("entities", "facts", "events")
+
+
+def _generate(brain: Any, prompt: str) -> Any:
+    # generate_task(): stateless, uncapped by the spoken-reply limit, no
+    # history writes. generate_response() is the fallback for brains that
+    # predate it (and for test doubles).
+    task = getattr(brain, "generate_task", None)
+    if callable(task):
+        return task(prompt)
+    return brain.generate_response(prompt)
+
+
 def _ask(brain: Any, prompt: str) -> tuple[dict | None, str]:
     """One LLM call with a single "valid JSON only" retry; returns (payload, reason)."""
     for attempt in range(2):
         try:
-            raw = brain.generate_response(prompt if attempt == 0 else prompt + _NUDGE)
+            raw = _generate(brain, prompt if attempt == 0 else prompt + _NUDGE)
         except Exception as exc:  # noqa: BLE001
             return None, "rate_limited" if is_rate_limited(str(exc)) else "llm_error"
         payload = parse_json(raw if isinstance(raw, str) else "")
-        if payload is not None:
+        # A truncated reply made parse_json() return the first INNER object
+        # ({"name": "Jaipur", ...}), so a broken answer counted as "ok" with
+        # zero facts. Only an object shaped like the schema is a payload.
+        if payload is not None and any(k in payload for k in _PAYLOAD_KEYS):
             return payload, "ok"
         if isinstance(raw, str) and is_rate_limited(raw[:400]):
             return None, "rate_limited"
@@ -109,6 +130,16 @@ def _collect(brain: Any, turns: list[dict], now_ts: float, now_iso: str, min_con
         def origin(item: dict) -> tuple[str, float]:
             idx = item["turn"] - 1 if item["turn"] and item["turn"] <= len(chunk) else len(chunk) - 1
             return f"c{chunk[idx]['id']}", to_epoch(chunk[idx]["timestamp"]) or now_ts
+
+        # Deterministic relation facts back up the LLM (relations.py).
+        seen = {(f["subject"].lower(), f["predicate"], f["object"].lower()) for f in clean["facts"]}
+        for number, turn in enumerate(chunk, start=1):
+            for rf in relation_facts(turn["message"]):
+                key = (rf["subject"].lower(), rf["predicate"], rf["object"].lower())
+                if key not in seen:
+                    seen.add(key)
+                    clean["facts"].append({**rf, "turn": number, "time": None,
+                                           "confidence": 0.9, "importance": 0.6})
 
         for fact in clean["facts"]:
             fact["source"], stamp = origin(fact)

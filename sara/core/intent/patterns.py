@@ -119,6 +119,14 @@ _INTENT_PATTERNS = [
     # ── Reminders ──────────────────────────────────────────────────────
     ("reminder_add", [
         r"remind me to (.+) (?:at|on|in) (.+)",
+        # Time before task ("remind me in 20 minutes to check the oven");
+        # the lookahead keeps the handler's (task, time) group order.
+        r"\bremind me (?=(?:in|after|at) .+? to (.+)$)(?:in|after|at) (.+?) to ",
+        # Day / part of day without a clock time: "remind me tomorrow
+        # morning about the meeting", "remind me about the meeting tonight".
+        r"\bremind me (?=(?:tomorrow|today|tonight|this|kal|aaj)\b.*?\b(?:about|to) (.+)$)((?:tomorrow|today|tonight|this|kal|aaj)\b(?: \w+){0,2}?) (?:about|to) ",
+        r"\bremind me (?:about|to) (.+?) ((?:tomorrow|today|tonight|kal|aaj)(?: (?:morning|afternoon|evening|night|subah|shaam|raat))?)\W*$",
+        r"(?:mujhe\s+)?(?=\d{1,2}(?::\d{2})?\s*baje\s+yaad\s+dila(?:na|o|\s+dena|\s+do)\s+(?:ki\s+)?(.+)$)(\d{1,2}(?::\d{2})?\s*baje)",
         r"set (?:a )?reminder (?:to|for) (.+) (?:at|on|in) (.+)",
         r"alert me (?:to )?(.+) (?:at|on|in) (.+)",
     ]),
@@ -134,6 +142,7 @@ _INTENT_PATTERNS = [
 
     # ── Timer ──────────────────────────────────────────────────────────
     ("set_timer", [
+        r"^\W*(?:set |start )?(?:a )?timer\s+(\d+(?:\.\d+)?\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?))\b",
         r"set (?:a )?timer (?:for|of) (.+)",
         r"start (?:a )?timer (?:for|of) (.+)",
         r"timer (?:for|of) (.+)",
@@ -184,6 +193,7 @@ _INTENT_PATTERNS = [
 
     # ── To-Do list (NEW, separate from Notes above) ──────────────────────
     ("add_todo", [
+        r"\badd (.+?) to (?:my |the )?to-?do(?: list)?\W*$",
         r"add (?:a )?to-?do[:\s]+(.+)",
         r"add (?:a |this |that )?task[:\s]+(.+)",
         r"add (?:this |that )?to (?:my )?to-?do list[:\s]+(.+)",
@@ -223,6 +233,8 @@ _INTENT_PATTERNS = [
 
     # ── Vision / Screen ────────────────────────────────────────────────
     ("screenshot_describe", [
+        r"\bscreen\s?shot\s+(?:le|lo|lelo|le\s+lo|lena|le\s+do|kheecho|khicho|kheench\s+lo|khinch\s+lo)\b",
+        r"स्क्रीनशॉट\s*(?:लो|ले\s*लो|लेना|ले\s*दो|खींचो|खींच\s*लो)",
         r"what'?s (?:on|showing on) (?:my |the )?screen",
         r"describe (?:my |the )?screen",
         # D78: was r"take a screenshot" -- the article was REQUIRED and the
@@ -251,6 +263,12 @@ _INTENT_PATTERNS = [
     # ── Weather ────────────────────────────────────────────────────────
     ("weather", [
         r"(?:what'?s|how'?s|get|check|give)(?: me)? (?:the )?(?:weather|whether)(?: report)? (?:like )?(?:in|at|for|near|of) (.+)",
+        # No place named: the empty group gives "" and get_weather("")
+        # asks wttr.in for the caller's own location.
+        r"^\W*(?:will it|is it going to) rain(?: today| tomorrow| now)?()\W*$",
+        r"^\W*(?:what'?s|how'?s) the weather(?: like)?(?: today| now| outside)?()\W*$",
+        r"^\W*(?:(?:aaj|kal|abhi)\s+)?(?:ka\s+)?mausam\s+(?:kaisa|kya|kaise)\s*(?:hai|h|he|rahega|hoga)?()\W*$",
+        r"^\W*(?:आज\s*)?(?:का\s*)?मौसम\s*(?:कैसा|क्या)\s*(?:है|रहेगा)?()\W*$",
         r"(?:weather|whether)(?: report)? (?:in|at|for|near|of) (.+)",
         r"(?:will it|is it going to) rain (?:in|at) (.+)",
         r"temperature (?:in|at|of) (.+)",
@@ -320,7 +338,11 @@ _INTENT_PATTERNS = [
     
     # ── Web ────────────────────────────────────────────────────────────
     ("web_search", [
-        r"(?:search|google|look up|find|search for) (.+?)(?:\s+for me)?$",
+        # "find" only as the opening verb: unanchored, it turned "i want
+        # to find my purpose in life" into a web search (E2E 2026-10-30).
+        _FILLER + r"find (?:out |me )?(.+?)(?:\s+for me)?$",
+        # "search for" before "search", or the query keeps the "for".
+        r"(?:search for|search|google|look up) (.+?)(?:\s+for me)?$",
         r"(?:search the web|search online) (?:for )?(.+)",
     ]),
     ("summarize_url", [
@@ -337,6 +359,11 @@ _INTENT_PATTERNS = [
 
     # ── Calculator ─────────────────────────────────────────────────────
     ("calculator", [
+        # E2E 2026-10-29: "what is 15 percent of 2400" captured only "15"
+        # and answered "The answer is 15." Capture the whole percent phrase
+        # first; _safe_calc() turns it into X/100*Y.
+        r"(\d+(?:\.\d+)?\s*(?:%|percent|per cent|pratishat)\s+of\s+\d+(?:\.\d+)?)",
+        r"(\d+(?:\.\d+)?\s+ka\s+\d+(?:\.\d+)?\s*(?:%|percent|per cent|pratishat))",
         r"(?:what is|calculate|compute|solve|evaluate)(?: the)? (\d[\d\s\+\-\*\/\(\)\.\^%]+)",
         # O1: bare "digit-digit" with a spaceless minus used to match
         # here on its own (no explicit keyword needed for this second
@@ -358,12 +385,20 @@ _INTENT_PATTERNS = [
     # ── System ─────────────────────────────────────────────────────────
     ("system_info", [
         r"system (?:status|info|information|report)",
+        r"\bhow much battery\b",
+        r"\b(?:kitni battery|battery (?:kitni|kitna|percentage|percent))\b",
         r"how'?s my (?:pc|computer|laptop|system)",
         r"(?:battery|cpu|ram|disk|memory) (?:status|level|usage|info)",
         r"give me a status report",
         r"check my (?:pc|computer|laptop|system)",
     ]),
     ("set_volume", [
+        # E2E held-out test 2026-10-29: these phrasings all fell to chat.
+        # No number captured -> _h_set_volume() steps by the direction word.
+        _FILLER + r"(?:turn|put)(?: the)? (?:volume|sound|audio) (?:up|down)(?: (?:a )?(?:bit|little|thoda))?$",
+        r"^\W*(?:(?:please|sara|hey sara|can you|could you)[,\s]+)*(?:make (?:it|the sound|the volume) |speak )?(?:a (?:bit|little) |thoda )?(?:louder|quieter|softer)\b",
+        r"\b(?:volume|awaaz|awaz|aawaz)\s+(?:(?:thoda|thodi|zara|aur|bahut)\s+)?(?:kam|badha|badhao|zyada|jyada|tez|dheere|dheemi|ghata|ghatao)\b",
+        r"(?:आवाज़?|वॉल्यूम)\s*(?:(?:थोड़ा|थोड़ी|ज़रा|और)\s*)?(?:कम|बढ़ा|बढ़ाओ|ज़्यादा|तेज़|धीमी|धीमा|घटा)",
         r"(?:set|change|put) (?:the )?volume (?:to |at )?(\d{1,3})%?",
         r"volume (?:to |at )?(\d{1,3})%?",
         r"(?:increase|raise|turn up) (?:the )?volume(?: by (\d+)%?)?",
@@ -594,6 +629,9 @@ _INTENT_PATTERNS = [
         r"(.+?) (?:ko )?pin (?:kro|karo)",
     ]),
     ("toggle_fullscreen", [
+        # No capture: the handler then toggles the ACTIVE window. The next
+        # pattern used to read "exit fullscreen" as an app named "exit".
+        r"^\W*(?:exit|leave|quit|close|turn off)\s+(?:the\s+)?full\s?screen(?:\s+mode)?\W*$",
         r"(?:make |set )?(.+?) fullscreen$",
         r"fullscreen (.+)",
         r"(.+?) ko fullscreen (?:kro|karo)",
@@ -648,6 +686,7 @@ _INTENT_PATTERNS = [
         r"\bwrite\b(?: this)?(?: for me)?:\s*(.+)",
     ]),
     ("press_key", [
+        r"^\W*(?:(?:please|sara)[,\s]+)*(?:press|hit)\s+(enter|escape|esc|tab|space|spacebar|backspace|delete|home|end|page up|page down|up arrow|down arrow|left arrow|right arrow|f\d{1,2})\W*$",
         r"\bpress\b (?:the )?(.+?) key",
         r"\bhit\b (?:the )?(.+?) key",
         # Third pattern `r"press (.+)"` removed: it was a bare catch-all
@@ -790,6 +829,7 @@ _INTENT_PATTERNS = [
 
     # ── File Operations ───────────────────────────────────────────────
     ("find_file", [
+        r"\bfind (?:my |the )?(.+?)\s+(?:pdf|docx?|xlsx?|pptx?|txt|csv|zip)\b(?: file)?\W*$",
         r"find (?:the )?file (?:called |named )?(.+)",
         r"search (?:for )?(?:a )?file (?:called |named )?(.+)",
         r"where is (?:the )?file (?:called |named )?(.+)",
@@ -1102,6 +1142,8 @@ _INTENT_PATTERNS = [
 # routine start kerne ki soch raaha hu" -- and never as part of an
 # actual app name.
 _NON_APP_TOKENS = frozenset({
+    # "exit full screen" is the fullscreen toggle, not an app called "full screen".
+    "full", "fullscreen",
     "kerne", "karne", "karna", "karni", "karunga", "karungi", "karta",
     "karti", "karke", "kar",
     "raha", "rahi", "rahe", "raaha", "rha",
@@ -1161,7 +1203,7 @@ _INTENT_GATES = {
     "open_url": ("open", "go to", "visit", "navigate"),
     "system_info": ("system", "pc", "computer", "laptop", "status",
                      "battery", "cpu", "ram", "disk", "memory"),
-    "set_volume": ("volume",),
+    "set_volume": ("volume", "louder", "quieter", "softer", "sound", "audio"),
     "mute": ("mute", "silence"),
     "unmute": ("unmute", "restore", "enable"),
     "lock_pc": ("lock",),
