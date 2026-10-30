@@ -543,42 +543,111 @@ def _resolve_tool_call_llm(user_input: str, model_name: str, cfg) -> Optional[Di
     optional LLM-assist path in this codebase behaves.
     """
     from sara.core.llm.clients import (
-        _build_gemini_generate_config,
         _get_gemini_client,
         _get_ollama_client,
         _select_llm_client,
     )
 
     backend, client = _select_llm_client(cfg, _get_ollama_client, _get_gemini_client)
+
+    if backend == "gemini" and (client is None or _gemini_blocked()):
+        # Gemini is down or out of quota: answer locally instead of
+        # dropping straight to the keyword heuristic.
+        fallback = _ollama_fallback(cfg, _get_ollama_client)
+        if fallback is None:
+            return None
+        backend, client, model_name = fallback
+
     if not client:
         return None
 
     if backend == "ollama":
-        # TOOLS_SCHEMA is already in Ollama's native
-        # {"type": "function", "function": {...}} shape -- used as-is.
-        resp = client.chat(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": _TOOL_ROUTER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_input},
-            ],
-            tools=TOOLS_SCHEMA,
-            think=False,
-            options={"num_predict": 150, "temperature": 0},
-            keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
-        )
+        return _ollama_tool_call(client, model_name, user_input, cfg)
 
-        calls = resp.message.tool_calls
-        if not calls:
-            # Same legitimate "no tool applies" answer as the Gemini branch.
-            return {"name": "unknown", "arguments": {}}
+    try:
+        return _gemini_tool_call(client, model_name, user_input, cfg)
+    except Exception as e:  # noqa: BLE001
+        _note_gemini_failure(e)
+        fallback = _ollama_fallback(cfg, _get_ollama_client)
+        if fallback is None:
+            raise
+        _, ollama_client, ollama_model = fallback
+        return _ollama_tool_call(ollama_client, ollama_model, user_input, cfg)
 
-        call = calls[0]
-        return {
-            "name": call.function.name,
-            "arguments": dict(call.function.arguments or {}),
-        }
 
+# Gemini tool-call outage window. A daily-quota 429 says how long it lasts
+# (hours); other failures get a short pause so one blip doesn't cost a
+# failed round-trip on every following turn.
+_GEMINI_FAILURE_PAUSE_S = 60.0
+_gemini_lock = threading.Lock()
+_gemini_blocked_until = 0.0
+
+
+def _gemini_blocked() -> bool:
+    with _gemini_lock:
+        return time.monotonic() < _gemini_blocked_until
+
+
+def _note_gemini_failure(exc: BaseException) -> None:
+    global _gemini_blocked_until
+    pause = _GEMINI_FAILURE_PAUSE_S
+    try:
+        from sara.core.llm.engine import _server_retry_after_s
+
+        asked = _server_retry_after_s(exc)
+        if asked:
+            pause = max(pause, min(float(asked), 86400.0))
+    except Exception:  # noqa: BLE001
+        pass
+    with _gemini_lock:
+        _gemini_blocked_until = max(_gemini_blocked_until, time.monotonic() + pause)
+
+
+def _ollama_fallback(cfg, ollama_getter):
+    """(backend, client, model) for local Ollama, or None when unavailable."""
+    if not getattr(cfg, "LLM_FALLBACK_ENABLED", True):
+        return None
+    try:
+        client = ollama_getter(cfg)
+    except Exception:  # noqa: BLE001
+        return None
+    model = getattr(cfg, "OLLAMA_FAST_MODEL", "") or getattr(cfg, "OLLAMA_MODEL", "")
+    if client is None or not model:
+        return None
+    return "ollama", client, model
+
+
+def _ollama_tool_call(client, model_name: str, user_input: str, cfg) -> Dict[str, Any]:
+    # TOOLS_SCHEMA is already in Ollama's native
+    # {"type": "function", "function": {...}} shape -- used as-is.
+    from sara.core.llm.clients import ollama_load_options
+
+    resp = client.chat(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": _TOOL_ROUTER_SYSTEM_PROMPT},
+            {"role": "user", "content": user_input},
+        ],
+        tools=TOOLS_SCHEMA,
+        think=False,
+        options={"num_predict": 150, "temperature": 0, **ollama_load_options(cfg)},
+        keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+    )
+
+    calls = resp.message.tool_calls
+    if not calls:
+        # Same legitimate "no tool applies" answer as the Gemini branch.
+        return {"name": "unknown", "arguments": {}}
+
+    call = calls[0]
+    return {
+        "name": call.function.name,
+        "arguments": dict(call.function.arguments or {}),
+    }
+
+
+def _gemini_tool_call(client, model_name: str, user_input: str, cfg) -> Dict[str, Any]:
+    from sara.core.llm.clients import _build_gemini_generate_config
     from google.genai import types as _gtypes
 
     # Real I/O-level timeout for the Gemini HTTP request itself (inner

@@ -101,10 +101,22 @@ _VOLUME_DIRECTION_RE = {
 _VOLUME_BY_AMOUNT_RE = re.compile(r"\bby\s+\d", re.IGNORECASE)
 
 
+# Hindi/Hinglish direction words. Substring checks for Devanagari: its
+# vowel signs are not \w, so \b would split inside the words.
+_VOLUME_UP_HI = re.compile(r"\b(?:badha|badhao|badha\s+do|zyada|jyada|tez)\b", re.IGNORECASE)
+_VOLUME_DOWN_HI = re.compile(r"\b(?:kam|ghata|ghatao|dheere|dheemi|dheema)\b", re.IGNORECASE)
+_VOLUME_UP_DEV = ("बढ़ा", "ज़्यादा", "तेज़")
+_VOLUME_DOWN_DEV = ("कम", "घटा", "धीमी", "धीमा")
+
+
 def _volume_direction(text: str) -> int:
     """+1 for a louder request, -1 for quieter, 0 when no direction is given."""
     if not isinstance(text, str):
         return 0
+    if _VOLUME_DOWN_HI.search(text) or any(w in text for w in _VOLUME_DOWN_DEV):
+        return -1
+    if _VOLUME_UP_HI.search(text) or any(w in text for w in _VOLUME_UP_DEV):
+        return 1
     for sign in (1, -1):
         if _VOLUME_DIRECTION_RE[sign].search(text):
             return sign

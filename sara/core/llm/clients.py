@@ -60,6 +60,19 @@ def _get_gemini_client(cfg):
     return _gemini_client
 
 
+def ollama_load_options(cfg) -> dict:
+    """Options that decide how Ollama LOADS the model (context size, GPU
+    layers). Every Ollama call must send the same values: if two calls
+    differ, Ollama unloads and reloads the model between them, which costs
+    seconds on every switch. OLLAMA_NUM_GPU unset = Ollama picks how many
+    layers fit; a large value (e.g. 99) forces every layer onto the GPU."""
+    opts = {"num_ctx": int(getattr(cfg, "OLLAMA_NUM_CTX", 4096))}
+    num_gpu = getattr(cfg, "OLLAMA_NUM_GPU", None)
+    if num_gpu is not None:
+        opts["num_gpu"] = int(num_gpu)
+    return opts
+
+
 def _get_embedding_vector(cfg, text: str):
     """
     Branches on cfg.EMBEDDING_BACKEND ("gemini" default, or "ollama") to
@@ -76,8 +89,14 @@ def _get_embedding_vector(cfg, text: str):
         if client is None:
             return None
         model = getattr(cfg, "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+        kwargs = {"keep_alive": getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m")}
+        num_gpu = getattr(cfg, "OLLAMA_EMBEDDING_NUM_GPU", None)
+        if num_gpu is not None:
+            # 0 keeps the embedder on CPU so it never evicts the chat
+            # model from a small GPU.
+            kwargs["options"] = {"num_gpu": int(num_gpu)}
         try:
-            resp = client.embed(model=model, input=text)
+            resp = client.embed(model=model, input=text, **kwargs)
         except Exception as e:
             print(f"[Embeddings] Ollama embed() call failed: {e}")
             return None

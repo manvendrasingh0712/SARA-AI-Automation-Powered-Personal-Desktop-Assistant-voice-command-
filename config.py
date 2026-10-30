@@ -68,6 +68,7 @@ PRODUCTION-AUDIT CHANGES (this revision)
 """
 
 import os
+import re
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
@@ -147,6 +148,18 @@ _MIN_TRACE_RETENTION_DAYS = 1
 _MAX_TRACE_RETENTION_DAYS = 365
 _MIN_TRACE_RING_SIZE = 50
 _MAX_TRACE_RING_SIZE = 5000
+
+
+def _ipv4_loopback(host: str) -> str:
+    """http://localhost:PORT -> http://127.0.0.1:PORT.
+
+    E2E 2026-10-30: on this Windows machine every request to Ollama made
+    after >~5 s idle cost an extra ~2.1 s (embedding 2072 ms -> 37 ms, chat
+    +2 s per voice turn). The client's pooled connection expires after
+    ~5 s; a fresh connection to "localhost" tries IPv6 (::1) first, Ollama
+    only listens on 127.0.0.1, and Windows waits ~2 s before falling back.
+    The IPv4 address skips the wait. Any other host is left untouched."""
+    return re.sub(r"(?i)^(\w+://)localhost(?=[:/]|$)", r"\g<1>127.0.0.1", (host or "").strip())
 
 
 def _bool(val: str | None, default: bool = False) -> bool:
@@ -352,8 +365,11 @@ class Config:
     # ── Ollama ────────────────────────────────────────────────────────────
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
     OLLAMA_FAST_MODEL: str = os.getenv("OLLAMA_FAST_MODEL", "")
-    OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    OLLAMA_HOST: str = _ipv4_loopback(os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434"))
     OLLAMA_TIMEOUT: int = _int(os.getenv("OLLAMA_TIMEOUT"), default=30)
+    # How long the brain waits for a still-starting Ollama server before
+    # warming the model (main.py starts Ollama in the background).
+    OLLAMA_STARTUP_WAIT_S: float = _float(os.getenv("OLLAMA_STARTUP_WAIT_S"), default=90.0)
     OLLAMA_NUM_CTX: int = _int(os.getenv("OLLAMA_NUM_CTX"), default=4096)
     OLLAMA_SUMMARY_NUM_CTX: int = _int(
         os.getenv("OLLAMA_SUMMARY_NUM_CTX"), default=4096
@@ -460,6 +476,11 @@ class Config:
 
     KOKORO_VOICE_HI: str = os.getenv("KOKORO_VOICE_HI", "hf_alpha")
     KOKORO_LANG_HI: str = os.getenv("KOKORO_LANG_HI", "hi")
+    # Phonemes for romanized Hinglish ("mera mood kharab hai"): "hi" (Hindi
+    # phonemizer, which falls back to English rules for Latin words) or
+    # "en" (English phonemes, still the Hindi voice). Devanagari text always
+    # uses "hi". Compare tts_samples/ and pick by ear.
+    KOKORO_HINGLISH_PHONEMES: str = os.getenv("KOKORO_HINGLISH_PHONEMES", "hi").lower()
 
     KOKORO_SPEED_EN: float = _float(os.getenv("KOKORO_SPEED_EN"), default=KOKORO_SPEED)
     KOKORO_SPEED_HI: float = _float(os.getenv("KOKORO_SPEED_HI"), default=KOKORO_SPEED)
@@ -930,6 +951,13 @@ class Config:
 
     WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "medium")
     WHISPER_BEAM_SIZE: int = _int(os.getenv("WHISPER_BEAM_SIZE"), default=2)
+    # Names appended to the Whisper prompt so they are spelled right
+    # ("Jaipur", not "Jypur"). STT_EXTRA_VOCABULARY = your own words, comma
+    # separated (your name, your city, favourite artists). See
+    # sara/audio/stt/vocabulary.py for the measurements.
+    STT_VOCABULARY_PROMPT: bool = _bool(os.getenv("STT_VOCABULARY_PROMPT", "True"), default=True)
+    STT_VOCABULARY_MAX_WORDS: int = _int(os.getenv("STT_VOCABULARY_MAX_WORDS"), default=24)
+    STT_EXTRA_VOCABULARY: str = os.getenv("STT_EXTRA_VOCABULARY", "")
     STT_NO_SPEECH_THRESHOLD: float = _float(
         os.getenv("STT_NO_SPEECH_THRESHOLD"), default=0.6
     )
@@ -972,6 +1000,15 @@ class Config:
     BARGE_IN_ENERGY_THRESHOLD: int = _int(
         os.getenv("BARGE_IN_ENERGY_THRESHOLD"), default=600
     )
+    # An interruption must also be this many times louder than the room
+    # level measured when SARA starts speaking (0 disables). Stops fans,
+    # traffic and music from cutting replies off in a loud room.
+    BARGE_IN_NOISE_RATIO: float = _float(os.getenv("BARGE_IN_NOISE_RATIO"), default=3.0)
+    # Shutdown / restart / log off / empty recycle bin ask "are you sure?"
+    # every time. False = only when speech recognition was unsure.
+    CONFIRM_DESTRUCTIVE_ACTIONS: bool = _bool(
+        os.getenv("CONFIRM_DESTRUCTIVE_ACTIONS", "True"), default=True
+    )
 
     # D40: webrtcvad aggressiveness, 0 (permissive) to 3 (strict).
     #
@@ -1004,6 +1041,9 @@ class Config:
 
     # ── Vision ────────────────────────────────────────────────────────────
     VISION_MODEL: str = os.getenv("VISION_MODEL", "gemini-2.5-flash")
+    # Local Ollama vision fallback when Gemini is out of quota or absent
+    # (e.g. "moondream"); empty = off. The model must be pulled first.
+    OLLAMA_VISION_MODEL: str = os.getenv("OLLAMA_VISION_MODEL", "")
 
     # ── Reminders ─────────────────────────────────────────────────────────
     REMINDER_CHECK_INTERVAL: int = _int(os.getenv("REMINDER_CHECK_INTERVAL"), default=5)
@@ -1113,6 +1153,19 @@ class Config:
     # EMBEDDING_MODEL (which is Gemini's model name) since the two
     # backends' model catalogs don't overlap.
     OLLAMA_EMBEDDING_MODEL: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+    # GPU layers for the Ollama embedder; unset = Ollama decides, 0 = CPU
+    # only (keeps a small GPU free for the chat model).
+    # GPU layers for the CHAT model; unset = Ollama decides. 99 = all
+    # layers on GPU (measured 55 vs 28 tok/s on an RTX 3050 4 GB) -- only
+    # if the GPU has room next to Whisper and Kokoro.
+    OLLAMA_NUM_GPU: "int | None" = (
+        _int(os.getenv("OLLAMA_NUM_GPU"), default=0)
+        if os.getenv("OLLAMA_NUM_GPU", "").strip() else None
+    )
+    OLLAMA_EMBEDDING_NUM_GPU: "int | None" = (
+        _int(os.getenv("OLLAMA_EMBEDDING_NUM_GPU"), default=0)
+        if os.getenv("OLLAMA_EMBEDDING_NUM_GPU", "").strip() else None
+    )
     EMBEDDING_TIMEOUT_S: float = _float(os.getenv("EMBEDDING_TIMEOUT_S"), default=4.0)
     EMBEDDING_MAX_RETRIES: int = _int(os.getenv("EMBEDDING_MAX_RETRIES"), default=2)
     EMBEDDING_RETRY_BASE_DELAY_S: float = _float(

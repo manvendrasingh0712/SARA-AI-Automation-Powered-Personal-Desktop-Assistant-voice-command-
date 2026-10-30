@@ -127,23 +127,24 @@ def test_both_barge_in_call_sites_use_the_helper() -> None:
     """
     If one site keeps reading energy_threshold directly, the per-chunk gate
     and the sustained-speech vote disagree about how loud an interruption
-    has to be.
+    has to be. Both go through _barge_in_effective_threshold(), which
+    applies the bleed multiplier to _barge_in_threshold().
     """
-    for fn in (SpeechToText._passes_barge_in_gate, SpeechToText.is_user_speaking):
+    def _code(fn):
         src = inspect.getsource(fn)
-        body = "\n".join(
-            l for l in src.splitlines() if not l.lstrip().startswith("#")
+        return "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
+
+    for fn in (SpeechToText._passes_barge_in_gate, SpeechToText.is_user_speaking):
+        assert "_barge_in_effective_threshold(" in _code(fn), (
+            f"{fn.__name__} no longer uses the shared barge-in threshold"
         )
-        assert "TTS_BLEED_GUARD_MULTIPLIER" in body, (
-            f"{fn.__name__} no longer applies the bleed multiplier"
-        )
-        idx = body.index("TTS_BLEED_GUARD_MULTIPLIER")
-        after = body[idx:]
-        assert "_barge_in_threshold()" in after, (
-            f"{fn.__name__} multiplies something other than "
-            f"_barge_in_threshold(), so the two barge-in gates can drift "
-            f"and D65's noise-scaled value can leak back in (D63)"
-        )
+    body = _code(SpeechToText._barge_in_effective_threshold)
+    assert "TTS_BLEED_GUARD_MULTIPLIER" in body, "the bleed multiplier is gone"
+    after = body[body.index("TTS_BLEED_GUARD_MULTIPLIER"):]
+    assert "_barge_in_threshold()" in after, (
+        "the helper multiplies something other than _barge_in_threshold(), "
+        "so D65's noise-scaled value can leak back in (D63)"
+    )
 
 
 def test_is_user_speaking_keeps_the_calibrated_threshold_when_tts_is_idle() -> None:
@@ -153,7 +154,7 @@ def test_is_user_speaking_keeps_the_calibrated_threshold_when_tts_is_idle() -> N
     noise-tracking threshold -- otherwise D65's fix is partly undone.
     """
     src = inspect.getsource(SpeechToText.is_user_speaking)
-    head = src[: src.index("TTS_BLEED_GUARD_MULTIPLIER")]
+    head = src[: src.index("_barge_in_effective_threshold(")]
     assert "thr = self.energy_threshold" in head
     assert "_rms(c) > thr" in head, (
         "the TTS-idle branch no longer compares against the calibrated "

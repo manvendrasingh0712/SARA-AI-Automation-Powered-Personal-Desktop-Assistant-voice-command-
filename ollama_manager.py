@@ -174,6 +174,12 @@ class OllamaManager:
     def _spawn(self, executable: str) -> subprocess.Popen:
         env = os.environ.copy()
         env.setdefault("OLLAMA_HOST", self._ollama_bind_host())
+        # Smaller, faster KV cache: on a 4 GB GPU this is what lets more of
+        # the model's layers fit (measured: 3371 -> 3117 MB, 22 -> 28
+        # tok/s). setdefault, so a value the user set themselves wins.
+        if os.getenv("SARA_OLLAMA_FAST_KV", "1").strip().lower() not in ("0", "false", "no"):
+            env.setdefault("OLLAMA_FLASH_ATTENTION", "1")
+            env.setdefault("OLLAMA_KV_CACHE_TYPE", "q8_0")
 
         startupinfo = None
         creationflags = 0

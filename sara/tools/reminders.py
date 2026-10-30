@@ -39,6 +39,8 @@ from typing import Optional, Callable, List, Dict, Any
 
 import dateparser
 
+from sara.tools.reminder_time import parse_when, split_trailing_day
+
 from config import Config
 from sara.tools.reminder_context import urgency_level
 
@@ -247,7 +249,12 @@ class ReminderManager:
         if not when_text or not when_text.strip():
             return "Please tell me when to remind you."
 
-        due_dt = dateparser.parse(
+        # "remind me to call mom tomorrow at 9" reaches here as
+        # ("call mom tomorrow", "9"): the day belongs to the time.
+        message, day = split_trailing_day(message)
+        if day:
+            when_text = f"{day} {when_text}"
+        due_dt = parse_when(when_text, datetime.now()) or dateparser.parse(
             when_text,
             languages=["en", "hi"],
             settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": datetime.now()},

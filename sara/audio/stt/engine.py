@@ -13,6 +13,7 @@ from .helpers import (
     _is_known_hallucination,
     _is_foreign_script_hallucination,
 )
+from .vocabulary import vocabulary_hint
 from .buffers import _PreBuffer, _RingBuffer, _VADFilter, _SilenceGate, _NoiseFloor, _CollectState
 
 import os
@@ -973,6 +974,7 @@ class SpeechToText:
 
     def set_tts_active(self, active: bool) -> None:
         if active:
+            self._ambient_rms = self._recent_ambient_rms()
             self._tts_active.set()
             self._pre_buf.clear()
         else:
@@ -1224,6 +1226,43 @@ class SpeechToText:
         base = float(getattr(Config, "BARGE_IN_ENERGY_THRESHOLD", 600))
         return min(float(self.energy_threshold), base)
 
+    def _recent_ambient_rms(self) -> Optional[float]:
+        """Room level just before SARA starts talking: the 20th-percentile
+        RMS of the last ~3 s of mic audio. The user's own command and the
+        wait for the reply are both in that window; the low percentile
+        lands in the gaps between words, i.e. on the background (fan,
+        traffic, music). Unlike _NoiseFloor, which only samples chunks
+        below 40 % of the capture threshold and so sees nothing at all in
+        a loud room, this stays meaningful exactly when the room is loud.
+        None when there is too little audio to judge."""
+        try:
+            n = int(self.SAMPLE_RATE / self.CHUNK_SIZE * 3.0)
+            chunks = self._ring.peek_latest(n=n)
+            if not chunks or len(chunks) < 8:
+                return None
+            energies = sorted(_rms(c) for c in chunks)
+            return float(energies[len(energies) // 5])
+        except Exception:
+            return None
+
+    def _barge_in_effective_threshold(self, boost: float = 1.0) -> float:
+        """Energy a chunk must beat to interrupt SARA while she speaks.
+
+        The configured/calibrated threshold times the echo-bleed guard, as
+        before -- and, new, never less than BARGE_IN_NOISE_RATIO x the room
+        level captured when TTS started. E2E test 2026-10-29: the room sat
+        at RMS ~664 against an effective gate of 300 x 1.6 = 480, so
+        background noise the VAD took for speech cut off 73 of 77 LLM
+        replies. In a quiet room (floors 125-203 measured on this machine)
+        3x the floor stays far below real speech (2300-5000)."""
+        bleed = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
+        thr = self._barge_in_threshold() * bleed * boost
+        ambient = getattr(self, "_ambient_rms", None)
+        ratio = float(getattr(Config, "BARGE_IN_NOISE_RATIO", 3.0))
+        if ambient and ratio > 0:
+            thr = max(thr, ambient * ratio)
+        return thr
+
     def _passes_barge_in_gate(self, chunk: bytes) -> bool:
         """Elevated energy+VAD check used to decide whether a single mic
         chunk arriving while TTS is speaking is allowed into the ring
@@ -1240,8 +1279,7 @@ class SpeechToText:
         is_user_speaking's majority-vote over several chunks to actually
         trigger a barge-in stop.
         """
-        bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
-        effective_thr = self._barge_in_threshold() * bleed_multiplier
+        effective_thr = self._barge_in_effective_threshold()
         if _rms(chunk) <= effective_thr:
             return False
         return self._vad.is_speech(chunk)
@@ -2454,13 +2492,16 @@ class SpeechToText:
         """
         sara_lang = getattr(Config, "SARA_LANGUAGE", "hinglish")
 
+        # Names the user actually uses (vocabulary.py): measured English
+        # word errors 5.7 % -> 2.1 %, no hallucinated names on silence.
+        hint = vocabulary_hint()
         if forced_lang == "hi":
-            return self._STATIC_TRANSCRIBE_PROMPT_HI
+            return self._STATIC_TRANSCRIBE_PROMPT_HI + hint
         if forced_lang == "en":
-            return _STATIC_TRANSCRIBE_PROMPT_EN
+            return _STATIC_TRANSCRIBE_PROMPT_EN + hint
         if sara_lang == "english":
-            return _STATIC_TRANSCRIBE_PROMPT_EN
-        return self._STATIC_TRANSCRIBE_PROMPT_NEUTRAL
+            return _STATIC_TRANSCRIBE_PROMPT_EN + hint
+        return self._STATIC_TRANSCRIBE_PROMPT_NEUTRAL + hint
 
     def _transcribe(
         self,
@@ -2890,14 +2931,11 @@ class SpeechToText:
             if not tts_playing:
                 return any(_rms(c) > thr for c in chunks)
 
-            bleed_multiplier = float(getattr(Config, "TTS_BLEED_GUARD_MULTIPLIER", 1.6))
             # D63: same cap as _passes_barge_in_gate -- the two must agree
             # about how loud an interruption has to be, and neither may
             # inherit D65's noise-scaled capture threshold.
-            effective_thr = (
-                self._barge_in_threshold()
-                * bleed_multiplier
-                * float(getattr(self, "_barge_boost", 1.0))
+            effective_thr = self._barge_in_effective_threshold(
+                float(getattr(self, "_barge_boost", 1.0))
             )
             loud = [c for c in chunks if _rms(c) > effective_thr]
             if not loud:

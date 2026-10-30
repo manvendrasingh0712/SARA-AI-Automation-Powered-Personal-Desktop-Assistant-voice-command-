@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from .prompt import _build_base_prompt, _time_of_day
 from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens
-from .clients import _get_ollama_client, _get_gemini_client
+from .clients import _get_ollama_client, _get_gemini_client, ollama_load_options
 
 
 import logging
@@ -45,6 +45,35 @@ def _router():
         from sara.core.router import get_router
 
         return get_router()
+    except Exception:
+        return None
+
+
+# System prompt for SaraLLM.generate_task(): background work, not chat.
+_TASK_SYSTEM_PROMPT = (
+    "You are a precise data-processing component inside a desktop assistant. "
+    "Follow the instructions exactly and output only what they ask for."
+)
+
+# Per-turn reply language (SaraLLM.set_turn_language). Placed last, right
+# before the user's message, so it overrides the base persona's language.
+_TURN_LANGUAGE_NOTES = {
+    "english": "Reply to this message in English only.",
+    "hinglish": (
+        "Reply to this message in Hinglish: Hindi written in Roman (English) "
+        "letters, naturally mixed with English words. Do not use Devanagari."
+    ),
+    "hindi": "इस संदेश का उत्तर केवल हिंदी में, देवनागरी लिपि में दें।",
+}
+
+
+def _first_chunk_cut(buffer: str) -> Optional[int]:
+    """Where to cut the first speakable chunk of a streamed reply, or None.
+    Delegates to the TTS chunker's first_chunk_end(); never raises."""
+    try:
+        from sara.audio.tts.chunker import first_chunk_end
+
+        return first_chunk_end(buffer, False)
     except Exception:
         return None
 
@@ -349,6 +378,7 @@ class SaraLLM:
 
         raw_lang = getattr(self._cfg, "SARA_LANGUAGE", "english").lower().strip()
         self._lang: str = raw_lang if raw_lang in self._VALID_LANGS else "english"
+        self._turn_lang: Optional[str] = None
 
         self._tod: str = _time_of_day(self._tz, self._lang)
         self.system_instruction: str = ""
@@ -471,6 +501,7 @@ class SaraLLM:
                 print(f"[LLM] Unknown language '{lang}'. valid: {self._VALID_LANGS}")
             return
         self._lang = lang
+        self._turn_lang = None  # an explicit choice beats a leftover per-turn note
         self._tod = _time_of_day(self._tz, self._lang)
         self._build_and_cache_system_instruction()
         if getattr(self._cfg, "DEBUG_MODE", False):
@@ -478,6 +509,26 @@ class SaraLLM:
 
     def get_language(self) -> str:
         return self._lang
+
+    def set_turn_language(self, lang: Optional[str]) -> None:
+        """Language for the NEXT reply only, without touching the system
+        prompt. set_language() rebuilds the whole prompt in another
+        language, which throws away Ollama's processed prefix: a turn that
+        switched language measured ~3.3 s to first word vs ~1 s (E2E
+        2026-10-30). This adds a short note after the history instead.
+        None clears it (reply in the prompt's own language)."""
+        lang = (lang or "").lower().strip() or None
+        if lang is not None and lang not in self._VALID_LANGS:
+            return
+        self._turn_lang = lang
+
+    def _turn_language_note(self) -> Optional[str]:
+        """The per-turn reply-language note, or None when the turn uses
+        the system prompt's own language."""
+        lang = getattr(self, "_turn_lang", None)
+        if not lang or lang == self._lang:
+            return None
+        return _TURN_LANGUAGE_NOTES.get(lang)
 
     def set_user_name(self, name: str) -> None:
         self.user_name = name.strip() or None
@@ -506,30 +557,70 @@ class SaraLLM:
                 self._warmup_error = "Ollama client not loaded."
                 self._warm_event.set()
             return
-        try:
-            client.list()
-        except Exception as e:
-            if report_event:
-                self._warmup_error = f"Ollama unreachable: {e}"
-                self._warm_event.set()
-            return
         threading.Thread(
-            target=self._warm_up_model,
-            args=(report_event,),
+            target=self._wait_for_ollama_then_warm,
+            args=(client, report_event),
             daemon=True,
             name="llm-warmup" if report_event else "ollama-fallback-warmup-model",
         ).start()
 
+    def _wait_for_ollama_then_warm(self, client, report_event: bool = True) -> None:
+        """main.py now starts Ollama in the background so the window opens
+        at once (startup measured 41 s cold, 9 s warm, all of it waiting on
+        Ollama). The server may therefore still be starting here: poll it
+        for up to OLLAMA_STARTUP_WAIT_S before warming the model, instead
+        of giving up and leaving the first question to pay a cold load."""
+        deadline = time.monotonic() + float(getattr(self._cfg, "OLLAMA_STARTUP_WAIT_S", 90.0))
+        while True:
+            try:
+                client.list()
+                break
+            except Exception as e:
+                if time.monotonic() >= deadline:
+                    if report_event:
+                        self._warmup_error = f"Ollama unreachable: {e}"
+                        self._warm_event.set()
+                    return
+                time.sleep(1.0)
+        self._warm_up_embedder()
+        self._warm_up_model(report_event)
+
+    def _warm_up_embedder(self) -> None:
+        """Load the local embedding model in the background. It costs ~2.6 s
+        to load (measured), and the first memory lookup of the session used
+        to pay that inside the user's first question ("route" 2.08 s on the
+        first chat turn, 35-140 ms afterwards). Only for the Ollama
+        embedding backend; never raises."""
+        if str(getattr(self._cfg, "EMBEDDING_BACKEND", "gemini")).lower() != "ollama":
+            return
+
+        def _go() -> None:
+            try:
+                from sara.core.rag import embed_text
+
+                embed_text("warm up")
+            except Exception:
+                pass
+
+        threading.Thread(target=_go, daemon=True, name="embed-warmup").start()
+
     def _warm_up_model(self, report_event: bool = True) -> None:
         client = _get_ollama_client(self._cfg)
         try:
+            # Warm with the real system prompt: Ollama keeps the processed
+            # prefix, so the first real question skips re-reading ~700
+            # tokens of instructions (first answer measured 5.8 s after a
+            # bare "hi" warm-up).
+            warm_messages = [{"role": "user", "content": "hi"}]
+            if getattr(self, "system_instruction", None):
+                warm_messages.insert(0, {"role": "system", "content": self.system_instruction})
             client.chat(
                 model=self._ollama_model_name,
-                messages=[{"role": "user", "content": "hi"}],
+                messages=warm_messages,
                 think=False,
                 options={
                     "num_predict": 1,
-                    "num_ctx": getattr(self._cfg, "OLLAMA_NUM_CTX", 4096),
+                    **ollama_load_options(self._cfg),
                 },
                 keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
             )
@@ -605,6 +696,16 @@ class SaraLLM:
         reference_context: Optional[str] = None,
     ) -> list:
         msgs: list = [{"role": "system", "content": self.system_instruction}]
+        # PROMPT-CACHE ORDER (E2E 2026-10-29): the stable part first -- the
+        # cached system instruction, then the conversation history -- and
+        # the per-turn context messages last, right before the new user
+        # message. Ollama reuses the already-processed prefix of the
+        # previous request; with the memory/context messages ahead of the
+        # history every turn diverged at message 2, so all ~1,400 prompt
+        # tokens were re-read on every turn (0.5-0.9 s measured).
+        for u, a in history:
+            msgs.append({"role": "user", "content": u})
+            msgs.append({"role": "assistant", "content": a})
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieved long-term
         # memories are injected as a SEPARATE system message, not merged
         # into self.system_instruction — that instruction string is
@@ -646,9 +747,9 @@ class SaraLLM:
                     ),
                 }
             )
-        for u, a in history:
-            msgs.append({"role": "user", "content": u})
-            msgs.append({"role": "assistant", "content": a})
+        language_note = self._turn_language_note()
+        if language_note:
+            msgs.append({"role": "system", "content": language_note})
         msgs.append({"role": "user", "content": prompt})
         return msgs
 
@@ -712,6 +813,10 @@ class SaraLLM:
         for u, a in history:
             contents.append({"role": "user", "parts": [{"text": u}]})
             contents.append({"role": "model", "parts": [{"text": a}]})
+        language_note = self._turn_language_note()
+        if language_note:
+            contents.append({"role": "user", "parts": [{"text": f"[System] {language_note}"}]})
+            contents.append({"role": "model", "parts": [{"text": "Understood."}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
         return contents
 
@@ -811,11 +916,39 @@ class SaraLLM:
             if self._cb_consecutive_failures >= threshold:
                 self._cb_cooldown_until = time.monotonic() + cooldown
 
+    def _circuit_breaker_trip_for(self, seconds: float) -> None:
+        """Trip the breaker immediately for `seconds` (capped at 24 h).
+
+        Used when the server itself said how long the primary cannot
+        succeed (a daily-quota 429 carries a retryDelay of hours). Waiting
+        for LLM_CIRCUIT_BREAKER_THRESHOLD more failures, then re-probing
+        every LLM_CIRCUIT_BREAKER_COOLDOWN_S, would spend a doomed primary
+        round-trip on turn after turn until the quota resets. Never
+        shortens an already-longer trip."""
+        try:
+            seconds = min(float(seconds), 86400.0)
+        except (TypeError, ValueError):
+            return
+        if seconds <= 0:
+            return
+        with self._cb_lock:
+            self._cb_consecutive_failures = max(
+                self._cb_consecutive_failures,
+                int(getattr(self._cfg, "LLM_CIRCUIT_BREAKER_THRESHOLD", 3)),
+            )
+            self._cb_cooldown_until = max(
+                self._cb_cooldown_until, time.monotonic() + seconds
+            )
+
     def primary_breaker_active(self) -> bool:
         """Public read of the primary-backend circuit breaker, for other
         components (e.g. short stateless generators) that must agree with
         chat about whether the primary backend is currently down."""
         return self._circuit_breaker_active()
+
+    def trip_primary_for(self, seconds: float) -> None:
+        """Public: trip the shared primary breaker for a server-given wait."""
+        self._circuit_breaker_trip_for(seconds)
 
     def note_primary_result(self, ok: bool) -> None:
         """Public write to the same breaker: True resets it, False counts
@@ -903,6 +1036,13 @@ class SaraLLM:
 
         cancel_event = _current_cancel_event()
         buffer_str: str = ""
+        # E2E 2026-10-29: the TTS v2 chunker can only cut what this loop
+        # yields, and this loop held the whole first SENTENCE back -- a
+        # long first sentence meant ~2 s of silence. With the flag on, the
+        # first chunk is cut by the same audited rule the TTS uses
+        # (sentence end, clause after 25 chars, word after 60; never inside
+        # numbers, URLs, abbreviations or Devanagari conjuncts).
+        early_first_chunk = bool(getattr(self._cfg, "VOICE_CHUNKER_V2", False))
         reply_parts: list[str] = []
         stream_ok = False
 
@@ -933,6 +1073,7 @@ class SaraLLM:
 
             for attempt in range(stage_retries + 1):
                 buffer_str = ""
+                first_cut_pending = early_first_chunk
                 reply_parts.clear()
                 yielded_any = False
                 stream_ok = False
@@ -971,6 +1112,14 @@ class SaraLLM:
                         # boundary trigger (whitespace/newline) is present in
                         # the new chunk.
                         if " " in piece or "\n" in piece:
+                            if first_cut_pending:
+                                cut = _first_chunk_cut(buffer_str)
+                                if cut:
+                                    head = _clean_markdown(buffer_str[:cut])
+                                    buffer_str = buffer_str[cut:]
+                                    first_cut_pending = False
+                                    if head:
+                                        yield head
                             ready, buffer_str = self._flush_sentences(buffer_str)
                             for s in ready:
                                 yield s
@@ -1024,6 +1173,8 @@ class SaraLLM:
                         asked = _server_retry_after_s(e)
                         if asked is not None and asked > max_delay:
                             non_transient = True
+                            if stage_idx == 0 and len(stages) > 1:
+                                self._circuit_breaker_trip_for(asked)
                             if is_debug:
                                 print(
                                     f"[LLM:{stage_name}] server asked to wait "
@@ -1324,7 +1475,7 @@ class SaraLLM:
             think=False,
             options={
                 "num_predict": int(getattr(self._cfg, "OLLAMA_NUM_PREDICT", 300)),
-                "num_ctx": int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096)),
+                **ollama_load_options(self._cfg),
                 "temperature": float(getattr(self._cfg, "OLLAMA_TEMPERATURE", 0.4)),
                 "top_k": int(getattr(self._cfg, "OLLAMA_TOP_K", 40)),
                 "top_p": float(getattr(self._cfg, "OLLAMA_TOP_P", 0.9)),
@@ -1659,6 +1810,46 @@ class SaraLLM:
             s.strip() for s in self.generate_response_stream(prompt)
         ).strip()
 
+    def generate_task(
+        self,
+        prompt: str,
+        *,
+        system: str = _TASK_SYSTEM_PROMPT,
+        max_tokens: int = 1500,
+        timeout_s: float = 90.0,
+    ) -> str:
+        """One stateless model call for background work (memory
+        extraction, consolidation). Unlike generate_response() it uses no
+        chat persona, writes nothing into the conversation history, keeps
+        the reply's newlines and symbols (no sentence joining or markdown
+        stripping), and has its own token budget instead of the spoken
+        reply cap. E2E 2026-10-30: through generate_response() the Memory2
+        JSON was cut at OLLAMA_NUM_PREDICT=300 tokens (zero facts ever
+        saved), "lives_in" lost its underscore, and every extraction
+        prompt landed in the chat history. Raises RuntimeError on failure;
+        the message names the failure kind (e.g. "quota")."""
+        from sara.core.llm.provider_runtime import generate_short
+
+        brain = self
+
+        class _Breaker:
+            def active(self) -> bool:
+                return bool(brain.primary_breaker_active())
+
+            def record(self, ok: bool) -> None:
+                brain.note_primary_result(ok)
+
+            def trip_for(self, seconds: float) -> None:
+                brain.trip_primary_for(seconds)
+
+        result = generate_short(
+            prompt, system, self._cfg,
+            timeout_s=timeout_s, max_tokens=max_tokens, breaker=_Breaker(),
+        )
+        if result.text is None:
+            raise RuntimeError(f"task generation failed: {result.failure}")
+        return result.text
+
     # ── Summarization ─────────────────────────────────────────────────
 
     def summarize_text(self, text: str) -> str:
@@ -1720,6 +1911,7 @@ class SaraLLM:
                     think=False,
                     options={
                         "num_predict": 200,
+                        **ollama_load_options(self._cfg),
                         "num_ctx": getattr(self._cfg, "OLLAMA_SUMMARY_NUM_CTX", 8192),
                     },
                     keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),

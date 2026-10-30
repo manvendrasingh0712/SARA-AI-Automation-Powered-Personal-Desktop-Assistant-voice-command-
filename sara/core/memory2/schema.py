@@ -33,6 +33,30 @@ PREDICATES: dict[str, str] = {
     "plays": "multi",
 }
 
+# Who a named person is to the user: "my sister is called Riya" ->
+# (user, has_sister, Riya). Without these the relation became a bare
+# "note" ("user: Riya"), the word "sister" was lost, and "where does my
+# sister work?" could never reach "Riya works at Infosys" (memory bench
+# multi-hop 45 %, E2E 2026-10-30).
+RELATIONS: tuple[str, ...] = (
+    "mother", "father", "sister", "brother", "son", "daughter", "wife", "husband",
+    "partner", "girlfriend", "boyfriend", "grandmother", "grandfather", "cousin",
+    "uncle", "aunt", "friend", "roommate", "boss", "manager", "colleague", "teacher",
+)
+for _rel in RELATIONS:
+    PREDICATES[f"has_{_rel}"] = "multi"
+
+# Hindi / Hinglish relation words the extractor may keep as spoken
+# ("has_dost" for "mere dost ka naam Rohan hai").
+_RELATION_ALIASES = {
+    "dost": "friend", "yaar": "friend", "behen": "sister", "behan": "sister", "bahan": "sister",
+    "didi": "sister", "bhai": "brother", "bhaiya": "brother", "maa": "mother", "mummy": "mother",
+    "mom": "mother", "mata": "mother", "papa": "father", "dad": "father", "pita": "father",
+    "pati": "husband", "patni": "wife", "biwi": "wife", "beta": "son", "beti": "daughter",
+    "dadi": "grandmother", "nani": "grandmother", "dada": "grandfather", "nana": "grandfather",
+    "flatmate": "roommate", "coworker": "colleague",
+}
+
 _FREE_FORM = frozenset({"note", "inferred"})
 _COMPACT = {name.replace("_", ""): name for name in PREDICATES}
 
@@ -95,6 +119,10 @@ def classify_predicate(predicate: object) -> tuple[str, str]:
     key = re.sub(r"[\s\-]+", "_", str(predicate or "").strip().lower())
     if key in PREDICATES:
         return key, PREDICATES[key]
+    if key.startswith("has_"):
+        alias = _RELATION_ALIASES.get(key[4:])
+        if alias:
+            return f"has_{alias}", "multi"
     squashed = _COMPACT.get(key.replace("_", ""))
     if squashed:
         return squashed, PREDICATES[squashed]

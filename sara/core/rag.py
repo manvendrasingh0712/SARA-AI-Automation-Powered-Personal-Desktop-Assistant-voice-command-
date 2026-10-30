@@ -10,6 +10,7 @@ import queue
 import re
 import sqlite3
 import threading
+from collections import OrderedDict
 import time
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
@@ -114,7 +115,46 @@ def _extract_fact_sentence(text: str) -> Optional[str]:
     return None
 
 
+# One chat turn embeds the same user text several times (RAG follow-up,
+# Memory2 retrieval, fact checks). Cache by (backend, model, text) so only
+# the first lookup pays for the model call.
+_EMBED_CACHE_MAX = 512
+_embed_cache: "OrderedDict[tuple, np.ndarray]" = OrderedDict()
+_embed_cache_lock = threading.Lock()
+
+
+def _embed_cache_key(text: str, model: Optional[str]) -> tuple:
+    backend = str(getattr(Config, "EMBEDDING_BACKEND", "gemini")).lower()
+    if model is None:
+        model = getattr(
+            Config,
+            "OLLAMA_EMBEDDING_MODEL" if backend == "ollama" else "EMBEDDING_MODEL",
+            "",
+        )
+    return backend, model, text
+
+
 def embed_text(
+    text: str, model: Optional[str] = None, debug: bool = False
+) -> Optional[np.ndarray]:
+    if not text or not text.strip():
+        return None
+    key = _embed_cache_key(text, model)
+    with _embed_cache_lock:
+        hit = _embed_cache.get(key)
+        if hit is not None:
+            _embed_cache.move_to_end(key)
+            return hit.copy()
+    vec = _embed_text_uncached(text, model, debug)
+    if vec is not None:
+        with _embed_cache_lock:
+            _embed_cache[key] = vec.copy()
+            while len(_embed_cache) > _EMBED_CACHE_MAX:
+                _embed_cache.popitem(last=False)
+    return vec
+
+
+def _embed_text_uncached(
     text: str, model: Optional[str] = None, debug: bool = False
 ) -> Optional[np.ndarray]:
     """
@@ -142,6 +182,8 @@ def embed_text(
                 EMBEDDING_MODEL = model
                 OLLAMA_EMBEDDING_MODEL = model
                 OLLAMA_HOST = getattr(Config, "OLLAMA_HOST", "http://localhost:11434")
+                OLLAMA_KEEP_ALIVE = getattr(Config, "OLLAMA_KEEP_ALIVE", "5m")
+                OLLAMA_EMBEDDING_NUM_GPU = getattr(Config, "OLLAMA_EMBEDDING_NUM_GPU", None)
                 OLLAMA_TIMEOUT = getattr(Config, "OLLAMA_TIMEOUT", 30.0)
                 EMBEDDING_TIMEOUT_S = getattr(Config, "EMBEDDING_TIMEOUT_S", 4.0)
                 GEMINI_API_KEY = getattr(Config, "GEMINI_API_KEY", "")
@@ -181,7 +223,13 @@ class LongTermMemory:
     def __init__(self, db_path: Optional[str] = None) -> None:
         self.enabled = bool(getattr(Config, "RAG_ENABLED", True))
         self.db_path = db_path or Config.DB_PATH
-        self._embed_model = getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
+        # The model of the ACTIVE backend: passing the Gemini name while
+        # EMBEDDING_BACKEND=ollama made every local embed ask Ollama for
+        # "gemini-embedding-001".
+        if str(getattr(Config, "EMBEDDING_BACKEND", "gemini")).lower() == "ollama":
+            self._embed_model = getattr(Config, "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+        else:
+            self._embed_model = getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
         self._embed_timeout_s = float(getattr(Config, "EMBEDDING_TIMEOUT_S", 4.0))
         self._top_k_default = int(getattr(Config, "RAG_TOP_K", 4))
         self._min_similarity = float(getattr(Config, "RAG_MIN_SIMILARITY", 0.40))
@@ -248,6 +296,8 @@ class LongTermMemory:
             target=self._writer_loop, name="RAG-Writer", daemon=True
         )
         self._writer_thread.start()
+        if self._ids:
+            self._write_queue.put(("__REEMBED__",))
         print(
             f"[RAG] Ready — {len(self._ids)} memories loaded | "
             f"model={self._embed_model} | top_k={self._top_k_default} | "
@@ -412,6 +462,12 @@ class LongTermMemory:
                 except Exception as e:
                     logger.error(f"[RAG] background clear failed: {e}")
                 continue
+            if isinstance(job, tuple) and job and job[0] == "__REEMBED__":
+                try:
+                    self._reembed_if_model_changed()
+                except Exception as e:
+                    logger.error(f"[RAG] background re-embed failed: {e}")
+                continue
             if isinstance(job, tuple) and job and job[0] == "__REPLACE_SOURCE__":
                 _, rep_source, rep_texts, future = job
                 try:
@@ -426,6 +482,42 @@ class LongTermMemory:
                 self._write_one(text, source, timestamp)
             except Exception as e:
                 logger.error(f"[RAG] background write failed: {e}")
+
+    def _reembed_if_model_changed(self) -> int:
+        """Re-embed every stored memory when the embedding model's vector
+        size no longer matches what is stored (e.g. Gemini 3072-dim ->
+        local Ollama 768-dim). Without this, search() hits a dimension
+        mismatch on every query and long-term memory silently returns
+        nothing. All-or-nothing: if any text fails to embed, the stored
+        vectors are left untouched. Returns the number of rows rewritten."""
+        with self._matrix_lock:
+            stored_dim = int(self._matrix.shape[1]) if self._matrix.size else 0
+        if not stored_dim:
+            return 0
+        probe = self._get_embedding("dimension probe")
+        if probe is None or probe.shape[0] == stored_dim:
+            return 0
+        rows = self._conn.execute("SELECT id, text FROM long_term_memory").fetchall()
+        updates = []
+        for row_id, text in rows:
+            vec = self._get_embedding(text)
+            if vec is None or vec.shape[0] != probe.shape[0]:
+                logger.warning(
+                    "[RAG] re-embed aborted: row %s could not be embedded; "
+                    "stored vectors left unchanged", row_id
+                )
+                return 0
+            updates.append((vec.astype(np.float32).tobytes(), row_id))
+        with self._conn:
+            self._conn.executemany(
+                "UPDATE long_term_memory SET embedding = ? WHERE id = ?", updates
+            )
+        self._load_into_memory()
+        logger.info(
+            "[RAG] re-embedded %d memories for model %s (%d -> %d dims)",
+            len(updates), self._embed_model, stored_dim, probe.shape[0],
+        )
+        return len(updates)
 
     def _write_one(self, text: str, source: str, timestamp: str) -> None:
         # SUPERSEDE FIX: distilled fact-type memories (source == "fact"

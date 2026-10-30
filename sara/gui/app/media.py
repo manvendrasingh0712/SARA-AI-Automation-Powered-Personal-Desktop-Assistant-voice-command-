@@ -329,6 +329,23 @@ def _session_display_name(session):
 _BROWSER_PROCESS_NAMES = {"chrome.exe", "msedge.exe", "msedgewebview2.exe", "firefox.exe"}
 
 
+_vm_last: dict = {}
+
+
+def _vm_print(message: str, every_s: float = 30.0) -> None:
+    """Print a [volume-match] diagnostic only when it changes, or every
+    30 s. The matcher runs on every media poll; with a YouTube video
+    playing it printed the same two lines hundreds of times per minute
+    (E2E log 2026-10-30), burying the lines that matter."""
+    key = message.split(" aumid=", 1)[0] + (" NO MATCH" if message.rstrip().endswith(")") and "NO MATCH" in message else "")
+    now = time.monotonic()
+    prev = _vm_last.get(key)
+    if prev is not None and prev[0] == message and now - prev[1] < every_s:
+        return
+    _vm_last[key] = (message, now)
+    print(message)
+
+
 def _pycaw_session_for(aumid, title=None, artist=None):
     """
     TIERED session resolution -- order matters, first match wins. This
@@ -382,8 +399,8 @@ def _pycaw_session_for(aumid, title=None, artist=None):
             pass
         rows.append((session, pid, name, _session_display_name(session)))
 
-    print(f"[volume-match] aumid={aumid!r} title={title!r} artist={artist!r} "
-          f"sessions_seen={[(pid, name, disp) for _, pid, name, disp in rows]}")
+    _vm_print(f"[volume-match] aumid={aumid!r} title={title!r} artist={artist!r} "
+              f"sessions_seen={[(pid, name, disp) for _, pid, name, disp in rows]}")
 
     # ---- Tier 1: exact real-AUMID match -----------------------------
     if aumid:
@@ -448,8 +465,8 @@ def _pycaw_session_for(aumid, title=None, artist=None):
               f"({len(tier2_candidates)} same-named sessions, Tier 3 could not disambiguate) NO MATCH")
         return None
 
-    print(f"[volume-match] aumid={aumid!r} -> proc_name={proc_name!r} NO MATCH "
-          f"(sessions seen: {[name for _, _, name, _ in rows]})")
+    _vm_print(f"[volume-match] aumid={aumid!r} -> proc_name={proc_name!r} NO MATCH "
+              f"(sessions seen: {[name for _, _, name, _ in rows]})")
     return None
 
 

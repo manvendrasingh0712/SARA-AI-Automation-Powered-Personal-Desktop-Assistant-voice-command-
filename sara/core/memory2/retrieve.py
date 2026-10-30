@@ -22,6 +22,7 @@ from .lexicon import (
     predicates_in_query,
     tokens,
 )
+from .schema import PREDICATES
 from .timeparse import parse_window
 from .types import Mem2Hit
 
@@ -40,6 +41,10 @@ _TOUCH_SLOTS = threading.BoundedSemaphore(8)
 _QCACHE: "OrderedDict[tuple[int, str], np.ndarray]" = OrderedDict()
 _QCACHE_MAX = 64
 _QLOCK = threading.Lock()
+_FIRST_PERSON = frozenset(
+    "i me my mine myself mera meri mere mujhe main maine hum humara "
+    "मैं मेरा मेरी मेरे मुझे मैंने".split()
+)
 _LAST: list[Mem2Hit] = []
 _LAST_LOCK = threading.Lock()
 
@@ -168,9 +173,29 @@ def _search(store: Any, text: str, now: float, k: int, floor: float,
         return []
     content = [t for t in qtoks if t not in STOP and len(t) > 1]
     sem_map: dict[tuple[str, int], float] = {}
+    self_question = bool(qset & _FIRST_PERSON)
+
+    def _other_kind(key: tuple[str, int], row: dict) -> bool:
+        # The question names a kind of fact ("favorite khana") and this is a
+        # fact of a DIFFERENT known kind (favorite_color): never a stand-in.
+        # "mera favorite khana kya hai?" answered "favorite color is blue"
+        # with the multilingual embedder (memory bench E06Q1, a false memory).
+        # Notes, inferred facts and events can still carry the answer.
+        if key[0] != "facts":
+            return False
+        # "where do I work?" answered "Rohan works at Google" (live E2E
+        # 2026-10-30): a first-person question that names no person or
+        # relation is about the user, never about someone else.
+        if self_question and not has_entity and not _is_user(row):
+            return True
+        if not preds:
+            return False
+        pred = str(row.get("predicate") or "")
+        return pred in PREDICATES and pred not in preds and pred not in ("note", "inferred")
+
     if not (preds or has_entity or window) or len(cand) < k:
         for key, row in rows.items():
-            if key not in cand and _lex(content, _row_tokens(row)) >= _EVIDENCE_SEM:
+            if key not in cand and not _other_kind(key, row) and _lex(content, _row_tokens(row)) >= _EVIDENCE_SEM:
                 cand[key] = {"ent": 0.0, "pred": 0.0, "time": 0.0}
         try:
             vec = _query_vec(store, embed, text)
@@ -178,7 +203,7 @@ def _search(store: Any, text: str, now: float, k: int, floor: float,
                 found = store.vector_candidates(vec, ("facts", "events"), max(k * 4, 20), statuses)
                 sem_map = {(str(a), int(b)): float(c) for a, b, c in found}
                 for key, cos in sem_map.items():
-                    if key in rows and key not in cand and cos >= _EVIDENCE_SEM:
+                    if key in rows and key not in cand and cos >= _EVIDENCE_SEM and not _other_kind(key, rows[key]):
                         cand[key] = {"ent": 0.0, "pred": 0.0, "time": 0.0}
         except Exception as exc:  # noqa: BLE001
             logger.warning("[Memory2] vector stage skipped (%s)", type(exc).__name__)

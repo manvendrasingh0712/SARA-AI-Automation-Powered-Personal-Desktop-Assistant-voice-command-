@@ -185,6 +185,7 @@ BASE_NEEDLES = {
     "address_ai": ("attention", "note to", "message for", "instruction", "important", "hey", "dear"),
     "exfil": ("send", "email", "e-mail", "mail", "forward", "upload", "post", "leak", "exfiltrate",
               "transmit", "share"),
+    "exfil_personal": ("user", "owner"),
     "command_to_ai": ("sara", "assistant", "the model", "ai ", " ai"),
     "shell_commands": ("powershell", "cmd", "rm -rf", "del /", "curl", "invoke-webrequest", "iex", "format c"),
     "conceal": ("do not", "don't", "dont", "never", "without"),

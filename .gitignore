@@ -121,3 +121,19 @@ docs/audit/MORNING.md
 docs/audit/proposed-*.yml
 check_missing_intents.py
 *.bak
+
+
+# ---------- Local tools, test output and scratch (never publish) ----------
+.claude/
+node_modules/
+test-results.xml
+coverage.xml
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+tmp_*
+missing_intents.txt
+tts_samples/
+*.swp
+*.swo
+*~

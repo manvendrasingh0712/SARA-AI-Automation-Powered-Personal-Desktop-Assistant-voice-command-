@@ -74,6 +74,19 @@ def _items(payload: dict, key: str) -> list:
     return value[: _CAPS[key]] if isinstance(value, list) else []
 
 
+_ARTICLES = frozenset({"a", "an", "the", "my", "ek"})
+
+
+def _bad_relation_object(predicate: str, obj: str) -> bool:
+    """A has_<relation> fact must name the person: "has_mother: a teacher in
+    Delhi" (live E2E 2026-10-30) is a description, and as a "name" it would
+    later be followed as if it were the mother's identity."""
+    if not predicate.startswith("has_") or predicate == "has_pet":
+        return False
+    words = obj.split()
+    return not words or len(words) > 3 or words[0].lower() in _ARTICLES
+
+
 def validate(payload: dict, *, min_confidence: float, skip_categories: set[str]) -> dict:
     """Filter and normalise a parsed payload.
 
@@ -101,6 +114,9 @@ def validate(payload: dict, *, min_confidence: float, skip_categories: set[str])
             out["dropped"] += 1
             continue
         predicate, _ = classify_predicate(raw_pred)
+        if _bad_relation_object(predicate, obj):
+            out["dropped"] += 1
+            continue
         key = re.sub(r"[\s\-]+", "_", raw_pred.lower())
         if predicate == "note" and key != "note":
             if any(len(part) > _WORD_MAX for part in key.split("_")):

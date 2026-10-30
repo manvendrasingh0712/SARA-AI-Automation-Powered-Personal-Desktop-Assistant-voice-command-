@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -16,11 +16,12 @@ EXPECT_KEYS = ("any", "abstain", "none_of")
 
 
 def to_epoch(value: str) -> float:
-    """ISO timestamp -> epoch seconds (naive values are read as UTC)."""
-    stamp = datetime.fromisoformat(value)
-    if stamp.tzinfo is None:
-        stamp = stamp.replace(tzinfo=timezone.utc)
-    return stamp.timestamp()
+    """ISO timestamp -> epoch seconds. Naive values are LOCAL time, exactly as
+    the app reads them (memory2.extract_validate.to_epoch) and as
+    timeparse.parse_window draws day boundaries. Reading them as UTC moved
+    every scenario 5:30 h on an IST machine, so "kal" (yesterday) missed an
+    event at 19:00 that it plainly covers."""
+    return datetime.fromisoformat(value).timestamp()
 
 
 def _is_text(value: Any) -> bool:

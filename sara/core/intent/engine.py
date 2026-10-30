@@ -55,6 +55,11 @@ def normalize_intent_text(text: str) -> str:
     normalized = re.sub(r"\bkr\s*(do|de|dena|dijiye)\b", r"kar \1", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\bkro\b", "karo", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\bkrna\b", "karna", normalized, flags=re.IGNORECASE)
+    # Greeting/politeness at the edges carries no intent: "hey can you open
+    # chrome for me" fell to chat because "hey " and " for me" broke the
+    # open_app patterns (E2E held-out test 2026-10-29).
+    normalized = re.sub(r"^(?:hey|hi|ok|okay)[,\s]+(?!sara\b)", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\s+(?:for me|please)\W*$", "", normalized, flags=re.IGNORECASE)
     return normalized
 
 
@@ -681,10 +686,27 @@ def _resolve_known_app_open(text: str) -> Optional[Tuple[str, re.Match]]:
     return None
 
 
+# A question ABOUT an action is not a request to do it: "what does mute
+# mean in hindi" muted the PC and "how to take a screenshot on mac" took a
+# screenshot (E2E held-out test 2026-10-29). Only openers that are never a
+# command themselves -- not "why ..." or "explain ...": "why did you say
+# that" and "explain that message" ARE commands (why_proactive).
+_INFO_QUESTION_RE = re.compile(
+    r"^\W*(?:(?:sara|hey\s+sara)[,\s]+)?"
+    r"(?:how\s+(?:to|do\s+i|do\s+you|can\s+i|should\s+i|does)\b"
+    r"|what\s+does\s+\S.*\bmean\b"
+    r"|what\s+is\s+the\s+meaning\s+of\b"
+    r"|(?:the\s+)?meaning\s+of\b)",
+    re.IGNORECASE,
+)
+
+
 def detect_intent(text: str) -> Tuple[str, Optional[re.Match]]:
     """Resolve a command locally while preserving negation and legacy match groups."""
     stripped = text.strip() if isinstance(text, str) else ""
     if not stripped or is_negated_action_request(stripped):
+        return "chat", None
+    if _INFO_QUESTION_RE.match(stripped):
         return "chat", None
 
     normalized = normalize_intent_text(stripped)

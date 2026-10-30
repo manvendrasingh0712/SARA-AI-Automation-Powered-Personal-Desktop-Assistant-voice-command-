@@ -16,16 +16,19 @@ these pieces, in particular "LLM ROUTING IS MUTUALLY EXCLUSIVE" and
 """
 import difflib
 import re
+import logging
 import time
 from typing import Optional as _Optional
 
 from config import Config
 
+logger = logging.getLogger("sara.dispatcher")
+
 from sara.core.intent import detect_intent, is_negated_action_request
 from sara.core.unmatched_log import log_unmatched
 from sara.tools import system as system_tools
 
-from .text_utils import _extract_name
+from .text_utils import _extract_name, _is_exit_command
 from .network_utils import _call_with_timeout
 from .state import TURN_STATE
 from .tts_worker import TTSWorker
@@ -203,6 +206,42 @@ def _time_of_day_bucket() -> str:
     if 17 <= hour < 21:
         return "evening"
     return "night"
+
+
+_REPLY_LANG = {"en": "english", "hi": "hindi", "hinglish": "hinglish"}
+
+
+def _match_reply_language(brain, user_input: str, context_state: dict) -> None:
+    """In auto language mode, answer in the language of THIS message.
+
+    E2E test 2026-10-30: typed English ("hello sara, how are you?", "why
+    is the sky blue?") was answered in Hinglish, because a typed turn never
+    changed the brain's language from SARA_LANGUAGE -- and Whisper only
+    reports en/hi, so a voice turn could never select Hinglish either.
+    A manual EN/HI choice ("manual" mode) is left alone. Never raises.
+    """
+    try:
+        turn_setter = getattr(brain, "set_turn_language", None)
+        if context_state.get("turn_lang_mode") != "auto":
+            if callable(turn_setter):
+                turn_setter(None)
+            return
+        from sara.audio.stt.helpers import _detect_language
+
+        lang = _REPLY_LANG.get(_detect_language(user_input or ""))
+        if not lang:
+            return
+        if callable(turn_setter):
+            # Per-turn note, not set_language(): rebuilding the system
+            # prompt on every switch cost ~2 s of prompt re-reading.
+            turn_setter(lang)
+            return
+        setter = getattr(brain, "set_language", None)
+        getter = getattr(brain, "get_language", None)
+        if callable(setter) and (not callable(getter) or getter() != lang):
+            setter(lang)
+    except Exception as e:
+        print(f"[Dispatcher] reply-language match failed (continuing): {e}")
 
 
 def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
@@ -592,7 +631,7 @@ def _handle_command(
         tts.speak(reply, fast=True)
         return reply
 
-    if _matches_phrase_set(lowered, _EXIT_WORDS):
+    if _is_exit_command(lowered, _EXIT_WORDS):
         session_control["action"] = "exit"
         farewell = "Shutting down. Goodbye!"
         ui_update("status", "speaking")
@@ -806,13 +845,15 @@ def _handle_command(
 
     intent, match = detect_intent(user_input)
 
-    # ── Low-confidence confirmation gate (NEW) ──────────────────────────
-    # ONLY for the 4 actions above, and ONLY when this turn's confidence
-    # was below threshold. Every other intent — including these same 4
-    # actions at normal confidence — falls straight through, unaffected.
-    if (
-        intent in _LOW_CONFIDENCE_CONFIRM_ACTIONS
-        and ctx["stt_confidence"] < _STT_CONFIDENCE_CONFIRM_THRESHOLD
+    # ── Confirmation gate for the 4 irreversible actions ────────────────
+    # E2E test 2026-10-30: a typed "shutdown the computer" (confidence 1.0)
+    # really powered the PC off 10 s later -- the gate only asked when STT
+    # confidence was low, so one clearly-heard misrecognition or a
+    # sentence like the test's was enough. Now it always asks, unless
+    # CONFIRM_DESTRUCTIVE_ACTIONS=False; low confidence keeps its wording.
+    low_confidence = ctx["stt_confidence"] < _STT_CONFIDENCE_CONFIRM_THRESHOLD
+    if intent in _LOW_CONFIDENCE_CONFIRM_ACTIONS and (
+        low_confidence or getattr(Config, "CONFIRM_DESTRUCTIVE_ACTIONS", True)
     ):
         ctx["confirm_state"]["pending"] = {
             "action": intent,
@@ -820,11 +861,11 @@ def _handle_command(
             "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
         }
         phrase = _LOW_CONFIDENCE_CONFIRM_PHRASES.get(intent, intent.replace("_", " "))
-        return _quick(
-            ctx,
-            f"I didn't hear that too clearly -- are you sure you want to {phrase}? "
-            f"Say yes or cancel.",
-        )
+        if low_confidence:
+            question = f"I didn't hear that too clearly -- are you sure you want to {phrase}?"
+        else:
+            question = f"Are you sure you want to {phrase}?"
+        return _quick(ctx, f"{question} Say yes or cancel.")
 
     if cancel_event.is_set():
         return ""
@@ -944,8 +985,10 @@ def _handle_command(
     # leaving context_hint undefined for a non-chat intent would risk a
     # NameError instead of the intended "no hint" no-op.
     context_hint = None
+    _tm_start = time.perf_counter()  # per-step timing for the [Timing] log line below
     if intent == "chat":
         chat_route, context_hint = _route_chat_message(user_input, context_state)
+        _tm_route = time.perf_counter()
 
         if chat_route == "plan":
             _t_annotate(route="planner", intent=intent)
@@ -1096,9 +1139,22 @@ def _handle_command(
         except Exception as e:
             print(f"[RAG] follow-up context lookup failed (continuing): {e}")
 
+    if intent == "chat":
+        # E2E 2026-10-30: every chat turn showed route_ms 2.06 s in the real
+        # app but ~0.3 s in a quiet test. Where it goes is unknown from here,
+        # so each chat turn logs it: route decision / planner / tool-router /
+        # memory lookup, in ms.
+        _tm_end = time.perf_counter()
+        _tm_r = locals().get("_tm_route", _tm_start)
+        logger.info(
+            "[Timing] chat route=%s decide=%.0fms later_steps=%.0fms total_before_llm=%.0fms",
+            chat_route, (_tm_r - _tm_start) * 1000, (_tm_end - _tm_r) * 1000,
+            (_tm_end - _tm_start) * 1000,
+        )
     _t_annotate(route="llm", intent=intent)
     _t_mark("route_done")
     ui_update("status", "thinking")
+    _match_reply_language(brain, user_input, context_state)
     try:
         mood_mix_hint = _build_turn_mood_mix_hint(user_input, context_state)
         if mood_mix_hint:

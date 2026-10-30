@@ -166,8 +166,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                         help="also write a RESULTS.md report")
     parser.add_argument("--gate", action="store_true",
                         help="redteam / memory mode: exit 2 when a threshold fails")
-    parser.add_argument("--embedder", choices=["hash", "gemini"], default="hash",
-                        help="memory mode: hash (offline, deterministic) or gemini (manual run)")
+    parser.add_argument("--embedder", choices=["hash", "app", "gemini"], default="hash",
+                        help="memory mode: hash (offline, deterministic), or app = the embedder "
+                             "the app is configured with (EMBEDDING_BACKEND; 'gemini' is the old "
+                             "name for the same thing)")
     parser.add_argument("--extract", choices=["gold", "llm"], default="gold",
                         help="memory mode: gold facts from the scenario file (llm: not implemented)")
     args = parser.parse_args(argv)

@@ -509,6 +509,15 @@ class ApiCoreMixin:
         turn_gen, turn_cancel = TURN_STATE.begin()
         _t_begin("text", text=text)
 
+        # Same per-turn language mode the voice loop records, so the
+        # dispatcher can match the reply language to what was typed in
+        # auto mode -- and leave a manual EN/HI choice alone.
+        try:
+            if self.lang_state is not None and isinstance(self.context_state, dict):
+                self.context_state["turn_lang_mode"] = self.lang_state.snapshot()[0]
+        except Exception as e:
+            print(f"[send_text_command lang mode error] {e}")
+
         # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X"
         # used to only be checked in the voice loop (run_sara_logic),
         # never here -- typing "exit" or "my name is Priya" in the GUI

@@ -133,9 +133,13 @@ _add("delete_todo", [r"\b(.+?)\s+(?:wala\s+)?(?:kaam|task|todo)\s+(?:todo\s+se\s
 _add("clipboard_read", [r"\bclipboard\s+(?:me|mein)\s+(?:kya\s+hai|kya\s+copy\s+hai|kya\s+likha)", r"\bclipboard\b.{0,20}\b(?:" + SHOW + r"|padh)"], ("clipboard",))
 _add("clipboard_write", [r"\b(?:ye|yeh|isse)?\s*clipboard\s+(?:me|mein)\s+(?:copy|save)\s+" + DO + r"\s*[:\-]?\s*(.+)", r"\bcopy\s+" + DO + r"\s+clipboard\s+(?:me|mein)\s*[:\-]?\s*(.+)"], ("clipboard",))
 _add("screenshot_describe", [r"\bscreen\s+(?:pe|par|mein|me)\s+(?:kya|jo)\s+(?:chal\s+raha|dikh\s+raha|hai|likha)", r"\bscreen\b.{0,30}\b(?:describe|batao|bata\s+do|samjhao)\b"], ("screen",))
+# Time words are not places: "kal ka mausam bahut accha tha" was a weather
+# lookup for a city called "Kal" (E2E 2026-10-30). A day-only question is
+# handled by the no-place weather patterns in patterns.py.
+_WHEN = r"(?!(?:kal|aaj|aj|parso|abhi|subah|shaam|raat)\b)"
 _add("weather", [
-    r"\b([A-Za-z][A-Za-z ]{1,25}?)\s+(?:ka|ki|ke)\s+(?:mausam|weather)\b",
-    r"\b([A-Za-z][A-Za-z ]{1,25}?)\s+(?:mein|me|ka)\s+(?:mausam|weather)\s+(?:kaisa|kya|batao)",
+    r"\b" + _WHEN + r"([A-Za-z][A-Za-z ]{1,25}?)\s+(?:ka|ki|ke)\s+(?:mausam|weather)\b",
+    r"\b" + _WHEN + r"([A-Za-z][A-Za-z ]{1,25}?)\s+(?:mein|me|ka)\s+(?:mausam|weather)\s+(?:kaisa|kya|batao)",
 ], ("mausam", "weather"))
 _add("news", [r"\b(?:aaj\s+ki\s+)?(?:taaza|taza|latest)?\s*(?:khabar(?:e|en)?|news)\s+(?:sunao|suna\s+do|batao|bata\s+do|dikhao)\s*()", r"\b(.+?)\s+(?:ki|ke\s+baare\s+mein)\s+(?:taaza\s+)?(?:khabar(?:e|en)?|news)\b"], ("khabar", "news"))
 _add("summarize_url", [r"\b(?:is|iss|ye|yeh)\s+(?:article|page|link|website)\s+ka\s+(?:summary|saransh)\s+(?:batao|bata\s+do|de\s+do|do)\s+(\S+)"], ("summary", "saransh"))
