@@ -64,7 +64,20 @@ _TODO_LINE_RE = re.compile(
 # neither function guesses -- they ask the user to be more specific
 # instead, so a vague reference can never delete/complete the wrong
 # to-do.
-_TODO_MATCH_THRESHOLD = getattr(Config, "TODO_MATCH_THRESHOLD", 0.45)
+_TODO_MATCH_THRESHOLD = getattr(Config, "TODO_MATCH_THRESHOLD", 0.75)
+
+_MAX_SPOKEN_TODOS = 6
+
+_TODO_FILLER = frozenset({
+    "the", "a", "an", "my", "to", "do", "todo", "to-do", "task", "item", "list", "from", "of", "please",
+    "and", "for", "mark", "as", "done", "delete", "remove", "complete", "finish", "finished", "that",
+    "this", "it", "on", "in", "is", "ko", "ka", "ki", "ke", "se", "wala", "wali",
+})
+
+
+def _todo_words(text: str) -> list:
+    """Meaningful words of a to-do phrase (filler such as 'the', 'task', 'delete' dropped)."""
+    return [w for w in re.findall(r"[a-z0-9ऀ-ॿ]+", text.lower()) if w not in _TODO_FILLER]
 
 
 
@@ -532,18 +545,38 @@ def _resolve_todo_target(identifier: str, todos: list) -> "dict | None":
         if todo["id"].lower() == normalized:
             return todo
 
-    best = None
-    best_score = 0.0
+    # E2E audit 2026-10-30: "delete the todo: call the bank" deleted "call
+    # about invoice ca958edf" -- a raw similarity ratio >= 0.45 let two items
+    # that merely share "call " match, and a destructive action acted on it.
+    # Now the words the user said must actually be in the item (typos and
+    # word endings tolerated), and a tie between two items asks instead of
+    # picking one.
+    wanted = _todo_words(normalized)
+    scored = []
     for todo in todos:
         text = todo["text"].lower()
-        ratio = difflib.SequenceMatcher(None, normalized, text).ratio()
-        if normalized in text:
-            ratio = max(ratio, 0.8)
-        if ratio > best_score:
-            best_score = ratio
-            best = todo
-    if best is None or best_score < _TODO_MATCH_THRESHOLD:
+        item_words = _todo_words(text)
+        if normalized and normalized in text:
+            score = 0.95
+        else:
+            covered = sum(
+                1 for w in wanted
+                if w in item_words or any(
+                    len(w) >= 4 and len(t) >= 4 and (t.startswith(w) or w.startswith(t))
+                    for t in item_words
+                )
+            )
+            coverage = covered / len(wanted) if wanted else 0.0
+            ratio = difflib.SequenceMatcher(None, normalized, text).ratio()
+            score = max(0.6 + 0.35 * coverage if coverage >= 0.75 else 0.0,
+                        ratio if ratio >= 0.8 else 0.0)
+        scored.append((score, todo))
+    scored.sort(key=lambda pair: -pair[0])
+    best_score, best = scored[0]
+    if best_score < _TODO_MATCH_THRESHOLD:
         return None
+    if len(scored) > 1 and best_score < 0.99 and scored[1][0] >= best_score - 0.02:
+        return None  # two items match equally well -> ask, never guess
     return best
 
 
@@ -611,8 +644,13 @@ def list_todos(pending_only: bool = True) -> str:
         marker = " (done)" if t["done"] else ""
         return f"You have one to-do: {t['text']}{marker}."
 
-    described = [f"{t['text']}{' (done)' if t['done'] else ''}" for t in todos]
-    return f"You have {len(todos)} to-dos: " + "; ".join(described) + "."
+    # Spoken aloud: reading 30 items is unbearable, so cap it (E2E audit
+    # 2026-10-30 read out all 34).
+    shown = todos[:_MAX_SPOKEN_TODOS]
+    described = [f"{t['text']}{' (done)' if t['done'] else ''}" for t in shown]
+    more = len(todos) - len(shown)
+    tail = f", and {more} more" if more > 0 else ""
+    return f"You have {len(todos)} to-dos: " + "; ".join(described) + tail + "."
 
 
 def complete_todo(identifier: str) -> str:

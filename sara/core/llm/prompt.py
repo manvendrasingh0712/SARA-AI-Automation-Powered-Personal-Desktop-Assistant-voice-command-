@@ -117,6 +117,24 @@ def _security_rule() -> str:
     return security_rule()
 
 
+# E2E audit 2026-10-30: the chat model answered the mistyped command "opn
+# chrmoe" with "Chrome opened!" (nothing was opened), "whats teh time" with an
+# invented "8:45 AM", and the half command "weather in" with "I can't check
+# live weather" (SARA can). The rules below are appended to every language
+# variant of the system prompt.
+_ACTION_RULES = (
+    " Actions (opening or closing apps, changing settings or volume, setting reminders, "
+    "timers or alarms, playing media, notes, to-dos, weather, news) are carried out by SARA's "
+    "command system, never by you in this chat. So never say or imply that you did one of "
+    "them; if the user seems to want an action you did not receive as a command, say you "
+    "did not catch it and ask them to say it again. SARA can do all of these, so never say "
+    "you cannot; if a request is incomplete (for example 'weather in' with no city), ask for "
+    "the missing part. Never guess facts you cannot know, such as today's date or the exact "
+    "time: use the current date and time given in the conversation, and otherwise say you "
+    "do not know."
+)
+
+
 def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str]) -> str:
     no_markdown = (
         "Never use markdown — no asterisks, hashtags, bullet points, "
@@ -174,7 +192,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
                 "every single turn."
             )
         base += _security_rule()
-        return base
+        return base + _ACTION_RULES
 
     if lang == "hindi":
         base = (
@@ -222,7 +240,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
                 "Kabhi kabhi naam lo — har baar nahi."
             )
         base += _security_rule()
-        return base
+        return base + _ACTION_RULES
 
     # Hinglish
     base = (
@@ -278,7 +296,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
         "(Hinglish) mein hi jawab de, chahe user pura English mein bole ya "
         "pura Hindi mein — kabhi bhi 100% ek hi language mein reply mat kar."
     )
-    return base
+    return base + _ACTION_RULES
 
 
 _TOD_PHRASES = {

@@ -109,7 +109,7 @@ def _matches_phrase_set(text: str, phrases: set) -> bool:
 _EXIT_FILLER = frozenset({
     "sara", "ok", "okay", "please", "now", "ab", "abhi", "ji", "hey", "hi",
     "toh", "to", "then", "for", "today", "so", "bas", "chalo", "thanks",
-    "thank", "you", "tata", "see", "ya", "yaar",
+    "thank", "you", "tata", "see", "ya", "yaar", "can", "no", "just", "alright",
 })
 
 

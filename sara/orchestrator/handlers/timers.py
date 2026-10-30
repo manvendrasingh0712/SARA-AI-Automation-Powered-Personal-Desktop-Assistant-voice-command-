@@ -114,13 +114,26 @@ def _h_set_alarm(match, ctx):
 
 
 def _h_start_stopwatch(match, ctx):
-    return _quick(ctx, system_tools.start_stopwatch())
+    reply = system_tools.start_stopwatch()
+    if reply.startswith("Stopwatch started"):
+        _clock_card(ctx, "started")  # the Home Clock Card follows along
+    return _quick(ctx, reply)
 
 
 def _h_stop_stopwatch(match, ctx):
-    return _quick(ctx, system_tools.stop_stopwatch())
+    reply = system_tools.stop_stopwatch()
+    if reply.startswith("Stopwatch stopped"):
+        _clock_card(ctx, "paused")
+    return _quick(ctx, reply)
 
 
 def _h_lap_stopwatch(match, ctx):
     return _quick(ctx, system_tools.lap_stopwatch())
 
+
+def _clock_card(ctx, status: str) -> None:
+    """Best effort: mirror the voice stopwatch on the Clock Card (js/clock-card.js)."""
+    try:
+        ctx["ui_update"]("stopwatch_state", {"status": status})
+    except Exception:
+        pass

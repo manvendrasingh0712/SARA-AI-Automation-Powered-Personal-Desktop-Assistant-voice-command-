@@ -57,6 +57,9 @@ _LOW_CONFIDENCE_CONFIRM_ACTIONS = {
     "restart_system",
     "log_off",
     "empty_recycle_bin",
+    # E2E audit 2026-10-30: "delete all my notes" wiped every note at once,
+    # with no question asked.
+    "clear_notes",
 }
 
 _LOW_CONFIDENCE_CONFIRM_PHRASES = {
@@ -64,6 +67,7 @@ _LOW_CONFIDENCE_CONFIRM_PHRASES = {
     "restart_system": "restart the system",
     "log_off": "log off",
     "empty_recycle_bin": "empty the recycle bin",
+    "clear_notes": "delete all your notes",
 }
 
 _STT_CONFIDENCE_CONFIRM_THRESHOLD = getattr(

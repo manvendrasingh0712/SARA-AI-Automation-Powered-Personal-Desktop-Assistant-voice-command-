@@ -69,6 +69,39 @@
 
 No baseline to compare. Create it with `python -m bench.run_bench --mode router --accept-baseline`.
 
+## Memory
+
+- Embedder: hash | Extraction: gold | Scenarios: 40 | Questions: 130
+
+| Metric | Baseline | Memory 2.0 | Change |
+| --- | --- | --- | --- |
+| Recall@1 | 45.7% | 96.2% | ▲ +50.5 pts |
+| Recall@3 | 54.3% | 98.1% | ▲ +43.8 pts |
+| Recall@5 | 54.3% | 98.1% | ▲ +43.8 pts |
+| MRR | 0.5000 | 0.9714 | ▲ +0.4714 |
+| Contradiction accuracy | 8.0% | 100.0% | ▲ +92.0 pts |
+| Temporal accuracy | 21.1% | 89.5% | ▲ +68.4 pts |
+| Abstention accuracy | 79.0% | 100.0% | ▲ +21.1 pts |
+| False-memory rate | 21.1% | 0.0% | ▼ -21.1 pts |
+| Forgetting leak rate | 16.7% | 0.0% | ▼ -16.7 pts |
+| Overall pass rate | 53.1% | 98.5% | ▲ +45.4 pts |
+| Retrieval latency p50 | 0.0194 ms | 0.8061 ms | ▲ +0.7867 ms (+4055.2%) |
+| Retrieval latency p95 | 0.0404 ms | 1.6965 ms | ▲ +1.6561 ms (+4099.3%) |
+| Type abstain: pass rate | 79.0% | 100.0% | ▲ +21.1 pts |
+| Type contradiction: pass rate | 8.0% | 100.0% | ▲ +92.0 pts |
+| Type contradiction: recall@3 | 40.0% | 100.0% | ▲ +60.0 pts |
+| Type contradiction_history: pass rate | 100.0% | 100.0% | = +0.0 pts |
+| Type contradiction_history: recall@3 | 100.0% | 100.0% | = +0.0 pts |
+| Type forget: pass rate | 83.3% | 100.0% | ▲ +16.7 pts |
+| Type multihop: pass rate | 36.4% | 100.0% | ▲ +63.6 pts |
+| Type multihop: recall@3 | 36.4% | 100.0% | ▲ +63.6 pts |
+| Type single: pass rate | 72.5% | 100.0% | ▲ +27.5 pts |
+| Type single: recall@3 | 72.5% | 100.0% | ▲ +27.5 pts |
+| Type temporal: pass rate | 21.1% | 89.5% | ▲ +68.4 pts |
+| Type temporal: recall@3 | 21.1% | 89.5% | ▲ +68.4 pts |
+
+▲ increased, ▼ decreased, = unchanged.
+
 ## Security
 
 - Attack rows: 72 (covered 63, documented gaps 9) | Benign rows: 102
@@ -80,8 +113,8 @@ No baseline to compare. Create it with `python -m bench.run_bench --mode router 
 | Attack success rate (all) | 0.0% | - |
 | False-positive rate (benign) | 0.0% | <= 2.0% |
 | Policy invariant (tainted turn) | ok (310 checks) | ok |
-| Detector latency p50 | 0.0925 ms | - |
-| Detector latency p95 | 0.1606 ms | - |
+| Detector latency p50 | 0.0930 ms | - |
+| Detector latency p95 | 0.1832 ms | - |
 
 ### Recall per category (covered rows)
 
@@ -116,36 +149,3 @@ No baseline to compare. Create it with `python -m bench.run_bench --mode router 
 ### Documented gaps (not in the target)
 
 9 uncovered rows, 1 detected (11.1%).
-
-## Memory
-
-- Embedder: hash | Extraction: gold | Scenarios: 40 | Questions: 130
-
-| Metric | Baseline | Memory 2.0 | Change |
-| --- | --- | --- | --- |
-| Recall@1 | 45.7% | 96.2% | ▲ +50.5 pts |
-| Recall@3 | 54.3% | 98.1% | ▲ +43.8 pts |
-| Recall@5 | 54.3% | 98.1% | ▲ +43.8 pts |
-| MRR | 0.5000 | 0.9714 | ▲ +0.4714 |
-| Contradiction accuracy | 8.0% | 100.0% | ▲ +92.0 pts |
-| Temporal accuracy | 21.1% | 89.5% | ▲ +68.4 pts |
-| Abstention accuracy | 79.0% | 100.0% | ▲ +21.1 pts |
-| False-memory rate | 21.1% | 0.0% | ▼ -21.1 pts |
-| Forgetting leak rate | 16.7% | 0.0% | ▼ -16.7 pts |
-| Overall pass rate | 53.1% | 98.5% | ▲ +45.4 pts |
-| Retrieval latency p50 | 0.0194 ms | 0.8061 ms | ▲ +0.7867 ms (+4055.2%) |
-| Retrieval latency p95 | 0.0404 ms | 1.6965 ms | ▲ +1.6561 ms (+4099.3%) |
-| Type abstain: pass rate | 79.0% | 100.0% | ▲ +21.1 pts |
-| Type contradiction: pass rate | 8.0% | 100.0% | ▲ +92.0 pts |
-| Type contradiction: recall@3 | 40.0% | 100.0% | ▲ +60.0 pts |
-| Type contradiction_history: pass rate | 100.0% | 100.0% | = +0.0 pts |
-| Type contradiction_history: recall@3 | 100.0% | 100.0% | = +0.0 pts |
-| Type forget: pass rate | 83.3% | 100.0% | ▲ +16.7 pts |
-| Type multihop: pass rate | 36.4% | 100.0% | ▲ +63.6 pts |
-| Type multihop: recall@3 | 36.4% | 100.0% | ▲ +63.6 pts |
-| Type single: pass rate | 72.5% | 100.0% | ▲ +27.5 pts |
-| Type single: recall@3 | 72.5% | 100.0% | ▲ +27.5 pts |
-| Type temporal: pass rate | 21.1% | 89.5% | ▲ +68.4 pts |
-| Type temporal: recall@3 | 21.1% | 89.5% | ▲ +68.4 pts |
-
-▲ increased, ▼ decreased, = unchanged.

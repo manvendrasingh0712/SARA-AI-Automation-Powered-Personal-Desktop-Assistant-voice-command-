@@ -434,10 +434,22 @@ def clean_for_tts(text: str) -> str:
     text = _MD_RE.sub(r"\2", text)
     text = _URL_RE.sub("link", text)
     text = _EMOJI_RE.sub("", text)
+    # "+22°C" (wttr.in) was spoken as "+twenty-two°C": say the unit in words.
+    text = _DEGREES_RE.sub(_degrees_words, text)
     for pat, repl in _ABBR:
         text = pat.sub(repl, text)
     text = _normalize_numbers_for_tts(text, lang)
     return _MULTI_SP.sub(" ", text).strip()
+
+
+_DEGREES_RE = re.compile(r"(?<![\w.])([+\-−]?)(\d+(?:\.\d+)?)\s*°\s*([CcFf]?)(?![A-Za-z])")
+
+
+def _degrees_words(m: "re.Match") -> str:
+    sign, number, unit = m.group(1), m.group(2), m.group(3).upper()
+    minus = "minus " if sign in ("-", "−") else ""   # a leading "+" is just formatting
+    suffix = {"C": " degrees Celsius", "F": " degrees Fahrenheit"}.get(unit, " degrees")
+    return f"{minus}{number}{suffix}"
 
 
 # ══════════════════════════════════════════════════════════════════════════════

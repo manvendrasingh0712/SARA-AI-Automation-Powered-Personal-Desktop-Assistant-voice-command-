@@ -38,7 +38,9 @@ def test_history_comes_before_per_turn_context():
 
 def test_without_context_it_is_system_history_user():
     msgs = _brain()._build_messages_ollama("hi", [("q", "a")])
-    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]
+    # system prompt, history, then the per-turn clock note, then the message
+    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "system", "user"]
+    assert msgs[3]["content"].startswith("Current local date and time: ")
 
 
 def test_first_chunk_cut_uses_the_tts_rule():

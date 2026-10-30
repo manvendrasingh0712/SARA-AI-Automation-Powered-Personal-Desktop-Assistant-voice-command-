@@ -136,7 +136,7 @@ _DDGS_TIMEOUT_SECONDS = 10
 
 # OPTIMIZATION 11: named timeout / limit constants instead of magic
 # numbers scattered across functions.
-_WEATHER_TIMEOUT_SECONDS = 8
+_WEATHER_TIMEOUT_SECONDS = 4  # wttr.in answers in ~0.6 s when it answers at all; the backup needs the time
 _PAGE_FETCH_TIMEOUT_SECONDS = 10
 _YTDLP_SOCKET_TIMEOUT_SECONDS = 8
 _YTDLP_SCRAPE_TIMEOUT_SECONDS = 10
@@ -813,6 +813,54 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
 # wttr.in serves plain text only to command-line clients.
 _WTTR_USER_AGENT = "curl/8.4.0"
 
+_WMO_WORDS = {
+    0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "foggy", 48: "foggy",
+    51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 56: "freezing drizzle", 57: "freezing drizzle",
+    61: "light rain", 63: "rain", 65: "heavy rain", 66: "freezing rain", 67: "freezing rain",
+    71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains", 80: "light showers",
+    81: "showers", 82: "heavy showers", 85: "snow showers", 86: "snow showers",
+    95: "a thunderstorm", 96: "a thunderstorm with hail", 99: "a thunderstorm with hail",
+}
+
+
+def _weather_open_meteo(location: str) -> "str | None":
+    """Backup weather source (Open-Meteo: free, no key). None when it cannot
+    answer, so the caller keeps its original message. Needs a place name:
+    wttr.in can geolocate by IP, this cannot."""
+    if not location:
+        return None
+    try:
+        geo = _session.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={"name": location, "count": 1, "language": "en", "format": "json"},
+            timeout=3.5,
+        )
+        geo.raise_for_status()
+        found = (geo.json().get("results") or [None])[0]
+        if not found:
+            return None
+        fc = _session.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": found["latitude"], "longitude": found["longitude"], "timezone": "auto",
+                "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code",
+            },
+            timeout=3.5,
+        )
+        fc.raise_for_status()
+        cur = fc.json()["current"]
+        place = found.get("name", location)
+        sky = _WMO_WORDS.get(int(cur.get("weather_code", -1)), "")
+        head = f"{place}: {sky}," if sky else f"{place}:"
+        return (
+            f"{head} {round(cur['temperature_2m'])} degrees, feels like "
+            f"{round(cur['apparent_temperature'])}, humidity {round(cur['relative_humidity_2m'])} percent."
+        )
+    except Exception as exc:  # noqa: BLE001 -- a backup must never raise
+        logger.warning("Open-Meteo backup failed for '%s': %s", location, type(exc).__name__)
+        return None
+
+
 def get_weather(location: str) -> str:
     """
     Fetches a concise current weather report for a given location using
@@ -853,13 +901,22 @@ def get_weather(location: str) -> str:
         return resp
 
     try:
-        # OPTIMIZATION 4: get_weather() now retries transient failures,
-        # same as search_web()/get_news() -- previously it had none.
-        response = _retry(_do_fetch, attempts=2, delay=1.0)
+        # One quick attempt: a retry here only burned the caller's whole time
+        # budget (E2E audit 2026-10-30: weather answered "taking longer than
+        # expected" after 6 s) -- the independent backup below is the retry.
+        response = _retry(_do_fetch, attempts=1, delay=0.0)
     except requests.exceptions.Timeout:
+        alt = _weather_open_meteo(location)
+        if alt:
+            _cache_set(cache_key, alt)
+            return alt
         return "Weather lookup timed out. Please check your internet connection."
     except requests.exceptions.RequestException as e:
         logger.error("Failed to fetch weather for '%s': %s", location, e)
+        alt = _weather_open_meteo(location)
+        if alt:
+            _cache_set(cache_key, alt)
+            return alt
         return _WEATHER_FALLBACK_MSG
 
     content_type = response.headers.get("Content-Type", "").lower()
@@ -884,6 +941,10 @@ def get_weather(location: str) -> str:
             "format=3 text; discarding instead of returning raw HTML.",
             location, content_type, len(response.text),
         )
+        alt = _weather_open_meteo(location)
+        if alt:
+            _cache_set(cache_key, alt)
+            return alt
         return _WEATHER_FALLBACK_MSG
 
     # OPTIMIZATION 6: case-insensitive check (was case-sensitive before).

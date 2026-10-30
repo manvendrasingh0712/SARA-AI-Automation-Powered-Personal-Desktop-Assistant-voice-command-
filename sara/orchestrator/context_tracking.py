@@ -108,7 +108,11 @@ def _resolve_app_target(ctx, captured_text: str):
     resolved name back into "last_app" remains each handler's own job
     via its existing _remember_entity() call, same as before.
     """
-    if not _is_pronoun_reference(captured_text):
+    generic = re.fullmatch(
+        r"\s*(?:the |this |that |my )?(?:app|application|program|window)\s*",
+        captured_text or "", re.IGNORECASE,
+    )
+    if not generic and not _is_pronoun_reference(captured_text):
         return captured_text
     entry = (ctx.get("context_state") or {}).get("recent_entities", {}).get("last_app")
     if not entry:
