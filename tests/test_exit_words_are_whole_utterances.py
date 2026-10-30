@@ -44,3 +44,36 @@ def test_dispatcher_uses_the_strict_check():
     src = inspect.getsource(dispatcher._handle_command)
     assert "_is_exit_command(lowered, _EXIT_WORDS)" in src
     assert "_matches_phrase_set(lowered, _EXIT_WORDS)" not in src
+
+
+# ── sleep / forget phrases follow the same rule (E2E audit 2026-10-30) ──────
+from sara.orchestrator._constants import _FORGET_WORDS, _SLEEP_WORDS  # noqa: E402
+
+
+@pytest.mark.parametrize("text", [
+    "put the computer to sleep",        # sleep_system (needs a confirmation), not "SARA sleeps"
+    "gaana bas karo", "spotify bas karo", "forget everything you know about me", "clear memory of the meeting",
+])
+def test_commands_are_not_session_controls(text):
+    assert not (_is_exit_command(text, _SLEEP_WORDS) or _is_exit_command(text, _FORGET_WORDS))
+
+
+@pytest.mark.parametrize("text", [
+    "sleep", "go to sleep", "ok go to sleep", "sara go to sleep now please", "that's all", "no that's all thanks",
+    "you can sleep now", "chalo so jao", "bas karo", "theek hai bas",
+])
+def test_real_sleep_phrases_still_work(text):
+    assert _is_exit_command(text, _SLEEP_WORDS)
+
+
+@pytest.mark.parametrize("text", ["forget everything", "clear memory", "please forget our conversation", "sab bhool jao"])
+def test_real_forget_phrases_still_work(text):
+    assert _is_exit_command(text, _FORGET_WORDS)
+
+
+def test_the_router_now_gets_the_real_commands():
+    from sara.core.intent import detect_intent
+
+    detect_intent.cache_clear()
+    assert detect_intent("put the computer to sleep")[0] == "sleep_system"
+    assert detect_intent("forget everything you know about me")[0] == "memory_forget_all"

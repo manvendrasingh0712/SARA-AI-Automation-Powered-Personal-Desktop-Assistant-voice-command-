@@ -67,6 +67,50 @@ _TURN_LANGUAGE_NOTES = {
 }
 
 
+_HISTORY_CLIP_CHARS = 700
+
+
+def _clip_history(text: str) -> str:
+    """Old turns ride along in every later prompt, so one huge message (a
+    pasted article, a 3000-letter keyboard slip) would slow the next ten
+    answers. Long ones are shortened to their start; the current message is
+    never clipped."""
+    text = text or ""
+    if len(text) <= _HISTORY_CLIP_CHARS:
+        return text
+    return text[:_HISTORY_CLIP_CHARS].rstrip() + " ... [shortened]"
+
+
+def _current_time_note() -> str:
+    """The real local date and time, given to the model with every turn so it
+    never has to guess (it answered "8:45 AM" at 11:45). Placed after the
+    history, so the cached prompt prefix is unaffected."""
+    from datetime import datetime
+
+    now = datetime.now()
+    return f"Current local date and time: {now.strftime('%A, %d %B %Y, %I:%M %p').replace(' 0', ' ', 1)}."
+
+
+def _log_ollama_timing(chunk) -> None:
+    """One line per chat turn with Ollama's own breakdown, so a slow first
+    word can be told apart: prompt processing (long prompt), model load
+    (evicted / swapped), or slow generation (GPU shared with other work).
+    E2E 2026-10-30: first token took 2.6-3.9 s in the app but ~0.5 s in
+    isolated tests on the same model. Never raises."""
+    try:
+        ms = lambda v: (float(v or 0) / 1e6)
+        ptok = int(getattr(chunk, "prompt_eval_count", 0) or 0)
+        gtok = int(getattr(chunk, "eval_count", 0) or 0)
+        gdur = float(getattr(chunk, "eval_duration", 0) or 0) / 1e9
+        logging.getLogger("sara.llm").info(
+            "[LLM] ollama: prompt=%d tok in %.0f ms | load=%.0f ms | gen=%d tok @ %.1f tok/s | total=%.0f ms",
+            ptok, ms(getattr(chunk, "prompt_eval_duration", 0)), ms(getattr(chunk, "load_duration", 0)),
+            gtok, (gtok / gdur) if gdur > 0 else 0.0, ms(getattr(chunk, "total_duration", 0)),
+        )
+    except Exception:
+        pass
+
+
 def _first_chunk_cut(buffer: str) -> Optional[int]:
     """Where to cut the first speakable chunk of a streamed reply, or None.
     Delegates to the TTS chunker's first_chunk_end(); never raises."""
@@ -213,6 +257,7 @@ _STREAM_INTERRUPTED_MESSAGES = {
 # (generate_response_stream()) and where it's checked
 # (used_fallback_last_turn()) so the two can never silently drift apart.
 _FALLBACK_STAGE_LABEL = "ollama-fallback"
+_GEMINI_FALLBACK_STAGE_LABEL = "gemini-fallback"
 
 # TASK A (two-tier model routing): a short, known-vocabulary command
 # ("set volume to 50", "what time is it") is routed to the smaller/
@@ -714,8 +759,8 @@ class SaraLLM:
         # history every turn diverged at message 2, so all ~1,400 prompt
         # tokens were re-read on every turn (0.5-0.9 s measured).
         for u, a in history:
-            msgs.append({"role": "user", "content": u})
-            msgs.append({"role": "assistant", "content": a})
+            msgs.append({"role": "user", "content": _clip_history(u)})
+            msgs.append({"role": "assistant", "content": _clip_history(a)})
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieved long-term
         # memories are injected as a SEPARATE system message, not merged
         # into self.system_instruction — that instruction string is
@@ -757,6 +802,7 @@ class SaraLLM:
                     ),
                 }
             )
+        msgs.append({"role": "system", "content": _current_time_note()})
         language_note = self._turn_language_note()
         if language_note:
             msgs.append({"role": "system", "content": language_note})
@@ -821,8 +867,10 @@ class SaraLLM:
             )
             contents.append({"role": "model", "parts": [{"text": "Understood."}]})
         for u, a in history:
-            contents.append({"role": "user", "parts": [{"text": u}]})
-            contents.append({"role": "model", "parts": [{"text": a}]})
+            contents.append({"role": "user", "parts": [{"text": _clip_history(u)}]})
+            contents.append({"role": "model", "parts": [{"text": _clip_history(a)}]})
+        contents.append({"role": "user", "parts": [{"text": f"[System] {_current_time_note()}"}]})
+        contents.append({"role": "model", "parts": [{"text": "Understood."}]})
         language_note = self._turn_language_note()
         if language_note:
             contents.append({"role": "user", "parts": [{"text": f"[System] {language_note}"}]})
@@ -1007,7 +1055,7 @@ class SaraLLM:
         -- unrelated question, easy to conflate by name.
         """
         with self._last_stage_lock:
-            return self._last_stage_used == _FALLBACK_STAGE_LABEL
+            return self._last_stage_used in (_FALLBACK_STAGE_LABEL, _GEMINI_FALLBACK_STAGE_LABEL)
 
     def _stream_generic(
         self,
@@ -1173,6 +1221,18 @@ class SaraLLM:
                     # exception (network hiccup, timeout, quota/rate-limit
                     # error, etc.) is retried exactly as before.
                     non_transient = isinstance(e, _ClientUnavailableError)
+                    # Local server down (connection refused) won't recover
+                    # within a retry's backoff; hand over to the next stage.
+                    if (
+                        not non_transient
+                        and stage_idx < len(stages) - 1
+                        and (
+                            isinstance(e, ConnectionRefusedError)
+                            or "10061" in str(e)
+                            or "Failed to connect" in str(e)
+                        )
+                    ):
+                        non_transient = True
 
                     # D54: do not retry what the server already told us
                     # cannot succeed yet. If it asked for longer than
@@ -1498,6 +1558,8 @@ class SaraLLM:
 
         def _iter():
             for chunk in raw_stream:
+                if getattr(chunk, "done", False):
+                    _log_ollama_timing(chunk)
                 yield getattr(getattr(chunk, "message", None), "content", None)
 
         return _iter()
@@ -1753,6 +1815,17 @@ class SaraLLM:
                 return self._open_ollama_stream(prompt, fb_history, fb_memory_context, reference_context)
 
             stages.append((_FALLBACK_STAGE_LABEL, _open_ollama_fallback))
+        elif (
+            self._primary_backend == "ollama"
+            and getattr(self._cfg, "LLM_FALLBACK_ENABLED", True)
+            and getattr(self._cfg, "GEMINI_API_KEY", "")
+        ):
+            # Local-first, but a stopped Ollama must not leave the user with
+            # only a "glitch" message when a cloud key is configured.
+            def _open_gemini_fallback(attempt: int):
+                return self._open_gemini_stream(prompt, history, memory_context, reference_context)
+
+            stages.append((_GEMINI_FALLBACK_STAGE_LABEL, _open_gemini_fallback))
 
         if router is None or choice is None or not choice.decision_id:
             yield from self._stream_generic(prompt, stages)

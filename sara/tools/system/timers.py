@@ -113,3 +113,68 @@ def cancel_timer() -> str:
             _active_timer = None
             return "Timer cancelled."
     return "No active timer to cancel."
+
+# ── Stopwatch ──────────────────────────────────────────────────────────────
+# E2E audit 2026-10-30: "start the stopwatch" / "lap" / "stop the stopwatch"
+# are recognised by the router and call system_tools.start/lap/stop_stopwatch,
+# which did not exist: every voice stopwatch command answered "Sorry, I ran
+# into a problem". The Clock Card on screen times itself in JavaScript, so the
+# voice side needs its own clock. time.monotonic() => immune to clock changes.
+import time as _time
+
+_sw_lock = threading.Lock()
+_sw: dict = {"started_at": None, "elapsed": 0.0, "laps": [], "last_lap": 0.0}
+
+
+def _spoken_duration(seconds: float) -> str:
+    """12.4 -> '12 seconds', 75 -> '1 minute 15 seconds', 3725 -> '1 hour 2 minutes 5 seconds'."""
+    total = int(round(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    parts = []
+    if h:
+        parts.append(f"{h} hour{'s' if h != 1 else ''}")
+    if m:
+        parts.append(f"{m} minute{'s' if m != 1 else ''}")
+    if s or not parts:
+        parts.append(f"{s} second{'s' if s != 1 else ''}")
+    return " ".join(parts)
+
+
+def _sw_elapsed_locked() -> float:
+    if _sw["started_at"] is None:
+        return _sw["elapsed"]
+    return _sw["elapsed"] + (_time.monotonic() - _sw["started_at"])
+
+
+def start_stopwatch() -> str:
+    with _sw_lock:
+        if _sw["started_at"] is not None:
+            return f"The stopwatch is already running, at {_spoken_duration(_sw_elapsed_locked())}."
+        _sw.update(started_at=_time.monotonic(), elapsed=0.0, laps=[], last_lap=0.0)
+    return "Stopwatch started."
+
+
+def lap_stopwatch() -> str:
+    with _sw_lock:
+        if _sw["started_at"] is None:
+            return "The stopwatch isn't running. Say 'start the stopwatch' first."
+        now = _sw_elapsed_locked()
+        lap = now - _sw["last_lap"]
+        _sw["laps"].append(lap)
+        _sw["last_lap"] = now
+        n = len(_sw["laps"])
+    return f"Lap {n}: {_spoken_duration(lap)}. Total {_spoken_duration(now)}."
+
+
+def stop_stopwatch() -> str:
+    with _sw_lock:
+        if _sw["started_at"] is None:
+            if _sw["elapsed"] > 0:
+                return f"The stopwatch is already stopped at {_spoken_duration(_sw['elapsed'])}."
+            return "The stopwatch isn't running."
+        _sw["elapsed"] = _sw_elapsed_locked()
+        _sw["started_at"] = None
+        total, laps = _sw["elapsed"], len(_sw["laps"])
+    tail = f" with {laps} lap{'s' if laps != 1 else ''}" if laps else ""
+    return f"Stopwatch stopped at {_spoken_duration(total)}{tail}."

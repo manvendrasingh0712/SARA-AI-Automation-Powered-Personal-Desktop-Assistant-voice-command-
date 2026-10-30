@@ -57,7 +57,7 @@ from .files_notes import (
     complete_todo,
     delete_todo,
 )
-from .timers import set_timer, cancel_timer
+from .timers import set_timer, cancel_timer, start_stopwatch, lap_stopwatch, stop_stopwatch
 from .folders import (
     open_downloads, open_documents, open_desktop_folder, open_pictures, open_music,
     open_videos, open_this_pc, open_recycle_bin, open_file_explorer,
@@ -96,7 +96,7 @@ __all__ = [
     "dark_mode", "light_mode", "find_file", "find_and_open_file", "empty_recycle_bin", "take_note",
     "read_notes", "clear_notes", "get_notes",
     "add_todo", "list_todos", "complete_todo", "delete_todo",
-    "set_timer", "cancel_timer",
+    "set_timer", "cancel_timer", "start_stopwatch", "lap_stopwatch", "stop_stopwatch",
     "open_downloads", "open_documents", "open_desktop_folder", "open_pictures",
     "open_music", "open_videos", "open_this_pc", "open_recycle_bin",
     "open_file_explorer", "open_control_panel", "open_task_manager",

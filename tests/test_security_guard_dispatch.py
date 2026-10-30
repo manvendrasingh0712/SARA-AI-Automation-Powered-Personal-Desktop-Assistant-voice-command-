@@ -275,3 +275,24 @@ def test_negated_command_never_calls_tool_resolver(monkeypatch):
     result = run("Chrome chalu mat kar", {})
 
     assert result == "Understood. I won't execute that command."
+
+def test_clear_notes_asks_before_deleting_everything(spy, monkeypatch):
+    # E2E audit 2026-10-30: "delete all my notes" wiped the notes immediately.
+    wiped = []
+    monkeypatch.setattr(dispatcher, "detect_intent", lambda text: ("clear_notes", None) if "notes" in text else ("chat", None))
+    monkeypatch.delitem(dispatcher._INTENT_HANDLERS, "clear_notes", raising=False)
+    monkeypatch.setitem(dispatcher.system_tools.SIMPLE_ACTIONS, "clear_notes", lambda: wiped.append(1) or "All notes deleted.")
+    state: dict = {}
+    assert "Are you sure you want to delete all your notes?" in run("delete all my notes", state)
+    assert wiped == []
+    assert run("yes", state) == "All notes deleted." and wiped == [1]
+
+
+def test_clear_notes_can_be_cancelled(spy, monkeypatch):
+    wiped = []
+    monkeypatch.setattr(dispatcher, "detect_intent", lambda text: ("clear_notes", None) if "notes" in text else ("chat", None))
+    monkeypatch.delitem(dispatcher._INTENT_HANDLERS, "clear_notes", raising=False)
+    monkeypatch.setitem(dispatcher.system_tools.SIMPLE_ACTIONS, "clear_notes", lambda: wiped.append(1) or "gone")
+    state: dict = {}
+    run("delete all my notes", state)
+    assert "cancel" in run("cancel", state).lower() and wiped == []

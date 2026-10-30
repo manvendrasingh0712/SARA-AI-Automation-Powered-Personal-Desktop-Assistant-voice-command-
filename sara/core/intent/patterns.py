@@ -29,6 +29,19 @@ _DISFLUENCY = r"(?:uh+|um+|erm?|hmm+)\s+"
 # "uh open um notepad" captures "notepad" and not "um notepad".
 _OPT_DISFL = r"(?:" + _DISFLUENCY + r")?"
 
+# Calculator building blocks (E2E audit 2026-10-30): "what is 2400 divided by
+# 8" answered "The answer is 2400." and "calculate 7 times 8 plus 3" answered
+# "The answer is 7." -- the digit-only pattern captured the first number only
+# and the answer was wrong without any warning.
+_CALC_NUM = (
+    r"(?:\d+(?:\.\d+)?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|"
+    r"fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|"
+    r"eighty|ninety)"
+)
+_CALC_WORD_OP = r"(?:plus|minus|times|multiplied by|divided by|over|into|modulo|mod|to the power of|raised to the power of)"
+_CALC_OP = r"(?:" + _CALC_WORD_OP + r"|\+|-|\*|/|\^|x)"
+_CALC_EXPR = _CALC_NUM + r"(?:\s*" + _CALC_OP + r"\s*" + _CALC_NUM + r")+"
+
 _FILLER = (
     r"^[\s,]*(?:please |sara |hey sara |can you |could you |zara |"
     r"ek baar |jara |" + _DISFLUENCY + r")*"
@@ -266,6 +279,7 @@ _INTENT_PATTERNS = [
         # No place named: the empty group gives "" and get_weather("")
         # asks wttr.in for the caller's own location.
         r"^\W*(?:will it|is it going to) rain(?: today| tomorrow| now)?()\W*$",
+        r"^\W*(?:the )?weather(?: report| today| now| outside)?()\W*$",
         r"^\W*(?:what'?s|how'?s) the weather(?: like)?(?: today| now| outside)?()\W*$",
         r"^\W*(?:(?:aaj|kal|abhi)\s+)?(?:ka\s+)?mausam\s+(?:kaisa|kya|kaise)\s*(?:hai|h|he|rahega|hoga)?()\W*$",
         r"^\W*(?:आज\s*)?(?:का\s*)?मौसम\s*(?:कैसा|क्या)\s*(?:है|रहेगा)?()\W*$",
@@ -340,10 +354,10 @@ _INTENT_PATTERNS = [
     ("web_search", [
         # "find" only as the opening verb: unanchored, it turned "i want
         # to find my purpose in life" into a web search (E2E 2026-10-30).
+        r"(?:search the web|search online) (?:for )?(.+)",
         _FILLER + r"find (?:out |me )?(.+?)(?:\s+for me)?$",
         # "search for" before "search", or the query keeps the "for".
-        r"(?:search for|search|google|look up) (.+?)(?:\s+for me)?$",
-        r"(?:search the web|search online) (?:for )?(.+)",
+        r"(?:search for|search|google|look up) (?!(?:for|the|a|an|me|it|up|something|anything)\W*$)(.+?)(?:\s+for me)?$",
     ]),
     ("summarize_url", [
         r"summarize (?:this |that |the )?(?:article|page|link|url)?:?\s*(\S+\.\S+)",
@@ -359,6 +373,12 @@ _INTENT_PATTERNS = [
 
     # ── Calculator ─────────────────────────────────────────────────────
     ("calculator", [
+        # Spoken operators, whole expression captured (see _CALC_* above).
+        r"(?:what is|what'?s|calculate|compute|solve|evaluate)(?: the)? (" + _CALC_EXPR + r")(?: please)?\W*$",
+        # No introduction, but at least one word operator (so phone numbers and
+        # scores like "2-1" can never match).
+        r"^\W*(" + _CALC_NUM + r"\s+" + _CALC_WORD_OP + r"\s+" + _CALC_NUM + r"(?:\s*" + _CALC_OP + r"\s*" + _CALC_NUM + r")*)\W*$",
+        r"(?:what is|what'?s|calculate|compute)(?: the)? (square root of \d+(?:\.\d+)?|\d+(?:\.\d+)? (?:squared|cubed))\W*$",
         # E2E 2026-10-29: "what is 15 percent of 2400" captured only "15"
         # and answered "The answer is 15." Capture the whole percent phrase
         # first; _safe_calc() turns it into X/100*Y.

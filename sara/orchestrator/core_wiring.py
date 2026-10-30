@@ -617,6 +617,22 @@ def _festival_greeting() -> Optional[str]:
     return None
 
 
+_ACK_ECHO_WINDOW_S = 4.0
+
+
+def _is_ack_echo(text: str, ack: str, since_wake_s: float, confirm_pending: bool) -> bool:
+    """True when `text` is only SARA's own wake acknowledgement ("Yes?")
+    heard back within a few seconds of the wake word. A real "yes" is only
+    meaningful as the answer to a question, i.e. while a confirmation is
+    pending, so that case is never treated as an echo."""
+    import re as _re
+
+    if confirm_pending or since_wake_s > _ACK_ECHO_WINDOW_S:
+        return False
+    norm = lambda t: _re.sub(r"[^\w\s]", "", str(t or "").lower()).strip()
+    return bool(norm(ack)) and norm(text) == norm(ack)
+
+
 def run_sara_logic(
     ui_update,
     stop_event,
@@ -962,6 +978,18 @@ def run_sara_logic(
 
                 if stop_event.is_set():
                     break
+
+                # Wake acknowledgement echo (E2E log 2026-10-30): with AEC the
+                # "Yes?" ack is spoken without blocking, and its tail was
+                # transcribed as the user's command "Yes." (0.3 s, both
+                # times right after a wake) -- SARA then answered "Got it!
+                # Ready for next step?" to herself. Treat it as silence.
+                if user_input and _is_ack_echo(
+                    str(user_input), ack, time.monotonic() - session_start,
+                    bool(confirm_state.get("pending")),
+                ):
+                    print(f"[Logic] Ignored wake-ack echo: {str(user_input)!r}")
+                    user_input = ""
 
                 if not user_input:
                     ui_update("transcript_partial", "user", "")

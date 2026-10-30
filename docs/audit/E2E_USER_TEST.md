@@ -460,3 +460,51 @@ Existing junk memories (ids ~152–160) are still in `sara_data.db`; delete
 them on the Memory page of the GUI if you want them gone.
 
 Suite: **3038 passed**.
+
+### 12b. Where the last seconds go (measured 2026-10-30)
+
+From the third session's telemetry, 5 chat turns: route → first model token
+**2.6–3.9 s**, first token → first sound **1.3–2.0 s**. In isolated tests the
+same model gives its first token in ~0.5 s, so something in the running app
+is slower; the cause is not yet known. **New diagnostic:** every chat turn now
+logs `[LLM] ollama: prompt=N tok in X ms | load=Y ms | gen=Z tok @ R tok/s |
+total=T ms` (Ollama's own numbers), which separates a long prompt, a model
+reload and slow generation (GPU shared with Whisper, Kokoro and the video).
+
+Speech side, measured through the app's own TTS engine on a quiet machine:
+Kokoro inference ≈ **0.55 s per sentence chunk** (≈ 4× faster than real time),
+plus lock-waiting when the start-up phrase pre-warm (37 s, 52 phrases) is
+running. The pre-warm already pauses while speech plays, so it can delay a
+real answer by at most one phrase (~0.7 s) in the first ~40 s after launch.
+Further speed-up needs a model-level change (not attempted).
+
+## 13. Second end-to-end audit (practical, real dispatcher)
+
+Method: drove the real dispatcher on a copy of user data with side-effect handlers stubbed; all 140 intents, reminders/to-dos/notes, memory chain, injection and odd inputs, follow-ups, compound commands.
+
+| # | Finding | Fix |
+|---|---------|-----|
+| 1 | Tests wrote junk to the user's real to-do file | `tests/conftest.py` isolates LOCALAPPDATA/DB/notes/todo paths |
+| 2 | Stopwatch intents were stubs | Real start/lap/stop (`tools/system/timers.py`) |
+| 3 | To-do delete/complete matched loosely (wrong item) | Strict word-coverage match, ties ask, spoken list capped at 6 |
+| 4 | "sleep"/"forget" inside sentences triggered shortcuts | Whole-utterance exit-word check |
+| 5 | Wake ack "Yes?" re-heard as a command | `_is_ack_echo` guard (4 s window) |
+| 6 | Spoken calculator ("2400 divided by 8") wrong | Spoken-operator normaliser + patterns |
+| 7 | Typos / homophones ("teh", "opn") missed | Extended homophones + trigger vocab |
+| 8 | LLM claimed actions it never did; invented the time | Action-honesty prompt rules + current-time note |
+| 9 | "X and then Y" ran only X | Safe compound splitting (never destructive) + planner fallback |
+| 10 | "delete all notes" ran without confirmation | Added to confirm-gated actions |
+| 11 | Weather failed when wttr.in was slow | 4 s timeout + Open-Meteo backup |
+| 12 | "+22°C" read as "plus 22 C" | TTS speaks "22 degrees Celsius" |
+| 13 | Long history caused a rare 15 s stall | History clip (700 chars) + tool timeout 8 s |
+| 14 | "close it"/"close the app" with no context tried to close an app named "app" | Generic app words treated as references; asks "which app?" |
+
+Known, unfixed (low priority): bare "search for" / "weather in"; "open source software is great" routes to open_app; slow first token inside the running app (needs the new `[LLM] ollama:` / `[Timing]` log lines from a voice session).
+
+Suite: 3180 passed, 1 skipped. Router golden bench 99.3 %, held-out 38/38, red-team ASR 0 %.
+
+### 13b. Closing fixes
+
+- Incomplete commands: "search for", "look up for" no longer search for the word "for"; bare "weather" / "the weather" gives local weather; "search the web for dogs" keeps a clean query; "open source software is great" is chat, not open_app.
+- Ollama down: connection-refused fails fast (no backoff), falls over to Gemini when a key is set (previously only Gemini→Ollama existed), and embedding lookups pause 20 s after a failure (reply time with both backends unavailable fell from ~9.6 s to ~2.6 s).
+- Suite: 3188 passed, 1 skipped; router bench 99.3 %, red-team ASR 0 %.

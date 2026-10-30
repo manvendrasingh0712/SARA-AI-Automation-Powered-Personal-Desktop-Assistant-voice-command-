@@ -23,7 +23,7 @@ def _h_weather(match, ctx):
         ctx,
         _run_activity(
             ctx, "weather", "Checking weather", "Weather ready", "Couldn't get weather",
-            lambda: _call_with_timeout(web_tools.get_weather, location),
+            lambda: _call_with_timeout(web_tools.get_weather, location, timeout=10.0),
         ),
     )
 

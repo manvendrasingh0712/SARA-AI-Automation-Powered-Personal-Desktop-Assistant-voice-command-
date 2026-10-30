@@ -575,6 +575,104 @@ def _build_plan_dispatch_fn(ctx: dict):
     return _dispatch
 
 
+# Strong cues only: a bare "phir" also means "again" ("phir se chalao") and a
+# bare "then" appears in ordinary sentences, so neither counts.
+_SEQUENCE_CUE_RE = re.compile(
+    r"\b(?:and\s+then|after\s+that|afterwards|uske\s+baad|iske\s+baad|aur\s+phir|और\s+फिर|उसके\s+बाद)\b",
+    re.IGNORECASE,
+)
+
+
+_STRONG_SPLIT_RE = re.compile(
+    r"\s*,?\s*\b(?:and\s+then|after\s+that|afterwards|uske\s+baad|iske\s+baad|aur\s+phir)\b\s*,?\s*"
+    r"|\s*,\s*(?:then|phir)\s+",          # "open notepad, then open calculator"
+    re.IGNORECASE,
+)
+_WEAK_SPLIT_RE = re.compile(r"\s*,?\s+\b(?:and|aur)\b\s+", re.IGNORECASE)
+# Never run these as part of a chained sentence: they need their own "are you sure?".
+_NEVER_CHAINED = frozenset(
+    set(_LOW_CONFIDENCE_CONFIRM_ACTIONS)
+    | {"clear_notes", "memory_forget_all", "memory_forget_specific", "sleep_system", "hibernate_system", "cancel_shutdown"}
+)
+
+
+def _split_compound(user_input):
+    """["open notepad", "search for python"] for "open notepad and then search
+    for python"; None unless the sentence is clearly two or three separate
+    commands that the router recognises on their own.
+
+    "and then" / "after that" / "uske baad" always split. A plain "and" / "aur"
+    splits only into exactly two parts that route to DIFFERENT commands, so
+    "search for salt and pepper", "play tom and jerry" and "take a note buy milk
+    and eggs" (one half is not a command) stay whole. Destructive actions are
+    never chained. E2E audit 2026-10-30: "open notepad and then search for
+    python tutorials" ran only the search."""
+    text = (user_input or "").strip()
+    if not text or len(text) > 300:
+        return None
+    parts = [p.strip(" ,.;") for p in _STRONG_SPLIT_RE.split(text)]
+    strong = len(parts) > 1
+    if not strong:
+        parts = [p.strip(" ,.;") for p in _WEAK_SPLIT_RE.split(text)]
+    parts = [p for p in parts if p]
+    if not (2 <= len(parts) <= 3 if strong else len(parts) == 2):
+        return None
+    intents = []
+    for part in parts:
+        intent, _ = detect_intent(part)
+        if intent == "chat" or intent in _NEVER_CHAINED:
+            return None
+        intents.append(intent)
+    if not strong and len(set(intents)) < 2:
+        return None
+    return parts
+
+
+def _try_compound_plan(user_input, brain, ctx, cancel_event):
+    """Run the multi-step planner for a command that clearly has several
+    steps. Returns the spoken reply, or None when there is no plan (planning
+    off, nothing to plan, an error) so the caller falls back to the normal
+    single-action path. Never raises."""
+    try:
+        if not getattr(Config, "PLANNING_ENABLED", True) or try_plan_and_execute is None:
+            return None
+        from sara.core.planning.trigger import should_attempt_plan
+
+        if not should_attempt_plan(user_input):
+            return None
+        _t_annotate(route="planner", intent="compound")
+        _t_mark("route_done")
+        _t_mark("tool_start")
+        outcome = try_plan_and_execute(
+            user_input,
+            brain.model_name,
+            _build_plan_dispatch_fn(ctx),
+            Config,
+            allowed_apps=frozenset(getattr(Config, "APP_LAUNCH_ALLOWLIST", [])),
+        )
+        _t_mark("tool_end")
+        if cancel_event.is_set():
+            return ""
+        if outcome is None:
+            return None
+        reason = outcome.abort_reason or ""
+        if outcome.aborted and reason.startswith("CONFIRMATION_REQUIRED::"):
+            _, action, target, prompt = reason.split("::", 3)
+            ctx["confirm_state"]["pending"] = {
+                "action": action,
+                "target": target or None,
+                "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+            }
+            reply = _quick(ctx, prompt)
+        else:
+            reply = _quick(ctx, outcome.final_message)
+        brain.record_exchange(user_input, reply)
+        return reply
+    except Exception as exc:  # noqa: BLE001 -- the single-action path is the safety net
+        print(f"[Planning] compound plan failed, using the single-action path: {exc}")
+        return None
+
+
 def _handle_command(
     user_input,
     brain,
@@ -638,14 +736,14 @@ def _handle_command(
         tts.speak(farewell, fast=True)
         return farewell
 
-    if _matches_phrase_set(lowered, _SLEEP_WORDS):
+    if _is_exit_command(lowered, _SLEEP_WORDS):
         session_control["action"] = "sleep"
         reply = "Okay, going back to sleep."
         ui_update("status", "speaking")
         tts.speak(reply, fast=True)
         return reply
 
-    if _matches_phrase_set(lowered, _FORGET_WORDS):
+    if _is_exit_command(lowered, _FORGET_WORDS):
         ui_update("status", "thinking")
         brain.clear_memory()
         reply = "Done, I've cleared our conversation history."
@@ -819,6 +917,8 @@ def _handle_command(
                     # empty_recycle_bin) -- reached the same way every
                     # other zero-arg action is, via SIMPLE_ACTIONS.
                     action_fn = system_tools.SIMPLE_ACTIONS.get(action)
+                    if action_fn is None and action == "clear_notes":
+                        action_fn = system_tools.clear_notes  # a handler, not a simple action
                     if action_fn is None:
                         result = "Sorry, I don't know how to do that anymore."
                         _log_action(db, "system_action", action, "fail")
@@ -869,6 +969,32 @@ def _handle_command(
 
     if cancel_event.is_set():
         return ""
+
+    # Compound commands ("open notepad and then search for python tutorials"):
+    # the fast regex route matches ONE half and silently drops the other
+    # (E2E audit 2026-10-30: Notepad was never opened). With an explicit
+    # sequencing cue, let the planner have the whole sentence first; when it
+    # yields no plan the single-action path below runs exactly as before.
+    if intent != "chat":
+        parts = _split_compound(user_input)
+        if parts is not None:
+            replies = []
+            for part in parts:
+                replies.append(
+                    _handle_command(
+                        part, brain, tts, ears, db, reminders, vision, ui_update, volume_state,
+                        notes_memory=notes_memory, playback_state=playback_state,
+                        confirm_state=confirm_state, context_state=context_state,
+                        stt_confidence=stt_confidence, session_control=session_control,
+                    )
+                )
+                if cancel_event.is_set() or confirm_state.get("pending") or session_control.get("action"):
+                    break
+            return " ".join(r for r in replies if r)
+        if _SEQUENCE_CUE_RE.search(user_input or ""):
+            compound_reply = _try_compound_plan(user_input, brain, ctx, cancel_event)
+            if compound_reply is not None:
+                return compound_reply
 
     handler = _INTENT_HANDLERS.get(intent)
     if handler is not None:

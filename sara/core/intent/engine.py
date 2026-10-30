@@ -318,6 +318,18 @@ _HOMOPHONES = {
     "hear": "here",
     "paws": "pause",
     "no": "know",
+    # E2E audit 2026-10-30: very short command typos the fuzzy pass cannot
+    # reach (it ignores words under 5 letters). "opn chrmoe" was answered by
+    # the chat model with an invented "Chrome opened!", "whats teh time"
+    # with an invented time. Only unambiguous misspellings go here.
+    "teh": "the",
+    "opn": "open",
+    "opne": "open",
+    "oepn": "open",
+    "pley": "play",
+    "plya": "play",
+    "timr": "timer",
+    "tmer": "timer",
 }
 
 # ASR also splits closed compounds into two words, which no per-word map
@@ -355,6 +367,19 @@ def _rebuild_routes() -> None:
         for kw in gate
         if " " not in kw and len(kw) >= _TYPO_MIN_WORD_LEN
     }
+    # App names the user may mistype ("chrmoe", "spotfy"): single-word
+    # entries of the launch allowlist. Without them "open chrmoe" had no
+    # vocabulary word to be corrected to.
+    try:
+        from config import Config as _Cfg
+
+        _TRIGGER_VOCAB |= {
+            str(a).strip().lower()
+            for a in (getattr(_Cfg, "APP_LAUNCH_ALLOWLIST", None) or [])
+            if " " not in str(a).strip() and len(str(a).strip()) >= _TYPO_MIN_WORD_LEN
+        }
+    except Exception:
+        pass
     # ── Hot-path route table (Phase 3) ──────────────────────────────────
     # Joins (intent_name, compiled_patterns, gate) into one pre-built tuple
     # so the per-call hot loop never has to do a dict lookup
@@ -471,6 +496,14 @@ _APP_NAME_REJECT_INTENTS = frozenset({
 })
 
 
+# English copulas/modals: "open source software is great" is a sentence about
+# something, not an app name.
+_ENGLISH_SENTENCE_TOKENS = frozenset({
+    "is", "are", "was", "were", "be", "been", "should", "would", "could",
+    "because", "great", "good", "bad", "awesome",
+})
+
+
 def _captured_app_name_is_rejected(match: "re.Match") -> bool:
     """
     True if match's app-name capture (always group 1 for these four
@@ -485,7 +518,10 @@ def _captured_app_name_is_rejected(match: "re.Match") -> bool:
     captured = match.group(1)
     if not captured:
         return False
-    return any(tok in _NON_APP_TOKENS for tok in captured.lower().split())
+    return any(
+        tok in _NON_APP_TOKENS or tok in _ENGLISH_SENTENCE_TOKENS
+        for tok in captured.lower().split()
+    )
 
 
 @lru_cache(maxsize=_INTENT_CACHE_SIZE)

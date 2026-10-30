@@ -96,8 +96,30 @@ def _normalize_percent(expr: str) -> str:
     return _KA_PERCENT_RE.sub(lambda m: f"({m.group(2)}/100*{m.group(1)})", expr)
 
 
+_SPOKEN_OPS = (
+    (re.compile(r"\bsquare root of\s+(\d+(?:\.\d+)?)", re.I), lambda m: f"({m.group(1)}**0.5)"),
+    (re.compile(r"(\d+(?:\.\d+)?)\s+squared\b", re.I), lambda m: f"({m.group(1)}**2)"),
+    (re.compile(r"(\d+(?:\.\d+)?)\s+cubed\b", re.I), lambda m: f"({m.group(1)}**3)"),
+    (re.compile(r"\s+(?:raised to the power of|to the power of)\s+", re.I), lambda m: "**"),
+    (re.compile(r"\s+(?:multiplied by|times|into)\s+", re.I), lambda m: "*"),
+    (re.compile(r"\s+divided by\s+|\s+over\s+", re.I), lambda m: "/"),
+    (re.compile(r"\s+plus\s+", re.I), lambda m: "+"),
+    (re.compile(r"\s+minus\s+", re.I), lambda m: "-"),
+    (re.compile(r"\s+(?:modulo|mod)\s+", re.I), lambda m: "%"),
+    (re.compile(r"(?<=\d)\s*x\s*(?=\d)", re.I), lambda m: "*"),
+)
+
+
+def _normalize_spoken_ops(expr: str) -> str:
+    """"7 times 8 plus 3" -> "7*8+3"; spoken numbers ("five") become digits first."""
+    expr = _digits_for_number_words(expr)
+    for pattern, repl in _SPOKEN_OPS:
+        expr = pattern.sub(repl, expr)
+    return expr
+
+
 def _safe_calc(expression: str) -> str:
-    expr = _normalize_percent(expression.strip())
+    expr = _normalize_percent(_normalize_spoken_ops(expression.strip()))
     expr = (
         expr.replace("^", "**")
         .replace("\u00d7", "*")
@@ -122,6 +144,8 @@ def _safe_calc(expression: str) -> str:
         result = _ast_eval(expr)
         if isinstance(result, float) and result.is_integer():
             result = int(result)
+        elif isinstance(result, float):
+            result = round(result, 6)  # spoken aloud: not 16 digits
         return f"The answer is {result}."
     except ZeroDivisionError:
         return "That's a division by zero \u2014 undefined."

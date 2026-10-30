@@ -73,6 +73,10 @@ def ollama_load_options(cfg) -> dict:
     return opts
 
 
+_EMBED_COOLDOWN_S = 20.0
+_embed_down_until = 0.0
+
+
 def _get_embedding_vector(cfg, text: str):
     """
     Branches on cfg.EMBEDDING_BACKEND ("gemini" default, or "ollama") to
@@ -95,10 +99,16 @@ def _get_embedding_vector(cfg, text: str):
             # 0 keeps the embedder on CPU so it never evicts the chat
             # model from a small GPU.
             kwargs["options"] = {"num_gpu": int(num_gpu)}
+        # Ollama just failed: skip embeddings for a short cool-down instead
+        # of paying the failed connect on every RAG lookup in the turn.
+        global _embed_down_until
+        if time.monotonic() < _embed_down_until:
+            return None
         try:
             resp = client.embed(model=model, input=text, **kwargs)
         except Exception as e:
             print(f"[Embeddings] Ollama embed() call failed: {e}")
+            _embed_down_until = time.monotonic() + _EMBED_COOLDOWN_S
             return None
         embeddings = getattr(resp, "embeddings", None)
         if not embeddings:
