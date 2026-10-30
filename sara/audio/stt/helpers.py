@@ -117,12 +117,20 @@ def _rms(buf: bytes, sample_width: int = 2) -> float:
 
 _DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
 
+# "the" and "bro" are deliberately NOT markers. "the" (Hindi "were") is the
+# commonest English word: with it, 7 of 9 plain English sentences ("what is
+# the capital of the country") were labelled Hinglish, so in auto mode SARA
+# answered in the Hindi voice (E2E log 2026-10-30, "Do you know the
+# character of the character..."). Real Hinglish keeps its many other
+# markers; "bro" is ordinary English slang.
 _HINGLISH_MARKERS = re.compile(
-    r"\b(hai|hain|ho|tha|thi|the|kya|nahi|nahin|nhi|aur|par|lekin|toh|bas|"
-    r"accha|achha|theek|thik|agar|matlab|yaar|yar|bhai|bro|arrey|arre|"
+    r"\b(hai|hain|ho|tha|thi|kya|nahi|nahin|nhi|aur|par|lekin|toh|bas|"
+    r"accha|achha|theek|thik|agar|matlab|yaar|yar|bhai|arrey|arre|"
     r"karo|karna|karte|karein|mujhe|tumhe|aapko|mera|tera|apna|unka|"
     r"bahut|bohot|thoda|jaise|waise|isliye|kyunki|phir|fir|abhi|sab|"
-    r"kaisa|kaisi|kaise|kal|aaj|kab|kahan|kyun|kaun|kitna)\b",
+    r"kaisa|kaisi|kaise|kal|aaj|kab|kahan|kyun|kaun|kitna|"
+    r"wo|woh|yeh|ye|ghar|tum|hum|kuch|koi|bhi|mein|raha|rahi|rahe|"
+    r"chahiye|batao|bolo)\b",
     re.IGNORECASE,
 )
 
