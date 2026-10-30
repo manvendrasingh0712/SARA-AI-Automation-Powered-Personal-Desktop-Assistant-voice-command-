@@ -315,6 +315,16 @@ class SaraLLM:
         "hmm", "hm", "achha", "acha", "theek hai", "thik hai",
         "thanks", "thank you", "thanks yaar", "thank you yaar", "ty",
         "bye", "bye bye", "goodbye", "good bye", "namaste", "ok bye",
+        # E2E 2026-10-30: a 0.3 s noise blip became "Yes." and "Thank you.",
+        # was answered, and each pair was saved as a long-term memory
+        # ("User said: Yes. / Sara replied: Got it!"). These are the fillers
+        # Whisper invents from noise, plus plain acknowledgements: they carry
+        # nothing worth remembering (short-term history still has them).
+        "yes", "yeah", "yep", "yup", "sure", "right", "cool", "nice", "great",
+        "good", "oh", "oh ok", "oh okay", "uh huh", "you", "so", "well",
+        "thank u", "thx", "thank you so much", "thanks a lot", "thank you very much",
+        "thanks for watching", "welcome", "you're welcome", "no problem",
+        "ji", "ji haan", "haan ji", "accha ji", "shukriya", "dhanyavad",
     }
 
     def __init__(self, cfg=None, memory=None) -> None:

@@ -438,3 +438,25 @@ Switches: `STT_VOCABULARY_PROMPT=False`, `STT_VOCABULARY_MAX_WORDS`.
 this PC (only tiny + medium are cached) and need a download. The synthetic
 test also cannot judge real Hinglish speech; check it in a voice session.
 Suite: **3002 passed**.
+
+---
+
+## 12. Third voice session (2026-10-30, 11:06–11:10, after the push)
+
+**Confirmed fixed:** memory lookup after the first turn **2–100 ms** (was
+2060 ms); replies start ~2–3.5 s after the end of speech (was 5–11 s).
+The first turn after launch still paid ~5 s (`later_steps=4952ms`): at that
+moment Kokoro's phrase pre-warm (52 phrases, 37 s on the GPU), the memory
+consolidation and the re-embed were all running — a start-up contention, not
+the idle delay. Not changed.
+
+**New defects found in the same log**
+| # | Defect | Cause | Fix |
+| --- | --- | --- | --- |
+| T | "Do you know the character of the character of the character?" was spoken in the **Hindi voice** (`Language this turn (auto): 'hinglish'`); 7 of 9 plain English sentences were labelled Hinglish | the Hinglish marker list contained the English word **"the"** (and "bro"); the same detector also picks the reply language | removed both, added unambiguous Hindi words (wo, ghar, tum, kuch, bhi, mein…); English false positives 7/9 → **0/20**, Hinglish still detected 7/7 |
+| U | 0.3 s noise blips heard as "Yes." / "Thank you." were answered and **saved as long-term memories** (9 junk memories in minutes) | those words were not in the trivial-turn list | filler/acknowledgement words added; trivial turns skip the memory lookup and are not stored |
+
+Existing junk memories (ids ~152–160) are still in `sara_data.db`; delete
+them on the Memory page of the GUI if you want them gone.
+
+Suite: **3038 passed**.
