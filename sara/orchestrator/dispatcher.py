@@ -71,7 +71,6 @@ from .command_helpers import (
     _ack,
     _activity_label,
     _run_activity,
-    _matches_phrase_set,
     _is_risky,
     _LOW_CONFIDENCE_CONFIRM_ACTIONS,
     _LOW_CONFIDENCE_CONFIRM_PHRASES,
@@ -670,6 +669,15 @@ def _try_compound_plan(user_input, brain, ctx, cancel_event):
         return None
 
 
+def _intent_tier(intent: str) -> int:
+    try:
+        from sara.core.security.tiers import tier_of
+
+        return int(tier_of(intent))
+    except Exception:  # noqa: BLE001 -- unknown tier: treat as impactful (fail-safe)
+        return 2
+
+
 def _handle_command(
     user_input,
     brain,
@@ -863,6 +871,12 @@ def _handle_command(
                 _t_mark("route_done")
                 _t_mark("tool_start")
                 _ack(ctx)
+                if action == "readback":
+                    return _handle_command(
+                        target, brain, tts, ears, db, reminders, vision, ui_update, volume_state,
+                        notes_memory=notes_memory, playback_state=playback_state, confirm_state=confirm_state,
+                        context_state=context_state, stt_confidence=1.0, session_control=session_control,
+                    )
                 if action == "guarded_tool":
                     result = _replay_guarded(pending, ctx)
                     if result is None:
@@ -941,6 +955,24 @@ def _handle_command(
             confirm_state.pop("pending", None)
 
     intent, match = detect_intent(user_input)
+    # Conversation state for follow-ups ("uska", "wahi dobara", "pehle wala"): what was asked and which route took it.
+    # last_reply is filled in by _quick() / the chat path; last_entities is the existing recent_entities store.
+    context_state["prev_intent"] = context_state.get("last_intent")
+    context_state["last_intent"] = intent
+    context_state["last_user_input"] = user_input
+    context_state["last_turn_at"] = time.time()
+    # Learn how this user likes answers (one cached prompt line; see sara/core/style_profile.py)
+    if intent == "chat" and getattr(Config, "STYLE_PROFILE_ENABLED", True) and db is not None:
+        try:
+            from sara.core.style_profile import StyleProfile
+
+            _style = StyleProfile(db.get_preference, db.set_preference)
+            # (barge-in is not used as a signal yet: last_interrupt_info() is never cleared, so it would be stale)
+            _style.observe(user_input)
+            if hasattr(brain, "set_style_line"):
+                brain.set_style_line(_style.line())
+        except Exception as _e:  # noqa: BLE001 -- style learning must never affect the reply
+            logger.debug("style profile skipped: %s", _e)
 
     # ── Confirmation gate for the 4 irreversible actions ────────────────
     # E2E test 2026-10-30: a typed "shutdown the computer" (confidence 1.0)
@@ -963,6 +995,23 @@ def _handle_command(
         else:
             question = f"Are you sure you want to {phrase}?"
         return _quick(ctx, f"{question} Say yes or cancel.")
+
+    # Risk-tiered clarification (audit part 2, O9). Read-only and reversible commands (tiers 0-1) just run, even when
+    # the transcript was shaky. A shaky transcript of an impactful command (tier 2: close an app, lock the PC, press a
+    # key, delete a to-do ...) is read back first. Destructive ones (tier 3) were handled by the gate above.
+    if (
+        intent != "chat"
+        and low_confidence
+        and intent not in _LOW_CONFIDENCE_CONFIRM_ACTIONS
+        and getattr(Config, "SMART_CONFIRM_ENABLED", True)
+        and _intent_tier(intent) >= 2
+    ):
+        ctx["confirm_state"]["pending"] = {
+            "action": "readback",
+            "target": user_input,
+            "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
+        }
+        return _quick(ctx, f'Did you say "{user_input}"? Say yes or cancel.')
 
     if cancel_event.is_set():
         return ""
@@ -1288,12 +1337,38 @@ def _handle_command(
         mood_mix_hint = _build_turn_mood_mix_hint(user_input, context_state)
         if mood_mix_hint:
             context_hint = f"{context_hint} {mood_mix_hint}" if context_hint else mood_mix_hint
+        if intent == "chat" and getattr(Config, "GROUNDING_ENABLED", True):
+            try:
+                from sara.core.grounding import ground, needs_grounding
+
+                if needs_grounding(user_input):
+                    from sara.tools import web as web_tools
+
+                    block = ground(user_input, web_tools.search_web, float(getattr(Config, "GROUNDING_TIMEOUT_S", 4.0)))
+                    if block:
+                        context_hint = (context_hint + chr(10) + block) if context_hint else block
+            except Exception as _g:  # noqa: BLE001 -- grounding is optional; the normal answer still goes out
+                print(f"[Grounding] skipped: {_g}")
         stream = brain.generate_response_stream(user_input, reference_context=context_hint)
+        if getattr(Config, "REPLY_GUARDRAILS_ENABLED", True):
+            from sara.core.llm.guardrails import guard_stream
+
+            _latin_user = not re.search("[ऀ-ॿ]", user_input or "") and context_state.get("turn_lang_mode") == "auto"
+            stream = guard_stream(
+                stream,
+                user_input,
+                expect_latin=_latin_user,
+                regenerate=lambda: brain.generate_response_stream(
+                    user_input + " (Reply in Roman script only: English or Hinglish, no Devanagari.)",
+                    reference_context=context_hint,
+                ),
+            )
         sentences = tts.speak_stream(
             stream,
             on_first_chunk=lambda: ui_update("status", "speaking"),
             on_chunk=lambda s: ui_update("transcript_chunk", "sara", s),
         )
+        context_state["last_reply"] = " ".join(sentences)
         return " ".join(sentences)
     except Exception as e:
         print(f"[Error] LLM stream failed: {e}")

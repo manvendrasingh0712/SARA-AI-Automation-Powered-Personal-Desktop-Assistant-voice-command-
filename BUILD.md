@@ -131,3 +131,10 @@ with no separate `COLLECT` step), but startup becomes noticeably slower
 less obvious to end users, since there's no visible folder to drop them
 into. The current one-folder approach is the recommended default for
 this project.
+
+## Keep dev and test files out of the build
+
+`sara/gui/js/dev/` (the mock bridge) and `sara/gui/js/tests/` (JS unit tests) are development-only; the GUI is served
+from the generated `sara/gui/bundle/` and `index.html`, which do not reference them. Exclude both folders (and the
+`tests/` package) from `sara_ai.spec`'s data files. Note: `sara_ai.spec` itself is not in the repository at the moment;
+add it (or regenerate it) before building.

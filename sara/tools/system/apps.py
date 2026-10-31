@@ -682,6 +682,16 @@ def open_application(app_name: str, *, allow_search_fallback: bool = True) -> st
         and resolved.source == "raw"
         and _search_fallback_applies(target)
     ):
+        # Installed apps are looked up in the in-memory Start Menu index first (< 5 ms); Windows Search is only the last
+        # resort (it costs ~2.8 s of fixed waits).
+        try:
+            from . import app_index
+
+            entry = app_index.resolve(target) if getattr(Config, "APP_INDEX_ENABLED", True) else None
+        except Exception:  # noqa: BLE001
+            entry = None
+        if entry is not None and app_index.launch(entry):
+            return f"Opened {label}."
         return _open_via_windows_search(target, label)
 
     status, err = _try_launch(target)

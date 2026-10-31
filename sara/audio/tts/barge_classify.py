@@ -30,10 +30,10 @@ _STOP_PHRASES: frozenset[tuple[str, ...]] = frozenset(
     tuple(p.split())
     for p in (
         "stop", "wait", "no", "nope", "sorry", "actually", "pause", "cancel",
-        "enough", "hold on",
+        "enough", "hold on", "stop it", "stop talking", "quiet", "be quiet", "shut up", "silence",
         "ruko", "ruk", "rukiye", "bas", "nahi", "nahin", "galat", "ek minute",
-        "ek second",
-        "रुको", "रुक", "बस", "नहीं", "गलत", "एक मिनट",
+        "ek second", "chup", "chup ho ja", "chup ho jao", "chup raho", "bas karo", "bas kar", "bas kijiye",
+        "रुको", "रुक", "बस", "नहीं", "गलत", "एक मिनट", "चुप", "चुप हो जा", "चुप हो जाओ", "बस करो",
     )
 )
 _MAX_STOP_LEN = max(len(p) for p in _STOP_PHRASES)

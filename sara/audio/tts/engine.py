@@ -33,6 +33,7 @@ from typing import Callable, Iterator, Optional
 import numpy as np
 
 from config import Config
+from sara.core.diag import swallowed
 
 try:
     from sara.core.telemetry import mark as _t_mark
@@ -426,8 +427,8 @@ class TextToSpeech:
                         buffer=_BLOCK_SIZE,
                     )
                     pygame.mixer.init()
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(None, "engine.__init__:429", _exc)
 
         self._volume: float = float(getattr(Config, "TTS_VOLUME", 1.0))
 
@@ -489,8 +490,8 @@ class TextToSpeech:
             self._warmup_done.set()
         try:
             start_prewarm(self)
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "engine._warm_up:492", _exc)
 
     # ── Synthesis router ─────────────────────────────────────────────────────
 
@@ -695,8 +696,8 @@ class TextToSpeech:
                 return True
             try:
                 chunker_future.result(timeout=2.0)
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(None, "engine._speak_whole_reply:698", _exc)
             text = recorder.whole_reply(drain=chunker_future.done())
             if text:
                 self.speak(text, fast=fast)
@@ -1015,8 +1016,8 @@ class TextToSpeech:
                     if ev.wait(timeout=10.0) and not stop_ev.is_set():
                         try:
                             cb()
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            swallowed(None, "engine._wait_and_call:1018", _exc)
                 
                 threading.Thread(
                     target=_wait_and_call, 
@@ -1030,8 +1031,8 @@ class TextToSpeech:
                     have_next = True
                     if next_seg is not None and not next_seg.ready.is_set():
                         next_seg.ready.wait(timeout=8)
-                except queue.Empty:
-                    pass
+                except queue.Empty as _exc:
+                    swallowed(None, "engine._playback_worker:1033", _exc)
 
         if last_done_event is not None and not interrupted:
             while not last_done_event.wait(timeout=_POLL_S):

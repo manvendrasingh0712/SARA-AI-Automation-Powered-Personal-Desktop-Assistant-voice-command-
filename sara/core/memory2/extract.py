@@ -127,6 +127,8 @@ def _collect(brain: Any, turns: list[dict], now_ts: float, now_iso: str, min_con
         dropped += clean["dropped"]
         entities.extend(clean["entities"])
 
+        # `chunk` is the loop variable: origin() is only called inside this iteration (below), never stored,
+        # so the late-binding closure (ruff B023) is safe.
         def origin(item: dict) -> tuple[str, float]:
             idx = item["turn"] - 1 if item["turn"] and item["turn"] <= len(chunk) else len(chunk) - 1
             return f"c{chunk[idx]['id']}", to_epoch(chunk[idx]["timestamp"]) or now_ts

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from .prompt import _build_base_prompt, _time_of_day
 from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens, _strip_emoji
-from .clients import _get_ollama_client, _get_gemini_client, ollama_load_options
+from .clients import _get_ollama_client, _get_gemini_client, _build_gemini_generate_config, ollama_load_options
 
 
 import logging
@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
 
 from config import Config
+from sara.core.diag import swallowed
 
 try:
     from sara.core.telemetry import annotate as _t_annotate, mark as _t_mark
@@ -107,8 +108,15 @@ def _log_ollama_timing(chunk) -> None:
             ptok, ms(getattr(chunk, "prompt_eval_duration", 0)), ms(getattr(chunk, "load_duration", 0)),
             gtok, (gtok / gdur) if gdur > 0 else 0.0, ms(getattr(chunk, "total_duration", 0)),
         )
-    except Exception:
-        pass
+        # A long prompt that took long to read means Ollama re-read the whole thing: the cached prefix did not match
+        # (prompt text before the history changed, or the model was reloaded). Normal turns read only the new tail.
+        if ptok >= 600 and ms(getattr(chunk, "prompt_eval_duration", 0)) > 1500:
+            logging.getLogger("sara.llm").warning(
+                "[LLM] prompt prefix cache probably missed: %d tokens took %.0f ms to read", ptok,
+                ms(getattr(chunk, "prompt_eval_duration", 0)),
+            )
+    except Exception as _exc:
+        swallowed(logger, "engine._log_ollama_timing:110", _exc)
 
 
 def _first_chunk_cut(buffer: str) -> Optional[int]:
@@ -175,14 +183,14 @@ def _server_retry_after_s(exc: BaseException) -> Optional[float]:
                 raw = str(d.get("retryDelay", "")).strip().rstrip("s")
                 if raw:
                     return float(raw)
-    except Exception:
-        pass
+    except Exception as _exc:
+        swallowed(logger, "engine._server_retry_after_s:178", _exc)
     try:
         m = _RETRY_DELAY_RE.search(str(exc))
         if m:
             return float(m.group(1))
-    except Exception:
-        pass
+    except Exception as _exc:
+        swallowed(logger, "engine._server_retry_after_s:184", _exc)
     return None
 
 
@@ -197,8 +205,8 @@ def _router_report(router, decision_id: str, started: float, produced: bool, esc
             escalated=escalated,
             error_code=None if produced else "no_output",
         )
-    except Exception:
-        pass
+    except Exception as _exc:
+        swallowed(logger, "engine._router_report:200", _exc)
 
 # ══════════════════════════════════════════════════════════════════════
 # Module-level compiled regexes
@@ -554,7 +562,20 @@ class SaraLLM:
         self.system_instruction = _build_base_prompt(
             name, self._tod, self._lang, self.user_name
         )
+        style = getattr(self, "_style_line", "")
+        if style:
+            self.system_instruction += " " + style
         self._sys_prompt_tokens = _estimate_tokens(self.system_instruction)
+
+    def set_style_line(self, line: str) -> bool:
+        """One learned line about how this user likes answers (sara/core/style_profile.py). The cached system
+        instruction is rebuilt only when the line CHANGES, so the prompt prefix stays stable between turns."""
+        line = (line or "").strip()
+        if line == getattr(self, "_style_line", ""):
+            return False
+        self._style_line = line
+        self._build_and_cache_system_instruction()
+        return True
 
     # ── Runtime switches ──────────────────────────────────────────────
 
@@ -663,8 +684,8 @@ class SaraLLM:
                 from sara.core.rag import embed_text
 
                 embed_text("warm up")
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(logger, "engine._go:666", _exc)
 
         threading.Thread(target=_go, daemon=True, name="embed-warmup").start()
 
@@ -870,6 +891,14 @@ class SaraLLM:
                 }
             )
         msgs.append({"role": "system", "content": _current_time_note()})
+        try:
+            from sara.core.context_line import build as _context_line
+
+            _pc = _context_line(self._cfg)
+        except Exception:  # noqa: BLE001
+            _pc = ""
+        if _pc:
+            msgs.append({"role": "system", "content": _pc})
         language_note = self._turn_language_note()
         if language_note:
             msgs.append({"role": "system", "content": language_note})
@@ -879,7 +908,8 @@ class SaraLLM:
                 {
                     "role": "system",
                     "content": (
-                        f"The user's message means in English: {gloss[1]} Answer it correctly in one short sentence. "
+                        f"The user's message means in English: {gloss[1]} Answer it correctly, using the length rules above "
+                        "(one sentence for a quick fact, three to five for an explanation). "
                         "Write only Latin letters. Use English for every noun, name, number and fact; Hindi only for "
                         "small connecting words (hai, ka, ki, ke, ne, mein, ko, se, the, hota). Example: Bharat ke "
                         "pehle President Rajendra Prasad the. Do not start with yes or no unless it is a yes/no question."
@@ -1288,8 +1318,8 @@ class SaraLLM:
                     if on_rate_limit is not None and _looks_rate_limited(e):
                         try:
                             on_rate_limit(stage_name)
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            swallowed(logger, "engine._stream_generic:1292", _exc)
 
                     if yielded_any:
                         # v7: never speak the raw exception — the user already
@@ -1360,8 +1390,8 @@ class SaraLLM:
                     if stream_iter is not None and hasattr(stream_iter, "close"):
                         try:
                             stream_iter.close()
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            swallowed(logger, "engine._stream_generic:1364", _exc)
 
             if stage_idx == 0:
                 # CIRCUIT BREAKER FIX: record this turn's primary-backend
@@ -1549,6 +1579,29 @@ class SaraLLM:
         existing = {f"User said: {u}\nSara replied: {a}" for u, a in history}
         return [h for h in hits if getattr(h, "text", None) not in existing]
 
+    def _search_within_deadline(self, prompt: str) -> list:
+        """Long-term memory search, but never longer than RAG_DEADLINE_S (default 0.8 s; 0 = wait as long as it takes).
+        A slow embedding call (its own timeout is 15 s) must not hold back the first word of the reply: past the
+        deadline the answer simply goes out without memory. The search keeps running in its worker and is discarded."""
+        deadline = float(getattr(self._cfg, "RAG_DEADLINE_S", 0.8) or 0.0)
+        if deadline <= 0:
+            return self._memory.search(prompt)
+        box: list = []
+
+        def _go() -> None:
+            try:
+                box.append(self._memory.search(prompt))
+            except Exception as exc:  # noqa: BLE001
+                swallowed(logger, "llm.memory_search", exc)
+
+        t = threading.Thread(target=_go, daemon=True, name="rag-search")
+        t.start()
+        t.join(timeout=deadline)
+        if t.is_alive() or not box:
+            logger.info("[LLM] memory search took longer than %.2f s; answering without it", deadline)
+            return []
+        return box[0]
+
     def _start_memory2_retrieval(self, prompt: str):
         """Start Memory 2.0 retrieval in a helper thread; None when disabled or unavailable."""
         try:
@@ -1676,15 +1729,18 @@ class SaraLLM:
         reference_context = self._secure_reference(reference_context)
         contents = self._build_contents_gemini(prompt, history, memory_context, reference_context)
 
+        used_model = model_override or (
+            self._gemini_fast_model_name if _is_simple_query(prompt) else self._gemini_model_name
+        )
+        _budget = getattr(self._cfg, "GEMINI_THINKING_BUDGET", None)
         raw_stream = client.models.generate_content_stream(
-            model=model_override
-            or (
-                self._gemini_fast_model_name
-                if _is_simple_query(prompt)
-                else self._gemini_model_name
-            ),
+            model=used_model,
             contents=contents,
-            config=types.GenerateContentConfig(
+            config=_build_gemini_generate_config(
+                types,
+                None,  # a streamed reply can legitimately run long: no whole-request I/O timeout here
+                model=used_model,
+                thinking_budget=_budget,
                 system_instruction=self.system_instruction,
                 temperature=float(getattr(self._cfg, "GEMINI_TEMPERATURE", 0.7)),
                 top_p=float(getattr(self._cfg, "GEMINI_TOP_P", 0.9)),
@@ -1798,7 +1854,7 @@ class SaraLLM:
         if self._memory is not None and not trivial:
             try:
                 _m2_job = self._start_memory2_retrieval(prompt)
-                hits = self._memory.search(prompt)
+                hits = self._search_within_deadline(prompt)
                 hits = self._merge_memory2_hits(hits, _m2_job)
                 # PRIORITY-9 FIX (now against the actual trimmed history,
                 # not the full untrimmed deque — see PRIORITY-4 above):
@@ -2143,7 +2199,10 @@ class SaraLLM:
                 resp = client.models.generate_content(
                     model=self.model_name,
                     contents=[{"role": "user", "parts": [{"text": text}]}],
-                    config=types.GenerateContentConfig(
+                    config=_build_gemini_generate_config(
+                        types,
+                        None,
+                        model=self.model_name,
                         system_instruction=system_prompt,
                         temperature=0.5,
                     ),

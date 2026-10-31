@@ -23,10 +23,15 @@ except (ImportError, OSError) as e:
         "Run: pip install pillow."
         f" ({e})"
     )
-from google import genai
-from google.genai import types, errors
+from sara.core.text.lazy_import import lazy_module
+
+# google.genai costs ~0.7 s to import and is only needed when a Gemini call is made
+genai = lazy_module("google.genai")
+types = lazy_module("google.genai.types")
+errors = lazy_module("google.genai.errors")
 
 from config import Config
+from sara.core.llm.clients import _build_gemini_generate_config
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +120,7 @@ class VisionAssistant:
                     types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
                     prompt_text,
                 ],
-                config=types.GenerateContentConfig(temperature=0.4),
+                config=_build_gemini_generate_config(types, None, model=self.model_name, temperature=0.4),
             )
         except errors.APIError as e:
             logger.error(f"Gemini Vision API error: {e}")

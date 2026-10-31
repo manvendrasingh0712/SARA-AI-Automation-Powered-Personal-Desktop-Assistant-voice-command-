@@ -438,6 +438,9 @@ def clean_for_tts(text: str) -> str:
     text = _DEGREES_RE.sub(_degrees_words, text)
     for pat, repl in _ABBR:
         text = pat.sub(repl, text)
+    from .spoken_forms import apply as _spoken_forms
+
+    text = _spoken_forms(text, lang)
     text = _normalize_numbers_for_tts(text, lang)
     return _MULTI_SP.sub(" ", text).strip()
 

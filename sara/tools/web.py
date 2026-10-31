@@ -780,6 +780,34 @@ def _news_google_rss(topic: str, max_results: int) -> "list[str]":
     return out
 
 
+_news_warmer_lock = threading.Lock()
+_news_warmer_started = False
+
+
+def start_news_warmer(first_delay_s: float = 15.0, interval_s: float = 1500.0) -> bool:
+    """Keep the top-headlines cache warm in a daemon thread so "news sunao" answers from memory (a cold fetch was
+    measured at 5.5 s, a cached one at 0 ms). Idempotent: returns True only for the call that started the thread."""
+    global _news_warmer_started
+    with _news_warmer_lock:
+        if _news_warmer_started:
+            return False
+        _news_warmer_started = True
+
+    def _loop() -> None:
+        time.sleep(max(0.0, first_delay_s))
+        while True:
+            try:
+                _cache.pop("news:" + f"top news {date.today().isoformat()}".lower() + ":3", None)
+                _NEWS_PREFETCH_CACHE.pop("news:" + f"top news {date.today().isoformat()}".lower() + ":3", None)
+                get_news("")
+            except Exception as exc:  # noqa: BLE001 -- best effort; the next real request fetches normally
+                logger.debug("news warmer: %s", exc)
+            time.sleep(max(60.0, interval_s))
+
+    threading.Thread(target=_loop, daemon=True, name="news-warmer").start()
+    return True
+
+
 def get_news(topic: str = "", max_results: int = 3) -> str:
     """
     Fetches recent news headlines, optionally filtered by topic, using

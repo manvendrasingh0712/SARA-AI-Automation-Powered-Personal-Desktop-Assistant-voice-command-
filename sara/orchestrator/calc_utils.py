@@ -9,6 +9,8 @@ import logging
 import operator
 import re
 
+from sara.core.text.spoken_numbers import ENGLISH_ONES, ENGLISH_TENS, words_to_digits
+
 from sara.orchestrator._constants import (
     _CALC_EXPR_RE,
     _CALC_MAX_LEN,
@@ -100,7 +102,7 @@ _SPOKEN_OPS = (
     (re.compile(r"\bsquare root of\s+(\d+(?:\.\d+)?)", re.I), lambda m: f"({m.group(1)}**0.5)"),
     (re.compile(r"(\d+(?:\.\d+)?)\s+squared\b", re.I), lambda m: f"({m.group(1)}**2)"),
     (re.compile(r"(\d+(?:\.\d+)?)\s+cubed\b", re.I), lambda m: f"({m.group(1)}**3)"),
-    (re.compile(r"\s+(?:raised to the power of|to the power of)\s+", re.I), lambda m: "**"),
+    (re.compile(r"\s+(?:raised to the power of|to the power of|raised to|to the power|power)\s+", re.I), lambda m: "**"),
     (re.compile(r"\s+(?:multiplied by|times|into)\s+", re.I), lambda m: "*"),
     (re.compile(r"\s+divided by\s+|\s+over\s+", re.I), lambda m: "/"),
     (re.compile(r"\s+plus\s+", re.I), lambda m: "+"),
@@ -177,24 +179,10 @@ def _safe_calc(expression: str) -> str:
 # stay separate -- but a test pins that they agree wherever they overlap,
 # because two tables that must not contradict each other is exactly the
 # shape of the D74/D75 defects.
-_NUMBER_WORDS = {
-    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
-    "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15,
-    "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
-}
-_NUMBER_TENS = {
-    "twenty": 20, "thirty": 30, "forty": 40, "fourty": 40,  # common misspelling
-    "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
-}
+_NUMBER_WORDS = ENGLISH_ONES
+_NUMBER_TENS = ENGLISH_TENS
 
 
-_HI_NUMBERS = {
-    "शून्य": 0, "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5, "छह": 6, "छः": 6, "छे": 6,
-    "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "ग्यारह": 11, "बारह": 12, "तेरह": 13, "चौदह": 14,
-    "पंद्रह": 15, "पन्द्रह": 15, "सोलह": 16, "सत्रह": 17, "अठारह": 18, "उन्नीस": 19, "बीस": 20,
-    "तीस": 30, "चालीस": 40, "पचास": 50, "साठ": 60, "सत्तर": 70, "अस्सी": 80, "नब्बे": 90,
-}
 # Devanagari units and operators, matched as whole whitespace-separated tokens (\w splits Devanagari at matras)
 _HI_WORDS = {
     "घंटे": "hours", "घंटा": "hours", "घण्टे": "hours", "घण्टा": "hours", "मिनट": "minutes", "सेकंड": "seconds",
@@ -208,9 +196,7 @@ def _hindi_words_to_english(text: str) -> str:
         return text
     out = []
     for tok in text.split():
-        if tok in _HI_NUMBERS:
-            out.append(str(_HI_NUMBERS[tok]))
-        elif tok in _HI_WORDS:
+        if tok in _HI_WORDS:
             out.append(_HI_WORDS[tok])
         else:
             out.append(tok)
@@ -219,59 +205,13 @@ def _hindi_words_to_english(text: str) -> str:
 
 def _digits_for_number_words(text: str) -> str:
     """
-    Rewrite spoken number words as digits, leaving everything else alone.
-
-    Handles the compound forms a duration actually uses -- "forty five",
-    "forty-five", "twenty two" -- by combining a tens word with a
-    following unit word. "half an hour" and "half hour" are rewritten to
-    "30 minutes" before anything else, because "half" is not a count.
-
-    Deliberately conservative: a digit already in the text is never
-    touched, and a word that is not a number is copied through unchanged.
+    Rewrite spoken number words as digits, leaving everything else alone. The tables and the rules live in
+    sara.core.text.spoken_numbers; this keeps the arithmetic / duration use (every number word converts, "a" and
+    "an" only before a unit) plus the Devanagari operator and unit words.
     """
     if not isinstance(text, str) or not text:
         return text
-    text = _hindi_words_to_english(text)
-
-    out = re.sub(r"\bhalf\s+(?:an?\s+)?hour\b", "30 minutes", text, flags=re.I)
-    out = re.sub(r"\bhalf\s+(?:a\s+)?minute\b", "30 seconds", out, flags=re.I)
-
-    tokens = re.split(r"(\W+)", out)  # keeps separators, so spacing survives
-    result = []
-    i = 0
-    while i < len(tokens):
-        tok = tokens[i]
-        low = tok.lower()
-        if low in _NUMBER_TENS:
-            value = _NUMBER_TENS[low]
-            # look past one separator for a unit word: "forty five", "forty-five"
-            if (
-                i + 2 < len(tokens)
-                and tokens[i + 1].strip() in ("", "-")
-                and tokens[i + 2].lower() in _NUMBER_WORDS
-                and _NUMBER_WORDS[tokens[i + 2].lower()] < 10
-            ):
-                value += _NUMBER_WORDS[tokens[i + 2].lower()]
-                i += 3
-            else:
-                i += 1
-            result.append(str(value))
-            continue
-        if low in _NUMBER_WORDS:
-            # "a"/"an" only count as 1 in front of a unit ("an hour"), never
-            # on their own -- otherwise "a bit" would become "1 bit".
-            if low in ("a", "an"):
-                nxt = tokens[i + 2].lower() if i + 2 < len(tokens) else ""
-                if not re.match(r"^(?:hour|hr|minute|min|second|sec)s?$", nxt):
-                    result.append(tok)
-                    i += 1
-                    continue
-            result.append(str(_NUMBER_WORDS[low]))
-            i += 1
-            continue
-        result.append(tok)
-        i += 1
-    return "".join(result)
+    return words_to_digits(_hindi_words_to_english(text), unit_aware=False)
 
 
 def _parse_duration_to_seconds(text: str):
@@ -279,13 +219,13 @@ def _parse_duration_to_seconds(text: str):
     total = 0
     found = False
     for pattern, multiplier in [
-        (r"(\d+)\s*(?:hour|hr)s?", 3600),
-        (r"(\d+)\s*(?:minute|min)s?", 60),
-        (r"(\d+)\s*(?:second|sec)s?", 1),
+        (r"(\d+(?:\.\d+)?)\s*(?:hour|hr|ghanta|ghante|ghanton|ghantey)s?", 3600),
+        (r"(\d+(?:\.\d+)?)\s*(?:minute|min|mint|minat)s?", 60),
+        (r"(\d+(?:\.\d+)?)\s*(?:second|sec|sekand)s?", 1),
     ]:
         m = re.search(pattern, text)
         if m:
-            total += int(m.group(1)) * multiplier
+            total += int(round(float(m.group(1)) * multiplier))
             found = True
     if not found:
         m = re.match(r"^(\d+)$", text)

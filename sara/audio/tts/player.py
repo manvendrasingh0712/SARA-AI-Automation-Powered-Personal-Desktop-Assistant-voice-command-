@@ -17,6 +17,7 @@ from typing import Optional
 import numpy as np
 
 from config import Config
+from sara.core.diag import swallowed
 
 try:
     import sounddevice as sd
@@ -284,8 +285,8 @@ class _PersistentPlayer:
                 continue
             try:
                 self._aec.feed_far_end(block, _SAMPLE_RATE)
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(None, "player._far_end_worker:287", _exc)
 
     def _level_worker(self) -> None:
         """Background consumer for the live TTS level meter (see
@@ -305,8 +306,8 @@ class _PersistentPlayer:
             try:
                 rms = float(np.sqrt(np.mean(block.astype(np.float32) ** 2)))
                 self._on_level(min(1.0, rms / _LEVEL_PEAK_RMS))
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(None, "player._level_worker:308", _exc)
 
     def _callback(self, outdata, frames, time_info, status) -> None:
         if status and getattr(Config, "DEBUG_MODE", False):
@@ -413,8 +414,8 @@ class _PersistentPlayer:
             span = max(abs(self._duck_gain - target), 1e-6)
             self._duck_step = span / blocks
             self._duck_target = target
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "player.set_duck_gain:416", _exc)
 
     def _apply_duck(self, block: np.ndarray, frames: int, target: float) -> None:
         """Real-time: scale `block` in place by a gain ramping one step toward
@@ -480,8 +481,8 @@ class _PersistentPlayer:
                 # that will never reach the callback.
                 try:
                     item.event.set()
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    swallowed(None, "player.clear:483", _exc)
             # _SegmentStart is intentionally dropped without firing, so
             # UI callbacks for cancelled segments never trigger.
         self._duck_target = 1.0
@@ -495,8 +496,8 @@ class _PersistentPlayer:
         if self._aec is not None:
             try:
                 self._far_end_q.put_nowait(pcm)
-            except queue.Full:
-                pass
+            except queue.Full as _exc:
+                swallowed(None, "player._pygame_play_and_wait:498", _exc)
         try:
             stereo = np.column_stack([pcm, pcm])
             sound = pygame.sndarray.make_sound(stereo)

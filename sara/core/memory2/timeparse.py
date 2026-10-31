@@ -4,6 +4,8 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 
+from sara.core.text.spoken_numbers import NUMBER_WORDS
+
 from .lexicon import tokens
 
 __all__ = ["parse_window"]
@@ -55,14 +57,8 @@ _UNIT = {
     **dict.fromkeys(_w("week weeks hafte hafta haftey हफ्ते हफ्ता हफ़्ते सप्ताह"), "w"),
     **dict.fromkeys(_w("month months mahine mahina महीने महीना"), "m"),
 }
-_NUMWORD = {"a": 1, "an": 1, "one": 1, "ek": 1, "एक": 1, "two": 2, "three": 3, "four": 4,
-            "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11,
-            "twelve": 12,
-            # Hinglish / Hindi: "do din pehle", "दो दिन पहले" had no window at all.
-            "do": 2, "teen": 3, "tin": 3, "char": 4, "chaar": 4, "paanch": 5, "panch": 5,
-            "chhe": 6, "che": 6, "saat": 7, "aath": 8, "nau": 9, "das": 10,
-            "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5, "छह": 6, "सात": 7,
-            "आठ": 8, "नौ": 9, "दस": 10}
+# one table for the whole project: sara.core.text.spoken_numbers
+_NUMWORD = dict(NUMBER_WORDS)
 
 
 def _num(tok: str) -> int | None:

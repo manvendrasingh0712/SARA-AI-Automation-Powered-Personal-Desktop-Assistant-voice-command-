@@ -1,0 +1,18 @@
+{"_defaults":{"lang":"hinglish","kind":"positive","style":"casual"}}
+{"t":"paanch minute ka timer","i":"set_timer"}
+{"t":"ek ghante ka timer laga do","i":"set_timer"}
+{"t":"dus minute ka timer set karo","i":"set_timer"}
+{"t":"pandrah minute ka alarm","i":"set_timer"}
+{"t":"aadha ghanta timer","i":"set_timer"}
+{"t":"10 minute timer","i":"set_timer"}
+{"t":"do minute baad yaad dilao","i":"set_timer"}
+{"t":"volume pachaas kar do","i":"set_volume"}
+{"t":"volume fifty percent","i":"set_volume"}
+{"t":"brightness saath percent","i":"set_brightness"}
+{"t":"agla gaana","i":"next_track"}
+{"t":"pichla gaana","i":"previous_track"}
+{"t":"music pause","i":"play_pause_media"}
+{"t":"dedh ghante ka timer lagao","i":"set_timer"}
+{"t":"bees minute ka timer","i":"set_timer"}
+{"t":"next gaana","i":"next_track"}
+{"t":"music resume","i":"play_pause_media"}

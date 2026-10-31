@@ -6,7 +6,9 @@ monolithic intent_handlers.py -- see that module's docstring.
 """
 import re
 from datetime import datetime, timedelta
-import dateparser
+from sara.core.text.lazy_import import lazy_module
+
+dateparser = lazy_module("dateparser")  # ~0.4 s at start-up otherwise
 
 from sara.tools.reminders import play_alarm_beep
 from sara.tools import system as system_tools

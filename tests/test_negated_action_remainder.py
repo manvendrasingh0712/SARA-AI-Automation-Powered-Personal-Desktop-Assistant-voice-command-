@@ -294,7 +294,7 @@ def test_the_guard_tries_every_route_detect_intent_tries() -> None:
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
         }
 
-    router_routes = _calls(ie.detect_intent) & {
+    router_routes = _calls(ie._detect_intent_unguarded) & {
         "_detect_intent_cached",
         "_resolve_known_app_open",
         "_correct_typos",

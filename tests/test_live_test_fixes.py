@@ -74,3 +74,38 @@ def test_news_rss_headlines_parsed(monkeypatch):
 
     monkeypatch.setattr(web._session, "get", lambda *a, **k: R())
     assert web._news_google_rss("", 3) == ["1. Big story (The Hindu)", "2. Other (NDTV)"]
+
+
+def test_filler_ack_fires_once_only_when_silent_and_is_cancellable():
+    import threading
+    import time
+
+    from sara.orchestrator.command_helpers import start_filler
+
+    class Tts:
+        def __init__(self):
+            self.said = []
+            self._speaking = threading.Event()
+
+        def speak(self, text, fast=False, block=True, **kw):
+            self.said.append(text)
+
+        def is_interrupted(self):
+            return False
+
+    ui = lambda *a: None  # noqa: E731
+    voice = {"turn_signals": {"confidence": 0.9}}
+
+    t = Tts(); f = start_filler(t, ui, voice, 0.05); time.sleep(0.2); f.cancel()
+    assert len(t.said) == 1                                    # spoken once, after the delay
+
+    t = Tts(); f = start_filler(t, ui, voice, 0.3); f.cancel(); time.sleep(0.5)
+    assert t.said == []                                        # the real reply arrived first
+
+    t = Tts(); t._speaking.set(); f = start_filler(t, ui, voice, 0.05); time.sleep(0.2); f.cancel()
+    assert t.said == []                                        # never over speech already playing
+
+    t = Tts(); f = start_filler(t, ui, {}, 0.05); time.sleep(0.2)
+    assert t.said == []                                        # typed turn: no filler
+    t = Tts(); f = start_filler(t, ui, voice, 0); time.sleep(0.1)
+    assert t.said == []                                        # delay 0 = off

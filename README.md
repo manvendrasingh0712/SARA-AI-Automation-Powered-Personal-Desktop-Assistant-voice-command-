@@ -540,8 +540,8 @@ SARA-AI/
 ├── BUILD.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
-├── NEXT_STEPS.md
-├── PROJECT_MEMORY.md
+├── docs/NEXT_STEPS.md
+├── docs/PROJECT_MEMORY.md
 └── LICENSE
 ```
 
@@ -814,7 +814,7 @@ SARA is an actively developed portfolio project. Important current constraints i
 - Full hardware validation is distinct from unit-test validation, especially for audio, GPU, and OS-specific integrations.
 - Semantic memory is optimized for a single-user desktop workload, not large-scale multi-user retrieval.
 
-For the active engineering backlog, see [`NEXT_STEPS.md`](./NEXT_STEPS.md).
+For the active engineering backlog, see [`NEXT_STEPS.md`](./docs/NEXT_STEPS.md).
 
 ---
 
@@ -843,8 +843,8 @@ The roadmap is intentionally focused on reliability, latency, and system integra
 - [`BUILD.md`](./BUILD.md) — Windows executable / packaging workflow
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md) — development and contribution guidance
 - [`CHANGELOG.md`](./CHANGELOG.md) — implementation history
-- [`NEXT_STEPS.md`](./NEXT_STEPS.md) — active engineering backlog
-- [`PROJECT_MEMORY.md`](./PROJECT_MEMORY.md) — project architecture and state reference
+- [`NEXT_STEPS.md`](./docs/NEXT_STEPS.md) — active engineering backlog
+- [`PROJECT_MEMORY.md`](./docs/PROJECT_MEMORY.md) — project architecture and state reference
 
 ---
 

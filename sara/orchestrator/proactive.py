@@ -59,6 +59,7 @@ from config import Config
 from sara.tools.reminder_context import minutes_until as _minutes_until
 from sara.tools.reminder_followup import pick_followup as _pick_followup
 from sara.tools.reminder_followup import settings_from_config as _followup_settings
+from sara.core.diag import swallowed
 
 _DEBUG = getattr(Config, "DEBUG_MODE", False)
 
@@ -159,6 +160,7 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
         _gen_config = _build_gemini_generate_config(
             types,
             _http_timeout_s,
+            model=getattr(Config, "GEMINI_MODEL", "gemini-2.5-flash"),
             system_instruction=system_prompt,
             temperature=0.6,
         )
@@ -287,8 +289,8 @@ class ProactiveEngine:
         try:
             if self._assistant_state is not None and not self._assistant_state.is_active():
                 return False
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "proactive._enabled_now:291", _exc)
         try:
             if self._db is not None:
                 if self._db.get_preference("focus_mode") == "1":
@@ -298,8 +300,8 @@ class ProactiveEngine:
                 # all (None) means the default, which is enabled.
                 if self._db.get_preference("setting:proactive_mode") == "0":
                     return False
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "proactive._enabled_now:302", _exc)
         return True
 
     def _trigger_enabled(self, key: str) -> bool:
@@ -318,8 +320,8 @@ class ProactiveEngine:
             if self._db is not None:
                 if self._db.get_preference(f"setting:proactive_{key}") == "0":
                     return False
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "proactive._trigger_enabled:322", _exc)
         return True
 
     def _cooldown_ready(self, key: str) -> bool:
@@ -641,8 +643,8 @@ class ProactiveEngine:
             # the milestone was actually crossed.
             try:
                 self._db.set_preference("streak_pending_milestone", "")
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(None, "proactive._check_streak_milestone:645", _exc)
 
     def _check_habit_pattern(self) -> None:
         if not self._trigger_enabled("habit"):
@@ -843,7 +845,7 @@ class ProactiveEngine:
             if self._lang_state is not None:
                 _, code = self._lang_state.snapshot()
                 lang = {"hi": "Hindi"}.get(code, "English")
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "proactive._phrase:847", _exc)
         rephrased = _quick_llm_rephrase(template, lang)
         return rephrased or template

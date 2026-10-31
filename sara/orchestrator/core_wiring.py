@@ -9,6 +9,7 @@ from .lazy import _debug_log, _Lazy
 from .state import LanguageState, AssistantState
 from .ui_bridge import _UICoalescer
 from .tts_worker import TTSWorker
+from sara.core.diag import swallowed
 
 try:
     from sara.core.telemetry import (
@@ -350,8 +351,8 @@ def build_core_objects(ui_update):
         try:
             if brain._ready.is_set() and brain._error is None:
                 return _BrainBreaker()
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(logger, "core_wiring._reminder_breaker:353", _exc)
         return None
 
     def _reminder_notes_search(query, top_k, min_similarity):
@@ -703,6 +704,24 @@ def run_sara_logic(
     )
     proactive_engine.start()
 
+    # Installed-app index for "open <app>" (replaces ~2.8 s of Windows Search waits with a dictionary lookup).
+    if getattr(Config, "APP_INDEX_ENABLED", True):
+        try:
+            from sara.tools.system.app_index import start_background_refresh
+
+            start_background_refresh()
+        except Exception as _e:  # noqa: BLE001
+            logger.debug("app index not started: %s", _e)
+
+    # Headlines are fetched in the background so "news sunao" is answered from the cache (cold fetch ~5 s, cached 0 ms).
+    if getattr(Config, "NEWS_WARMER_ENABLED", True):
+        try:
+            from sara.tools.web import start_news_warmer
+
+            start_news_warmer()
+        except Exception as _e:  # noqa: BLE001
+            logger.debug("news warmer not started: %s", _e)
+
     # THREAD SUPERVISOR (sara/orchestrator/supervisor.py): every 30s confirms
     # the reminders / notifications / proactive daemon threads are still
     # alive and logs a WARNING if one died. Must never block startup.
@@ -821,8 +840,8 @@ def run_sara_logic(
             _saved = None
             try:
                 _saved = db.get_preference("ui:telemetry_enabled")
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(logger, "core_wiring.run_sara_logic:824", _exc)
             print(
                 "[Telemetry] recording OFF -- no turns will be measured this "
                 "session."
@@ -1115,23 +1134,31 @@ def run_sara_logic(
                         else:
                             _state = _turn_id
                         print(f"[Telemetry] voice turn begun: {_state}")
-                    reply_text = _handle_command(
-                        user_input,
-                        brain,
-                        tts,
-                        ears,
-                        db,
-                        reminders,
-                        vision,
-                        ui_update,
-                        volume_state,
-                        notes_memory=notes_memory,
-                        playback_state=playback_state,
-                        confirm_state=confirm_state,
-                        context_state=context_state,
-                        stt_confidence=stt_confidence,
-                        session_control=session_control,
+                    from .command_helpers import start_filler
+
+                    _filler = start_filler(
+                        tts, ui_update, context_state, float(getattr(Config, "VOICE_FILLER_DELAY_S", 1.2))
                     )
+                    try:
+                        reply_text = _handle_command(
+                            user_input,
+                            brain,
+                            tts,
+                            ears,
+                            db,
+                            reminders,
+                            vision,
+                            ui_update,
+                            volume_state,
+                            notes_memory=notes_memory,
+                            playback_state=playback_state,
+                            confirm_state=confirm_state,
+                            context_state=context_state,
+                            stt_confidence=stt_confidence,
+                            session_control=session_control,
+                        )
+                    finally:
+                        _filler.cancel()
 
                 _t_end("cancelled" if turn_cancel.is_set() else "ok")
                 if _DEBUG and _turn_id:

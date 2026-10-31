@@ -27,6 +27,9 @@ class FakePlayer:
     def play_and_wait(self, pcm, stop, volume):
         self.played.append(np.array(pcm))
 
+    def clear(self):
+        self.cleared = getattr(self, "cleared", 0) + 1
+
 
 class Synth:
     """Deterministic fake for _synth_kokoro; records (text, voice, speed)."""

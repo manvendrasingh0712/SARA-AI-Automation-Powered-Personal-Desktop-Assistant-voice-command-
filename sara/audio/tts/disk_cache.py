@@ -65,7 +65,7 @@ def entry_hash(
         [CACHE_SCHEMA_VERSION, text, lang, bool(fast), speed, voice, voice_speed, model_fp],
         ensure_ascii=False,
     )
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def path_for(directory: Path, digest: str) -> Path:

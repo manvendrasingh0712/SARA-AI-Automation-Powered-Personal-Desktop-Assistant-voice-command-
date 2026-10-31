@@ -10,6 +10,7 @@ out of the former monolithic intent_handlers.py -- see that module's
 docstring for the full feature rationale behind each section below.
 """
 import random
+import threading
 
 from config import Config
 
@@ -132,6 +133,10 @@ _MODE_CONFIRMATIONS = {
 def _quick(ctx: dict, text: str) -> str:
     ctx["ui_update"]("status", "speaking")
     ctx["tts"].speak(text, fast=True)
+    try:
+        ctx["context_state"]["last_reply"] = text
+    except Exception:  # noqa: BLE001 -- ctx without a context_state (older tests)
+        pass
     return text
 
 
@@ -220,8 +225,63 @@ def _ack(ctx: dict) -> None:
         index = random.choice(list(choices))
         _LAST_ACK_INDEX = index
         ctx["tts"].speak(_ACK_PHRASES[index], fast=True, block=False)
+        ctx["_ack_spoken"] = True
     except Exception as e:
         print(f"[Core] _ack() failed (non-fatal, command continues): {e}")
+
+
+# ── Filler acknowledgement (audit Task 5c) ────────────────────────────────
+# A turn that goes to a tool, the planner or the LLM can be silent for several seconds. If nothing has been said
+# VOICE_FILLER_DELAY_S after the command was understood, one short cached acknowledgement ("On it!") is spoken.
+# - at most one per turn: _ack() marks the turn, and the filler stays quiet when an action already acknowledged;
+# - never over the real reply: it is skipped when SARA is already speaking, and cancelled when the turn ends;
+# - it goes through the same TTS worker as every reply, so echo cancellation and the settle gap treat it like speech.
+
+
+class _Filler:
+    __slots__ = ("_timer", "_done", "_ctx")
+
+    def __init__(self, ctx: dict, delay_s: float) -> None:
+        self._ctx = ctx
+        self._done = threading.Event()
+        self._timer = threading.Timer(delay_s, self._fire)
+        self._timer.daemon = True
+        self._timer.start()
+
+    def _fire(self) -> None:
+        if self._done.is_set() or self._ctx.get("_ack_spoken"):
+            return
+        tts = self._ctx.get("tts")
+        speaking = getattr(tts, "_speaking", None)
+        try:
+            if speaking is not None and speaking.is_set():
+                return
+            if getattr(tts, "is_interrupted", lambda: False)():
+                return
+        except Exception:  # noqa: BLE001
+            return
+        _ack(self._ctx)
+
+    def cancel(self) -> None:
+        self._done.set()
+        self._timer.cancel()
+
+
+class _NoFiller:
+    def cancel(self) -> None:  # pragma: no cover - trivial
+        return None
+
+
+def start_filler(tts, ui_update, context_state: dict, delay_s: float):
+    """Arm the filler for one VOICE turn (context_state carries the STT signals only for spoken turns). Returns an
+    object with cancel(); call it when the turn ends. delay_s <= 0 disables."""
+    try:
+        if delay_s <= 0 or not (context_state or {}).get("turn_signals"):
+            return _NoFiller()
+        ctx = {"tts": tts, "ui_update": ui_update, "_ack_spoken": False}
+        return _Filler(ctx, float(delay_s))
+    except Exception:  # noqa: BLE001
+        return _NoFiller()
 
 
 # ── Live Activity card (NEW) ─────────────────────────────────────────

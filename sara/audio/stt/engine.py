@@ -33,6 +33,7 @@ import time
 from pathlib import Path
 from typing import Callable, List, Optional
 from concurrent.futures import ThreadPoolExecutor
+from sara.core.diag import swallowed
 
 try:
     from sara.core.telemetry import mark_pending as _t_pending
@@ -478,8 +479,8 @@ class SpeechToText:
             _restored = recover_after_crash()
             if _restored:
                 print(f"[STT] restored the volume of {_restored} app(s) that a previous run had turned down")
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(logger, "engine.__init__:481", _exc)
 
         with ThreadPoolExecutor(max_workers=4, thread_name_prefix="stt-model-load") as _pool:
             _hinglish_future = _pool.submit(self._load_hinglish_model)
@@ -1383,8 +1384,8 @@ class SpeechToText:
         ):
             try:
                 self._level_q.put_nowait(chunk)
-            except queue.Full:
-                pass
+            except queue.Full as _exc:
+                swallowed(logger, "engine._ingest_processed_chunk:1386", _exc)
 
         if self._tts_active.is_set():
             # BUGFIX/hardening (mic-blocking during TTS): previously every
@@ -1555,8 +1556,8 @@ class SpeechToText:
             try:
                 level = min(1.0, _rms(chunk) / _AUDIO_LEVEL_MIC_PEAK_RMS)
                 self._on_audio_level(level)
-            except Exception:
-                pass
+            except Exception as _exc:
+                swallowed(logger, "engine._level_worker:1558", _exc)
 
     def _start_threads(self) -> None:
         threading.Thread(
@@ -1884,8 +1885,8 @@ class SpeechToText:
         try:
             if guard is not None:
                 return guard.stats()
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(logger, "engine.endpoint_stats:1887", _exc)
         return {"endpoints": 0, "early_cuts": 0, "rules": {}}
 
     def _endpoint_open(
@@ -2465,10 +2466,10 @@ class SpeechToText:
                 if result and generation == self._preview_generation:
                     try:
                         on_partial_transcript(str(result))
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as _exc:
+                        swallowed(logger, "engine._run:2468", _exc)
+            except Exception as _exc:
+                swallowed(logger, "engine._run:2470", _exc)
             finally:
                 self._preview_busy.clear()
 

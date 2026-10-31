@@ -355,6 +355,110 @@ _DEFAULT_APP_LAUNCH_ALLOWLIST = (
 WAKE_ACK_PHRASE = "Yes?"
 
 
+# Range clamps applied by Config.validate(): (setting, lowest, highest).
+_CLAMPS = (
+    ('LLM_MAX_RETRIES', _MIN_LLM_RETRIES, _MAX_LLM_RETRIES),
+    ('LLM_RETRY_BASE_DELAY_S', _MIN_LLM_RETRY_DELAY_S, _MAX_LLM_RETRY_DELAY_S),
+    ('LLM_WARMUP_WAIT_S', _MIN_LLM_WARMUP_WAIT_S, _MAX_LLM_WARMUP_WAIT_S),
+    ('LLM_CIRCUIT_BREAKER_THRESHOLD', _MIN_LLM_CIRCUIT_BREAKER_THRESHOLD, _MAX_LLM_CIRCUIT_BREAKER_THRESHOLD),
+    ('LLM_CIRCUIT_BREAKER_COOLDOWN_S', _MIN_LLM_CIRCUIT_BREAKER_COOLDOWN_S, _MAX_LLM_CIRCUIT_BREAKER_COOLDOWN_S),
+    ('GEMINI_MAX_HISTORY_TOKENS', _MIN_GEMINI_HISTORY_TOKENS, _MAX_GEMINI_HISTORY_TOKENS),
+    ('ORT_INTRA_THREADS', _MIN_THREADS, _MAX_THREADS),
+    ('ORT_INTER_THREADS', _MIN_THREADS, _MAX_THREADS),
+    ('TTS_VOLUME', _MIN_TTS_VOLUME, _MAX_TTS_VOLUME),
+    ('KOKORO_SPEED', _MIN_KOKORO_SPEED, _MAX_KOKORO_SPEED),
+    ('KOKORO_SPEED_EN', _MIN_KOKORO_SPEED, _MAX_KOKORO_SPEED),
+    ('KOKORO_SPEED_HI', _MIN_KOKORO_SPEED, _MAX_KOKORO_SPEED),
+    ('TTS_PLAYBACK_BUFFER_MS', _MIN_PLAYBACK_BUFFER_MS, _MAX_PLAYBACK_BUFFER_MS),
+    ('TTS_WARMUP_WAIT_S', _MIN_WARMUP_WAIT_S, _MAX_WARMUP_WAIT_S),
+    ('TTS_SYNTH_QUEUE_SIZE', _MIN_QUEUE_SIZE, _MAX_QUEUE_SIZE),
+    ('TTS_PLAY_QUEUE_SIZE', _MIN_QUEUE_SIZE, _MAX_QUEUE_SIZE),
+    ('TTS_PHRASE_CACHE_SIZE', _MIN_PHRASE_CACHE_SIZE, _MAX_PHRASE_CACHE_SIZE),
+    ('VOICE_PREWARM_MAX_PHRASES', _MIN_VOICE_PREWARM_PHRASES, _MAX_VOICE_PREWARM_PHRASES),
+    ('VOICE_DUCK_DB', -24.0, -3.0),
+    ('VOICE_DUCK_RAMP_MS', 10, 200),
+    ('BARGE_COLLECT_MS', 300, 900),
+    ('BARGE_AMBIGUOUS_MS', 500, 1500),
+    ('BARGE_NOAEC_MIN_SPEECH_MS', 150, 800),
+    ('BARGE_NOAEC_THRESHOLD_BOOST', 1.0, 3.0),
+    ('TTS_PHRASE_CACHE_MAXLEN', _MIN_PHRASE_CACHE_MAXLEN, _MAX_PHRASE_CACHE_MAXLEN),
+    ('TTS_BLEED_GUARD_MULTIPLIER', _MIN_TTS_BLEED_MULTIPLIER, _MAX_TTS_BLEED_MULTIPLIER),
+    ('TTS_FIRST_CHUNK_MIN_CHARS', _MIN_TTS_FIRST_CHUNK_CHARS, _MAX_TTS_FIRST_CHUNK_CHARS),
+    ('WHISPER_BEAM_SIZE', _MIN_WHISPER_BEAM_SIZE, _MAX_WHISPER_BEAM_SIZE),
+    ('STT_NO_SPEECH_THRESHOLD', _MIN_NO_SPEECH_THRESHOLD, _MAX_NO_SPEECH_THRESHOLD),
+    ('STT_LOG_PROB_THRESHOLD', _MIN_LOG_PROB_THRESHOLD, _MAX_LOG_PROB_THRESHOLD),
+    ('STT_COMPRESSION_RATIO_THRESHOLD', _MIN_COMPRESSION_RATIO_THRESHOLD, _MAX_COMPRESSION_RATIO_THRESHOLD),
+    ('STT_HALLUCINATION_MIN_REPEATS', _MIN_HALLUCINATION_MIN_REPEATS, _MAX_HALLUCINATION_MIN_REPEATS),
+    ('STT_MIN_CONFIDENCE_REJECT', 0.0, 1.0),
+    ('WAKE_WORD_BEAM_SIZE', _MIN_WHISPER_BEAM_SIZE, _MAX_WHISPER_BEAM_SIZE),
+    ('STT_CONFIDENCE_CONFIRM_THRESHOLD', _MIN_STT_CONFIDENCE_CONFIRM_THRESHOLD, _MAX_STT_CONFIDENCE_CONFIRM_THRESHOLD),
+    ('WAKE_WORD_COOLDOWN_S', 0.5, 10.0),
+    ('WAKE_WORD_THRESHOLD', 0.1, 0.99),
+    ('WAKE_WORD_INFERENCE_INTERVAL_S', 0.08, 0.5),
+    ('WAKE_FUZZY_MATCH_THRESHOLD', 0.5, 1.0),
+    ('STT_SETTLE_MIN_GAP_S', _MIN_STT_SETTLE_GAP_S, _MAX_STT_SETTLE_GAP_S),
+    ('VAD_AGGRESSIVENESS', 0, 3),
+    ('AEC_STREAM_DELAY_MS', _MIN_AEC_STREAM_DELAY_MS, _MAX_AEC_STREAM_DELAY_MS),
+    ('MAX_MEMORY_EXCHANGES', 1, 20),
+    ('OLLAMA_TEMPERATURE', 0.0, 2.0),
+    ('OLLAMA_TOP_K', _MIN_OLLAMA_TOP_K, _MAX_OLLAMA_TOP_K),
+    ('OLLAMA_TOP_P', _MIN_OLLAMA_TOP_P, _MAX_OLLAMA_TOP_P),
+    ('OLLAMA_REPEAT_PENALTY', _MIN_OLLAMA_REPEAT_PENALTY, _MAX_OLLAMA_REPEAT_PENALTY),
+    ('GEMINI_TEMPERATURE', 0.0, 2.0),
+    ('GEMINI_TOP_K', 1, 200),
+    ('GEMINI_TOP_P', 0.0, 1.0),
+    ('GEMINI_MAX_OUTPUT_TOKENS', 16, 2048),
+    ('EMBEDDING_TIMEOUT_S', 1.0, 15.0),
+    ('EMBEDDING_MAX_RETRIES', 0, 5),
+    ('EMBEDDING_RETRY_BASE_DELAY_S', 0.1, 5.0),
+    ('RAG_TOP_K', 1, 20),
+    ('RAG_MIN_SIMILARITY', 0.0, 1.0),
+    ('RAG_FACT_MIN_SIMILARITY', 0.0, 1.0),
+    ('RAG_MAX_IN_MEMORY', 100, 50000),
+    ('TRACE_RETENTION_DAYS', _MIN_TRACE_RETENTION_DAYS, _MAX_TRACE_RETENTION_DAYS),
+    ('TRACE_RING_SIZE', _MIN_TRACE_RING_SIZE, _MAX_TRACE_RING_SIZE),
+    ('SECURITY_INJECTION_THRESHOLD', 0.2, 0.95),
+    ('SECURITY_SCAN_MAX_CHARS', 1000, 200000),
+    ('SECURITY_LOG_RETENTION_DAYS', 1, 3650),
+    ('MEMORY2_MAX_TURNS_PER_EXTRACT', 5, 200),
+    ('MEMORY2_MIN_CONFIDENCE', 0.0, 1.0),
+    ('MEMORY2_TOPK', 1, 12),
+    ('MEMORY2_MIN_SCORE', 0.0, 1.0),
+    ('MEMORY2_RETRIEVAL_TIMEOUT_MS', 50, 3000),
+    ('MEMORY2_DECAY_TAU_DAYS', 1.0, 3650.0),
+    ('MEMORY2_ARCHIVE_THRESHOLD', 0.0, 0.5),
+    ('MEMORY2_PURGE_DAYS', 7, 3650),
+    ('ROUTER_ALPHA', 0.0, 3.0),
+    ('ROUTER_EPSILON', 0.0, 0.3),
+    ('ROUTER_LAMBDA_LATENCY', 0.0, 1.0),
+    ('ROUTER_LAMBDA_COST', 0.0, 1.0),
+    ('ROUTER_MIN_SAMPLES', 20, 100000),
+    ('ROUTER_COOLDOWN_BASE_S', 1.0, 3600.0),
+    ('ROUTER_RETENTION_DAYS', 1, 3650),
+    ('MEMORY_CONSOLIDATION_INTERVAL_S', _MIN_MEMORY_CONSOLIDATION_INTERVAL_S, _MAX_MEMORY_CONSOLIDATION_INTERVAL_S),
+    ('MEMORY_CONSOLIDATION_BATCH_SIZE', _MIN_MEMORY_CONSOLIDATION_BATCH_SIZE, _MAX_MEMORY_CONSOLIDATION_BATCH_SIZE),
+    ('MEMORY_CONSOLIDATION_MAX_FACTS', _MIN_MEMORY_CONSOLIDATION_MAX_FACTS, _MAX_MEMORY_CONSOLIDATION_MAX_FACTS),
+    ('MEMORY_FORGET_MATCH_THRESHOLD', 0.0, 1.0),
+    ('TOOL_CALLING_TIMEOUT_S', 1.0, 15.0),
+    ('TOOL_CALLING_TIMEOUT_GEMINI_S', 1.0, 15.0),
+    ('PLANNING_STEP_TIMEOUT_GEMINI_S', 1.0, 15.0),
+    ('TOOL_ROUTER_LLM_TIMEOUT_S', 10.0, 30.0),
+    ('PLANNING_MAX_STEPS', _MIN_PLANNING_MAX_STEPS, _MAX_PLANNING_MAX_STEPS),
+    ('PLANNING_STEP_TIMEOUT_S', _MIN_PLANNING_STEP_TIMEOUT_S, _MAX_PLANNING_STEP_TIMEOUT_S),
+    ('WINDOWS_SEARCH_TIMEOUT_S', _MIN_WINDOWS_SEARCH_TIMEOUT_S, _MAX_WINDOWS_SEARCH_TIMEOUT_S),
+    ('WINDOWS_SEARCH_SETTLE_S', _MIN_WINDOWS_SEARCH_SETTLE_S, _MAX_WINDOWS_SEARCH_SETTLE_S),
+    ('PROACTIVE_CHECK_INTERVAL_S', 5, 3600),
+    ('PROACTIVE_BATTERY_LOW_PERCENT', 1, 90),
+    ('PROACTIVE_REMINDER_LEAD_MINUTES', 1, 180),
+    ('PROACTIVE_IDLE_BREAK_MINUTES', 5, 600),
+    ('PROACTIVE_COOLDOWN_MINUTES', 1, 240),
+    ('PROACTIVE_MEETING_LEAD_MINUTES', 1, 180),
+    ('NOTIFICATIONS_CHECK_INTERVAL_S', 1, 30),
+    ('NOTES_CHUNK_CHARS', 200, 4000),
+    ('NOTES_QA_TOP_K', 1, 20),
+    ('NOTES_MAX_CHUNKS_PER_FILE', 1, 5000),
+)
+
 class Config:
     # ── Idempotency guard for validate() — see ConfigError docstring above ─
     _validated: bool = False
@@ -401,7 +505,13 @@ class Config:
     GEMINI_TOP_K: int = _int(os.getenv("GEMINI_TOP_K"), default=40)
     GEMINI_TOP_P: float = _float(os.getenv("GEMINI_TOP_P"), default=0.9)
     GEMINI_MAX_OUTPUT_TOKENS: int = _int(
-        os.getenv("GEMINI_MAX_OUTPUT_TOKENS"), default=200
+        os.getenv("GEMINI_MAX_OUTPUT_TOKENS"), default=400
+    )
+    # Reasoning-token budget for Gemini turns (0 = no thinking, lowest latency). Empty = leave the model's default.
+    # Sent only when set; check it with bench/gemini_smoke.py first, some models do not accept 0.
+    GEMINI_THINKING_BUDGET: "int | None" = (
+        _int(os.getenv("GEMINI_THINKING_BUDGET"), default=0)
+        if os.getenv("GEMINI_THINKING_BUDGET", "").strip() else None
     )
 
     # ── Automatic fallback (Gemini -> Ollama) ────────────────────────────
@@ -512,6 +622,9 @@ class Config:
     VOICE_ACK_CACHE_DISK: bool = _bool(
         os.getenv("VOICE_ACK_CACHE_DISK", "False"), default=False
     )
+    # Seconds of silence after a spoken command (tool / planner / LLM turn) before one short cached acknowledgement
+    # is spoken. 0 turns it off. See sara.orchestrator.command_helpers.start_filler.
+    VOICE_FILLER_DELAY_S: float = _float(os.getenv("VOICE_FILLER_DELAY_S"), default=1.2)
     VOICE_DUCKING: bool = _bool(os.getenv("VOICE_DUCKING", "False"), default=False)
     VOICE_SEMANTIC_BARGE_IN: bool = _bool(
         os.getenv("VOICE_SEMANTIC_BARGE_IN", "False"), default=False
@@ -1313,6 +1426,33 @@ class Config:
     TOOL_CALLING_TIMEOUT_S: float = _float(
         os.getenv("TOOL_CALLING_TIMEOUT_S"), default=3.0
     )
+    # Shorter limits when the active LLM backend is Gemini (a cloud model answers in ~1-2 s; the 8 s the local 4B needs
+    # only lengthens the silence before the fallback). See sara.core.llm.clients.backend_timeout.
+    # Fetch the top headlines in the background so the news command answers from the cache.
+    NEWS_WARMER_ENABLED: bool = _bool(os.getenv("NEWS_WARMER_ENABLED", "True"), default=True)
+    # Local tool routing with a JSON-schema constrained answer (only existing tool names can be produced).
+    TOOL_CALLING_STRUCTURED: bool = _bool(os.getenv("TOOL_CALLING_STRUCTURED", "False"), default=False)
+    # Longest wait for the long-term memory search before a chat reply goes out without it (0 = no limit).
+    RAG_DEADLINE_S: float = _float(os.getenv("RAG_DEADLINE_S"), default=0.8)
+    # Opt-in: tell the model the active window title (privacy-filtered) and battery each turn. See sara/core/context_line.py.
+    CONTEXT_AWARE_ENABLED: bool = _bool(os.getenv("CONTEXT_AWARE_ENABLED", "False"), default=False)
+    CONTEXT_DENY_PATTERN: str = os.getenv("CONTEXT_DENY_PATTERN", "")
+    # Look installed apps up in an in-memory Start Menu index before using Windows Search (sara/tools/system/app_index.py).
+    APP_INDEX_ENABLED: bool = _bool(os.getenv("APP_INDEX_ENABLED", "True"), default=True)
+    # Answer time-sensitive questions (latest, price, score, current ...) from one fresh web search. See sara/core/grounding.py.
+    GROUNDING_ENABLED: bool = _bool(os.getenv("GROUNDING_ENABLED", "True"), default=True)
+    GROUNDING_TIMEOUT_S: float = _float(os.getenv("GROUNDING_TIMEOUT_S"), default=4.0)
+    # Learn answer length / language preference from behaviour (one cached prompt line). See sara/core/style_profile.py.
+    STYLE_PROFILE_ENABLED: bool = _bool(os.getenv("STYLE_PROFILE_ENABLED", "True"), default=True)
+    # Backstop on the chat model's reply: no false "done" claims, no repetition loops (sara/core/llm/guardrails.py).
+    REPLY_GUARDRAILS_ENABLED: bool = _bool(os.getenv("REPLY_GUARDRAILS_ENABLED", "True"), default=True)
+    # Risk-tiered read-back: a low-confidence transcript of an impactful (tier 2) command is read back before it runs.
+    SMART_CONFIRM_ENABLED: bool = _bool(os.getenv("SMART_CONFIRM_ENABLED", "True"), default=True)
+    # Longer input never goes through the intent regexes (see sara.core.intent.engine.detect_intent).
+    INTENT_MAX_CHARS: int = _int(os.getenv("INTENT_MAX_CHARS"), default=300)
+    TOOL_CALLING_TIMEOUT_GEMINI_S: float = _float(os.getenv("TOOL_CALLING_TIMEOUT_GEMINI_S"), default=3.5)
+    PLANNING_STEP_TIMEOUT_GEMINI_S: float = _float(os.getenv("PLANNING_STEP_TIMEOUT_GEMINI_S"), default=2.5)
+    PLANNING_TOTAL_TIMEOUT_GEMINI_S: float = _float(os.getenv("PLANNING_TOTAL_TIMEOUT_GEMINI_S"), default=6.0)
     TOOL_CALLING_MODE: str = os.getenv("TOOL_CALLING_MODE", "llm").lower()
     TOOL_ROUTER_LLM_TIMEOUT_S: float = _float(
         os.getenv("TOOL_ROUTER_LLM_TIMEOUT_S"), default=12.0
@@ -1433,31 +1573,12 @@ class Config:
                 )
 
         # ── LLM retry / warm-up clamps ─────────────────────────────────────
-        cls.LLM_MAX_RETRIES = max(
-            _MIN_LLM_RETRIES, min(_MAX_LLM_RETRIES, cls.LLM_MAX_RETRIES)
-        )
-        cls.LLM_RETRY_BASE_DELAY_S = max(
-            _MIN_LLM_RETRY_DELAY_S,
-            min(_MAX_LLM_RETRY_DELAY_S, cls.LLM_RETRY_BASE_DELAY_S),
-        )
+        # Plain range clamps: one row per setting (name, low, high); see _CLAMPS above the class.
+        for _name, _lo, _hi in _CLAMPS:
+            setattr(cls, _name, max(_lo, min(_hi, getattr(cls, _name))))
         cls.LLM_RETRY_MAX_DELAY_S = max(
             cls.LLM_RETRY_BASE_DELAY_S,
             min(_MAX_LLM_RETRY_DELAY_S, cls.LLM_RETRY_MAX_DELAY_S),
-        )
-        cls.LLM_WARMUP_WAIT_S = max(
-            _MIN_LLM_WARMUP_WAIT_S, min(_MAX_LLM_WARMUP_WAIT_S, cls.LLM_WARMUP_WAIT_S)
-        )
-        cls.LLM_CIRCUIT_BREAKER_THRESHOLD = max(
-            _MIN_LLM_CIRCUIT_BREAKER_THRESHOLD,
-            min(_MAX_LLM_CIRCUIT_BREAKER_THRESHOLD, cls.LLM_CIRCUIT_BREAKER_THRESHOLD),
-        )
-        cls.LLM_CIRCUIT_BREAKER_COOLDOWN_S = max(
-            _MIN_LLM_CIRCUIT_BREAKER_COOLDOWN_S,
-            min(_MAX_LLM_CIRCUIT_BREAKER_COOLDOWN_S, cls.LLM_CIRCUIT_BREAKER_COOLDOWN_S),
-        )
-        cls.GEMINI_MAX_HISTORY_TOKENS = max(
-            _MIN_GEMINI_HISTORY_TOKENS,
-            min(_MAX_GEMINI_HISTORY_TOKENS, cls.GEMINI_MAX_HISTORY_TOKENS),
         )
 
         # ── Kokoro model files ────────────────────────────────────────────
@@ -1476,57 +1597,9 @@ class Config:
                 cls.CUDA_GPU_MEM_LIMIT_BYTES,
             ),
         )
-        cls.ORT_INTRA_THREADS = max(
-            _MIN_THREADS, min(_MAX_THREADS, cls.ORT_INTRA_THREADS)
-        )
-        cls.ORT_INTER_THREADS = max(
-            _MIN_THREADS, min(_MAX_THREADS, cls.ORT_INTER_THREADS)
-        )
 
         # ── Kokoro / TTS pipeline clamps ──────────────────────────────────
-        cls.TTS_VOLUME = max(_MIN_TTS_VOLUME, min(_MAX_TTS_VOLUME, cls.TTS_VOLUME))
 
-        cls.KOKORO_SPEED = max(
-            _MIN_KOKORO_SPEED,
-            min(_MAX_KOKORO_SPEED, cls.KOKORO_SPEED),
-        )
-        cls.KOKORO_SPEED_EN = max(
-            _MIN_KOKORO_SPEED, min(_MAX_KOKORO_SPEED, cls.KOKORO_SPEED_EN)
-        )
-        cls.KOKORO_SPEED_HI = max(
-            _MIN_KOKORO_SPEED, min(_MAX_KOKORO_SPEED, cls.KOKORO_SPEED_HI)
-        )
-        cls.TTS_PLAYBACK_BUFFER_MS = max(
-            _MIN_PLAYBACK_BUFFER_MS,
-            min(_MAX_PLAYBACK_BUFFER_MS, cls.TTS_PLAYBACK_BUFFER_MS),
-        )
-        cls.TTS_WARMUP_WAIT_S = max(
-            _MIN_WARMUP_WAIT_S, min(_MAX_WARMUP_WAIT_S, cls.TTS_WARMUP_WAIT_S)
-        )
-        cls.TTS_SYNTH_QUEUE_SIZE = max(
-            _MIN_QUEUE_SIZE, min(_MAX_QUEUE_SIZE, cls.TTS_SYNTH_QUEUE_SIZE)
-        )
-        cls.TTS_PLAY_QUEUE_SIZE = max(
-            _MIN_QUEUE_SIZE, min(_MAX_QUEUE_SIZE, cls.TTS_PLAY_QUEUE_SIZE)
-        )
-        cls.TTS_PHRASE_CACHE_SIZE = max(
-            _MIN_PHRASE_CACHE_SIZE,
-            min(_MAX_PHRASE_CACHE_SIZE, cls.TTS_PHRASE_CACHE_SIZE),
-        )
-        cls.VOICE_PREWARM_MAX_PHRASES = max(
-            _MIN_VOICE_PREWARM_PHRASES,
-            min(_MAX_VOICE_PREWARM_PHRASES, cls.VOICE_PREWARM_MAX_PHRASES),
-        )
-        cls.VOICE_DUCK_DB = max(-24.0, min(-3.0, cls.VOICE_DUCK_DB))
-        cls.VOICE_DUCK_RAMP_MS = max(10, min(200, cls.VOICE_DUCK_RAMP_MS))
-        cls.BARGE_COLLECT_MS = max(300, min(900, cls.BARGE_COLLECT_MS))
-        cls.BARGE_AMBIGUOUS_MS = max(500, min(1500, cls.BARGE_AMBIGUOUS_MS))
-        cls.BARGE_NOAEC_MIN_SPEECH_MS = max(
-            150, min(800, cls.BARGE_NOAEC_MIN_SPEECH_MS)
-        )
-        cls.BARGE_NOAEC_THRESHOLD_BOOST = max(
-            1.0, min(3.0, cls.BARGE_NOAEC_THRESHOLD_BOOST)
-        )
         for _ep_key, (_ep_lo, _ep_hi) in (
             ("ENDPOINT_MIN_MS", _ENDPOINT_MIN_MS_RANGE),
             ("ENDPOINT_MAX_MS", _ENDPOINT_MAX_MS_RANGE),
@@ -1538,18 +1611,6 @@ class Config:
         ):
             setattr(cls, _ep_key, max(_ep_lo, min(_ep_hi, int(getattr(cls, _ep_key)))))
         cls.ENDPOINT_MAX_MS = max(cls.ENDPOINT_MIN_MS + 100, cls.ENDPOINT_MAX_MS)
-        cls.TTS_PHRASE_CACHE_MAXLEN = max(
-            _MIN_PHRASE_CACHE_MAXLEN,
-            min(_MAX_PHRASE_CACHE_MAXLEN, cls.TTS_PHRASE_CACHE_MAXLEN),
-        )
-        cls.TTS_BLEED_GUARD_MULTIPLIER = max(
-            _MIN_TTS_BLEED_MULTIPLIER,
-            min(_MAX_TTS_BLEED_MULTIPLIER, cls.TTS_BLEED_GUARD_MULTIPLIER),
-        )
-        cls.TTS_FIRST_CHUNK_MIN_CHARS = max(
-            _MIN_TTS_FIRST_CHUNK_CHARS,
-            min(_MAX_TTS_FIRST_CHUNK_CHARS, cls.TTS_FIRST_CHUNK_MIN_CHARS),
-        )
         cls.TTS_FIRST_CHUNK_SOFT_BOUNDARY_MIN_CHARS = max(
             cls.TTS_FIRST_CHUNK_MIN_CHARS,
             min(
@@ -1559,40 +1620,8 @@ class Config:
         )
 
         # ── Whisper transcription clamps ──────────────────────────────────
-        cls.WHISPER_BEAM_SIZE = max(
-            _MIN_WHISPER_BEAM_SIZE, min(_MAX_WHISPER_BEAM_SIZE, cls.WHISPER_BEAM_SIZE)
-        )
-        cls.STT_NO_SPEECH_THRESHOLD = max(
-            _MIN_NO_SPEECH_THRESHOLD,
-            min(_MAX_NO_SPEECH_THRESHOLD, cls.STT_NO_SPEECH_THRESHOLD),
-        )
-        cls.STT_LOG_PROB_THRESHOLD = max(
-            _MIN_LOG_PROB_THRESHOLD,
-            min(_MAX_LOG_PROB_THRESHOLD, cls.STT_LOG_PROB_THRESHOLD),
-        )
-        cls.STT_COMPRESSION_RATIO_THRESHOLD = max(
-            _MIN_COMPRESSION_RATIO_THRESHOLD,
-            min(_MAX_COMPRESSION_RATIO_THRESHOLD, cls.STT_COMPRESSION_RATIO_THRESHOLD),
-        )
-        cls.STT_HALLUCINATION_MIN_REPEATS = max(
-            _MIN_HALLUCINATION_MIN_REPEATS,
-            min(_MAX_HALLUCINATION_MIN_REPEATS, cls.STT_HALLUCINATION_MIN_REPEATS),
-        )
-        cls.STT_MIN_CONFIDENCE_REJECT = max(
-            0.0, min(1.0, cls.STT_MIN_CONFIDENCE_REJECT)
-        )
-        cls.WAKE_WORD_BEAM_SIZE = max(
-            _MIN_WHISPER_BEAM_SIZE, min(_MAX_WHISPER_BEAM_SIZE, cls.WAKE_WORD_BEAM_SIZE)
-        )
 
         # ── Low-confidence confirmation clamp (NEW) ─────────────────────
-        cls.STT_CONFIDENCE_CONFIRM_THRESHOLD = max(
-            _MIN_STT_CONFIDENCE_CONFIRM_THRESHOLD,
-            min(
-                _MAX_STT_CONFIDENCE_CONFIRM_THRESHOLD,
-                cls.STT_CONFIDENCE_CONFIRM_THRESHOLD,
-            ),
-        )
 
         # ── Language / SARA ───────────────────────────────────────────────
         if cls.LANG_DETECTION_MODE not in ("auto", "manual"):
@@ -1651,33 +1680,14 @@ class Config:
                 f"the model is installed."
             )
 
-        cls.WAKE_WORD_COOLDOWN_S = max(
-            0.5,
-            min(10.0, cls.WAKE_WORD_COOLDOWN_S),
-        )
 
-        cls.WAKE_WORD_THRESHOLD = max(
-            0.10,
-            min(0.99, cls.WAKE_WORD_THRESHOLD),
-        )
 
         # OpenWakeWord native frame: 80 ms @ 16 kHz = 1280 samples.
         cls.WAKE_WORD_FRAME_MS = 80
 
-        cls.WAKE_WORD_INFERENCE_INTERVAL_S = max(
-            0.08,
-            min(0.50, cls.WAKE_WORD_INFERENCE_INTERVAL_S),
-        )
 
-        cls.WAKE_FUZZY_MATCH_THRESHOLD = max(
-            0.50,
-            min(1.00, cls.WAKE_FUZZY_MATCH_THRESHOLD),
-        )
 
         # ── STT settle-gap clamp ─────────────────────────────────────────
-        cls.STT_SETTLE_MIN_GAP_S = max(
-            _MIN_STT_SETTLE_GAP_S, min(_MAX_STT_SETTLE_GAP_S, cls.STT_SETTLE_MIN_GAP_S)
-        )
 
         # ── VAD aggressiveness clamp (D40) ───────────────────────────────
         # webrtcvad.Vad() RAISES on anything outside 0-3, and it is
@@ -1685,7 +1695,6 @@ class Config:
         # so an out-of-range .env value would be a startup crash. Clamped
         # here as well as in _VADFilter (which cannot assume validate() has
         # run), so the value is in range wherever it is read from.
-        cls.VAD_AGGRESSIVENESS = max(0, min(3, cls.VAD_AGGRESSIVENESS))
 
         # ── AEC clamps ──────────────────────────────────────────────────
         if cls.AEC_SAMPLE_RATE not in _AEC_VALID_SAMPLE_RATES:
@@ -1694,114 +1703,33 @@ class Config:
                 f"{_AEC_VALID_SAMPLE_RATES} (WebRTC APM requirement); defaulting to 16000."
             )
             cls.AEC_SAMPLE_RATE = 16000
-        cls.AEC_STREAM_DELAY_MS = max(
-            _MIN_AEC_STREAM_DELAY_MS,
-            min(_MAX_AEC_STREAM_DELAY_MS, cls.AEC_STREAM_DELAY_MS),
-        )
 
         # ── Memory / context clamps ────────────────────────────────────────
-        cls.MAX_MEMORY_EXCHANGES = max(1, min(20, cls.MAX_MEMORY_EXCHANGES))
-        cls.OLLAMA_TEMPERATURE = max(0.0, min(2.0, cls.OLLAMA_TEMPERATURE))
         cls.OLLAMA_NUM_CTX = max(256, cls.OLLAMA_NUM_CTX)
         if cls.OLLAMA_SUMMARY_NUM_CTX < cls.OLLAMA_NUM_CTX:
             cls.OLLAMA_SUMMARY_NUM_CTX = cls.OLLAMA_NUM_CTX
-        cls.OLLAMA_TOP_K = max(_MIN_OLLAMA_TOP_K, min(_MAX_OLLAMA_TOP_K, cls.OLLAMA_TOP_K))
-        cls.OLLAMA_TOP_P = max(_MIN_OLLAMA_TOP_P, min(_MAX_OLLAMA_TOP_P, cls.OLLAMA_TOP_P))
-        cls.OLLAMA_REPEAT_PENALTY = max(
-            _MIN_OLLAMA_REPEAT_PENALTY,
-            min(_MAX_OLLAMA_REPEAT_PENALTY, cls.OLLAMA_REPEAT_PENALTY),
-        )
 
         # ── Gemini generation-parameter clamps ───────────────────────────
-        cls.GEMINI_TEMPERATURE = max(0.0, min(2.0, cls.GEMINI_TEMPERATURE))
-        cls.GEMINI_TOP_K = max(1, min(200, cls.GEMINI_TOP_K))
-        cls.GEMINI_TOP_P = max(0.0, min(1.0, cls.GEMINI_TOP_P))
-        cls.GEMINI_MAX_OUTPUT_TOKENS = max(
-            16, min(2048, cls.GEMINI_MAX_OUTPUT_TOKENS)
-        )
 
         # ── RAG / long-term memory clamps ──────────────────────────────────
-        cls.EMBEDDING_TIMEOUT_S = max(1.0, min(15.0, cls.EMBEDDING_TIMEOUT_S))
-        cls.EMBEDDING_MAX_RETRIES = max(0, min(5, cls.EMBEDDING_MAX_RETRIES))
-        cls.EMBEDDING_RETRY_BASE_DELAY_S = max(
-            0.1, min(5.0, cls.EMBEDDING_RETRY_BASE_DELAY_S)
-        )
-        cls.RAG_TOP_K = max(1, min(20, cls.RAG_TOP_K))
-        cls.RAG_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_MIN_SIMILARITY))
-        cls.RAG_FACT_MIN_SIMILARITY = max(0.0, min(1.0, cls.RAG_FACT_MIN_SIMILARITY))
-        cls.RAG_MAX_IN_MEMORY = max(100, min(50_000, cls.RAG_MAX_IN_MEMORY))
 
         # ── Telemetry clamps ─────────────────────────────────────────────
-        cls.TRACE_RETENTION_DAYS = max(
-            _MIN_TRACE_RETENTION_DAYS,
-            min(_MAX_TRACE_RETENTION_DAYS, cls.TRACE_RETENTION_DAYS),
-        )
-        cls.TRACE_RING_SIZE = max(
-            _MIN_TRACE_RING_SIZE,
-            min(_MAX_TRACE_RING_SIZE, cls.TRACE_RING_SIZE),
-        )
 
         # ── Security clamps ──────────────────────────────────────────────
         if cls.SECURITY_MODE not in ("standard", "strict", "off"):
             cls.SECURITY_MODE = "standard"
-        cls.SECURITY_INJECTION_THRESHOLD = max(
-            0.2, min(0.95, cls.SECURITY_INJECTION_THRESHOLD)
-        )
-        cls.SECURITY_SCAN_MAX_CHARS = max(
-            1_000, min(200_000, cls.SECURITY_SCAN_MAX_CHARS)
-        )
-        cls.SECURITY_LOG_RETENTION_DAYS = max(
-            1, min(3650, cls.SECURITY_LOG_RETENTION_DAYS)
-        )
 
         # ── Memory 2.0 clamps ────────────────────────────────────────────
-        cls.MEMORY2_MAX_TURNS_PER_EXTRACT = max(
-            5, min(200, cls.MEMORY2_MAX_TURNS_PER_EXTRACT)
-        )
-        cls.MEMORY2_MIN_CONFIDENCE = max(0.0, min(1.0, cls.MEMORY2_MIN_CONFIDENCE))
-        cls.MEMORY2_TOPK = max(1, min(12, cls.MEMORY2_TOPK))
-        cls.MEMORY2_MIN_SCORE = max(0.0, min(1.0, cls.MEMORY2_MIN_SCORE))
-        cls.MEMORY2_RETRIEVAL_TIMEOUT_MS = max(
-            50, min(3000, cls.MEMORY2_RETRIEVAL_TIMEOUT_MS)
-        )
-        cls.MEMORY2_DECAY_TAU_DAYS = max(1.0, min(3650.0, cls.MEMORY2_DECAY_TAU_DAYS))
-        cls.MEMORY2_ARCHIVE_THRESHOLD = max(
-            0.0, min(0.5, cls.MEMORY2_ARCHIVE_THRESHOLD)
-        )
-        cls.MEMORY2_PURGE_DAYS = max(7, min(3650, cls.MEMORY2_PURGE_DAYS))
 
         # ── Router clamps ────────────────────────────────────────────────
         if cls.ROUTER_MODE not in ("off", "shadow", "on"):
             cls.ROUTER_MODE = "off"
-        cls.ROUTER_ALPHA = max(0.0, min(3.0, cls.ROUTER_ALPHA))
-        cls.ROUTER_EPSILON = max(0.0, min(0.3, cls.ROUTER_EPSILON))
-        cls.ROUTER_LAMBDA_LATENCY = max(0.0, min(1.0, cls.ROUTER_LAMBDA_LATENCY))
-        cls.ROUTER_LAMBDA_COST = max(0.0, min(1.0, cls.ROUTER_LAMBDA_COST))
-        cls.ROUTER_MIN_SAMPLES = max(20, min(100_000, cls.ROUTER_MIN_SAMPLES))
-        cls.ROUTER_COOLDOWN_BASE_S = max(1.0, min(3600.0, cls.ROUTER_COOLDOWN_BASE_S))
-        cls.ROUTER_RETENTION_DAYS = max(1, min(3650, cls.ROUTER_RETENTION_DAYS))
 
         # ── Memory consolidation / decision-memory clamps ────────────────
-        cls.MEMORY_CONSOLIDATION_INTERVAL_S = max(
-            _MIN_MEMORY_CONSOLIDATION_INTERVAL_S,
-            min(_MAX_MEMORY_CONSOLIDATION_INTERVAL_S, cls.MEMORY_CONSOLIDATION_INTERVAL_S),
-        )
-        cls.MEMORY_CONSOLIDATION_BATCH_SIZE = max(
-            _MIN_MEMORY_CONSOLIDATION_BATCH_SIZE,
-            min(_MAX_MEMORY_CONSOLIDATION_BATCH_SIZE, cls.MEMORY_CONSOLIDATION_BATCH_SIZE),
-        )
-        cls.MEMORY_CONSOLIDATION_MAX_FACTS = max(
-            _MIN_MEMORY_CONSOLIDATION_MAX_FACTS,
-            min(_MAX_MEMORY_CONSOLIDATION_MAX_FACTS, cls.MEMORY_CONSOLIDATION_MAX_FACTS),
-        )
-        cls.MEMORY_FORGET_MATCH_THRESHOLD = max(
-            0.0, min(1.0, cls.MEMORY_FORGET_MATCH_THRESHOLD)
-        )
 
         # ── Tool-calling clamps ─────────────────────────────────────────────
-        cls.TOOL_CALLING_TIMEOUT_S = max(1.0, min(15.0, cls.TOOL_CALLING_TIMEOUT_S))
-        cls.TOOL_ROUTER_LLM_TIMEOUT_S = max(
-            10.0, min(30.0, cls.TOOL_ROUTER_LLM_TIMEOUT_S)
+        cls.PLANNING_TOTAL_TIMEOUT_GEMINI_S = max(
+            cls.PLANNING_STEP_TIMEOUT_GEMINI_S, min(60.0, cls.PLANNING_TOTAL_TIMEOUT_GEMINI_S)
         )
 
         if cls.TOOL_CALLING_MODE not in ("llm", "heuristic"):
@@ -1811,13 +1739,6 @@ class Config:
             cls.TOOL_CALLING_MODE = "llm"
 
         # ── Planning engine clamps ───────────────────────────────────────────
-        cls.PLANNING_MAX_STEPS = max(
-            _MIN_PLANNING_MAX_STEPS, min(_MAX_PLANNING_MAX_STEPS, cls.PLANNING_MAX_STEPS)
-        )
-        cls.PLANNING_STEP_TIMEOUT_S = max(
-            _MIN_PLANNING_STEP_TIMEOUT_S,
-            min(_MAX_PLANNING_STEP_TIMEOUT_S, cls.PLANNING_STEP_TIMEOUT_S),
-        )
         cls.PLANNING_TOTAL_TIMEOUT_S = max(
             cls.PLANNING_STEP_TIMEOUT_S,
             min(_MAX_PLANNING_TOTAL_TIMEOUT_S, cls.PLANNING_TOTAL_TIMEOUT_S),
@@ -1837,14 +1758,6 @@ class Config:
                     deduped.append(normalized_entry)
             cls.APP_LAUNCH_ALLOWLIST = deduped
 
-        cls.WINDOWS_SEARCH_TIMEOUT_S = max(
-            _MIN_WINDOWS_SEARCH_TIMEOUT_S,
-            min(_MAX_WINDOWS_SEARCH_TIMEOUT_S, cls.WINDOWS_SEARCH_TIMEOUT_S),
-        )
-        cls.WINDOWS_SEARCH_SETTLE_S = max(
-            _MIN_WINDOWS_SEARCH_SETTLE_S,
-            min(_MAX_WINDOWS_SEARCH_SETTLE_S, cls.WINDOWS_SEARCH_SETTLE_S),
-        )
 
         if cls.APP_LAUNCH_ALLOWLIST_ENABLED and not cls.APP_LAUNCH_ALLOWLIST:
             print(
@@ -1859,25 +1772,8 @@ class Config:
             ]
 
         # ── Proactive Engine clamps ─────────────────────────────────────────
-        cls.PROACTIVE_CHECK_INTERVAL_S = max(5, min(3600, cls.PROACTIVE_CHECK_INTERVAL_S))
-        cls.PROACTIVE_BATTERY_LOW_PERCENT = max(
-            1, min(90, cls.PROACTIVE_BATTERY_LOW_PERCENT)
-        )
-        cls.PROACTIVE_REMINDER_LEAD_MINUTES = max(
-            1, min(180, cls.PROACTIVE_REMINDER_LEAD_MINUTES)
-        )
-        cls.PROACTIVE_IDLE_BREAK_MINUTES = max(
-            5, min(600, cls.PROACTIVE_IDLE_BREAK_MINUTES)
-        )
-        cls.PROACTIVE_COOLDOWN_MINUTES = max(1, min(240, cls.PROACTIVE_COOLDOWN_MINUTES))
-        cls.PROACTIVE_MEETING_LEAD_MINUTES = max(
-            1, min(180, cls.PROACTIVE_MEETING_LEAD_MINUTES)
-        )
 
         # ── File Notifications clamps ───────────────────────────────────
-        cls.NOTIFICATIONS_CHECK_INTERVAL_S = max(
-            1, min(30, cls.NOTIFICATIONS_CHECK_INTERVAL_S)
-        )
 
         # ── Emergency Stop Hotkey clamp ─────────────────────────────────
         if not cls.EMERGENCY_STOP_HOTKEY or not cls.EMERGENCY_STOP_HOTKEY.strip():
@@ -1889,9 +1785,6 @@ class Config:
             cls.EMERGENCY_STOP_HOTKEY = cls.EMERGENCY_STOP_HOTKEY.strip().lower()
 
         # ── Notes Q&A clamps ─────────────────────────────────────────────────
-        cls.NOTES_CHUNK_CHARS = max(200, min(4000, cls.NOTES_CHUNK_CHARS))
-        cls.NOTES_QA_TOP_K = max(1, min(20, cls.NOTES_QA_TOP_K))
-        cls.NOTES_MAX_CHUNKS_PER_FILE = max(1, min(5000, cls.NOTES_MAX_CHUNKS_PER_FILE))
 
         cls._validated = True
 

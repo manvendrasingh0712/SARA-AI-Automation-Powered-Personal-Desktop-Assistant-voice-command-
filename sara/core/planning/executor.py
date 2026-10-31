@@ -56,6 +56,7 @@ from .schema import (
     validate_tool_arguments,
 )
 from sara.core.llm.clients import (
+    _build_gemini_generate_config,
     _get_gemini_client,
     _get_ollama_client,
     _select_llm_client,
@@ -279,7 +280,10 @@ def _request_step_correction(
             client.models.generate_content,
             model=model_name,
             contents=prompt,
-            config=_gtypes.GenerateContentConfig(
+            config=_build_gemini_generate_config(
+                _gtypes,
+                None,
+                model=model_name,
                 tools=_get_gemini_correction_tools(),
                 max_output_tokens=150,
                 temperature=0.2,

@@ -3,7 +3,7 @@ tests/test_planning.py
 Unit tests for sara.core.planning -- schema validation/security
 hardening, the trigger gate, the planner, the bounded execution loop,
 and the public try_plan_and_execute() integration point -- using
-sara.core.planning.test_doubles so no real Ollama instance or network
+tests.planning_doubles so no real Ollama instance or network
 access is required.
 
 Test organization mirrors the package's module structure:
@@ -545,7 +545,7 @@ class TriggerGateTests(unittest.TestCase):
 class PlannerTests(unittest.TestCase):
     def test_propose_plan_valid(self):
         from sara.core.planning.planner import propose_plan
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="valid_plan")
         cfg = FakeConfig()
@@ -562,7 +562,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_propose_plan_raises_planning_unavailable_when_no_client(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
-        from sara.core.planning.test_doubles import FakeConfig
+        from tests.planning_doubles import FakeConfig
 
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=None):
@@ -571,7 +571,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_propose_plan_raises_planning_unavailable_on_client_error(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="raises")
         cfg = FakeConfig()
@@ -581,7 +581,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_propose_plan_raises_planning_unavailable_on_timeout(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="timeout", sleep_s=5.0)
         cfg = FakeConfig()
@@ -597,7 +597,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_propose_plan_raises_planning_unavailable_on_raises_after_delay(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="raises_after_delay", sleep_s=0.1)
         cfg = FakeConfig()
@@ -608,7 +608,7 @@ class PlannerTests(unittest.TestCase):
     def test_propose_plan_raises_validation_error_on_hallucinated_tool(self):
         from sara.core.planning.planner import propose_plan
         from sara.core.planning.schema import PlanValidationError
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="hallucinated_tool")
         cfg = FakeConfig()
@@ -618,7 +618,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_propose_plan_raises_planning_unavailable_on_no_tool_call(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="no_tool_call")
         cfg = FakeConfig()
@@ -629,7 +629,7 @@ class PlannerTests(unittest.TestCase):
     def test_propose_plan_raises_validation_error_on_empty_steps(self):
         from sara.core.planning.planner import propose_plan
         from sara.core.planning.schema import PlanValidationError
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="empty_steps")
         cfg = FakeConfig()
@@ -640,7 +640,7 @@ class PlannerTests(unittest.TestCase):
     def test_propose_plan_raises_validation_error_on_malformed_json(self):
         from sara.core.planning.planner import propose_plan
         from sara.core.planning.schema import PlanValidationError
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         fake_client = FakeOllamaClient(mode="malformed_json")
         cfg = FakeConfig()
@@ -651,7 +651,7 @@ class PlannerTests(unittest.TestCase):
     def test_propose_plan_rejects_invalid_max_steps(self):
         from sara.core.planning.planner import propose_plan
         from sara.core.planning.schema import PlanValidationError
-        from sara.core.planning.test_doubles import FakeConfig
+        from tests.planning_doubles import FakeConfig
 
         cfg = FakeConfig()
         with self.assertRaises(PlanValidationError):
@@ -659,7 +659,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_propose_plan_rejects_invalid_timeout(self):
         from sara.core.planning.planner import PlanningUnavailableError, propose_plan
-        from sara.core.planning.test_doubles import FakeConfig
+        from tests.planning_doubles import FakeConfig
 
         cfg = FakeConfig()
         with self.assertRaises(PlanningUnavailableError):
@@ -692,7 +692,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_all_succeed(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         plan = self._make_plan(
             [
@@ -716,7 +716,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_single_step_succeeds(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         plan = self._make_plan([{"tool": "weather", "arguments": {"location": "Ajmer"}}])
         outcome = execute_plan(
@@ -734,7 +734,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_tool_raises_then_retries_successfully(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_fails_then_succeeds,
@@ -763,7 +763,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_tool_fails_twice_marked_failed(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_always_fails,
@@ -792,7 +792,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_partial_success_reminder_ok_weather_fails(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_selective,
@@ -835,7 +835,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_skips_dependent_step_after_failure(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_always_fails,
@@ -866,7 +866,7 @@ class ExecutorTests(unittest.TestCase):
         not just the immediate next one."""
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_always_fails,
@@ -897,7 +897,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_dependent_step_after_success_is_not_skipped(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         plan = self._make_plan(
             [
@@ -920,7 +920,7 @@ class ExecutorTests(unittest.TestCase):
 
     def test_execute_plan_total_timeout_aborts_partway(self):
         from sara.core.planning.executor import execute_plan
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_timeout
+        from tests.planning_doubles import FakeConfig, make_dispatch_timeout
 
         plan = self._make_plan(
             [
@@ -949,7 +949,7 @@ class ExecutorTests(unittest.TestCase):
         their timeouts, let alone the underlying dispatch calls' full
         sleep duration -- this is the core latency-safety guarantee."""
         from sara.core.planning.executor import execute_plan
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_timeout,
@@ -983,7 +983,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_retry_disabled_marks_failed_immediately(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_raises
+        from tests.planning_doubles import FakeConfig, make_dispatch_raises
 
         plan = self._make_plan([{"tool": "weather", "arguments": {"location": "Ajmer"}}])
         outcome = execute_plan(
@@ -1003,7 +1003,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_corrected_arguments_revalidated_open_url(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_raises,
@@ -1031,7 +1031,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_corrected_app_target_revalidated_against_allowlist(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import StepStatus
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_raises,
@@ -1065,7 +1065,7 @@ class ExecutorTests(unittest.TestCase):
     def test_execute_plan_empty_plan_never_crashes(self):
         from sara.core.planning.schema import Plan
         from sara.core.planning.executor import execute_plan
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         empty_plan = Plan(steps=(), proposed_step_count=0)
         outcome = execute_plan(
@@ -1083,7 +1083,7 @@ class ExecutorTests(unittest.TestCase):
 
     def test_execute_plan_dispatch_called_exactly_once_per_successful_step(self):
         from sara.core.planning.executor import execute_plan
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_counting
+        from tests.planning_doubles import FakeConfig, make_dispatch_counting
 
         plan = self._make_plan(
             [
@@ -1113,7 +1113,7 @@ class ExecutorTests(unittest.TestCase):
 class IntegrationTests(unittest.TestCase):
     def test_try_plan_and_execute_disabled_returns_none(self):
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         cfg = FakeConfig(PLANNING_ENABLED=False)
         result = try_plan_and_execute(
@@ -1126,7 +1126,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_try_plan_and_execute_single_tool_message_returns_none(self):
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         cfg = FakeConfig()
         result = try_plan_and_execute(
@@ -1136,7 +1136,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_try_plan_and_execute_empty_input_returns_none(self):
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         cfg = FakeConfig()
         self.assertIsNone(try_plan_and_execute("", "qwen3:4b-instruct-2507-q4_K_M", make_dispatch_success(), cfg))
@@ -1157,7 +1157,7 @@ class IntegrationTests(unittest.TestCase):
         2-step-success path.
         """
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient, make_dispatch_success
 
         cfg = FakeConfig()
         fake_client = FakeOllamaClient(
@@ -1181,7 +1181,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_try_plan_and_execute_collapsed_single_step_returns_none(self):
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient, make_dispatch_success
 
         cfg = FakeConfig()
         fake_client = FakeOllamaClient(
@@ -1199,7 +1199,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_try_plan_and_execute_returns_none_when_planning_unavailable(self):
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_success
+        from tests.planning_doubles import FakeConfig, make_dispatch_success
 
         cfg = FakeConfig()
         with patch("sara.core.planning.planner._get_ollama_client", return_value=None):
@@ -1230,7 +1230,7 @@ class IntegrationTests(unittest.TestCase):
         its documented "never raises" contract.
         """
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import FakeConfig, FakeOllamaClient
+        from tests.planning_doubles import FakeConfig, FakeOllamaClient
 
         cfg = FakeConfig()
         fake_client = FakeOllamaClient(
@@ -1256,7 +1256,7 @@ class IntegrationTests(unittest.TestCase):
         """The combined proposal+execution latency must respect
         PLANNING_TOTAL_TIMEOUT_S as a whole, not double it."""
         from sara.core.planning import try_plan_and_execute
-        from sara.core.planning.test_doubles import (
+        from tests.planning_doubles import (
             FakeConfig,
             FakeOllamaClient,
             make_dispatch_success,
@@ -1332,7 +1332,7 @@ class ConcurrencyAndTimingTests(unittest.TestCase):
     def test_dispatch_counting_is_thread_safe_under_concurrent_plan(self):
         from sara.core.planning.executor import execute_plan
         from sara.core.planning.schema import Plan, PlanStep
-        from sara.core.planning.test_doubles import FakeConfig, make_dispatch_counting
+        from tests.planning_doubles import FakeConfig, make_dispatch_counting
 
         steps = tuple(
             PlanStep(tool="weather", arguments={"location": f"City{i}"})

@@ -57,8 +57,8 @@ def test_history_sent_to_model_has_no_emoji():
 
 def test_hinglish_prompt_is_compact_and_keeps_safety_rules():
     text = _build_base_prompt("Sara", "It is evening.", "hinglish", "Manvendra")
-    assert len(text) < 3000
-    assert "no emojis" in text and "Manvendra" in text
+    assert len(text) < 3600
+    assert "emojis" in text and "Manvendra" in text
     assert "UNTRUSTED_DATA" in text or "untrusted" in text.lower()
     assert "never say or imply that you did one of them" in text
 

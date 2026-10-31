@@ -5,7 +5,7 @@ Public package interface for the multi-step tool-chaining planner.
 The primary function callers outside this package need is
 try_plan_and_execute() below. Everything else (schema, planner,
 executor, trigger) is re-exported here for convenience/testing (see
-test_doubles.py / tests/test_planning.py) but is otherwise an internal
+tests/planning_doubles.py / tests/test_planning.py) but is otherwise an internal
 implementation detail.
 
 INTEGRATION CONTRACT
@@ -151,10 +151,12 @@ def try_plan_and_execute(
         return None
 
     max_steps = int(getattr(cfg, "PLANNING_MAX_STEPS", 4))
-    step_timeout_s = float(
-        getattr(cfg, "PLANNING_STEP_TIMEOUT_S", getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 3.0))
+    from sara.core.llm.clients import backend_timeout
+
+    step_timeout_s = backend_timeout(
+        cfg, "PLANNING_STEP_TIMEOUT_S", getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 3.0)
     )
-    total_timeout_s = float(getattr(cfg, "PLANNING_TOTAL_TIMEOUT_S", 6.0))
+    total_timeout_s = backend_timeout(cfg, "PLANNING_TOTAL_TIMEOUT_S", 6.0)
     retry_enabled = bool(getattr(cfg, "PLANNING_STEP_RETRY_ENABLED", True))
     app_allowlist_enabled = bool(getattr(cfg, "APP_LAUNCH_ALLOWLIST_ENABLED", True))
 
