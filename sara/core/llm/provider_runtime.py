@@ -26,6 +26,7 @@ from sara.core.llm.clients import (
     _get_ollama_client,
     ollama_load_options,
 )
+from sara.core.diag import swallowed
 
 # Failure kinds (strings, so they log and compare easily).
 SUCCESS = "success"
@@ -141,6 +142,7 @@ def _gemini_call(cfg: Any, prompt: str, system: str, timeout_s: float, max_token
     gen_config = _build_gemini_generate_config(
         types,
         timeout_s,
+        model=model,
         system_instruction=system,
         temperature=0.6,
         max_output_tokens=max_tokens,
@@ -208,8 +210,8 @@ def generate_short(
                     attempts.append((provider, UNAVAILABLE))
                     last_failure = UNAVAILABLE
                     continue
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as _exc:  # noqa: BLE001
+                swallowed(None, "provider_runtime.generate_short:212", _exc)
 
         remaining = timeout_s
         if total_budget_s is not None:
@@ -231,8 +233,8 @@ def generate_short(
             if provider == primary and breaker is not None and kind in _BREAKER_KINDS:
                 try:
                     breaker.record(False)
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as _exc:  # noqa: BLE001
+                    swallowed(None, "provider_runtime.generate_short:235", _exc)
                 if kind == QUOTA and hasattr(breaker, "trip_for"):
                     # A daily quota says how long it lasts; honour it.
                     try:
@@ -241,8 +243,8 @@ def generate_short(
                         asked = _server_retry_after_s(e)
                         if asked:
                             breaker.trip_for(asked)
-                    except Exception:  # noqa: BLE001
-                        pass
+                    except Exception as _exc:  # noqa: BLE001
+                        swallowed(None, "provider_runtime.generate_short:245", _exc)
             continue
 
         if not text:
@@ -253,8 +255,8 @@ def generate_short(
         if provider == primary and breaker is not None:
             try:
                 breaker.record(True)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as _exc:  # noqa: BLE001
+                swallowed(None, "provider_runtime.generate_short:257", _exc)
         attempts.append((provider, SUCCESS))
         return GenResult(
             text=text,

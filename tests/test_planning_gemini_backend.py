@@ -32,7 +32,7 @@ import pytest
 from sara.core.planning import planner
 from sara.core.planning.schema import PlanValidationError
 from sara.core.planning.planner import PlanningUnavailableError
-from sara.core.planning.test_doubles import (
+from tests.planning_doubles import (
     FakeConfig,
     FakeGeminiClient,
     FakeGeminiWrongFunctionClient,

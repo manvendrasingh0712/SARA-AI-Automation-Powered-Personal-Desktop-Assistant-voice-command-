@@ -37,7 +37,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, Callable, List, Dict, Any
 
-import dateparser
+from sara.core.text.lazy_import import lazy_module
+
+dateparser = lazy_module("dateparser")  # ~0.4 s at start-up otherwise
 
 from sara.tools.reminder_time import parse_when, split_trailing_day
 

@@ -5,6 +5,8 @@ public detect_intent() entry point, including its LRU cache wrapper.
 """
 
 import difflib
+import logging
+import time
 import re
 import threading
 import unicodedata
@@ -15,6 +17,9 @@ from typing import Optional, Tuple
 # Each entry: (intent_name, [pattern_strings])
 # Order matters: more specific patterns must come before broad fallbacks.
 from .patterns import _INTENT_PATTERNS, _INTENT_GATES, _NON_APP_TOKENS
+from sara.core.text.spoken_numbers import words_to_digits
+
+logger = logging.getLogger("sara.intent")
 
 
 _ACTION_VERBS = (
@@ -59,6 +64,9 @@ def normalize_intent_text(text: str) -> str:
     normalized = re.sub(r"\b(?:aa?va+a?[zj]|aawa+[zj]|awaj)\b", "awaaz", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\b(gaana|gana|gaane|music|song)\s+pahunch\b", r"\1 pause", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\bkrna\b", "karna", normalized, flags=re.IGNORECASE)
+    # Spoken numbers next to a unit become digits ("paanch minute ka timer" -> "5 minute ka timer", "volume pachaas
+    # kar do" -> "volume 50 kar do"); "laga do", "ek ghar", "open one note" stay as they are (unit-aware rule).
+    normalized = words_to_digits(normalized, unit_aware=True)
     # Greeting/politeness at the edges carries no intent: "hey can you open
     # chrome for me" fell to chat because "hey " and " for me" broke the
     # open_app patterns (E2E held-out test 2026-10-29).
@@ -765,8 +773,168 @@ _INFO_QUESTION_RE = re.compile(
 )
 
 
+# ── Question / topic guard (audit Task 2) ─────────────────────────────────
+# A sentence ABOUT dark mode, the news, a movie title or "my mind" is not a command. The pattern tables match on
+# keywords, so before an action intent is returned, the sentence is checked for the shape of a question or a topic.
+_GUARDED_INTENTS = frozenset({
+    "dark_mode", "light_mode", "open_app", "close_app", "play_youtube", "play_spotify", "news", "weather",
+    "temperature_status", "screenshot_describe", "wifi_on", "wifi_off", "bluetooth_on", "bluetooth_off", "lock_pc",
+    "set_volume", "mute", "unmute", "open_about_settings", "open_airplane_mode_settings", "open_apps_settings",
+    "open_bluetooth_settings", "open_display_settings", "open_network_settings", "open_nightlight_settings",
+    "open_personalization_settings", "open_power_settings", "open_privacy_settings", "open_sound_settings",
+    "open_storage_settings", "open_update_settings",
+})
+
+_LEADING_IMPERATIVE = frozenset(
+    "open close play turn switch set start stop show kholo chalao lagao karo kar launch enable disable increase "
+    "decrease lock take check run put make bring give batao bataiye dikhao kholiye chalaiye".split()
+)
+# Always a question or a topic, even if a command verb leads ("play it again sam movie ke baare me batao").
+_HARD_TOPIC_RE = re.compile(
+    r"\b(?:ke\s+baare\s+m(?:e|ein)|baare\s+m(?:e|ein)|ke\s+bare\s+m(?:e|ein)|benefits?|advantages?|disadvantages?"
+    r"|meaning|matlab|difference|versus|hona\s+chahiye|should\s+be|ideal|kya\s+(?:hota|hoti|hote)\s+(?:hai|hain)"
+    r"|samjhao|samjhaiye)\b",
+    re.IGNORECASE,
+)
+# Only a topic when no command verb leads: "play songs about love" is a command, "tell me about dark mode" is not.
+_TOPIC_NO_VERB_RE = re.compile(r"\babout\b|\bmeans?\b|\bvs\b", re.IGNORECASE)
+_HARD_OPENER_RE = re.compile(
+    r"^\W*(?:(?:sara|hey\s+sara)[,\s]+)?(?:who|whose|whom|explain|describe|define|why|tell\s+me\s+about|kyun|kyu|kaun)\b",
+    re.IGNORECASE,
+)
+_SOFT_OPENER_RE = re.compile(
+    r"^\W*(?:(?:sara|hey\s+sara)[,\s]+)?(?:what|what's|whats|how|how's|hows|when|where|which|kya|kaise|kaisa|kaisi"
+    r"|kitna|kitni|kitne|kab|kahan|kaunsa|kaunsi|kaunse)\b",
+    re.IGNORECASE,
+)
+
+# What a SOFT question (what/how/kya ...) must still contain to be the command it looks like.
+_WEATHER_EVIDENCE_RE = re.compile(
+    r"weather|mausam|rain|baarish|barish|forecast|outside|today|aaj|abhi|tomorrow|kal|humid|\bwind\b|umbrella", re.IGNORECASE
+)
+_DEVICE_NOUN_RE = re.compile(r"\b(?:cpu|gpu|processor|pc|laptop|computer|system)\b", re.IGNORECASE)
+_STATUS_VERB_RE = re.compile(
+    r"batao|bata\s+do|bataiye|\bshow\b|\bcheck\b|status|\bnow\b|abhi|kitna\s+chal\s+raha|kitna\s+garam|kitni\s+garmi|current|right\s+now",
+    re.IGNORECASE,
+)
+_POSSESSIVES = frozenset({"my", "your", "his", "her", "our", "their", "its"})
+
+# Hinglish / Hindi commands put the verb last: "vs code kholo", "dark mode laga do".
+_TRAILING_IMPERATIVE_RE = re.compile(
+    r"(?:kholo|kholiye|chalao|chalaiye|lagao|karo|kro|kar\s+do|kar\s+dena|laga\s+do|band\s+karo|on\s+karo|off\s+karo"
+    r"|\u0916\u094b\u0932\u094b|\u091a\u0932\u093e\u0913|\u0932\u0917\u093e\u0913|\u0915\u0930\u094b|\u0915\u0930\s+\u0926\u094b|\u092c\u0902\u0926\s+\u0915\u0930\u094b)\W*$",
+    re.IGNORECASE,
+)
+
+_guard_log_last: dict = {}
+
+# Long input skips the pattern layer except for stop / cancel / exit words at the very start.
+_LONG_TEXT_ALLOWED_RE = re.compile(
+    r"^\W*(?:stop|cancel|exit|quit|ruko|ruk\b|band\s+karo|bas\s+karo|chup)\b", re.IGNORECASE
+)
+
+
+def _max_intent_chars() -> int:
+    try:
+        from config import Config
+
+        return max(80, int(getattr(Config, "INTENT_MAX_CHARS", 300)))
+    except Exception:  # noqa: BLE001
+        return 300
+
+
+def _question_kind(text: str) -> Optional[str]:
+    """"hard" (a question/topic whatever else is in it), "soft" (looks like a question; an intent may still
+    prove it is a command) or None. Pure: no I/O."""
+    t = (text or "").strip().lower()
+    if not t:
+        return None
+    tokens = re.findall(r"[\w']+", t)
+    leading_imperative = any(tok in _LEADING_IMPERATIVE for tok in tokens[:3]) or bool(_TRAILING_IMPERATIVE_RE.search(t))
+    if _HARD_TOPIC_RE.search(t):
+        return "hard"
+    if _HARD_OPENER_RE.match(t):
+        return "hard"
+    if not leading_imperative and _TOPIC_NO_VERB_RE.search(t):
+        return "hard"
+    if leading_imperative:
+        return None
+    if _SOFT_OPENER_RE.match(t) or t.endswith("?"):
+        return "soft"
+    return None
+
+
+def _looks_like_question_or_topic(text: str) -> bool:
+    return _question_kind(text) is not None
+
+
+def _guard_reason(text: str, intent_name: str, match) -> Optional[str]:
+    """Why this action match should be chat instead, or None when it is a real command."""
+    t = (text or "").strip().lower()
+    kind = _question_kind(t)
+    tokens = re.findall(r"[\w']+", t)
+
+    if intent_name == "screenshot_describe":
+        # "what's on my screen" / "describe my screen" ARE the command; "tell me about screenshots" is not
+        if _HARD_OPENER_RE.match(t) and not re.match(r"^\W*(?:(?:sara|hey\s+sara)[,\s]+)?describe\b", t):
+            return "question/topic"
+        if _HARD_TOPIC_RE.search(t):
+            return "question/topic"
+        if len(t.split()) > 7 and not any(tok in _LEADING_IMPERATIVE for tok in tokens[:3]) and not _TRAILING_IMPERATIVE_RE.search(t):
+            return "long sentence without a command verb"
+        return None
+    if intent_name == "news" and re.search(r"news|headline|khabar|khabr|samachar", t) and not _HARD_OPENER_RE.match(t):
+        return None  # "technology ke baare mein khabar" is a request for news about a topic
+    if kind == "hard":
+        return "question/topic"
+    if intent_name == "weather" and kind == "soft" and not _WEATHER_EVIDENCE_RE.search(t):
+        return "question without a weather word"
+    if intent_name == "temperature_status":
+        if kind == "soft" and not (_DEVICE_NOUN_RE.search(t) and _STATUS_VERB_RE.search(t)):
+            return "temperature question without a device status request"
+    if intent_name in ("open_app", "close_app") and match is not None and match.lastindex:
+        captured = (match.group(1) or "").strip().lower()
+        words = captured.split()
+        if words and words[0] in _POSSESSIVES:
+            rest = " ".join(words[1:])
+            if not rest or _canonical_known_app_alias(rest) is None:
+                return "app name is a possessive phrase, not an app"
+        if kind == "soft" and _canonical_known_app_alias(captured) is None:
+            return "question naming an unknown app"
+    if intent_name == "news" and kind == "soft" and not re.search(r"news|headline|khabar|samachar", t):
+        return "question without a news word"
+    if kind == "soft" and intent_name not in ("weather", "temperature_status", "open_app", "close_app", "news"):
+        return "question"
+    return None
+
+
+def _apply_question_guard(text: str, result: Tuple[str, Optional[re.Match]]) -> Tuple[str, Optional[re.Match]]:
+    intent_name, match = result
+    if intent_name not in _GUARDED_INTENTS:
+        return result
+    reason = _guard_reason(text, intent_name, match)
+    if reason is None:
+        return result
+    now = time.monotonic()
+    if now - _guard_log_last.get(intent_name, 0.0) > 30.0:
+        _guard_log_last[intent_name] = now
+        logger.debug("[Intent] guard: %s -> chat (%s)", intent_name, reason)
+    return "chat", None
+
+
 def detect_intent(text: str) -> Tuple[str, Optional[re.Match]]:
     """Resolve a command locally while preserving negation and legacy match groups."""
+    stripped = text.strip() if isinstance(text, str) else ""
+    if not stripped:
+        return "chat", None
+    if len(stripped) > _max_intent_chars() and not _LONG_TEXT_ALLOWED_RE.match(stripped):
+        # A command is a short sentence. A 3,000-character STT hallucination loop or a pasted article only costs
+        # up to ~300 ms of regex backtracking (measured) and is never a command: straight to chat.
+        return "chat", None
+    return _apply_question_guard(stripped, _detect_intent_unguarded(stripped))
+
+
+def _detect_intent_unguarded(text: str) -> Tuple[str, Optional[re.Match]]:
     stripped = text.strip() if isinstance(text, str) else ""
     if not stripped or is_negated_action_request(stripped):
         return "chat", None

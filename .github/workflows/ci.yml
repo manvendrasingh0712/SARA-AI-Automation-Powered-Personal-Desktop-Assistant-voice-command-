@@ -216,3 +216,32 @@ jobs:
           name: bench-results
           path: bench/results/RESULTS.md
           retention-days: 14
+  hygiene:
+    name: Hygiene (secrets, compile, GUI bundle, pip-audit)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: No credentials in tracked files
+        run: python scripts/check_no_secrets.py
+
+      - name: Byte-compile everything
+        run: python -m compileall -q sara config.py main.py bench scripts
+
+      - name: GUI bundle matches its sources
+        run: python sara/gui/build.py --check
+
+      - name: Dependency audit (advisory)
+        continue-on-error: true
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r requirements.txt

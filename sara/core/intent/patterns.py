@@ -279,12 +279,12 @@ _INTENT_PATTERNS = [
 
     # ── Weather ────────────────────────────────────────────────────────
     ("weather", [
-        r"(?:what'?s|how'?s|get|check|give)(?: me)? (?:the )?(?:weather|whether)(?: report)? (?:like )?(?:in|at|for|near|of) (.+)",
+        r"(?:what(?:'?s| is)|how'?s|get|check|give)(?: me)? (?:the )?(?:weather|whether)(?: report)? (?:like )?(?:in|at|for|near|of) (.+)",
         # No place named: the empty group gives "" and get_weather("")
         # asks wttr.in for the caller's own location.
         r"^\W*(?:will it|is it going to) rain(?: today| tomorrow| now)?()\W*$",
         r"^\W*(?:the )?weather(?: report| today| now| outside)?()\W*$",
-        r"^\W*(?:what'?s|how'?s) the weather(?: like)?(?: today| now| outside)?()\W*$",
+        r"^\W*(?:what(?:'?s| is)|how'?s) the weather(?: like)?(?: today| now| outside)?()\W*$",
         r"^\W*(?:(?:aaj|kal|abhi)\s+)?(?:ka\s+)?mausam\s+(?:kaisa|kya|kaise)\s*(?:hai|h|he|rahega|hoga)?()\W*$",
         r"^\W*(?:आज\s*)?(?:का\s*)?मौसम\s*(?:कैसा|क्या)\s*(?:है|रहेगा)?()\W*$",
         r"(?:weather|whether)(?: report)? (?:in|at|for|near|of) (.+)",

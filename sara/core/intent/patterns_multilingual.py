@@ -101,10 +101,21 @@ _add("reminder_cancel", [
     r"\b(?:saare|sabhi|sab|mere|all)?\s*reminders?\s+(?:" + DEL + r")",
     r"\b(?:" + DEL + r")\s+(?:saare|sabhi|sab|mere)?\s*reminders?",
 ], ("reminder",))
+_add("screenshot_describe", [
+    r"\b(?:yeh|ye|isse|ise|yahan)\s+kya\s+(?:hai|chal\s+raha\s+hai)\b.{0,20}\bscreen\b",
+    r"\bscreen\s+(?:par|pe|me|mein)\s+(?:yeh|ye)\s+kya\s+hai\b",
+], ("screen",))
 _add("set_timer", [
     r"\b(\d+(?:\.\d+)?\s*(?:second|seconds|sec|minute|minutes|min|ghanta|ghante|hour|hours|hr)(?:\s+(?:aur\s+)?\d+\s*(?:second|seconds|sec|minute|minutes|min))?)\s+(?:ka|ki|ke\s+liye)\s+timer\b",
     r"\btimer\s+(?:" + SET + r")\s+(\d+(?:\.\d+)?\s*(?:second|seconds|sec|minute|minutes|min|ghanta|ghante|hour|hours|hr))",
 ], ("timer",))
+# Duration timers without "ka": "10 minute timer", "pandrah minute ka alarm" (a duration alarm is a timer), and the
+# content-less "do minute baad yaad dilao" ("remind me in two minutes").
+_UNITS = r"(?:second|seconds|sec|secs|minute|minutes|min|mins|ghanta|ghante|ghanton|hour|hours|hr|hrs)"
+_add("set_timer", [
+    r"^[\s,]*(?:(?:ek|a)\s+)?(\d+(?:\.\d+)?\s*" + _UNITS + r")\s+(?:ka\s+|ke\s+liye\s+)?(?:timer|alarm)\b(?:\s+(?:" + SET + r"|start\s+" + DO + r"))?\W*$",
+    r"^[\s,]*(?:mujhe\s+)?(\d+(?:\.\d+)?\s*" + _UNITS + r")\s+(?:baad|bad|mein|me)\s+(?:mujhe\s+)?yaad\s+dila(?:o|na|\s+do|\s+dena)\W*$",
+], ("timer", "alarm", "yaad"))
 _add("set_alarm", [
     r"\b((?:(?:kal|aaj|parso)\s+)?(?:(?:subah|shaam|raat|dopahar)\s+)?\d{1,2}(?::\d{2})?\s*(?:baje|am|pm))\s+(?:ka|ke\s+liye|ki)?\s*alarm\b",
     r"\balarm\s+(?:" + SET + r")\s+((?:(?:kal|aaj|parso)\s+)?(?:(?:subah|shaam|raat|dopahar)\s+)?\d{1,2}(?::\d{2})?\s*(?:baje|am|pm))",
@@ -183,6 +194,10 @@ _add("move_window", [r"\b(.+?)\s+(?:ko|ki\s+window\s+ko)\s+((?:left|right|top|bo
 _add("play_pause_media", [r"\b(?:gaana|gana|song|music|video|media)\s+(?:ko\s+)?(?:pause|play)\s+" + DO, r"\b(?:gaana|song|music|video)\s+(?:ko\s+)?(?:roko|rok\s+do|ruk\s+jao)", r"\bpause\s+" + DO + r"\b"], ("pause", "play", "roko"))
 _add("next_track", [r"\b(?:agla|agle|next)\s+(?:gaana|gana|song|track)\s+(?:chalao|chala\s+do|lagao|laga\s+do|bajao|baja\s+do|play)"], ("agla", "agle", "next"))
 _add("previous_track", [r"\b(?:pichla|pichle|previous|purana)\s+(?:gaana|gana|song|track)\s+(?:chalao|chala\s+do|lagao|laga\s+do|bajao|baja\s+do|play)"], ("pichla", "pichle", "previous"))
+# the same, said without a verb: "agla gaana", "next gaana", "pichle gaane", "music pause", "music resume"
+_add("next_track", [r"^[\s,]*(?:(?:aur\s+)?)(?:agla|agle|next)\s+(?:gaana|gana|gaane|gane|song|track)\W*$"], ("agla", "agle", "next"))
+_add("previous_track", [r"^[\s,]*(?:pichla|pichle|previous|purana)\s+(?:gaana|gana|gaane|gane|song|track)\W*$"], ("pichla", "pichle", "previous"))
+_add("play_pause_media", [r"^[\s,]*(?:music|gaana|gana|song|media)\s+(?:pause|resume|roko|rok\s+do|chalao|chalu|play)\W*$"], ("music", "gaana", "gana", "song", "media"))
 _add("stop_media", [r"\b(?:music|gaana|gana|song|sangeet|video)\s+(?:ko\s+)?(?:band|stop)\s+" + DO], ("music", "gaana", "gana", "song", "video"))
 _add("typing_text", [r"\btype\s+" + DO + r"\s*[:\-]?\s*(.+)"], ("type",))
 _add("press_key", [r"\b(.+?)\s+key\s+(?:dabao|daba\s+do|press\s+" + DO + r"|dabana)\b", r"\b(?:dabao|press\s+" + DO + r")\s+(.+?)\s+key\b"], ("key", "dabao"))
@@ -222,7 +237,7 @@ _add("open_task_manager", [r"\btask\s+manager\s+(?:" + OPEN + r"|" + SHOW + r")"
 for _name, _word in (("open_display_settings", "display"), ("open_sound_settings", "sound"), ("open_bluetooth_settings", "bluetooth"), ("open_network_settings", "network"),
                      ("open_privacy_settings", "privacy"), ("open_storage_settings", "storage"), ("open_power_settings", "power"), ("open_apps_settings", "apps?"),
                      ("open_personalization_settings", "personali[sz]ation"), ("open_update_settings", "(?:windows\\s+)?update"), ("open_about_settings", "about")):
-    _add(_name, [r"\b" + _word + r"\s+settings?\s+(?:" + OPEN + r"|" + SHOW + r")"], (_word.split("|")[0].replace("\\s+", " ").replace("(?:windows ", "").rstrip("?)"),) if False else ("settings",))
+    _add(_name, [r"\b" + _word + r"\s+settings?\s+(?:" + OPEN + r"|" + SHOW + r")"], ("settings",))
 _add("open_update_settings", [r"\bwindows\s+update\s+(?:check\s+" + DO + r"|dekho|dikhao)"], ("update",))
 _add("open_apps_settings", [r"\b(?:koi\s+)?app\s+uninstall\s+(?:karna|" + DO + r")"], ("uninstall",))
 _add("open_personalization_settings", [r"\bwallpaper\s+(?:change|badal)\s+(?:karo|karna|kar\s+do|do)", r"\bwallpaper\s+badlo"], ("wallpaper",))

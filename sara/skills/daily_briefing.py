@@ -353,7 +353,10 @@ def handle(match, ctx: SkillContext):
 )
 def handle_more(match, ctx: SkillContext):
     if time.time() - _last_briefing["at"] > _FOLLOWUP_WINDOW_S:
-        return None  # no briefing just now: not for us
+        # no briefing just now: "aur batao" / "tell me more" continues the last answer instead
+        from .conversation import handle_continue
+
+        return handle_continue(match, ctx)
     ctx.ack("One moment, fetching more.", "Ek second, aur dekhti hoon.")
     state, text = _news(_last_briefing["topic"], 3, use_cache=False)
     if state == _CANCELLED:

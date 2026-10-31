@@ -230,7 +230,7 @@ def begin_turn(source: str = "voice", **meta: Any) -> str:
     if text is not None:
         raw = str(text)
         turn.text_len = len(raw)
-        turn.text_hash = hashlib.sha1(raw.encode("utf-8", "replace")).hexdigest()[:12]
+        turn.text_hash = hashlib.sha1(raw.encode("utf-8", "replace"), usedforsecurity=False).hexdigest()[:12]
         if getattr(Config, "TRACE_STORE_TEXT", False):
             turn.text = raw
     _apply_meta(turn, meta)

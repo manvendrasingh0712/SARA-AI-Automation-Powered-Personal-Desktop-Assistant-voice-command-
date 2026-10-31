@@ -6,7 +6,9 @@ out of the former monolithic intent_handlers.py -- see that module's
 docstring.
 """
 from datetime import datetime, timedelta
-import dateparser
+from sara.core.text.lazy_import import lazy_module
+
+dateparser = lazy_module("dateparser")  # ~0.4 s at start-up otherwise
 
 from sara.tools import calendar as calendar_tools
 from sara.core.security.untrusted import guard_spoken

@@ -19,6 +19,9 @@ DEFAULT_FILES: Tuple[str, ...] = (
     "intents_hi.jsonl",
     "negatives.jsonl",
     "adversarial.jsonl",
+    "heldout_spoken_numbers.jsonl",
+    "heldout_question_negatives.jsonl",
+    "heldout_question_negatives_hinglish.jsonl",
 )
 
 LANGS: Tuple[str, ...] = ("en", "hi", "hinglish")

@@ -38,6 +38,7 @@ from typing import Any, FrozenSet, List, Optional
 
 from sara.core.tool_router import TOOL_NAME_TO_INTENT, TOOLS_SCHEMA
 from sara.core.llm.clients import (
+    _build_gemini_generate_config,
     _get_gemini_client,
     _get_ollama_client,
     _select_llm_client,
@@ -302,7 +303,10 @@ def _call_planner_llm(
         resp = client.models.generate_content(
             model=model_name,
             contents=user_input,
-            config=_gtypes.GenerateContentConfig(
+            config=_build_gemini_generate_config(
+                _gtypes,
+                None,
+                model=model_name,
                 system_instruction=_build_planner_system_prompt(max_steps),
                 tools=_get_gemini_plan_tools(),
                 # Low, fixed temperature (not OLLAMA_TEMPERATURE) on purpose: this

@@ -1,0 +1,29 @@
+telemetry: C:\Users\manve\AppData\Local\SARA-AI\data\telemetry.sqlite
+
+VOICE turns (microphone -> first audio): 214 turns
+  stage                         n      p50      p90      p95      max
+  -------------------------- ---- -------- -------- -------- --------
+  wake -> end of speech        36     3844    12782    28531    30282
+  transcription               214      422     3578     4938    24281
+  intent routing              207     2078     3187     3515   775813
+  model first token           150     4531     6031     7437    13047
+  model total                  64     4672     9609    13047   294250
+  tool execution               41     2547     4859     5750     7750
+  synthesis -> first audio     71     1140     2609     4672   291594
+  TIME TO FIRST AUDIO         119     4047     9797    12218   296469
+  total turn                   34    14266    36656    56516   302844
+  outcomes: barge_in=111, cancelled=3, error=2, ok=98
+  languages: english=115, hinglish=99
+
+TEXT turns (typed; NO wake/capture/STT -- a lower bound): 1167 turns
+  stage                         n      p50      p90      p95      max
+  -------------------------- ---- -------- -------- -------- --------
+  intent routing             1123        0       46       63    20453
+  model first token           341     1203     4406     5984    21859
+  model total                 325     2438     8844    12094    39188
+  tool execution              766      188     3891     5562    54797
+  synthesis -> first audio    331     1015     2172     2454     7625
+  TIME TO FIRST AUDIO         474     1610     5437     7360    22047
+  total turn                 1167      578     8407    14094    54797
+  outcomes: barge_in=64, cancelled=2, ok=1101
+  languages: ?=1167

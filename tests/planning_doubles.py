@@ -1,5 +1,5 @@
 """
-sara.core.planning.test_doubles
+tests.planning_doubles
 Deterministic test doubles for unit-testing the planner and executor
 without a live LLM backend (Gemini in production) or network access.
 

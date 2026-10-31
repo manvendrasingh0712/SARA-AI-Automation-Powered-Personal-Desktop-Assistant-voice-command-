@@ -212,6 +212,8 @@ class ApiCoreMixin:
         self.playback_state: dict = playback_state if playback_state is not None else {}
         self.confirm_state: dict = confirm_state if confirm_state is not None else {}
         self.context_state: dict = context_state if context_state is not None else {}
+        # lets the conversation skills (sara/skills/conversation.py) reach the same setters the GUI buttons use
+        self.context_state["control_api"] = self
 
         # ── CONCURRENCY FIX (v14) ─────────────────────────────────────────
         # Guard for the four shared dicts above. Exposed as an attribute so

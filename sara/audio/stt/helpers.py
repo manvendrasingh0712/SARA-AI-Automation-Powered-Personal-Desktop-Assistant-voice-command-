@@ -12,6 +12,7 @@ import struct
 from typing import Optional
 
 import numpy as np
+from sara.core.diag import swallowed
 
 
 def _optional_import_failed(dep_name: str, exc: Exception) -> None:
@@ -99,13 +100,13 @@ def _rms(buf: bytes, sample_width: int = 2) -> float:
         return 0.0
     try:
         return _rms_numpy(buf)
-    except Exception:
-        pass
+    except Exception as _exc:
+        swallowed(None, "helpers._rms:102", _exc)
     if _HAS_AUDIOOP and _audioop is not None:
         try:
             return _audioop.rms(buf, sample_width)
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "helpers._rms:107", _exc)
     count = len(buf) // 2
     samples = struct.unpack(f"<{count}h", buf[: count * 2])
     return math.sqrt(sum(s * s for s in samples) / count)

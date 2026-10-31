@@ -105,14 +105,15 @@ def test_validate_clamps_out_of_range_values() -> None:
     test_a_bad_config_value_cannot_crash_the_filter below, which exercises
     the path that would actually crash.
     """
-    src = inspect.getsource(Config.validate)
-    assert "VAD_AGGRESSIVENESS" in src, (
-        "validate() no longer clamps VAD_AGGRESSIVENESS, so a value outside "
-        "0-3 in .env crashes SpeechToText at construction (D40)"
+    # The plain range clamps of validate() live in config._CLAMPS (one row per setting); the loop that applies them is in
+    # validate() itself.
+    import config as _config
+
+    assert ("VAD_AGGRESSIVENESS", 0, 3) in _config._CLAMPS, (
+        "validate() no longer clamps VAD_AGGRESSIVENESS to webrtcvad's own 0-3 range, so a value outside it in .env "
+        "crashes SpeechToText at construction (D40)"
     )
-    assert re.search(
-        r"VAD_AGGRESSIVENESS\s*=\s*max\(\s*0\s*,\s*min\(\s*3\s*,", src
-    ), "the clamp is no longer to webrtcvad's own 0-3 range (D40)"
+    assert "_CLAMPS" in inspect.getsource(Config.validate)
 
 
 def test_a_bad_config_value_cannot_crash_the_filter() -> None:

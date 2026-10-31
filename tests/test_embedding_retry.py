@@ -32,6 +32,9 @@ def ok_result(values=(0.1, 0.2, 0.3)):
 
 
 class EmbeddingRetryTests(unittest.TestCase):
+    def setUp(self):
+        clients._embed_cache.clear()  # the LRU would otherwise answer 'hello world' without calling the fake client
+
     def _run(self, side_effect, max_retries=2):
         fake_client = mock.Mock()
         fake_client.models.embed_content.side_effect = side_effect

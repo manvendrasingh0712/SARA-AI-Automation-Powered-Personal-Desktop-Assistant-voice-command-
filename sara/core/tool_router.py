@@ -68,6 +68,7 @@ Toggle via Config.TOOL_CALLING_MODE:
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import re
 import threading
 import time
@@ -617,10 +618,62 @@ def _ollama_fallback(cfg, ollama_getter):
     return "ollama", client, model
 
 
+def _structured_schema() -> Dict[str, Any]:
+    """JSON schema of {"name": <tool or "none">, "arguments": {...}}. With it Ollama only lets the model emit a tool
+    name that exists (grammar-constrained decoding), so a hallucinated tool name or broken JSON cannot happen."""
+    names = [t["function"]["name"] for t in TOOLS_SCHEMA] + ["none"]
+    return {
+        "type": "object",
+        "properties": {"name": {"type": "string", "enum": names}, "arguments": {"type": "object"}},
+        "required": ["name", "arguments"],
+    }
+
+
+def _structured_tool_prompt() -> str:
+    lines = []
+    for t in TOOLS_SCHEMA:
+        f = t["function"]
+        params = ", ".join(
+            f"{k}: {v.get('type', 'string')}" for k, v in (f.get("parameters", {}).get("properties") or {}).items()
+        )
+        lines.append(f"- {f['name']}({params}): {f.get('description', '')[:110]}")
+    return (
+        _TOOL_ROUTER_SYSTEM_PROMPT
+        + "\n\nAnswer with JSON only: {\"name\": <one of the tools below, or \"none\" if no tool clearly applies>, "
+        "\"arguments\": {...}}.\nTools:\n" + "\n".join(lines)
+    )
+
+
+def _ollama_structured_call(client, model_name: str, user_input: str, cfg) -> Dict[str, Any]:
+    from sara.core.llm.clients import ollama_load_options
+
+    resp = client.chat(
+        model=model_name,
+        messages=[{"role": "system", "content": _structured_tool_prompt()}, {"role": "user", "content": user_input}],
+        format=_structured_schema(),
+        think=False,
+        options={"num_predict": 150, "temperature": 0, **ollama_load_options(cfg)},
+        keep_alive=getattr(cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+    )
+    data = json.loads((getattr(getattr(resp, "message", None), "content", "") or "").strip() or "{}")
+    name = str(data.get("name", "none"))
+    if name in ("none", "") or not isinstance(data.get("arguments", {}), dict):
+        return {"name": "unknown", "arguments": {}}
+    return {"name": name, "arguments": dict(data.get("arguments") or {})}
+
+
 def _ollama_tool_call(client, model_name: str, user_input: str, cfg) -> Dict[str, Any]:
     # TOOLS_SCHEMA is already in Ollama's native
     # {"type": "function", "function": {...}} shape -- used as-is.
     from sara.core.llm.clients import ollama_load_options
+
+    if getattr(cfg, "TOOL_CALLING_STRUCTURED", False):
+        try:
+            return _ollama_structured_call(client, model_name, user_input, cfg)
+        except Exception as exc:  # noqa: BLE001 -- old Ollama without `format`, bad JSON: use the native tool call
+            import logging
+
+            logging.getLogger("sara.tool_router").debug("structured tool call failed (%s); using native tool calling", exc)
 
     resp = client.chat(
         model=model_name,
@@ -664,6 +717,7 @@ def _gemini_tool_call(client, model_name: str, user_input: str, cfg) -> Dict[str
     _gen_config = _build_gemini_generate_config(
         _gtypes,
         _http_timeout_s,
+        model=model_name,
         system_instruction=_TOOL_ROUTER_SYSTEM_PROMPT,
         tools=_get_gemini_tools(),
         max_output_tokens=150,
@@ -1057,7 +1111,9 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
                 print("[ToolRouter] Circuit breaker open, skipping LLM call for this turn.")
             return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
 
-        timeout_s = float(getattr(cfg, "TOOL_CALLING_TIMEOUT_S", 5.0))
+        from sara.core.llm.clients import backend_timeout
+
+        timeout_s = backend_timeout(cfg, "TOOL_CALLING_TIMEOUT_S", 5.0)
         try:
             future = _TOOL_CALL_EXECUTOR.submit(_resolve_tool_call_llm, user_input, model_name, cfg)
             llm_result = future.result(timeout=timeout_s)

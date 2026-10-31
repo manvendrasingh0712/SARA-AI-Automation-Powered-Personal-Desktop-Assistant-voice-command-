@@ -18,6 +18,7 @@ from . import disk_cache as _disk
 from .synth import _synth_kokoro
 from .text_prep import clean_for_tts
 from .voice_params import _build_params, _detect_lang, _fast_variant
+from sara.core.diag import swallowed
 
 _WARMUP_WAIT_S = 30.0
 _GAP_S = 0.03
@@ -197,8 +198,8 @@ def _run(
             from_disk += status == "disk"
             stored += status == "synth" and directory is not None
             sleeper(_GAP_S)
-    except Exception:
-        pass
+    except Exception as _exc:
+        swallowed(None, "prewarm._run:200", _exc)
     finally:
         try:
             print(
@@ -207,8 +208,8 @@ def _run(
             )
             if from_disk or stored:
                 print(f"[TTS] disk cache: {from_disk} loaded, {stored} stored")
-        except Exception:
-            pass
+        except Exception as _exc:
+            swallowed(None, "prewarm._run:210", _exc)
 
 
 def start_prewarm(
