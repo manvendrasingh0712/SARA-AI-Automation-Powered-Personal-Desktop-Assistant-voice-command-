@@ -31,3 +31,14 @@ def test_timer_message_has_no_float_digits():
     msg = timers.set_timer(29 * 3600 + 660.0, "alarm", lambda m: None)
     timers.cancel_timer() if hasattr(timers, "cancel_timer") else None
     assert "29 hours and 11 minutes" in msg
+
+
+def test_typed_commands_count_as_activity_for_the_idle_sleep_clock():
+    import time
+
+    from sara.orchestrator.state import last_typed_activity, note_typed_activity
+
+    before = last_typed_activity()
+    time.sleep(0.01)
+    note_typed_activity()
+    assert last_typed_activity() > before

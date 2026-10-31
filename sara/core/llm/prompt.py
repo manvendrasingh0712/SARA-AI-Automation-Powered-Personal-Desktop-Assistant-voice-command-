@@ -257,7 +257,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
         "Devanagari question: Hindi in Devanagari. "
         "Do not repeat the question, do not say you are an AI, no filler or apologies. "
         "If the user is frustrated or in a hurry, be even shorter. For direct commands just confirm briefly. "
-        "Mention earlier conversation only when it really helps."
+        "Answer only the current message. Never bring up an earlier topic unless the user does or it is needed to answer."
     )
     if user_name:
         base += f" The user's name is {user_name}; use it rarely, not every turn."

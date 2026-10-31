@@ -994,7 +994,9 @@ def run_sara_logic(
                 if not user_input:
                     ui_update("transcript_partial", "user", "")
                     empty_retries += 1
-                    idle_elapsed = time.monotonic() - last_active_time
+                    from sara.orchestrator.state import last_typed_activity
+
+                    idle_elapsed = time.monotonic() - max(last_active_time, last_typed_activity())
                     retry_limit_hit = (
                         empty_retries >= _MAX_EMPTY_RETRIES
                         and idle_elapsed >= _EMPTY_RETRY_GRACE_S
