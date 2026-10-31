@@ -4,6 +4,7 @@ sara.orchestrator.handlers.timers
 Reminders, timers, alarms, and the stopwatch. Split out of the former
 monolithic intent_handlers.py -- see that module's docstring.
 """
+import re
 from datetime import datetime, timedelta
 import dateparser
 
@@ -52,6 +53,34 @@ def _h_set_timer(match, ctx):
     return _quick(ctx, system_tools.set_timer(seconds, duration_text, _timer_done))
 
 
+def _spoken_clock_time(text: str) -> str:
+    """"kal subah 7 baje" / "सुबह छह बजे" -> "tomorrow 7 am" (dateparser cannot read these)."""
+    from ..calc_utils import _hindi_words_to_english
+
+    words = _hindi_words_to_english(text).replace("\u0901", "").split()
+    day = meridiem = ""
+    keep = []
+    for w in words:
+        lw = w.lower()
+        if lw in ("kal", "\u0915\u0932"):
+            day = "tomorrow"
+        elif lw in ("aaj", "\u0906\u091c"):
+            day = "today"
+        elif lw in ("subah", "savere", "\u0938\u0941\u092c\u0939", "\u0938\u0935\u0947\u0930\u0947"):
+            meridiem = "am"
+        elif lw in ("shaam", "sham", "raat", "dopahar", "dophar", "\u0936\u093e\u092e", "\u0930\u093e\u0924",
+                    "\u0926\u094b\u092a\u0939\u0930"):
+            meridiem = "pm"
+        elif lw in ("baje", "baj", "\u092c\u091c\u0947", "\u0915\u0947", "ka", "ke", "ko"):
+            continue
+        else:
+            keep.append(w)
+    out = " ".join(keep)
+    if meridiem and re.search(r"\d", out) and not re.search(r"(?i)\b[ap]m\b", out):
+        out = re.sub(r"(\d{1,2}(?::\d{2})?)", lambda m: m.group(1) + " " + meridiem, out, count=1)
+    return (day + " " + out).strip()
+
+
 def _h_set_alarm(match, ctx):
     """
     "set an alarm for 7am" / "wake me up at 6:30" -- a CLOCK-TIME alarm,
@@ -75,6 +104,13 @@ def _h_set_alarm(match, ctx):
         languages=_CALENDAR_DATEPARSER_LANGUAGES,
         settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": datetime.now()},
     )
+    if not target_dt:
+        spoken = _spoken_clock_time(time_text)
+        if spoken and spoken != time_text:
+            target_dt = dateparser.parse(
+                spoken, languages=["en"],
+                settings={"PREFER_DATES_FROM": "future", "RELATIVE_BASE": datetime.now()},
+            )
     if not target_dt:
         return _quick(ctx, f"Sorry, I couldn't understand the time '{time_text}'.")
 

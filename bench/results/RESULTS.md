@@ -113,8 +113,8 @@ No baseline to compare. Create it with `python -m bench.run_bench --mode router 
 | Attack success rate (all) | 0.0% | - |
 | False-positive rate (benign) | 0.0% | <= 2.0% |
 | Policy invariant (tainted turn) | ok (310 checks) | ok |
-| Detector latency p50 | 0.0930 ms | - |
-| Detector latency p95 | 0.1832 ms | - |
+| Detector latency p50 | 0.1136 ms | - |
+| Detector latency p95 | 0.2107 ms | - |
 
 ### Recall per category (covered rows)
 

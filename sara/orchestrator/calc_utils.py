@@ -189,6 +189,34 @@ _NUMBER_TENS = {
 }
 
 
+_HI_NUMBERS = {
+    "शून्य": 0, "एक": 1, "दो": 2, "तीन": 3, "चार": 4, "पांच": 5, "पाँच": 5, "छह": 6, "छः": 6, "छे": 6,
+    "सात": 7, "आठ": 8, "नौ": 9, "दस": 10, "ग्यारह": 11, "बारह": 12, "तेरह": 13, "चौदह": 14,
+    "पंद्रह": 15, "पन्द्रह": 15, "सोलह": 16, "सत्रह": 17, "अठारह": 18, "उन्नीस": 19, "बीस": 20,
+    "तीस": 30, "चालीस": 40, "पचास": 50, "साठ": 60, "सत्तर": 70, "अस्सी": 80, "नब्बे": 90,
+}
+# Devanagari units and operators, matched as whole whitespace-separated tokens (\w splits Devanagari at matras)
+_HI_WORDS = {
+    "घंटे": "hours", "घंटा": "hours", "घण्टे": "hours", "घण्टा": "hours", "मिनट": "minutes", "सेकंड": "seconds",
+    "सेकेंड": "seconds", "गुणा": "*", "जमा": "+", "प्लस": "+", "घटा": "-", "माइनस": "-", "भाग": "/",
+}
+
+
+def _hindi_words_to_english(text: str) -> str:
+    """Devanagari number / unit / operator words -> digits and English ("दो घंटे" -> "2 hours")."""
+    if not isinstance(text, str) or not re.search("[\u0900-\u097f]", text):
+        return text
+    out = []
+    for tok in text.split():
+        if tok in _HI_NUMBERS:
+            out.append(str(_HI_NUMBERS[tok]))
+        elif tok in _HI_WORDS:
+            out.append(_HI_WORDS[tok])
+        else:
+            out.append(tok)
+    return " ".join(out)
+
+
 def _digits_for_number_words(text: str) -> str:
     """
     Rewrite spoken number words as digits, leaving everything else alone.
@@ -203,6 +231,7 @@ def _digits_for_number_words(text: str) -> str:
     """
     if not isinstance(text, str) or not text:
         return text
+    text = _hindi_words_to_english(text)
 
     out = re.sub(r"\bhalf\s+(?:an?\s+)?hour\b", "30 minutes", text, flags=re.I)
     out = re.sub(r"\bhalf\s+(?:a\s+)?minute\b", "30 seconds", out, flags=re.I)

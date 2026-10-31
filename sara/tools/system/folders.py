@@ -46,6 +46,11 @@ _NOTE_LINE_RE = re.compile(r"^\[(?P<ts>[^\]]+)\]\s?(?P<text>.*)$")
 def _open_user_folder(folder_name: str) -> str:
     _ensure_windows()
     path = os.path.join(os.path.expanduser("~"), folder_name)
+    if not os.path.isdir(path):
+        # Known folders can be redirected (OneDrive "Desktop", "Pictures" ...); the shell knows where they are.
+        shell_names = {"Desktop": "Desktop", "Documents": "Personal", "Downloads": "Downloads",
+                       "Pictures": "My Pictures", "Music": "My Music", "Videos": "My Video"}
+        path = "shell:" + shell_names.get(folder_name, folder_name)
     try:
         os.startfile(path)
         return f"Opening your {folder_name} folder."

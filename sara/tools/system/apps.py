@@ -797,6 +797,20 @@ def restart_application(app_name: str) -> str:
         return f"Closed {label} but couldn't relaunch it automatically."
 
 
+# "terminal" is not one process: on Windows 11 it is WindowsTerminal.exe hosting cmd / PowerShell tabs, on
+# older setups a bare console window. Closing only "cmd.exe" answered "No running process found" while a
+# terminal was plainly open. Each key lists the image names tried, most specific first.
+_TERMINAL_CLOSE_EXES = {
+    "terminal": ("WindowsTerminal.exe", "OpenConsole.exe", "powershell.exe", "pwsh.exe", "cmd.exe"),
+    "windows terminal": ("WindowsTerminal.exe",),
+    "console": ("WindowsTerminal.exe", "OpenConsole.exe", "powershell.exe", "pwsh.exe", "cmd.exe"),
+    "shell": ("WindowsTerminal.exe", "OpenConsole.exe", "powershell.exe", "pwsh.exe", "cmd.exe"),
+    "command prompt": ("cmd.exe",),
+    "cmd": ("cmd.exe",),
+    "powershell": ("powershell.exe", "pwsh.exe"),
+}
+
+
 def close_application(process_name: str) -> str:
     _ensure_windows()
 
@@ -828,8 +842,16 @@ def close_application(process_name: str) -> str:
     if _is_protected_process(target_exe):
         return f"For safety, I can't close '{label}' — it's a critical system process."
 
+    candidates = _TERMINAL_CLOSE_EXES.get(raw_name.lower().strip(), (target_exe,))
     try:
-        result = _terminate_matching(target_exe)
+        result = _terminate_matching(candidates[0])
+        for extra in candidates[1:]:
+            more = _terminate_matching(extra)
+            result = _TerminateResult(
+                result.procs + more.procs, result.exe_path or more.exe_path, result.denied + more.denied
+            )
+        if len(candidates) > 1:
+            target_exe = ", ".join(sorted({p.name() for p in result.procs if p.is_running()} or {candidates[0]}))
     except (psutil.Error, OSError) as e:
         logger.error(f"close_application failed for '{label}': {e}")
         return f"Sorry, I couldn't close '{label}' right now."

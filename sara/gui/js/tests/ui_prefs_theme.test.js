@@ -8,6 +8,16 @@
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const JS = path.join(__dirname, '..');
+function findSrc(root, name) {
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+    if (e.name === 'tests') continue;
+    const p = path.join(root, e.name);
+    if (e.isDirectory()) { const r = findSrc(p, name); if (r) return r; }
+    else if (e.name === name) return p;
+  }
+  return null;
+}
+
 let failed = 0, passed = 0;
 function ok(cond, msg) { if (cond) passed++; else { failed++; console.error('  FAIL: ' + msg); } }
 function eq(a, b, msg) { ok(JSON.stringify(a) === JSON.stringify(b), msg + '  (got ' + JSON.stringify(a) + ', want ' + JSON.stringify(b) + ')'); }
@@ -51,7 +61,7 @@ function makeEnv(opts) {
   win.window = win; win.localStorage = win.localStorage;
   const ctx = vm.createContext(Object.assign(win, { localStorage: win.localStorage }));
   win.pywebview = undefined;
-  function load(name) { vm.runInContext(fs.readFileSync(path.join(JS, name), 'utf8'), ctx, { filename: name }); }
+  function load(name) { vm.runInContext(fs.readFileSync(findSrc(JS, name), 'utf8'), ctx, { filename: name }); }
   win.SARA_API = function (n) { calls.push([].slice.call(arguments)); };
   return { win, ctx, load, store, calls, intervals, root, doc, stubs };
 }

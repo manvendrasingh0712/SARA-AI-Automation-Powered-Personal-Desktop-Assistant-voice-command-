@@ -1070,7 +1070,11 @@ def _handle_command(
             return _guard_reply(ctx, blocked)
         _t_mark("tool_start")
         try:
-            result = _quick(ctx, system_tools.SIMPLE_ACTIONS[intent]())
+            _action = system_tools.SIMPLE_ACTIONS[intent]
+            if intent == "play_pause_media":
+                # "pause music" must pause, "play music" must resume: never one blind toggle.
+                _action = system_tools.media_action_for(user_input)
+            result = _quick(ctx, _action())
             _t_mark("tool_end")
             # AUDIT LOG (NEW): zero-arg system action executed successfully.
             _log_action(db, "system_action", intent, "success")
@@ -1247,7 +1251,9 @@ def _handle_command(
     # something the user explicitly told Sara before. Never allowed to
     # break or slow down the turn: any failure just leaves context_hint
     # as None, exactly as before this change.
-    if intent == "chat" and chat_route == "chat" and not context_hint:
+    # The brain already searches long-term memory for every non-trivial chat turn (generate_response_stream), so a
+    # second search here only repeated the same memory in the prompt and cost an extra embedding call (~0.3 s).
+    if intent == "chat" and chat_route == "chat" and not context_hint and getattr(brain, "_memory", None) is None:
         try:
             rag = ctx.get("notes_memory")
             if rag is not None and _HAS_RAG:

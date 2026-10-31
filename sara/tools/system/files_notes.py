@@ -447,6 +447,43 @@ def get_notes() -> list:
         return []
 
 
+def delete_note(note_id, expected_text=None) -> dict:
+    """
+    Removes ONE saved note (the desktop UI's per-note delete button).
+
+    `note_id` is the 0-indexed non-empty line number returned by get_notes().
+    Ids shift after a delete, so when `expected_text` is given the line must
+    still contain it -- a stale list in the UI can then never delete a
+    different note than the one the user clicked.
+    Returns {"ok": bool, "message": str, "text": <removed note text>}.
+    """
+    try:
+        idx = int(note_id)
+    except (TypeError, ValueError):
+        return {"ok": False, "message": "That note could not be found.", "text": ""}
+    try:
+        if not os.path.exists(_NOTES_FILE):
+            return {"ok": False, "message": "You have no saved notes.", "text": ""}
+        with open(_NOTES_FILE, "r", encoding="utf-8") as f:
+            lines = [line.rstrip("\n") for line in f if line.strip()]
+        if idx < 0 or idx >= len(lines):
+            return {"ok": False, "message": "That note is already gone.", "text": ""}
+        line = lines[idx]
+        m = _NOTE_LINE_RE.match(line)
+        text = m.group("text") if m else line
+        if expected_text is not None and str(expected_text).strip() != text.strip():
+            return {"ok": False, "message": "That note changed. Refresh and try again.", "text": ""}
+        del lines[idx]
+        tmp = _NOTES_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("".join(l + "\n" for l in lines))
+        os.replace(tmp, _NOTES_FILE)
+        return {"ok": True, "message": "Note deleted.", "text": text}
+    except (OSError, UnicodeDecodeError) as e:
+        logger.error(f"delete_note failed: {e}")
+        return {"ok": False, "message": "Sorry, I couldn't delete that note.", "text": ""}
+
+
 # ============================================================
 # TO-DO LIST (NEW, separate feature -- see _TODO_LINE_RE above)
 # ============================================================

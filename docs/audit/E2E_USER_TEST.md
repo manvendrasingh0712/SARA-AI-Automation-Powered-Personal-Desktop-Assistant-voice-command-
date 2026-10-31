@@ -508,3 +508,134 @@ Suite: 3180 passed, 1 skipped. Router golden bench 99.3 %, held-out 38/38, red-t
 - Incomplete commands: "search for", "look up for" no longer search for the word "for"; bare "weather" / "the weather" gives local weather; "search the web for dogs" keeps a clean query; "open source software is great" is chat, not open_app.
 - Ollama down: connection-refused fails fast (no backoff), falls over to Gemini when a key is set (previously only Gemini→Ollama existed), and embedding lookups pause 20 s after a failure (reply time with both backends unavailable fell from ~9.6 s to ~2.6 s).
 - Suite: 3188 passed, 1 skipped; router bench 99.3 %, red-team ASR 0 %.
+
+## 14. From the real unmatched-queries log (2026-10-30)
+
+`logs/sara_unmatched_queries.jsonl` (193 distinct lines that fell through to the chat model) and the stored replies in `conversation_log` showed why the LLM "could not answer":
+
+| Cause | Evidence | Fix |
+|---|---|---|
+| Whisper junk answered as if spoken (30 of 193 lines): its own style prompt echoed back ("Transcribe exactly what is spoken ...", "Keep proper names and technical terms exactly as spoken"), loops ("ndndnd...", "vay,vay,..."), ". .", "Thank you very much for watching", "Copyright WDR 2021" | the chat model replied to them ("Tell me in this story.") | `_is_prompt_echo`, `_is_degenerate_text`, wider `_is_known_hallucination` in `sara/audio/stt/helpers.py`, applied in `engine.py` before the router |
+| Questions about the user's own data went to a model that has no access: "Is there any event today?" -> "I don't have access to calendars"; "tell me about my daily brief" -> same; "What do you know about me?" -> "I don't store any personal information" | stored replies | routed to the calendar tool, the daily-briefing skill and `memory_recall`; recall now lists only saved facts (raw chat turns are no longer read back) |
+| Commands the router missed: "panihari song chalao spotify per" (the model answered "playing" and did nothing), "Offen Chrome.", "nest track", "type : hello", "Maximize this video.", "screen vision" | log | new patterns / homophones, see `tests/test_log_driven_fixes.py` |
+| `play_youtube` timed out ("taking longer than expected") for "play prada", "Search YouTube" | 3 stored replies | 14 s limit and, on timeout, the YouTube search page is opened instead of an apology |
+| Long-term memory polluted: activity logs ("User toggled play and pause several times"), world-knowledge answers saved as facts, names from garbled transcripts ("User's name is Kya H") | 34 of ~61 consolidated/fact rows | stricter `_is_durable_fact` (activity verbs, hedges, rambling), extraction prompt ignores commands; `python -m sara.core.memory_cleanup` (dry run) / `--apply` (backs the DB up first) removes the existing ones. Not applied automatically: close SARA, review, then run it |
+
+Open: the small model (Whisper `tiny`) still mishears Indian names in English speech ("India's prime minister" -> "English Prime's turn and endrumathi"); trying `base` or `small` needs a model download.
+
+## 15. Speech recogniser: English + Hindi + Hinglish (2026-10-30)
+
+**Problem.** `tiny` understood almost no Hindi/Hinglish commands ("Chrome kholo" -> "Drum kolu."), and every Whisper transcript ends with "." / "?" / "।", which the router did not accept ("Volume down." and "Increase the brightness." went to the chat model).
+
+**Test set.** 51 clips spoken by Windows voices (US English Zira/David, Hindi Kalpana/Hemant reading Devanagari, which is how Hinglish loanwords like "volume", "screenshot" sound) at clean / 15 dB / 8 dB noise. Score = the app's own router must give the same intent as for the written sentence (so it measures "understood the words", not letters). Kokoro-made Hinglish was rejected as a test source: its Hindi voice does not speak romanised Hinglish like a person.
+
+| model (faster-whisper int8) | EN commands | Hindi/Hinglish commands (clean / 15 dB / 8 dB) | VRAM | decode |
+|---|---|---|---|---|
+| tiny (was) | 88 % | 17 / 11 / 6 % | ~110 MB | 0.25 s |
+| base | 100 % | 11 / 6 / 11 % | 214 MB | 0.23 s |
+| small | 100 % | 33 / 11 / 17 % | 441 MB | 0.36 s |
+| medium (cached before) | 88 % | 39 / 22 / 6 % | ~1 GB | 0.6 s |
+| tiny-Hinglish (abhishekgautamm) | 76 % | 61 / 28 / 22 % | 204 MB | 0.2 s |
+| **Hinglish-Swift CT2** (`MSpider3/whisper-hindi2hinglish-swift-ct2`, 78 MB) | 94 % (WER 12 %) | **78-89 / 44-67 / 33-39 %** | 260 MB GPU or **0 on CPU, 1.1 s** | |
+
+**Chosen: two models.** `base` (GPU) for English and `Hinglish-Swift` (CPU, only when needed). Rule (`choose_transcript` in `sara/audio/stt/helpers.py`): a clear English command from `base` is final (the second model is never run); otherwise the Hinglish model's text is used if the router understands it; else `base` if it is confidently English; else the Hinglish text. Result on the 51 clips through the real engine method: commands understood **94 %** (base alone 54 %, Hinglish alone 91 %), English sentences keep base accuracy (WER 2.4 % vs 6.5 %), Hindi sentences come out as readable Roman Hinglish ("Mujhe ek kahaani sunao"). With white noise at 15 / 8 dB: 74 / 69 %.
+
+Settings (`.env`): `WHISPER_MODEL_SIZE=base`, `WHISPER_HINGLISH_MODEL=MSpider3/whisper-hindi2hinglish-swift-ct2`, `WHISPER_HINGLISH_DEVICE=cpu`. Leave `WHISPER_HINGLISH_MODEL` empty to go back to one model.
+
+Also fixed on the way: the router now strips trailing `. ! ? । ,` (dictation excepted), Hinglish spellings "Aavaaz"/"pahunch" are normalised, and "awaaz/volume band karo" means mute instead of "close the app awaaz".
+
+Caveats: the clips are synthetic speech, not your microphone; the Hinglish model's own accuracy claims come from its author. Real-world numbers will differ; `bench/stt_doctor.py` is for measuring on your voice. The Hinglish model is a community conversion (not from Systran/OpenAI) of Oriserve's fine-tune; it is a plain CTranslate2 weights file, no code.
+
+## 16. STT pipeline audit after real use (2026-10-30, 23:00 session log)
+
+Evidence: the live log of a session with YouTube playing in the background (`[volume-match] ... TMKOC ...`) and the dual-model recogniser on.
+
+| Finding | Evidence | Change |
+|---|---|---|
+| Background audio is the main reason "my voice is not heard": the echo canceller only knows SARA's own voice, so YouTube / Spotify is captured and transcribed | captures of 6.1 s, 9.7 s, 18.3 s ending in loops: "kahaan kahaan kahaan ...", "li, li, li ...", "yayaya ...", song lyrics earlier | `sara/audio/ducking.py`: while a command is being captured, every OTHER playing app is turned to 15 % (per-app Windows volume, pycaw) and restored right after; original volumes are saved to disk first and restored on the next start after a crash; a volume the user changed meanwhile is left alone. Verified live: tone session 1.0 -> 0.15 during `wake_now`, back to 1.0 after |
+| The Hinglish model invented text where the main model heard nothing | `main='' hinglish='Haan haan haan.'`, the loops above | it is skipped when nothing was heard; its result is dropped when it loops, is contentless or its log-probability is below -1.0; beam 1 |
+| Rule inputs were invisible | one could not tell why B won | log line now shows main text, language, probability, log-prob, Hinglish text, its log-prob and decode time |
+| Hinglish pass costs 0.8-1.0 s on the CPU (the encoder always works on a 30 s window; 8 threads 0.82 s, 4 threads 0.98 s) | measured | `WHISPER_HINGLISH_DEVICE=auto` uses the GPU when 900 MB are free (4 GB card: stays on CPU) |
+| Ambient noise is tiny (RMS median 6, max 12 in this room), the capture gate is 278 (mic sensitivity slider 23 %) | measured with the microphone | unchanged: a lower gate would not help against background audio, ducking does |
+| No way to replay a real failure | | `STT_DEBUG_DUMP_AUDIO=True` keeps the last 200 captures (WAV + text + gate) in `logs/stt_dumps` |
+
+Offline check after the changes (51 spoken clips, real engine method): commands understood 34 of 35 clean; guards covered by `tests/test_stt_ducking_and_hinglish_guards.py`.
+Not solved: music louder than the ducked level, or voices in the room (TV with people) still reach the microphone; a real fix would feed the system audio (WASAPI loopback) to the echo canceller as the far-end signal, which needs a loopback capture library that is not installed.
+
+## 17. System audio as the echo-canceller reference + calibration on the user's voice (2026-10-31)
+
+**System audio removal (WASAPI loopback).** `sara/audio/system_reference.py` reads the final mix going to the speakers (library `soundcard`, added to requirements) and `AECProcessor.feed_external_reference()` hands it to the WebRTC canceller as the far-end reference, so YouTube / Spotify / calls are removed from the microphone instead of being transcribed.
+* Device: the physical output when the default one is a virtual enhancer (FxSound here); its loopback carries the signal after the enhancer's gain (peak 0.54 vs 0.12 on the virtual one).
+* Timing problem found by measurement: the loopback copy reaches us 20-30 ms AFTER the echo reaches the microphone (noise-burst onsets), and the canceller needs the reference first. Fix: while other audio is playing the microphone path runs through an 80 ms delay line (engaged with silence, drained at 2 frames per frame afterwards).
+* Windows resumes loopback data ~0.5 s late after a silent gap, so the reference stays "on" for 2 s after the last sound (without that the delay line engaged at every pause in a video).
+* SARA's own speech keeps the old direct feed (the mix would contain it twice).
+* Results, speech from a video through the laptop speakers (live path, real `AECProcessor`): echo removed 0 dB -> **50 dB**, words Whisper still hears 39 -> **0**. Offline sweep: 4 dB with the reference arriving late, 26 dB with the 80 ms delay line. User speaking over the video (6 commands, user louder than the echo): understood 4/6 -> 5/6 (user as quiet as the echo: 3/6 -> 2/6, within noise for 6 clips). With the volume ducking from section 16 the echo is already ~6x quieter during a command.
+* Cost: about 4 % of one core while idle (30 ms reads); no GPU. `AEC_SYSTEM_REFERENCE=False` turns it off.
+
+**Calibration with your voice.** `python -m bench.stt_calibrate [--apply]` records 38 sentences you read (English / Hinglish commands, English / Hindi conversation), recognises each with both models, replays every threshold pair of the dual-model rule and recommends the one with the best score and the fewest slow Hinglish-model runs (ties resolve towards the shipped defaults); `--replay` tunes again from the saved recordings. Verified on the synthetic corpus (main model 62 %, Hinglish model 95 %, rule 97 %). Real numbers need your voice.
+
+## 18. Calibration on the user's real voice (2026-10-31)
+
+38 sentences read by the user into the laptop microphone (`bench/stt_calibrate`, recordings in `logs/stt_calib`, references known). What the real data showed, none of which the synthetic speech had:
+
+| Finding | Number | Action |
+|---|---|---|
+| The voice is quiet: RMS median **197**, 10th percentile 144, peak median 0.07 | capture gate was 278 (mic sensitivity 23 %) | gate lowered to 73 (`mic_sensitivity` 88 %, threshold 208; room noise is RMS 6-12). At gate 278 the first syllable of the quietest clips was missed by up to 832 ms (the pre-roll keeps only 300 ms) |
+| Real voice is much harder than synthetic speech | main model `base`: 41 %, `small` 51 %, `medium` 57-63 %; Hinglish model 72 % | order reversed: **Hinglish model first**, main model only when needed |
+| Beam size of the Hinglish model | beam 1: 62 %, beam 2: 72 % (3: 70 %, 5/8: 72 %) | beam 1 (set earlier for speed) removed; beam 2; on the GPU it takes 0.2 s |
+| Level boost | hurts the Hinglish model (72 -> 64 %), helps `small` (46 -> 51 %) | Hinglish model gets the raw clip, the main model a levelled clip (`WHISPER_MAIN_GAIN`) |
+| Rule | A-first (previous): 66 %; B-first + small: 80 %; tuned on the recordings: **82.9 %** | `WHISPER_HINGLISH_MIN_EN_PROB=0.5`, `..._MIN_LOGPROB=-0.5`, `..._CONFIDENT_LP=-0.2` (written to `.env` by the tool) |
+| Cost | the main model runs for 29 % of the sentences instead of the Hinglish model for 76 % | Hinglish model on the GPU (0.2 s, replaces `base` there: GPU 3815 / 4096 MiB), `small` on the CPU (2.4 s, `WHISPER_MAIN_DEVICE=cpu`) |
+
+Only 38 sentences (5 English conversation, 5 Hindi conversation): the thresholds will be re-tuned with `python -m bench.stt_calibrate --replay --apply` after more recordings. `STT_DEBUG_DUMP_AUDIO=True` collects real captures during normal use.
+
+## 19. Live chat test on the real PC (2026-10-31)
+
+449 commands / LLM questions were sent one by one through the running app's own chat (next one only after the
+previous reply), covering all 140 intents, the 14 skills, compound commands and ~79 LLM prompts (English, Hinglish,
+Hindi, maths, code, prompt-injection, odd input). Power actions (lock/sleep/hibernate/shutdown/restart/recycle bin,
+service start/stop) reached their function but were stubbed so the PC stayed on. Volume, brightness, theme and
+clipboard were restored afterwards; test notes/reminders/memories were removed.
+
+Result: 420 PASS first time; of the 29 others most were test-set-up artefacts (no "milk" note, no "morning" routine,
+Spotify not open, idle "Going back to sleep" message arriving after a correct answer, "bye" intentionally quits the app).
+Real bugs found and fixed (tests in `tests/test_live_test_fixes.py`):
+
+- "open my desktop folder" / "pictures folder" failed when the folders are redirected to OneDrive (now uses `shell:` names)
+- "what is the boiling point of water in fahrenheit" was answered as weather ("water" was typo-corrected to "weather")
+- Hindi number words/units: "बारह गुणा चार कितना होता है", "दो घंटे का टाइमर"
+- Hinglish alarms "kal subah 7 baje", "सुबह छह बजे" were not understood
+- alarm confirmation said "29.0 hours and 11.0 minutes"
+- "switch to focus mode" tried to switch to a window called "focus mode"
+
+## 20. LLM pipeline audit: latency and accuracy (2026-10-31)
+
+Measured in the real app on the 4 GB GPU, plain questions, text chat, send -> final reply:
+before 3.4-5.4 s, after 0.8-1.5 s (maths/time go to the calculator route in 0.2 s).
+
+Causes found and fixed:
+- **Kokoro on the GPU** slowed the chat model from 52 to 12-28 tokens/s (and synthesised slower than the CPU:
+  0.45 s vs 0.72 s for a short sentence). `KOKORO_USE_GPU=False`, `ORT_INTRA_THREADS=12` -> 44-52 tokens/s.
+- **History window slid by one turn every turn**, so Ollama's prompt cache missed and re-read ~1,500 tokens each
+  reply (2.7-3.8 s). The window now keeps its first turn fixed and moves in big steps (`LLM_HISTORY_MAX_TOKENS`, 700).
+- A second memory search + extra prompt block in the dispatcher duplicated the one in the LLM (extra embedding call).
+  RAG block capped at `LLM_RAG_MAX_TOKENS` (320).
+- **Empty reply** (HTTP 200, zero tokens) counted as success and the user got nothing (#416 of the live test):
+  now retried, then the normal "try again" message.
+- `proactive.py` chat call used different load options than all others (would make Ollama reload the model).
+- `OLLAMA_KEEP_ALIVE=24h` so the model is never unloaded between questions.
+- Emoji are stripped from replies and from the history (they were synthesised as separate TTS chunks and copied by the model).
+- Hinglish system prompt replaced by a compact English-worded one: English facts/maths 37/39 -> 39/39, ~420 fewer tokens.
+
+Open: Roman-script Hindi/Hinglish factual questions are ~65-70 % correct (e.g. "pani kitne degree par ubalta hai")
+whatever the prompt or sampling (tested 6 prompts, 3 sampling sets); the 4B model's Hindi is the limit.
+
+Model comparison (same 64 questions, same prompt, 4 GB GPU): qwen3:4b-instruct-2507 EN 39/39, Hinglish 17-18/25;
+gemma3:4b EN 36/39 (wrong percentages: 15 % of 240 = "sixty", 25 % off 800 = "520"), Hinglish 20/25 but still garbled Roman Hindi,
+prompt processing 3x slower (no prefix reuse). qwen3 kept; gemma3:4b removed again.
+
+Hinglish accuracy step (2026-10-31): for Roman-script Hindi questions the engine first asks the model for a one-line English
+meaning (`_english_gloss`, ~0.25 s, temperature 0, same load options so no reload) and adds it as a hint before the user message,
+with the instruction to keep nouns/facts/numbers in English. Roman-Hindi facts: ~65 % -> ~90 % (23/25 in the harness, 9/10 through the
+real engine). Also: sampling set to temperature 0.2 / top_k 30 / repeat_penalty 1.08 (`.env`), and old conversation memories no longer
+quote the model's earlier answer (wrong answers were repeated). Setting `LLM_HINGLISH_GLOSS=False` turns the gloss off.

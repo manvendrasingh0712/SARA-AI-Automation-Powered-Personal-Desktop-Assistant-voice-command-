@@ -17,7 +17,7 @@ from .window_mgmt import (
     minimize_active_window, close_active_window, snap_window_left,
     snap_window_right, switch_window,
 )
-from .media_keys import play_pause_media, next_track, previous_track, stop_media
+from .media_keys import play_pause_media, pause_media, resume_media, next_track, previous_track, stop_media
 from .shortcuts import (
     copy_selection, paste_clipboard, select_all, undo, redo, new_tab, close_tab,
     next_tab, prev_tab, reload_page, zoom_in, zoom_out, zoom_reset, scroll_up,
@@ -87,6 +87,8 @@ SIMPLE_ACTIONS: Dict[str, Callable[[], str]] = {
     "toggle_fullscreen": lambda: toggle_fullscreen(),
     # Media
     "play_pause_media": play_pause_media,
+    "pause_media": pause_media,
+    "resume_media": resume_media,
     "next_track": next_track,
     "previous_track": previous_track,
     "stop_media": stop_media,

@@ -69,6 +69,8 @@ _APP_TOKEN = r"[A-Za-z0-9][A-Za-z0-9+\-.]*"
 # pattern match.
 _APP_NAME = _APP_TOKEN + r"(?:\s+" + _APP_TOKEN + r"){0,3}?"
 
+GENERIC_PLAY = r"(?:the |some |my |any |a )?(?:music|musics|song|songs|media|playback|track|tracks|gaana|gana|gaane)"
+
 _INTENT_PATTERNS = [
     # ── Modes / Personas (voice-triggerable, NEW) ─────────────────────
     # "switch to study mode" / "study mode on karo" -- applies a fixed
@@ -88,12 +90,12 @@ _INTENT_PATTERNS = [
     # Being first in this list guarantees switch_mode is always tried,
     # and always wins, before either of those.
     ("switch_mode", [
-        r"switch to (?:the )?(study|work|gaming|home|normal|default) mode",
-        r"go to (?:the )?(study|work|gaming|home|normal|default) mode",
-        r"(?:turn on|enable|activate) (?:the )?(study|work|gaming|home|normal|default) mode",
-        r"(study|work|gaming|home|normal|default) mode (?:on karo|on kro|chalu karo|shuru karo)",
-        r"(study|work|gaming|home|normal|default) mode (?:mein jao|mein switch karo|activate karo)",
-        r"^(study|work|gaming|home|normal|default) mode$",
+        r"switch to (?:the )?(study|work|gaming|home|normal|default|focus) mode",
+        r"go to (?:the )?(study|work|gaming|home|normal|default|focus) mode",
+        r"(?:turn on|enable|activate) (?:the )?(study|work|gaming|home|normal|default|focus) mode",
+        r"(study|work|gaming|home|normal|default|focus) mode (?:on karo|on kro|chalu karo|shuru karo)",
+        r"(study|work|gaming|home|normal|default|focus) mode (?:mein jao|mein switch karo|activate karo)",
+        r"^(study|work|gaming|home|normal|default|focus) mode$",
     ]),
 
     # ── Undo Setting Change (voice-triggerable, NEW) ──────────────────
@@ -246,6 +248,8 @@ _INTENT_PATTERNS = [
 
     # ── Vision / Screen ────────────────────────────────────────────────
     ("screenshot_describe", [
+        r"^\W*(?:screen|my screen)\s+vision\W*$",
+        r"^\W*(?:use |turn on |start )?(?:screen )?vision(?: mode)?\W*$",
         r"\bscreen\s?shot\s+(?:le|lo|lelo|le\s+lo|lena|le\s+do|kheecho|khicho|kheench\s+lo|khinch\s+lo)\b",
         r"स्क्रीनशॉट\s*(?:लो|ले\s*लो|लेना|ले\s*दो|खींचो|खींच\s*लो)",
         r"what'?s (?:on|showing on) (?:my |the )?screen",
@@ -312,19 +316,23 @@ _INTENT_PATTERNS = [
     # ── YouTube — MUST come before web_search and open_url ────────────
     ("play_youtube", [
         r"play (.+?) on youtube",
+        r"(.+?)\s+(?:(?:song|gana|gaana|gaane|video)\s+)?(?:chalao|chala\s+do|bajao|baja\s+do|laga\s+do|lagao|play\s+(?:kro|karo|kar\s+do))\s+(?:on\s+|par\s+|per\s+|pe\s+|me\s+|mein\s+)?youtube(?:\s+(?:par|per|pe|me|mein))?\W*$",
         r"youtube (.+)",
         r"search youtube (?:for )?(.+)",
         r"play (?:the )?(?:song|video|music) (?:called |named )?(.+?) on youtube",
         r"open youtube and play (.+)",
         r"play (.+?) (?:song|video|music) on youtube",
-        r"play (?:the )?(?:song|video|music) (?:called |named )?(?!.*\bspotify\b)(.+)",
-        r"play (.+?) (?:song|video|music)$",
-        r"^play (?!.*\bspotify\b)(.+?)$",
+        r"play (?:the )?(?:song|video|music) (?:called |named )?(?!.*\bspotify\b)(?!(?:again|please|now)\W*$)(.+)",
+        r"play (?!(?:the|some|my|any|a) (?:song|video|music)$)(.+?) (?:song|video|music)$",
+        # "play music" / "play the song" / "play" name no song: that is "resume what was paused"
+        # (play_pause_media), not a YouTube search for the word "music".
+        r"^play (?!.*\bspotify\b)(?!" + GENERIC_PLAY + r"(?: again| please| now)*\W*$)(.+?)$",
     ]),
 
     # ── Spotify ────────────────────────────────────────────────────────
     ("play_spotify", [
         r"play (.+?) on spotify",
+        r"(.+?)\s+(?:(?:song|gana|gaana|gaane|music)\s+)?(?:chalao|chala\s+do|bajao|baja\s+do|laga\s+do|lagao|play\s+(?:kro|karo|kar\s+do))\s+(?:on\s+|par\s+|per\s+|pe\s+|me\s+|mein\s+)?spotify(?:\s+(?:par|per|pe|me|mein))?\W*$",
         # D24 FIX (audit batch D-local): this was a bare `^spotify (.+)$`
         # catch-all, so ANY sentence starting with "spotify " had the rest
         # captured as a track name -- including requests to close it:
@@ -563,7 +571,7 @@ _INTENT_PATTERNS = [
         r"bring back (?:my |all )?windows",
     ]),
     ("maximize_active_window", [
-        r"maximize (?:this|the|current) window",
+        r"maximi[sz]e (?:this|the|current) (?:window|video|app|screen|page)",
         r"maximize (?:my )?window",
     ]),
     ("minimize_active_window", [
@@ -662,6 +670,9 @@ _INTENT_PATTERNS = [
 
     # ── Media Controls ────────────────────────────────────────────────
     ("play_pause_media", [
+        # Bare verbs and generic nouns: "pause", "resume", "play", "play music again", "pause the song".
+        # dispatcher.py picks pause / resume from the words (tools.system.media_action_for).
+        r"^\W*(?:please )?(?:pause|resume|unpause|continue|play)(?: (?:the|my|some|any|a))?(?: (?:music|musics|song|songs|media|playback|track|gaana|gana))?(?: (?:again|please|now))*\W*$",
         r"(?:play|pause)(?: the)? (?:music|media|song)",
         r"play(?:/| or )?pause",
         r"(?:resume|continue) (?:music|media|playback)",
@@ -693,7 +704,7 @@ _INTENT_PATTERNS = [
         # a pattern matching bare "type <anything>" would capture the rest
         # of such a sentence as dictation text. So "type X" without a
         # colon is deliberately NOT matched -- same contract as "write".
-        r"\btype\b(?: this)?(?: for me)?:\s*(.+)",
+        r"\btype\b(?: this)?(?: for me)?\s*:\s*(.+)",
         r"type out[:\s]+(.+)",
         # "write" (unlike "type") is an everyday word in ordinary chat
         # ("write my essay", "write a poem about..."), and the old
@@ -1042,6 +1053,10 @@ _INTENT_PATTERNS = [
     ]),
 
     ("calendar_today", [
+        r"(?:is|are) there (?:any )?(?:events?|meetings?|appointments?|plans?)(?: scheduled| planned)?(?: for)?(?: today| tonight)?\W*$",
+        r"do i have (?:any )?(?:events?|appointments?|plans?)(?: today| tonight)?\W*$",
+        r"what (?:events?|appointments?|plans?) do i have(?: today)?\W*$",
+        r"aaj koi (?:event|meeting|appointment) hai",
         r"(?:what'?s|show|tell me) (?:on )?(?:my )?(?:calendar|schedule) (?:for )?today",
         r"(?:what'?s|show|tell me) (?:my )?(?:calendar|schedule)$",
         r"aaj (?:ka|ke) (?:schedule|calendar) (?:batao|dikhao)",
@@ -1098,6 +1113,10 @@ _INTENT_PATTERNS = [
         r"ye yaad mat rakho ki (.+)",
     ]),
     ("memory_recall", [
+        r"what (?:all |else )?(?:do|can) you (?:know|remember) about me",
+        r"what (?:do )?you know about me",
+        r"(?:tum|aap)?\s*mere (?:baare|bare)\s*(?:me|mein|main)\s*(?:kya|kuch)(?:\s+kya)?\s*(?:jaante|jante|jaanti|janti|jnte|janate|jaanate|pata|yaad)(?:\s*(?:ho|hai|hain|hain tumhe))?",
+        r"batao kya kya (?:jaante|janti|jante|jaanti) ho",
         r"what do you remember about me",
         r"what (?:do you|can you) recall about me",
         r"tell me what you (?:know|remember) about me",
@@ -1224,7 +1243,7 @@ _INTENT_GATES = {
     "system_info": ("system", "pc", "computer", "laptop", "status",
                      "battery", "cpu", "ram", "disk", "memory"),
     "set_volume": ("volume", "louder", "quieter", "softer", "sound", "audio"),
-    "mute": ("mute", "silence"),
+    "mute": ("mute", "silence", "band"),   # "band" = Hinglish "awaaz band karo"
     "unmute": ("unmute", "restore", "enable"),
     "lock_pc": ("lock",),
     "sleep_system": ("sleep",),
@@ -1268,7 +1287,7 @@ _INTENT_GATES = {
     "resize_window": ("half", "center", "full screen", "top left", "top right", "bottom left", "bottom right"),
     "always_on_top": ("always on top", "pin", "upar"),
     "toggle_fullscreen": ("fullscreen", "full screen"),
-    "play_pause_media": ("play", "pause", "music", "media", "resume", "continue"),
+    "play_pause_media": ("play", "pause", "music", "media", "resume", "continue", "unpause"),
     "next_track": ("next", "skip"),
     "previous_track": ("previous", "last", "back"),
     "stop_media": ("stop",),
@@ -1345,8 +1364,8 @@ _INTENT_GATES = {
     "why_decision": ("why", "kyu", "kyun", "change", "badla", "badli"),
     "memory_forget_all": ("forget", "wipe", "delete", "erase", "clear", "bhool", "yaad", "mita"),
     "memory_forget_specific": ("forget", "bhool", "yaad"),
-    "memory_recall": ("remember", "recall", "yaad", "pata"),
-    "calendar_today": ("calendar", "schedule", "aaj", "meeting"),
+    "memory_recall": ("remember", "recall", "yaad", "pata", "know about me", "baare", "bare", "kya kya"),
+    "calendar_today": ("calendar", "schedule", "aaj", "meeting", "event", "appointment", "plans"),
     "calendar_create": ("meeting", "event", "baje", "calendar"),
     # calculator: no safe substring gate — always run (its own patterns
     # provide the necessary keywords/digit-shape; unaffected by this pass).

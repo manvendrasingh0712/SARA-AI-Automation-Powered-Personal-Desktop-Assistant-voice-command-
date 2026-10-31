@@ -195,6 +195,7 @@ EXPECTED_METHODS = {
     "check_setup_status",
     "close_window",
     "cycle_repeat_mode",
+    "delete_note",
     "delete_reminder",
     "delete_routine",
     "get_action_timeline",
@@ -287,8 +288,8 @@ EXPECTED_METHODS = {
     "submit_feedback",
 }
 
-assert len(EXPECTED_METHODS) == 93, (
-    "EXPECTED_METHODS must contain exactly 93 entries, found "
+assert len(EXPECTED_METHODS) == 94, (
+    "EXPECTED_METHODS must contain exactly 94 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

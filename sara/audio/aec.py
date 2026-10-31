@@ -89,6 +89,7 @@ PRODUCTION-AUDIT FIXES (this revision)
 
 from __future__ import annotations
 
+import collections
 import threading
 import time
 from typing import Optional
@@ -121,6 +122,11 @@ _REVERSE_METHOD_CANDIDATES = (
 )
 
 _BYTES_PER_SAMPLE = 2  # int16 PCM
+
+# Windows delivers loopback data only while a stream renders, and resumes ~0.5 s late after a silent gap (measured:
+# 0.5 s holes between spoken clips). The system-audio reference therefore stays "on" this long after the last sound,
+# which keeps the microphone delay line from engaging and releasing at every pause in a video.
+_EXT_HOLD_S = 2.0
 
 # How often (seconds) a given category of recurring error is allowed to
 # print again, once it has already printed once. Keeps a persistent,
@@ -195,6 +201,15 @@ class AECProcessor:
         self._far_buf = bytearray()
         self._far_lock = threading.Lock()
 
+        # System-audio reference (see sara/audio/system_reference.py). While other audio is playing the mic path
+        # runs through a short delay line so the reference reaches the canceller BEFORE the echo does.
+        self._ext_buf = bytearray()
+        self._ext_last_energy = 0.0          # monotonic time the loopback last carried real audio
+        self._tts_last_feed = 0.0            # monotonic time SARA's own speech was last fed (legacy path)
+        self._dline: "collections.deque[bytes]" = collections.deque()
+        self.delay_engagements = 0           # how often the mic delay line was switched on (diagnostics)
+        self._sysref = None
+
         self._closed = False
         self._close_lock = threading.Lock()
 
@@ -254,6 +269,7 @@ class AECProcessor:
             self._ap.set_stream_delay(delay_ms)
 
             self._reverse_method_name = self._resolve_reverse_method()
+            self._start_system_reference()
 
             print(
                 f"[AEC] Ready — rate={self.sample_rate}Hz | delay={delay_ms}ms | "
@@ -314,6 +330,49 @@ class AECProcessor:
                 return False
         return False
 
+    # ── System audio as the reference ──────────────────────────────────────
+
+    def _start_system_reference(self) -> None:
+        if not bool(getattr(Config, "AEC_SYSTEM_REFERENCE", True)) or self._reverse_method_name is None:
+            return
+        try:
+            from sara.audio.system_reference import SystemAudioReference
+
+            self._sysref = SystemAudioReference(self, getattr(Config, "AEC_LOOPBACK_DEVICE", ""))
+            if not self._sysref.start():
+                self._sysref = None
+        except Exception as e:
+            self._sysref = None
+            print(f"[AEC] system-audio reference not started ({type(e).__name__}: {e})")
+
+    def external_active(self) -> bool:
+        """True while OTHER audio is playing and SARA is not speaking (the loopback is then the reference)."""
+        now = time.monotonic()
+        return (now - self._ext_last_energy) < _EXT_HOLD_S and (now - self._tts_last_feed) > 0.4
+
+    def feed_external_reference(self, pcm_i16: np.ndarray) -> None:
+        """Called by SystemAudioReference with 16 kHz int16 frames of the final mix going to the speakers."""
+        if not self.enabled or self._ap is None or self._reverse_method_name is None or pcm_i16 is None:
+            return
+        try:
+            now = time.monotonic()
+            rms = float(np.sqrt(np.mean(pcm_i16.astype(np.float32) ** 2))) if len(pcm_i16) else 0.0
+            if rms >= float(getattr(Config, "AEC_EXT_MIN_RMS", 25)):
+                self._ext_last_energy = now
+            # SARA speaking: the TTS feed is the reference (the mix would contain the same speech twice)
+            if (now - self._tts_last_feed) <= 0.4 or (now - self._ext_last_energy) >= _EXT_HOLD_S:
+                return
+            with self._far_lock:
+                self._ext_buf.extend(pcm_i16.astype(np.int16, copy=False).tobytes())
+                method = getattr(self._ap, self._reverse_method_name)
+                while len(self._ext_buf) >= self._frame_bytes:
+                    frame = bytes(self._ext_buf[: self._frame_bytes])
+                    del self._ext_buf[: self._frame_bytes]
+                    method(frame)
+        except Exception as e:
+            if self._should_log_now("far_end"):
+                print(f"[AEC] feed_external_reference error: {e}")
+
     # ── Far-end (reference / reverse stream) ───────────────────────────────
 
     def feed_far_end(self, pcm_i16: np.ndarray, source_sample_rate: int) -> None:
@@ -324,6 +383,7 @@ class AECProcessor:
         """
         if not self.enabled or self._ap is None or pcm_i16 is None or len(pcm_i16) == 0:
             return
+        self._tts_last_feed = time.monotonic()
         try:
             if source_sample_rate != self.sample_rate:
                 pcm_i16 = _resample_linear(
@@ -388,20 +448,35 @@ class AECProcessor:
                     return pcm_bytes
 
                 out = bytearray()
+                delay_frames = (
+                    max(1, int(getattr(Config, "AEC_EXT_MIC_DELAY_MS", 80)) // 10) if self.external_active() else 0
+                )
                 while len(self._near_buf) >= self._frame_bytes:
                     frame = bytes(self._near_buf[: self._frame_bytes])
                     del self._near_buf[: self._frame_bytes]
-                    try:
-                        processed = self._ap.process_stream(frame)
-                        out.extend(processed if processed else frame)
-                    except Exception as e:
-                        if self._should_log_now("process"):
-                            print(
-                                f"[AEC] process_stream error (further identical "
-                                f"errors suppressed for {_ERROR_LOG_RATE_LIMIT_S:.0f}s, "
-                                f"passing raw audio through): {e}"
-                            )
-                        out.extend(frame)
+                    # Delay line: engage with silence (the reference must lead the echo), drain at two frames per
+                    # frame when the other audio stops, so the extra latency goes away within ~80 ms.
+                    frames = [frame]
+                    if delay_frames or self._dline:
+                        if delay_frames and not self._dline:
+                            self._dline.extend([bytes(self._frame_bytes)] * delay_frames)
+                            self.delay_engagements += 1
+                        self._dline.append(frame)
+                        frames = [self._dline.popleft()]
+                        if not delay_frames and self._dline:
+                            frames.append(self._dline.popleft())
+                    for fr in frames:
+                        try:
+                            processed = self._ap.process_stream(fr)
+                            out.extend(processed if processed else fr)
+                        except Exception as e:
+                            if self._should_log_now("process"):
+                                print(
+                                    f"[AEC] process_stream error (further identical "
+                                    f"errors suppressed for {_ERROR_LOG_RATE_LIMIT_S:.0f}s, "
+                                    f"passing raw audio through): {e}"
+                                )
+                            out.extend(fr)
                 return bytes(out)
         except Exception as e:
             print(f"[AEC] process_near_end fatal error, disabling AEC for safety: {e}")
@@ -445,4 +520,6 @@ class AECProcessor:
                 return
             self._closed = True
             self.enabled = False
+            if self._sysref is not None:
+                self._sysref.stop()
             self._ap = None

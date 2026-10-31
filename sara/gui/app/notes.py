@@ -72,6 +72,16 @@ class ApiNotesMixin:
             print(f"[get_notes error] {e}")
             return {"ok": False, "data": []}
 
+    def delete_note(self, note_id, text=None):
+        """Delete one note (Notes page trash button). `text` guards against a stale id."""
+        try:
+            if self.system_tools and hasattr(self.system_tools, "delete_note"):
+                return self.system_tools.delete_note(note_id, text)
+            return {"ok": False, "message": "System tools missing", "text": ""}
+        except Exception as e:
+            print(f"[delete_note error] {e}")
+            return {"ok": False, "message": "Could not delete that note.", "text": ""}
+
     # ── Memory page ────────────────────────────────────────────────────
     def export_memory(self):
         try:

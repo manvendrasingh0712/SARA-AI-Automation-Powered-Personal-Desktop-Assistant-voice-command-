@@ -18,6 +18,9 @@ _SENT_END_RE = re.compile(r"([.!?।॥])\s+")
 _MD_STRIP_RE = re.compile(r"(\*{1,3}|#{1,6}|`{1,3}|_{1,2}|~~|\|\|)")
 _CLAUSE_RE = re.compile(r",\s+(and|but|so|yet|or|nor)\s+", re.IGNORECASE)
 _SEMI_RE = re.compile(r";\s+")
+# Emoji and pictographs. The reply is spoken, so they only cost a TTS call (a chunk that is just "\U0001F3AF\u2728" was synthesised on its
+# own) and, kept in the history, teach the model to add more. Devanagari, the rupee sign, degrees etc. are not in these ranges.
+_EMOJI_RE = re.compile("[\U0001F1E6-\U0001F1FF\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u2B55\u200D\uFE0F]+")
 
 _ABBREV_SET: frozenset[str] = frozenset(
     {
@@ -186,8 +189,12 @@ def _clause_flush(buffer_str: str) -> tuple[list[str], str]:
     return [], buffer_str
 
 
+def _strip_emoji(text: str) -> str:
+    return _EMOJI_RE.sub("", text) if text else text
+
+
 def _clean_markdown(text: str) -> str:
-    return _MD_STRIP_RE.sub("", text).strip()
+    return re.sub(r"[ \t]{2,}", " ", _EMOJI_RE.sub("", _MD_STRIP_RE.sub("", text))).strip()
 
 
 def _estimate_tokens(text: str) -> int:

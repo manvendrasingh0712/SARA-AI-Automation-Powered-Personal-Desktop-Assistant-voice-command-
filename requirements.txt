@@ -122,6 +122,7 @@ setuptools<82  # webrtcvad imports pkg_resources at runtime; setuptools>=82.0.0
                # removed pkg_resources entirely (see pypa/setuptools#5174),
                # which silently disables VAD without this upper-bound pin.
 aec-audio-processing==1.0.1
+soundcard>=0.4.3        # system-audio loopback for the echo canceller (YouTube/Spotify removal)
 kokoro-onnx==0.5.0
 faster-whisper==1.0.3
 openwakeword==0.6.0

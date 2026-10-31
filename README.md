@@ -513,9 +513,12 @@ SARA-AI/
 │   │
 │   ├── skills/                     # Auto-discovered skills
 │   └── gui/
-│       ├── index.html
-│       ├── js/
-│       ├── style/
+│       ├── index.html              # markup only; loads bundle/app.{css,js}
+│       ├── assets.json             # load order of every JS/CSS source
+│       ├── build.py                # python -m sara.gui.build -> bundle/
+│       ├── bundle/                 # generated (committed, checked by tests)
+│       ├── js/<group>/             # core, fx, shared, home, chat, notes, apps, automation, settings, dev
+│       ├── style/<group>/          # same groups
 │       └── app/                    # Python ↔ JS bridge + API mixins
 │
 ├── tests/

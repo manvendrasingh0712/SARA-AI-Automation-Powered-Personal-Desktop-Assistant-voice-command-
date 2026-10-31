@@ -63,7 +63,7 @@ def test_trip_for_never_shortens_a_longer_trip() -> None:
 def test_trip_for_is_capped_at_one_day() -> None:
     b = _brain()
     b.trip_primary_for(10**9)
-    assert b._cb_cooldown_until - time.monotonic() <= 86400.0
+    assert b._cb_cooldown_until - time.monotonic() <= 86400.0 + 1e-3  # float fuzz on a large monotonic clock
 
 
 @pytest.mark.parametrize("junk", [0, -5, None, "soon"])

@@ -85,7 +85,8 @@ def set_timer(
         _active_timer.daemon = True
         _active_timer.start()
 
-    # Format the confirmation message
+    # Format the confirmation message (an alarm hands in float seconds: "29.0 hours" read badly)
+    seconds = int(round(seconds))
     if seconds < 60:
         duration_str = f"{seconds} second{'s' if seconds != 1 else ''}"
     elif seconds < 3600:

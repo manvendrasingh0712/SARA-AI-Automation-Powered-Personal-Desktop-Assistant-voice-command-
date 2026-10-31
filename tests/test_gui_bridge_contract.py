@@ -113,16 +113,21 @@ def test_mock_is_not_loaded_in_production_html() -> None:
     script list: js/core.js fetches it on demand only when no bridge exists.
     """
     html = _INDEX_HTML.read_text(encoding="utf-8")
-    assert '<script src="js/mock.js"></script>' not in html, (
+    assert "mock.js" not in html and "dev/mock" not in html, (
         "index.html statically loads js/mock.js -- preview scaffolding would be "
         "live in the packaged app and could answer calls meant for Python"
     )
-    assert '<script src="js/core.js"></script>' in html, "index.html must still load js/core.js"
+    assert "bundle/app.js" in html, "index.html must load the script bundle"
+    from sara.gui.build import load_manifest
+
+    manifest_js = load_manifest()["js"]
+    assert "js/core/core.js" in manifest_js, "assets.json must still load js/core/core.js"
+    assert not any(p.endswith("mock.js") for p in manifest_js), "mock.js must stay out of the bundle"
 
 
 def test_mock_unknown_name_is_an_explicit_failure() -> None:
     """mock.js's default branch must not fabricate ok() for unknown names."""
-    mock = (_GUI_JS / "mock.js").read_text(encoding="utf-8")
+    mock = (_GUI_JS / "dev" / "mock.js").read_text(encoding="utf-8")
     assert not re.search(r"default:\s*return ok\(\);", mock), (
         "mock.js still has `default: return ok();` -- an unimplemented backend "
         "method would look like a successful call"
@@ -135,7 +140,7 @@ def test_core_js_fails_loudly_on_a_connected_bridge() -> None:
     A connected bridge missing the requested name must produce an explicit
     failure rather than falling through to the preview mock.
     """
-    core = (_GUI_JS / "core.js").read_text(encoding="utf-8")
+    core = (_GUI_JS / "core" / "core.js").read_text(encoding="utf-8")
     assert "unknown_method" in core, "core.js should return an unknown_method failure"
     assert "_ensureMock" in core, "core.js should load the preview mock on demand"
     assert "apiIsBound" in core, (
@@ -146,7 +151,7 @@ def test_core_js_fails_loudly_on_a_connected_bridge() -> None:
 
 @pytest.mark.parametrize(
     "name, caller",
-    [("toggle_media_mute", "sara/gui/js/music.js")],
+    [("toggle_media_mute", "sara/gui/js/apps/music.js")],
 )
 def test_audited_dead_controls_stay_wired(name: str, caller: str) -> None:
     """

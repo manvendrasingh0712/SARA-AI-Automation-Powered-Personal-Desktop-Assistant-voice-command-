@@ -186,10 +186,40 @@ def _h_memory_recall(match, ctx):
             hits = rag.search(
                 "personal facts and preferences about the user", top_k=5
             )
-            memory_texts = [h.text for h in hits]
+            # Only saved FACTS: raw chat turns ("User said: ... Sara replied: ...") are not memories of
+            # the user, and a garbled summary is filtered the same way the consolidator filters it.
+            from sara.core.memory_consolidation import _is_durable_fact
+
+            memory_texts = [
+                h.text for h in hits
+                if getattr(h, "source", "") == "fact"
+                or (getattr(h, "source", "") == "consolidation" and _is_durable_fact(h.text))
+            ]
         except Exception as e:
             print(f"[Memory] recall search failed: {e}")
 
+    if not m2_line and not memory_texts and rag is not None and getattr(rag, "enabled", False):
+        # The semantic search above only returns hits above a high similarity bar, so a generic
+        # "about me" query found nothing even with 160 stored memories. List the saved facts instead.
+        try:
+            from sara.core.memory_consolidation import _is_durable_fact
+
+            seen = set()
+            for mem in reversed(rag.list_memories()):
+                if mem.get("source") not in ("fact", "consolidation"):
+                    continue
+                text = str(mem.get("text") or "").strip().rstrip(".")
+                key = text.lower()
+                if not text or key in seen:
+                    continue
+                if mem.get("source") == "consolidation" and not _is_durable_fact(text):
+                    continue
+                seen.add(key)
+                memory_texts.append(text)
+                if len(memory_texts) >= 5:
+                    break
+        except Exception as e:
+            print(f"[Memory] recall list failed: {e}")
     if m2_line:
         name_part = f"I know your name is {user_name}. " if user_name else ""
         return _quick(ctx, name_part + m2_line)

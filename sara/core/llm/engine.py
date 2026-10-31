@@ -6,7 +6,7 @@ into generate_response()/generate_response_stream().
 from __future__ import annotations
 
 from .prompt import _build_base_prompt, _time_of_day
-from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens
+from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens, _strip_emoji
 from .clients import _get_ollama_client, _get_gemini_client, ollama_load_options
 
 
@@ -75,7 +75,7 @@ def _clip_history(text: str) -> str:
     pasted article, a 3000-letter keyboard slip) would slow the next ten
     answers. Long ones are shortened to their start; the current message is
     never clipped."""
-    text = text or ""
+    text = _strip_emoji(text or "")
     if len(text) <= _HISTORY_CLIP_CHARS:
         return text
     return text[:_HISTORY_CLIP_CHARS].rstrip() + " ... [shortened]"
@@ -229,6 +229,15 @@ def _current_cancel_event() -> threading.Event:
 # on exactly that case instead of blanket-matching RuntimeError, which
 # would also swallow-and-not-retry genuinely transient RuntimeErrors
 # raised deeper inside the ollama/genai client libraries.
+_ROMAN_HINDI_WORDS = frozenset(
+    "aaj aap aapka aapke aapki abhi aur baad bada bade badi bahut bata bataiye batana batao bhi bilkul bol bolo btao chahiye dikhao din ekdum ghante ghar ghatao hafte hai hain hoga hogi honge hota hote hoti hua hue hui hum humara jaise janm jodo ka kaam kab kahaan kahan kahte kaisa kaise kaisi kal kam kar kare karna karo karte kaun kaunsa kaunse kaunsi ke kehta kehte ki kis kisko kisne kisse kitna kitne kitni ko koi kro kuch kya kyon kyun kyunki lagta lagti lekin liye mahine mat matlab me mein mera mere meri milta milte milti mujhe nahi nahin ne nikalta nikalti paani pani par pe pehle raha rahe rahi saal sab sabse sakta sakte sakti se suna sunao tha thhe thi toh tum tumhara tumhare tumhari ubalta wala wale wali wo woh ye yeh zyada".split()
+)
+
+
+class _EmptyReplyError(RuntimeError):
+    """The backend finished the stream without a single token."""
+
+
 class _ClientUnavailableError(RuntimeError):
     """Raised when the Ollama/Gemini client itself failed to load or
     initialize. Retrying this is pointless — the client won't spawn
@@ -730,18 +739,76 @@ class SaraLLM:
         with self._history_lock:
             snap = list(self._history)
 
-        kept: list[Tuple[str, str]] = []
-        used = 0
-        for u, a in reversed(snap):
-            cost = _estimate_tokens(u) + _estimate_tokens(a)
-            if used + cost > available:
-                break
-            kept.append((u, a))
-            used += cost
-
-        return list(reversed(kept))
+        # Speed: Ollama only re-reads the part of the prompt that changed. A history window that slides by one turn
+        # every turn changes the very first message each time, so the whole ~1,500-token prompt was read again on
+        # every reply (measured 2.7-3.8 s in the app). The window therefore keeps its first turn fixed and only moves
+        # forward in a big step (down to ~60 % of the cap) when it is full, so most turns re-read only what is new.
+        if active_backend == "gemini":  # huge context, no local prefill cost: plain newest-first fit
+            kept, used = [], 0
+            for u, a in reversed(snap):
+                cost = _estimate_tokens(u) + _estimate_tokens(a)
+                if used + cost > available:
+                    break
+                kept.append((u, a))
+                used += cost
+            return list(reversed(kept))
+        cap = min(available, int(getattr(self._cfg, "LLM_HISTORY_MAX_TOKENS", 700)))
+        costs = [_estimate_tokens(u) + _estimate_tokens(a) for u, a in snap]
+        start = 0
+        anchor = getattr(self, "_hist_anchor", None)
+        if anchor is not None:
+            for i, pair in enumerate(snap):
+                if pair is anchor:
+                    start = i
+                    break
+        total = sum(costs[start:])
+        if total > cap:
+            target = int(cap * 0.6)
+            while start < len(snap) - 1 and total > target:  # the newest turn always stays
+                total -= costs[start]
+                start += 1
+        self._hist_anchor = snap[start] if start < len(snap) else None
+        return snap[start:]
 
     # ── Message builders ───────────────────────────────────────────────
+
+    # ── English gloss for Roman-script Hindi / Hinglish questions ───────────
+
+    _GLOSS_SYSTEM = (
+        "Translate the user's Hindi/Hinglish message into one clear English sentence. Output only the English "
+        "sentence, nothing else. Examples: 'pani kitne degree par ubalta hai' -> 'At how many degrees does water "
+        "boil?'; 'bharat ki rajdhani kya hai' -> 'What is the capital of India?'"
+    )
+
+    def _needs_gloss(self, prompt: str) -> bool:
+        if not getattr(self._cfg, "LLM_HINGLISH_GLOSS", True) or self._primary_backend != "ollama":
+            return False
+        text = (prompt or "").strip()
+        if not text or len(text.split()) > 30 or re.search("[\u0900-\u097f]", text):
+            return False
+        words = re.findall(r"[a-z]+", text.lower())
+        hits = sum(1 for w in words if w in _ROMAN_HINDI_WORDS)
+        return hits >= 2 or (hits >= 1 and hits / max(1, len(words)) >= 0.3)
+
+    def _english_gloss(self, prompt: str) -> Optional[str]:
+        """What a Roman-script Hindi question means, in English (one short call, ~0.25 s, same load options as every
+        other call so the model is not reloaded). The 4B chat model gets Hindi facts right ~90 % of the time when it
+        also sees the English meaning, ~65 % without it (64-question evaluation 2026-10-31). Never raises."""
+        try:
+            client = _get_ollama_client(self._cfg)
+            if client is None:
+                return None
+            resp = client.chat(
+                model=self._ollama_model_name,
+                messages=[{"role": "system", "content": self._GLOSS_SYSTEM}, {"role": "user", "content": prompt}],
+                think=False,
+                options={"num_predict": 48, "temperature": 0, **ollama_load_options(self._cfg)},
+                keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+            )
+            gloss = (getattr(getattr(resp, "message", None), "content", "") or "").strip().split("\n")[0].strip()
+            return gloss if 3 <= len(gloss) <= 240 else None
+        except Exception:
+            return None
 
     def _build_messages_ollama(
         self,
@@ -806,6 +873,19 @@ class SaraLLM:
         language_note = self._turn_language_note()
         if language_note:
             msgs.append({"role": "system", "content": language_note})
+        gloss = getattr(self, "_gloss", None)
+        if gloss and gloss[0] == prompt and gloss[1]:
+            msgs.append(
+                {
+                    "role": "system",
+                    "content": (
+                        f"The user's message means in English: {gloss[1]} Answer it correctly in one short sentence. "
+                        "Write only Latin letters. Use English for every noun, name, number and fact; Hindi only for "
+                        "small connecting words (hai, ka, ki, ke, ne, mein, ko, se, the, hota). Example: Bharat ke "
+                        "pehle President Rajendra Prasad the. Do not start with yes or no unless it is a yes/no question."
+                    ),
+                }
+            )
         msgs.append({"role": "user", "content": prompt})
         return msgs
 
@@ -1191,6 +1271,12 @@ class SaraLLM:
                     if remainder:
                         yield remainder
 
+                    if not yielded_any:
+                        # Live test 2026-10-31: the server answered 200 and produced no text at all, which used to count
+                        # as a success and left the user waiting for a reply that never came. Treat it as a failure so
+                        # the retry / next stage / "try again" message takes over.
+                        raise _EmptyReplyError("the model returned an empty reply")
+
                     stream_ok = True
                     break
 
@@ -1254,6 +1340,8 @@ class SaraLLM:
 
                     if attempt < stage_retries and not non_transient:
                         delay = min(max_delay, base_delay * (2**attempt))
+                        if isinstance(e, _EmptyReplyError):
+                            delay = min(delay, 0.2)  # nothing is overloaded; just ask again
                         if is_debug:
                             print(
                                 f"[LLM:{stage_name}] Retry {attempt+1}/{stage_retries} "
@@ -1341,7 +1429,7 @@ class SaraLLM:
             ctx_tokens = int(getattr(self._cfg, "GEMINI_MAX_HISTORY_TOKENS", 30_000))
         else:
             ctx_tokens = int(getattr(self._cfg, "OLLAMA_NUM_CTX", 4096))
-        return max(64, int(ctx_tokens * 0.15))
+        return max(64, min(int(ctx_tokens * 0.15), int(getattr(self._cfg, "LLM_RAG_MAX_TOKENS", 320))))
 
     def _build_capped_memory_context(
         self, hits: list, cap: Optional[int] = None
@@ -1373,7 +1461,13 @@ class SaraLLM:
         kept_lines: list[str] = []
         used = 0
         for h in hits:
-            line = f"- {h.text}"
+            text = h.text
+            if getattr(h, "source", "") == "conversation":
+                # An old exchange is only a pointer to what the user talked about. Its "Sara replied" half is the
+                # model's own earlier answer, right or wrong, and quoting it back made wrong answers stick
+                # ("first president: Nehru" said once, repeated on every later ask).
+                text = text.split("Sara replied:", 1)[0].strip() or text
+            line = f"- {text}"
             cost = _estimate_tokens(line)
             if used + cost > available:
                 break
@@ -1669,6 +1763,15 @@ class SaraLLM:
 
         trivial = self._is_trivial_prompt(prompt)
 
+        gloss_box: list = []
+        gloss_thread = None
+        self._gloss = None
+        if self._needs_gloss(prompt):
+            gloss_thread = threading.Thread(
+                target=lambda: gloss_box.append(self._english_gloss(prompt)), daemon=True, name="llm-gloss"
+            )
+            gloss_thread.start()
+
         # PRODUCTION-AUDIT ADDITION (Phase 2 — RAG): retrieval happens on
         # the hot path right before the LLM call, so it must be bounded
         # and must never raise into the response — LongTermMemory.search()
@@ -1718,6 +1821,10 @@ class SaraLLM:
             # without blocking the hot path even briefly, and without
             # spawning an unbounded thread per request.
             self._get_fact_extract_pool().submit(self._safe_extract_fact, prompt)
+
+        if gloss_thread is not None:
+            gloss_thread.join(timeout=3.0)
+            self._gloss = (prompt, gloss_box[0] if gloss_box else None)
 
         router = _router()
         choice = None
