@@ -108,6 +108,16 @@ def switch_to_application(app_name: str) -> str:
 
     hwnd = _find_window(app_name)
     if not hwnd:
+        # Not running: if it is a known app, starting it is what "switch to Spotify" means.
+        try:
+            from .apps import _APP_ALIASES, open_application
+
+            if app_name.strip().lower() in _APP_ALIASES:
+                opened = open_application(app_name, allow_search_fallback=False)
+                if opened.startswith("Opened"):
+                    return f"{app_name} wasn't open, so I started it."
+        except Exception:
+            logger.debug("switch_to_application: open fallback failed", exc_info=True)
         return f"I couldn't find an open window for '{app_name}'."
 
     try:

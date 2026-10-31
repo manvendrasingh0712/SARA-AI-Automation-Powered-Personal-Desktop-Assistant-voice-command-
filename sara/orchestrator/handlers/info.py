@@ -28,11 +28,18 @@ def _h_weather(match, ctx):
     )
 
 
+_GENERIC_NEWS_WORDS = frozenset(
+    "aaj kal abhi taaza taza latest recent breaking today top mukhya badi".split()
+)
+
+
 def _h_news(match, ctx):
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
     if match and match.lastindex and match.lastindex >= 1:
-        topic = match.group(1)
+        topic = (match.group(1) or "").strip()
+        if topic.lower() in _GENERIC_NEWS_WORDS:  # "aaj ki news" is "the news", not news about "aaj"
+            topic = ""
         _remember_context(ctx, "news", topic)
         news_call = lambda: _call_with_timeout(web_tools.get_news, topic)  # noqa: E731
     else:
