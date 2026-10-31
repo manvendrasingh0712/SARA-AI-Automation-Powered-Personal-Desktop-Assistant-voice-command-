@@ -757,6 +757,29 @@ def search_web(query: str, max_results: int = 3) -> str:
         return _SEARCH_FALLBACK_MSG
 
 
+def _news_google_rss(topic: str, max_results: int) -> "list[str]":
+    """Headlines from Google News (India edition, free, no key). Used first for "the news" with no topic (DuckDuckGo's
+    generic query returned US local-news pages) and as the backup when DuckDuckGo fails or finds nothing."""
+    import xml.etree.ElementTree as ET
+    from urllib.parse import quote_plus
+
+    base = "https://news.google.com/rss"
+    url = (f"{base}/search?q={quote_plus(topic)}&" if topic else f"{base}?") + "hl=en-IN&gl=IN&ceid=IN:en"
+    resp = _session.get(url, timeout=8, headers={"User-Agent": "Mozilla/5.0"})
+    resp.raise_for_status()
+    out = []
+    for item in ET.fromstring(resp.content).iter("item"):
+        title = (item.findtext("title") or "").strip()
+        if not title:
+            continue
+        # Google writes "Headline - Source"
+        head, _, source = title.rpartition(" - ")
+        out.append(f"{len(out) + 1}. {head or title} ({source or 'Google News'})")
+        if len(out) >= max_results:
+            break
+    return out
+
+
 def get_news(topic: str = "", max_results: int = 3) -> str:
     """
     Fetches recent news headlines, optionally filtered by topic, using
@@ -781,20 +804,32 @@ def get_news(topic: str = "", max_results: int = 3) -> str:
         return prefetch_entry[0]
 
     try:
-        def _do_news():
-            # NEW: explicit timeout — see module docstring.
-            with DDGS(timeout=_DDGS_TIMEOUT_SECONDS) as ddgs:
-                return list(ddgs.news(query, max_results=max_results))
+        headlines: "list[str]" = []
+        if not topic:
+            try:
+                headlines = _news_google_rss("", max_results)
+            except Exception as e:
+                logger.warning("Google News (top) failed: %s", e)
+        if not headlines:
+            try:
+                def _do_news():
+                    # NEW: explicit timeout — see module docstring.
+                    with DDGS(timeout=_DDGS_TIMEOUT_SECONDS) as ddgs:
+                        return list(ddgs.news(query, max_results=max_results))
 
-        results = _retry(_do_news, attempts=2, delay=1.0)
+                results = _retry(_do_news, attempts=2, delay=1.0)
+                headlines = [
+                    f"{i}. {r.get('title', 'Untitled')} ({r.get('source', 'Unknown source')})"
+                    for i, r in enumerate(results or [], start=1)
+                ]
+            except Exception as e:
+                logger.warning("DuckDuckGo news failed (%s); trying Google News", e)
+        if not headlines:
+            headlines = _news_google_rss(topic, max_results)
 
-        if not results:
+        if not headlines:
             return f"No news found for '{query}'."
 
-        headlines = [
-            f"{i}. {r.get('title', 'Untitled')} ({r.get('source', 'Unknown source')})"
-            for i, r in enumerate(results, start=1)
-        ]
         summary = "\n".join(headlines)
         from sara.core.security.untrusted import guard_spoken
 

@@ -265,14 +265,14 @@ def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
         if rushed:
             parts.append(
                 "(User sounds a bit rushed/unsure — keep this reply "
-                "extra concise and clear.)"
+                "brief, but still answer the question completely.)"
             )
 
         bucket = _time_of_day_bucket()
         if bucket == "night":
             parts.append(
-                "(It's late at night — keep the tone calmer and the "
-                "reply shorter.)"
+                "(It's late at night — keep the tone calm. Still answer "
+                "the question fully.)"
             )
         elif bucket == "morning":
             parts.append(
@@ -283,12 +283,9 @@ def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
 
     try:
         if context_state.get("turn_lang_mode") == "auto":
-            ratio = _script_mix_ratio(user_input or "")
-            if ratio is not None:
-                parts.append(
-                    f"(Match roughly this English/Hindi word mix in your "
-                    f"reply: ~{int(ratio * 100)}% English-script.)"
-                )
+            # The system prompt already says "reply in the language the user wrote"; a percentage hint on top of
+            # it made the 4B model write fragments ("Haan, haan haan.") instead of an answer, so it is no longer sent.
+            pass
     except Exception as e:
         print(f"[Dispatcher] script-mix hint build failed (continuing): {e}")
 

@@ -206,10 +206,20 @@ def _negated_remainder_is_an_action(normalized: str) -> bool:
     return False
 
 
+_NEGATED_OPINION = re.compile(
+    r"^(?:(?:that|this|it|ye|wo|joke)(?: was| is| tha| hai)? )?(?:not|nahi) (?:very |so |that )?(?:funny|good|great|helpful|right|true|correct|bad|cool|nice|accurate|useful)(?: at all)?$",
+    re.IGNORECASE,
+)
+
+
 def is_negated_action_request(text: str) -> bool:
     """Detect clear English/Hinglish/Hindi negated action requests before routing."""
     normalized = normalize_intent_text(text)
     if not normalized:
+        return False
+    # "not funny" / "that was not good" are opinions about the last answer, not a refused command (the remainder
+    # "funny" is a joke trigger, so the matcher below used to call it a negated action).
+    if _NEGATED_OPINION.match(normalized):
         return False
     if any(pattern.search(normalized) for pattern in _NEGATED_ACTION_PATTERNS):
         return True

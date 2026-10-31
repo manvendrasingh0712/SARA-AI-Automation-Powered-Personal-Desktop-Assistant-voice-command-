@@ -647,3 +647,15 @@ artefacts as in section 19 (no "milk" note, no routines, Spotify/VSCode not open
 no reply at all. Cause: the voice loop's "Going back to sleep" timer only counted spoken turns, so while the user worked through the chat box the
 voice session was put to sleep and the reply of the command running at that moment was dropped. Typed commands now restart that clock
 (`note_typed_activity`). A re-run of 14 rapid back-to-back questions: 14/14 answered, no sleep message.
+
+## 22. Problems fixed after the final verification run (2026-10-31)
+
+- chat replies lost when the voice "sleep" timer fired during typed commands (section 21)
+- "cricket ki latest news batao" / "technology ke baare mein khabar": Hinglish topics now parsed, "aaj ki news" is plain news;
+  Google News (India) is the main source for topic-less news and the backup when DuckDuckGo fails
+- "not funny", "that was not good" were refused as a "negated command"
+- "run my evening routine" / Devanagari routine names; a clear "no routines yet" message
+- "switch to Spotify/VSCode" starts the app when it is not open
+- the 8 commands that the test had skipped (scroll, snap, close this window) were run with Notepad in front: 8/8 pass
+- tone hints no longer ask the model for "shorter" at night / a fixed English percentage
+Test rows made by the live runs were removed from the memory/chat database again (backup kept next to it).

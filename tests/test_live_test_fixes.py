@@ -42,3 +42,35 @@ def test_typed_commands_count_as_activity_for_the_idle_sleep_clock():
     time.sleep(0.01)
     note_typed_activity()
     assert last_typed_activity() > before
+
+
+def test_hinglish_news_topics_and_opinions():
+    from sara.core.intent.engine import detect_intent, is_negated_action_request
+
+    name, m = detect_intent("cricket ki latest news batao")
+    assert name == "news" and m.group(1) == "cricket"
+    assert detect_intent("technology ke baare mein khabar")[1].group(1) == "technology"
+    assert not is_negated_action_request("not funny")
+    assert is_negated_action_request("don't open chrome")
+
+
+def test_routine_name_filler_removed():
+    from sara.orchestrator.handlers.automation import _clean_routine_name
+
+    assert _clean_routine_name("meri evening") == "evening"
+    assert _clean_routine_name("सुबह का") == "morning"
+
+
+def test_news_rss_headlines_parsed(monkeypatch):
+    from sara.tools import web
+
+    xml = b"<rss><channel><item><title>Big story - The Hindu</title></item><item><title>Other - NDTV</title></item></channel></rss>"
+
+    class R:
+        content = xml
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(web._session, "get", lambda *a, **k: R())
+    assert web._news_google_rss("", 3) == ["1. Big story (The Hindu)", "2. Other (NDTV)"]

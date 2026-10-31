@@ -295,6 +295,9 @@ _INTENT_PATTERNS = [
 
     # ── News ───────────────────────────────────────────────────────────
     ("news", [
+        # Hinglish with a topic: "cricket ki latest news batao", "technology ke baare mein khabar"
+        r"^(?:mujhe |mere liye )?(.+?) (?:ki|ke|ka) (?:taaza |latest |aaj ki |recent )?(?:news|khabar|khabren|khabrein|samachar)(?: batao| sunao| dikhao| do| de do)?$",
+        r"^(?:mujhe |mere liye )?(.+?) (?:ke baare mein|ke bare me|par|pe) (?:taaza |latest )?(?:news|khabar|khabren|khabrein|samachar)(?: batao| sunao| dikhao)?$",
         r"(?:latest |recent |breaking )?news (?:about|on|regarding) (.+)",
         r"what'?s (?:happening|going on) (?:with|in|around) (.+)",
         r"headlines? (?:about|on|for) (.+)",
