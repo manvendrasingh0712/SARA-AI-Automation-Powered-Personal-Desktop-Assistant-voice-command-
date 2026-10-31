@@ -47,7 +47,7 @@ from sara.orchestrator.intent_handlers import _handle_command
 #
 # RLock, not Lock: _handle_command() may re-enter Api methods on the same
 # thread (e.g. the session_control "sleep" path calling stop_sara()).
-from sara.orchestrator.state import STATE_LOCK, TURN_STATE
+from sara.orchestrator.state import STATE_LOCK, TURN_STATE, note_typed_activity
 
 try:
     from sara.core.telemetry import begin_turn as _t_begin, end_turn as _t_end
@@ -507,6 +507,7 @@ class ApiCoreMixin:
 
         # Cancellation: new generation + fresh cancel event for this command.
         turn_gen, turn_cancel = TURN_STATE.begin()
+        note_typed_activity()
         _t_begin("text", text=text)
 
         # Same per-turn language mode the voice loop records, so the
@@ -564,6 +565,7 @@ class ApiCoreMixin:
                 _push("status", "sleeping")
             except Exception as e2:
                 print(f"[send_text_command status push error] {e2}")
+        note_typed_activity()  # the idle-sleep clock restarts when the reply is done
         was_cancelled = turn_cancel.is_set() or not TURN_STATE.is_current(turn_gen)
         _t_end("cancelled" if was_cancelled else "ok")
         if was_cancelled:

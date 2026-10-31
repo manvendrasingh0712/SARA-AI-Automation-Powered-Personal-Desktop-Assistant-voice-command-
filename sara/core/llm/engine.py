@@ -229,11 +229,6 @@ def _current_cancel_event() -> threading.Event:
 # on exactly that case instead of blanket-matching RuntimeError, which
 # would also swallow-and-not-retry genuinely transient RuntimeErrors
 # raised deeper inside the ollama/genai client libraries.
-_ROMAN_HINDI_WORDS = frozenset(
-    "aaj aap aapka aapke aapki abhi aur baad bada bade badi bahut bata bataiye batana batao bhi bilkul bol bolo btao chahiye dikhao din ekdum ghante ghar ghatao hafte hai hain hoga hogi honge hota hote hoti hua hue hui hum humara jaise janm jodo ka kaam kab kahaan kahan kahte kaisa kaise kaisi kal kam kar kare karna karo karte kaun kaunsa kaunse kaunsi ke kehta kehte ki kis kisko kisne kisse kitna kitne kitni ko koi kro kuch kya kyon kyun kyunki lagta lagti lekin liye mahine mat matlab me mein mera mere meri milta milte milti mujhe nahi nahin ne nikalta nikalti paani pani par pe pehle raha rahe rahi saal sab sabse sakta sakte sakti se suna sunao tha thhe thi toh tum tumhara tumhare tumhari ubalta wala wale wali wo woh ye yeh zyada".split()
-)
-
-
 class _EmptyReplyError(RuntimeError):
     """The backend finished the stream without a single token."""
 
@@ -332,6 +327,11 @@ _SUMMARY_FAIL_MESSAGES = {
 # ══════════════════════════════════════════════════════════════════════
 # Main class
 # ══════════════════════════════════════════════════════════════════════
+
+
+_ROMAN_HINDI_WORDS = frozenset(
+    "aaj aap aapka aapke aapki abhi aur baad bada bade badi bahut bata bataiye batana batao bhi bilkul bol bolo btao chahiye dikhao din ekdum ghante ghar ghatao hafte hai hain hoga hogi honge hota hote hoti hua hue hui hum humara jaise janm jodo ka kaam kab kahaan kahan kahte kaisa kaise kaisi kal kam kar kare karna karo karte kaun kaunsa kaunse kaunsi ke kehta kehte ki kis kisko kisne kisse kitna kitne kitni ko koi kro kuch kya kyon kyun kyunki lagta lagti lekin liye mahine mat matlab me mein mera mere meri milta milte milti mujhe nahi nahin ne nikalta nikalti paani pani par pe pehle raha rahe rahi saal sab sabse sakta sakte sakti se suna sunao tha thhe thi toh tum tumhara tumhare tumhari ubalta wala wale wali wo woh ye yeh zyada".split()
+)
 
 
 class SaraLLM:

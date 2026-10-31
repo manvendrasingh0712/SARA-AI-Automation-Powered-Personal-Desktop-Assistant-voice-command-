@@ -5,6 +5,7 @@ active/paused toggle, both driven by the GUI.
 """
 
 import threading
+import time
 
 # ── CONCURRENCY FIX (v14, moved from sara/gui/app/core.py) ─────────────
 # One process-wide reentrant lock protecting the cross-modality state dicts
@@ -136,3 +137,17 @@ class TurnState:
 
 
 TURN_STATE = TurnState()
+
+
+# Typed commands are activity too. The voice loop's "going back to sleep" timer only knew about spoken turns, so a
+# user working through the chat box had the voice session put to sleep under them, and the reply of the command
+# that was running at that moment was lost (live test 2026-10-31: 8 of ~80 chat questions got no answer).
+_last_typed_activity = [0.0]
+
+
+def note_typed_activity() -> None:
+    _last_typed_activity[0] = time.monotonic()
+
+
+def last_typed_activity() -> float:
+    return _last_typed_activity[0]

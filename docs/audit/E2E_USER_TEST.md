@@ -639,3 +639,11 @@ meaning (`_english_gloss`, ~0.25 s, temperature 0, same load options so no reloa
 with the instruction to keep nouns/facts/numbers in English. Roman-Hindi facts: ~65 % -> ~90 % (23/25 in the harness, 9/10 through the
 real engine). Also: sampling set to temperature 0.2 / top_k 30 / repeat_penalty 1.08 (`.env`), and old conversation memories no longer
 quote the model's earlier answer (wrong answers were repeated). Setting `LLM_HINGLISH_GLOSS=False` turns the gloss off.
+
+## 21. Final verification run (2026-10-31, after the LLM changes)
+
+449 commands again through the app's chat: 418 PASS, 23 FAIL, 8 SKIP (skips: Notepad not in front / Snap Assist). Most FAILs are set-up
+artefacts as in section 19 (no "milk" note, no routines, Spotify/VSCode not open, "bye" quits the app). Real bug found: 8 chat questions got
+no reply at all. Cause: the voice loop's "Going back to sleep" timer only counted spoken turns, so while the user worked through the chat box the
+voice session was put to sleep and the reply of the command running at that moment was dropped. Typed commands now restart that clock
+(`note_typed_activity`). A re-run of 14 rapid back-to-back questions: 14/14 answered, no sleep message.
