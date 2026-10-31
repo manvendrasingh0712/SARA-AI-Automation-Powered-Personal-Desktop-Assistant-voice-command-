@@ -19,8 +19,18 @@ def _h_play_youtube(match, ctx):
     query = match.group(1).strip()
     result = _run_activity(
         ctx, "youtube", "Searching YouTube", "Playing on YouTube", "Couldn't play that",
-        lambda: _call_with_timeout(web_tools.play_youtube, query, tool_name="play_youtube"),
+        lambda: _call_with_timeout(web_tools.play_youtube, query, tool_name="play_youtube", timeout=14.0),
     )
+    if isinstance(result, str) and "taking longer" in result:
+        # yt-dlp / the page scrape can be slow. Do not just say sorry (the log has "play prada" and
+        # "Search YouTube" ending that way): open the YouTube search page so the user still gets results.
+        try:
+            import webbrowser
+
+            webbrowser.open(web_tools._youtube_search_fallback_url(query))
+            result = f"Opening YouTube search results for {query}."
+        except Exception:
+            pass
     if isinstance(result, str) and result.startswith("Playing"):
         ctx["playback_state"]["youtube"] = {"query": query, "index": 0}
     return _quick(ctx, result)

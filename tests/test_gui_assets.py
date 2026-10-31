@@ -20,6 +20,7 @@ that specific mistake is asserted against by name.
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -54,28 +55,71 @@ def _html() -> str:
     return _INDEX_HTML.read_text(encoding="utf-8")
 
 
+def _manifest() -> dict:
+    return json.loads((_GUI / "assets.json").read_text(encoding="utf-8"))
+
+
 def _linked_css() -> set[str]:
-    return set(re.findall(r'href="style/([^"]+)"', _html()))
+    """File names that the bundle loads (assets.json), e.g. "motion-pack.css"."""
+    return {Path(p).name for p in _manifest()["css"]}
 
 
 def _linked_js() -> set[str]:
-    return set(re.findall(r'src="js/([^"]+)"', _html()))
+    return {Path(p).name for p in _manifest()["js"]}
+
+
+def _css_on_disk() -> set[str]:
+    return {p.name for p in (_GUI / "style").rglob("*.css")}
+
+
+def _js_on_disk() -> set[str]:
+    return {
+        p.name
+        for p in (_GUI / "js").rglob("*.js")
+        if "tests" not in p.parts
+    }
+
+
+def test_index_html_loads_only_the_bundle() -> None:
+    html = _html()
+    assert re.findall(r'href="(style/[^"]+)"', html) == []
+    assert re.findall(r'src="(js/[^"]+)"', html) == []
+    assert re.search(r'href="bundle/app\.css\?v=[0-9a-f]+"', html) and re.search(r'src="bundle/app\.js\?v=[0-9a-f]+"', html)
+
+
+def test_bundle_is_up_to_date() -> None:
+    """Sources changed without `python -m sara.gui.build` => the app would run old code."""
+    from sara.gui.build import is_stale
+
+    assert is_stale() == [], "run: python -m sara.gui.build"
+
+
+def test_manifest_files_exist_and_are_unique() -> None:
+    man = _manifest()
+    for kind in ("css", "js"):
+        assert len(man[kind]) == len(set(man[kind])), f"duplicate {kind} entry"
+        for rel in man[kind]:
+            assert (_GUI / rel).is_file(), f"assets.json lists a missing file: {rel}"
+
+
+def test_main_js_is_the_last_script() -> None:
+    assert _manifest()["js"][-1].endswith("/main.js")
 
 
 def test_every_linked_stylesheet_exists() -> None:
-    on_disk = {p.name for p in (_GUI / "style").glob("*.css")}
+    on_disk = _css_on_disk()
     missing = sorted(_linked_css() - on_disk)
     assert not missing, f"index.html links stylesheets that do not exist: {missing}"
 
 
 def test_every_linked_script_exists() -> None:
-    on_disk = {p.name for p in (_GUI / "js").glob("*.js")}
+    on_disk = _js_on_disk()
     missing = sorted(_linked_js() - on_disk)
     assert not missing, f"index.html loads scripts that do not exist: {missing}"
 
 
 def test_no_dead_stylesheets_on_disk() -> None:
-    on_disk = {p.name for p in (_GUI / "style").glob("*.css")}
+    on_disk = _css_on_disk()
     dead = sorted(on_disk - _linked_css() - _PENDING_DELETION)
     assert not dead, (
         f"stylesheets on disk that nothing loads: {dead}. Either link them or "
@@ -84,7 +128,7 @@ def test_no_dead_stylesheets_on_disk() -> None:
 
 
 def test_no_dead_scripts_on_disk() -> None:
-    on_disk = {p.name for p in (_GUI / "js").glob("*.js")}
+    on_disk = _js_on_disk()
     dead = sorted(on_disk - _linked_js() - _LAZY_JS)
     assert not dead, f"scripts on disk that nothing loads: {dead}"
 
@@ -110,8 +154,8 @@ def test_every_css_fx_switch_has_a_motion_pack_group() -> None:
     motion-pack.css via <html data-fx-off="...">. A switch with no matching
     group is a control that cannot do anything.
     """
-    quality = (_GUI / "js" / "quality.js").read_text(encoding="utf-8")
-    motion_pack = (_GUI / "style" / "motion-pack.css").read_text(encoding="utf-8")
+    quality = (_GUI / "js" / "fx" / "quality.js").read_text(encoding="utf-8")
+    motion_pack = (_GUI / "style" / "fx" / "motion-pack.css").read_text(encoding="utf-8")
 
     css_ids = re.findall(r"\['(\w+)',\s*'[^']*',\s*'[^']*',\s*'css'\]", quality)
     assert css_ids, "could not parse the FX registry out of js/quality.js"
@@ -133,7 +177,7 @@ def test_every_css_fx_switch_has_a_motion_pack_group() -> None:
 def test_mock_js_is_lazy_not_linked() -> None:
     """Preview scaffolding must stay out of the static script list (see D2)."""
     assert "mock.js" not in _linked_js()
-    assert (_GUI / "js" / "mock.js").exists(), "mock.js should still exist for preview use"
+    assert (_GUI / "js" / "dev" / "mock.js").exists(), "mock.js should still exist for preview use"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -141,7 +185,7 @@ def test_mock_js_is_lazy_not_linked() -> None:
 # ──────────────────────────────────────────────────────────────────────
 #
 # The same theme list is declared in three places:
-#   sara/gui/js/theme.js            LIST      -- the picker's display order
+#   sara/gui/js/core/theme.js            LIST      -- the picker's display order
 #   sara/gui/app/ui_prefs.py        _THEMES   -- backend validation
 #   sara/gui/js/tests/...test.js    expected  -- the assertion
 #
@@ -153,7 +197,7 @@ def test_mock_js_is_lazy_not_linked() -> None:
 
 
 def _theme_ids_from_js() -> list[str]:
-    src = (_GUI / "js" / "theme.js").read_text(encoding="utf-8")
+    src = (_GUI / "js" / "core" / "theme.js").read_text(encoding="utf-8")
     body = src.split("const LIST = [", 1)[1].split("];", 1)[0]
     return re.findall(r"id: '(\w+)'", body)
 
@@ -196,3 +240,18 @@ def test_lime_sits_between_oat_and_custom() -> None:
     """Named guard for the ordering decision made in batch 6a."""
     ids = _theme_ids_from_js()
     assert ids.index("oat") < ids.index("lime") < ids.index("custom")
+
+
+def test_pm_overlays_stay_out_of_flow_even_when_the_pack_is_off() -> None:
+    """
+    js/fx/motion-pack.js creates the pm-* overlays regardless of the "pm" switch. If their positioning is
+    only inside the gated group, switching "pm" off turns the dust canvas into a full-window block child of
+    <body> and the app renders ~1000px below the fold (black screen at launch).
+    """
+    css = (_GUI / "style" / "fx" / "motion-pack.css").read_text(encoding="utf-8")
+    ungated = [
+        line for line in css.splitlines()
+        if line.startswith(".pm-aura,.pm-dust") and "position:fixed" in line
+    ]
+    assert ungated, "pm overlays need an ungated position:fixed rule"
+    assert 'html[data-fx-off~="pm"] :is(.pm-aura,.pm-dust' in css

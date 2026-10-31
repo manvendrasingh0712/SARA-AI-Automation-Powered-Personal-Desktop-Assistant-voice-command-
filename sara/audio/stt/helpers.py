@@ -210,6 +210,13 @@ def _is_known_hallucination(text: str) -> bool:
     normalized = re.sub(r"\s+", " ", normalized).strip()
     if not normalized:
         return False
+    # "Thank you very much for watching." / "Thanks so much for watching": extra words defeat the exact
+    # phrase list above, but nobody gives a voice command that ends in "for watching".
+    if re.search(r"\bfor watching\b", normalized) and len(normalized.split()) <= 8:
+        return True
+    # Broadcaster credits Whisper learned from subtitles: "Copyright WDR 2021".
+    if re.match(r"^(?:copyright|\u00a9)\b.*\b(?:19|20)\d\d$", normalized) and len(normalized.split()) <= 6:
+        return True
     for phrase in _HALLUCINATION_PHRASES:
         phrase_norm = re.sub(r"[^\w\s]", "", phrase).strip()
         # Exact match, or the phrase makes up effectively the whole
@@ -221,6 +228,115 @@ def _is_known_hallucination(text: str) -> bool:
         if phrase_norm in normalized and len(normalized) <= len(phrase_norm) + 12:
             return True
     return False
+
+
+# Real log (sara_unmatched_queries.jsonl, 2026-10-30): on silence / music Whisper printed its OWN
+# initial_prompt back ("Transcribe exactly what is spoken, in whichever language or mix it was
+# spoken in...", "Keep proper names and technical terms exactly as spoken."), long loops of one
+# character ("ndndnd...", "ṭṭṭṭ...", "vay,vay,vay,...") and caption boilerplate ("Thank you very much
+# for watching.", "Copyright WDR 2021"). Those reached the router and were answered by the LLM as if
+# the user had said them.
+_PROMPT_ECHO_MARKERS = (
+    "code-switched", "code switched", "transcribe exactly", "switching script",
+    "inventing words", "technical terms exactly", "proper names and technical",
+    "natural code", "in whichever language", "the word is written", "the words are written",
+)
+
+
+def _is_prompt_echo(text: str) -> bool:
+    """True when the transcript is (part of) the style prompt we gave Whisper."""
+    t = re.sub(r"\s+", " ", (text or "").lower().replace("\u2011", "-"))
+    return any(m in t for m in _PROMPT_ECHO_MARKERS)
+
+
+_RUN_RE = re.compile(r"(.{1,8}?)\1{5,}", re.DOTALL)
+
+
+def _is_degenerate_text(text: str) -> bool:
+    """
+    Text with no real content: only punctuation (". ."), a short unit repeated many times with or
+    without separators ("ndndnd...", "vay,vay,vay,..."), or the same word four times in a row.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    if not re.search(r"\w", t):
+        return True
+    compact = re.sub(r"[\s,.;:!?\-]+", "", t.lower())
+    if len(compact) >= 12:
+        m = _RUN_RE.search(compact)
+        if m and len(m.group(0)) >= 0.6 * len(compact):
+            return True
+        if len(set(compact)) <= 4 and len(compact) >= 20:
+            return True
+    words = re.findall(r"[\w']+", t.lower())
+    run = 1
+    for a, b2 in zip(words, words[1:]):
+        run = run + 1 if a == b2 else 1
+        if run >= 4:
+            return True
+    return False
+
+
+def _is_latin_text(text: str) -> bool:
+    """True when every character is Latin/ASCII-range (no Devanagari, Arabic, CJK ...)."""
+    return all(ord(c) < 0x250 for c in text or "")
+
+
+def choose_transcript(text_a, lang_a, prob_a, logprob_a, run_b, routes, min_en_prob=0.85, min_logprob=-0.6):
+    """
+    Two recognisers, one answer. A = the English-capable model (fast, on the GPU); B = the Hinglish model
+    (a Whisper-base fine-tune for Hindi / Hinglish, run only when it is needed). Measured on 51 spoken
+    clips (Windows voices, three noise levels): A alone understood 54 % of commands, B alone 91 %,
+    this rule 94 % -- and English sentences keep A's accuracy (WER 2.4 % vs 6.5 % for B).
+
+      1. A is a command the router understands and is plain English  -> A   (B is never run)
+      2. else B's text is a command the router understands           -> B
+      3. else A, only if it is confidently English (language probability and log-probability high)
+      4. else B   (Hindi / Hinglish conversation: B writes it as readable Roman Hinglish)
+
+    run_b() -> text (called at most once); routes(text) -> True when the app's router maps it to a tool.
+    Returns ("A" | "B", text).
+    """
+    a = (text_a or "").strip()
+    if a and routes(a) and lang_a == "en" and _is_latin_text(a):
+        return "A", a
+    b = (run_b() or "").strip()
+    if b and routes(b):
+        return "B", b
+    if a and lang_a == "en" and prob_a >= min_en_prob and logprob_a >= min_logprob and _is_latin_text(a):
+        return "A", a
+    return ("B", b) if b else ("A", a)
+
+
+def need_main_model(b_text, b_logprob, routes, confident_logprob=-0.3) -> bool:
+    """
+    "Hinglish model first" ordering. True when the Hinglish model's text still needs a second opinion from the main
+    model: it is empty, or it is not a command the router understands AND the model is not sure about it.
+    A command, or a confident plain-Latin sentence of three words or more, is final (the main model is not run).
+    """
+    b = (b_text or "").strip()
+    if not b:
+        return True
+    if routes(b):
+        return False
+    return not (b_logprob >= confident_logprob and _is_latin_text(b) and len(b.split()) >= 3)
+
+
+def pick_after_hinglish_first(b_text, a_text, a_lang, a_prob, a_logprob, routes, min_en_prob=0.9, min_logprob=-0.5):
+    """
+    Second stage of "Hinglish model first": the main model (A) has also listened. Returns ("A" | "B", text).
+    A wins only when it is a command in plain English, or it is a confident English sentence; otherwise B.
+    Measured on 38 sentences of the user's own voice (command / conversation, English / Hindi): Hinglish model alone
+    72 %, main model alone 41-51 %, this ordering 80 % with the main model needed for 21 % of sentences.
+    """
+    a = (a_text or "").strip()
+    b = (b_text or "").strip()
+    if a and routes(a) and a_lang == "en" and _is_latin_text(a):
+        return "A", a
+    if a and a_lang == "en" and a_prob >= min_en_prob and a_logprob >= min_logprob and _is_latin_text(a):
+        return "A", a
+    return ("B", b) if b else ("A", a)
 
 
 def _is_hallucinated_repetition(text: str, min_repeats: int = 3) -> bool:

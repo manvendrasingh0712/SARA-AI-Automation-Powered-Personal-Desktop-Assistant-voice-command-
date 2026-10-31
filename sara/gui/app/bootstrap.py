@@ -26,6 +26,12 @@ def main():
     # main.py at module load time; it's only safe once main() actually runs).
     import main as sara_main
 
+    # Sources live in js/<group>/ and style/<group>/; the page loads the two
+    # bundle files. Rebuild them if a source changed since the last launch.
+    from sara.gui.build import ensure_built
+
+    ensure_built()
+
     if not os.path.exists(HTML_PATH):
         raise FileNotFoundError(
             f"index.html not found at: {HTML_PATH}\n"

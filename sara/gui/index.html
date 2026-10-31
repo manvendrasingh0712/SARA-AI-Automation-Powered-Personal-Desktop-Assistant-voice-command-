@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <!-- ==========================================================================
   index.html -- SARA AI GUI markup only (structure, no logic, no styling).
-  Styles: style/*.css (tokens -> layout -> components -> per-page).
-  Logic:  js/*.js (ui -> mock -> core -> per-page -> main). Each file's top comment says what it owns.
+  Styles: style/<group>/*.css  Logic: js/<group>/*.js  -- order in assets.json, bundled to bundle/app.{css,js}. Each file's top comment says what it owns.
   Pages:  home (orb + Today card) | chat | notes (Notes + Reminders tabs) | apps (Music card + tools) | automation | settings
   ========================================================================== -->
 <html lang="en">
@@ -10,50 +9,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SARA AI</title>
-<link rel="stylesheet" href="style/fonts.css">
-<link rel="stylesheet" href="style/tokens.css">
-<link rel="stylesheet" href="style/palette.css">
-<link rel="stylesheet" href="style/ambient.css">
-<link rel="stylesheet" href="style/layout.css">
-<link rel="stylesheet" href="style/components.css">
-<link rel="stylesheet" href="style/home.css">
-<link rel="stylesheet" href="style/clock-card.css">
-<link rel="stylesheet" href="style/chat.css">
-<link rel="stylesheet" href="style/notes-reminders.css">
-<link rel="stylesheet" href="style/apps.css">
-<link rel="stylesheet" href="style/music.css">
-<link rel="stylesheet" href="style/automation.css">
-<link rel="stylesheet" href="style/settings.css">
-<link rel="stylesheet" href="style/perf.css">
-<link rel="stylesheet" href="style/security.css">
-<link rel="stylesheet" href="style/overlays.css">
-<link rel="stylesheet" href="style/memory-view.css">
-<link rel="stylesheet" href="style/motion.css">
-<link rel="stylesheet" href="style/settings-fx.css">
-<link rel="stylesheet" href="style/theme-custom.css">
-<link rel="stylesheet" href="style/theme-neon.css">
-<link rel="stylesheet" href="style/theme-minimal.css">
-<link rel="stylesheet" href="style/smooth.css">
-<link rel="stylesheet" href="style/motion-pack.css">
-<link rel="stylesheet" href="style/router-view.css">
-<!-- style/aurum.css removed: motion-pack.css GROUP "au" (line ~358) already
-     carries all 166 of its rules, re-scoped behind :where(html:not([data-fx-off~="au"])).
-     Because :where() has zero specificity and aurum.css loaded AFTER
-     motion-pack.css, aurum's unscoped copy won every conflict -- which meant
-     the user-facing "Detail effects" toggle (js/quality.js FX registry, id
-     'au') set data-fx-off="au" and nothing happened. Dropping the duplicate
-     makes that toggle work and removes ~20 KB of redundant CSS.
-     style/aurum.css and style/luxe.css are both superseded and can be deleted. -->
-<link rel="stylesheet" href="style/flow.css">
-<link rel="stylesheet" href="style/quality.css">
-<link rel="stylesheet" href="style/chat-plus.css">
-<link rel="stylesheet" href="style/home-plus.css">
-<link rel="stylesheet" href="style/automation-plus.css">
-<link rel="stylesheet" href="style/notes-plus.css">
-<link rel="stylesheet" href="style/music-plus.css">
-<link rel="stylesheet" href="style/settings-plus.css">
-<link rel="stylesheet" href="style/a11y-plus.css">
-<link rel="stylesheet" href="style/empty-plus.css">
+<!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="bundle/app.css?v=fa92966ae3">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -340,8 +298,8 @@
               <div class="rt-usage" id="rtUsage"></div>
               <div class="rt-legend" id="rtLegend"></div>
               <div class="rt-nums" id="rtNums" hidden>
-                <div class="rt-num"><b id="rtLatency">-</b><span>average response time</span></div>
-                <div class="rt-num" id="rtSavedWrap"><b id="rtSaved">-</b><span>calls saved vs always-main</span></div>
+                <div class="rt-stat"><b id="rtLatency">-</b><span>average response time</span></div>
+                <div class="rt-stat"><b id="rtSaved">-</b><span>calls saved vs always-main</span></div>
               </div>
               <div class="rt-progress" id="rtCollecting" hidden></div>
               <div class="rt-reset">
@@ -478,14 +436,14 @@
               <div class="an-empty-sub">Once SARA is used, your activity will appear here.</div>
             </div>
             <div class="an-body" id="anBody" hidden>
-              <div class="stat-grid an-kpis" id="anKpis">
+              <div class="stat-grid an-kpis">
                 <div class="stat an-kpi" id="anKpiMessages" hidden><b id="anMessages">0</b><span>Messages</span></div>
                 <div class="stat an-kpi" id="anKpiCommands" hidden><b id="anTotal">0</b><span>Commands</span></div>
                 <div class="stat an-kpi" id="anKpiNudges" hidden><b id="anNudges">0</b><span>Proactive nudges</span></div>
                 <div class="stat an-kpi" id="anKpiSuccess" hidden><b id="anSuccess">0</b><span id="anSuccessLbl">Action success</span></div>
               </div>
               <div class="section-label sub">Peak usage</div>
-              <div class="an-peak" id="anPeak"><span>Busiest day</span><b id="anBusiest">—</b></div>
+              <div class="an-peak"><span>Busiest day</span><b id="anBusiest">—</b></div>
               <div class="section-label sub">Most used</div>
               <div id="anTop" class="an-top"></div>
               <div class="section-label sub">Last 14 days</div>
@@ -719,49 +677,11 @@
   </div>
 </div>
 
-<script src="js/ui.js"></script>
-<!-- js/mock.js is intentionally NOT loaded here. It is preview-only
+<!-- The preview mock (js/dev/) is intentionally NOT loaded here. It is preview-only
      scaffolding and is fetched on demand by js/core.js (SARA._ensureMock)
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
-<script src="js/core.js"></script>
-<script src="js/prefs.js"></script>
-<script src="js/theme.js"></script>
-<script src="js/skill_cards.js"></script>
-<script src="js/fx.js"></script>
-<script src="js/motion.js"></script>
-<script src="js/home.js"></script>
-<script src="js/home-plus.js"></script>
-<script src="js/today.js"></script>
-<script src="js/clock-card.js"></script>
-<script src="js/chat.js"></script>
-<script src="js/notes-reminders.js"></script>
-<script src="js/music.js"></script>
-<script src="js/music-plus.js"></script>
-<script src="js/apps.js"></script>
-<script src="js/routine-actions.js"></script>
-<script src="js/routine-builder.js"></script>
-<script src="js/automation.js"></script>
-<script src="js/automation-plus.js"></script>
-<script src="js/settings.js"></script>
-<script src="js/settings-panels.js"></script>
-<script src="js/settings-data.js"></script>
-<script src="js/perf.js"></script>
-<script src="js/security.js"></script>
-<script src="js/memory-view.js"></script>
-<script src="js/settings-skills.js"></script>
-<script src="js/settings-fx.js"></script>
-<script src="js/setup-wizard.js"></script>
-<script src="js/palette.js"></script>
-<script src="js/quality.js"></script>
-<script src="js/settings-plus.js"></script>
-<script src="js/a11y-plus.js"></script>
-<script src="js/empty-plus.js"></script>
-<script src="js/motion-pack.js"></script>
-<script src="js/router-view.js"></script>
-<script src="js/main.js"></script>
-<script src="js/chat-plus.js"></script>
-<script src="js/nlparse.js"></script>
-<script src="js/notes-plus.js"></script>
+<!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
+<script src="bundle/app.js?v=7a8a3ebc53"></script>
 </body>
 </html>

@@ -132,6 +132,8 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
         if backend == "ollama":
             # Single attempt, no retries, small token cap -- any failure
             # falls to the outer except and returns None (template used).
+            from sara.core.llm.clients import ollama_load_options
+
             resp = client.chat(
                 model=getattr(Config, "OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"),
                 messages=[
@@ -139,7 +141,8 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
                     {"role": "user", "content": template},
                 ],
                 think=False,
-                options={"temperature": 0.6, "num_predict": 60},
+                # same load options as every other chat call: different ones make Ollama reload the model (seconds)
+                options={"temperature": 0.6, "num_predict": 60, **ollama_load_options(Config)},
                 keep_alive=getattr(Config, "OLLAMA_KEEP_ALIVE", "5m"),
             )
             text = (resp.message.content or "").strip()

@@ -413,3 +413,11 @@ def test_ready_line_states_unknown_rather_than_guessing() -> None:
     assert "unknown" in reported.lower(), (
         "an unrecorded device renders as a concrete device name (D37)"
     )
+
+
+@pytest.fixture(autouse=True)
+def _main_model_on_the_gpu_by_default(monkeypatch):
+    """These tests describe the default path (GPU first); a developer's .env may say WHISPER_MAIN_DEVICE=cpu."""
+    from config import Config
+
+    monkeypatch.setattr(Config, "WHISPER_MAIN_DEVICE", "cuda", raising=False)

@@ -223,6 +223,17 @@ class ApiSettingsMixin:
     # frontend as a normal (non-crashing) failure message.
     def toggle_wifi(self):
         try:
+            # Windows radio API: works without Administrator (what the Settings quick toggle uses).
+            from sara.tools.system.connectivity import toggle_radio
+
+            radio = toggle_radio("wifi")
+            if radio.get("found") and not radio.get("error") and radio.get("now_on") is not None:
+                return {"ok": True, "message": f"Wi-Fi {'enabled' if radio['now_on'] else 'disabled'}."}
+        except Exception as e:
+            print(f"[toggle_wifi radio error] {e}")
+
+        # Fallback: netsh (needs Administrator).
+        try:
             import subprocess
 
             show = subprocess.run(

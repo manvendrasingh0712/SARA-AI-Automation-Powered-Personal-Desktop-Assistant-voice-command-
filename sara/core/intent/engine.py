@@ -54,12 +54,22 @@ def normalize_intent_text(text: str) -> str:
     normalized = re.sub(r"\s+", " ", normalized).strip()
     normalized = re.sub(r"\bkr\s*(do|de|dena|dijiye)\b", r"kar \1", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\bkro\b", "karo", normalized, flags=re.IGNORECASE)
+    # Roman spellings the Hinglish recogniser writes for words the patterns know ("Aavaaz kam karo.",
+    # "Gaana pahunch karo." for "gaana pause karo").
+    normalized = re.sub(r"\b(?:aa?va+a?[zj]|aawa+[zj]|awaj)\b", "awaaz", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\b(gaana|gana|gaane|music|song)\s+pahunch\b", r"\1 pause", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\bkrna\b", "karna", normalized, flags=re.IGNORECASE)
     # Greeting/politeness at the edges carries no intent: "hey can you open
     # chrome for me" fell to chat because "hey " and " for me" broke the
     # open_app patterns (E2E held-out test 2026-10-29).
     normalized = re.sub(r"^(?:hey|hi|ok|okay)[,\s]+(?!sara\b)", "", normalized, flags=re.IGNORECASE)
     normalized = re.sub(r"\s+(?:for me|please)\W*$", "", normalized, flags=re.IGNORECASE)
+    # Whisper ends every transcript with "." / "?" / "!" / "।". Patterns anchored with $ then never matched:
+    # "Volume down." and "Increase the brightness." went to the chat model, "Offen Chrome." captured the app
+    # name "Chrome." Dictation (type: ... / write ...) keeps its own punctuation.
+    if not re.match(r"^\s*(?:type|write|likho|dictate)\b", normalized, flags=re.IGNORECASE):
+        normalized = re.sub(r"^[\s.,;:!?\u2026\u0964-]+", "", normalized)
+        normalized = re.sub(r"[\s.,;:!?\u2026\u0964]+$", "", normalized)
     return normalized
 
 
@@ -323,6 +333,11 @@ _HOMOPHONES = {
     # the chat model with an invented "Chrome opened!", "whats teh time"
     # with an invented time. Only unambiguous misspellings go here.
     "teh": "the",
+    # Whisper spellings seen in sara_unmatched_queries.jsonl ("Offen Chrome.", "nest track")
+    "offen": "open",
+    "ofen": "open",
+    "opan": "open",
+    "nest": "next",
     "opn": "open",
     "opne": "open",
     "oepn": "open",
@@ -345,6 +360,7 @@ try:  # words the typo-rescue pass must never "correct" into a command word
     from .patterns_multilingual import TYPO_PROTECTED as _TYPO_PROTECTED
 except Exception:  # optional layer
     _TYPO_PROTECTED = frozenset()
+_TYPO_PROTECTED = frozenset(_TYPO_PROTECTED) | {"water", "waters"}
 
 
 def _rebuild_routes() -> None:
@@ -501,6 +517,8 @@ _APP_NAME_REJECT_INTENTS = frozenset({
 _ENGLISH_SENTENCE_TOKENS = frozenset({
     "is", "are", "was", "were", "be", "been", "should", "would", "could",
     "because", "great", "good", "bad", "awesome",
+    # "awaaz band karo" / "volume band karo" mean mute, not "close the app named awaaz".
+    "awaaz", "awaz", "volume", "sound",
 })
 
 

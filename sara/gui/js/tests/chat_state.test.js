@@ -28,7 +28,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const CHAT_JS_PATH = path.join(__dirname, '..', 'chat.js');
+const CHAT_JS_PATH = path.join(__dirname, '..', 'chat', 'chat.js');
 const chatSource = fs.readFileSync(CHAT_JS_PATH, 'utf8');
 
 /* ---- minimal fake DOM: just enough surface for chat.js's makeBubble/

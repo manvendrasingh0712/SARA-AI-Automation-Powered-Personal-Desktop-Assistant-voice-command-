@@ -113,7 +113,7 @@ _MODE_BUNDLES = {
 # a separate alias table (rather than a duplicate _MODE_BUNDLES entry)
 # so _MODE_BUNDLES stays the single source of truth for what each real
 # mode name actually applies.
-_MODE_ALIASES = {"default": "normal"}
+_MODE_ALIASES = {"default": "normal", "focus": "study"}
 
 _MODE_CONFIRMATIONS = {
     "normal": "Normal mode on — proactive nudges and mic sensitivity are back to default.",

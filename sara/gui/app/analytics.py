@@ -148,6 +148,7 @@ class ApiAnalyticsMixin:
             from pathlib import Path
             import json
             from collections import Counter
+            from sara.core.unmatched_log import is_not_a_command
 
             path = Path(getattr(Config, "UNMATCHED_LOG_PATH", "") or "")
             if not path.exists():
@@ -161,7 +162,8 @@ class ApiAnalyticsMixin:
                     except Exception:
                         continue
                     text = (rec.get("text") or "").strip().lower()
-                    if text:
+                    # Older log lines include small talk and plain questions.
+                    if text and not is_not_a_command(text):
                         counts[text] += 1
 
             data = [

@@ -1,0 +1,575 @@
+/* ==========================================================================
+   motion-pack.css  --  the SARA motion / effects pack in ONE file (replaces animations.css, premium.css, luxe.css, aurum.css).
+   Four groups, each switchable at runtime without touching the cascade: <html data-fx-off="ax pm lx au"> (managed by js/quality.js,
+   Settings > Appearance > Fine-tune effects). Group rules are gated with :where(), so specificity is exactly what it was in the separate files.
+   Note: @keyframes cannot be gated, so switching "pm" off stops the premium RULES but a few redefined keyframes (pageIn, msgIn, ...) keep their polished timing.
+   Generated from the four source files by a script; regenerate rather than hand-edit.
+   ax = Entrance & hover animations (59 rules)
+   pm = Premium upgrades (33 rules)
+   lx = Hover polish (Luxe) (104 rules)
+   au = Detail effects (Aurum) (166 rules)
+   ========================================================================== */
+/* ============ GROUP "ax"  --  Entrance & hover animations   (source: animations.css, 59 rules; switch off with <html data-fx-off="ax">) ============ */
+:root:where(:not([data-fx-off~="ax"])){--ax-ease:var(--ease-premium,cubic-bezier(.22,1,.36,1));--ax-spring:var(--ease-spring,cubic-bezier(.34,1.56,.64,1));--ax-step:45ms}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.an-kpi,.perf-num){transition:scale .28s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.an-kpi,.perf-num):hover{scale:1.015}
+:where(html:not([data-fx-off~="ax"])) :is(.pill-btn,.chip,.qc-tile,.app-tile,.stat,.theme-card,.dock-btn,.qa-btn,.link-btn):active{scale:.97}
+:where(html:not([data-fx-off~="ax"])) :is(.pill-btn,.chip,.app-tile,.theme-card,.dock-btn,.qa-btn,.link-btn){transition-property:border-color,color,background-color,box-shadow,transform,scale}
+:where(html:not([data-fx-off~="ax"])) .link-btn{background-image:linear-gradient(currentColor,currentColor);background-repeat:no-repeat;background-position:50% calc(100% - 3px);background-size:0 1px;transition:color .2s,background-size .3s var(--ax-ease),scale .16s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) .link-btn:hover{background-size:calc(100% - 16px) 1px}
+:where(html:not([data-fx-off~="ax"])) .tab::before{content:"";position:absolute;left:0;right:0;bottom:4px;height:2px;border-radius:2px;background:currentColor;opacity:0;transform:scaleX(.4);transform-origin:center;transition:opacity .25s ease,transform .3s var(--ax-ease);pointer-events:none}
+:where(html:not([data-fx-off~="ax"])) .tab:hover::before{opacity:.35;transform:scaleX(1)}
+:where(html:not([data-fx-off~="ax"])) .tab.active::before{opacity:0}
+:where(html:not([data-fx-off~="ax"])) .chat-dock{transition-property:border-color,box-shadow,opacity,translate;translate:0 0}
+:where(html:not([data-fx-off~="ax"])) .chat-dock:focus-within{translate:0-2px}
+:where(html:not([data-fx-off~="ax"])) .nav{transition-property:opacity,translate,border-color,box-shadow;transition-duration:.3s;transition-timing-function:var(--ax-ease);translate:0 0}
+:where(html:not([data-fx-off~="ax"])) .tc-pv{transition:scale .35s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) .theme-card:hover .tc-pv{scale:1.03}
+:where(html:not([data-fx-off~="ax"])) .row{transition:translate .25s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) .row:hover{translate:3px 0}
+@media (prefers-reduced-motion:no-preference){:where(html:not([data-fx-off~="ax"])) .page-title{animation:ax-title-in .5s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .page-header .page-title{position:relative}
+:where(html:not([data-fx-off~="ax"])) .page-header .page-title::after{content:"";position:absolute;left:0;bottom:-6px;width:28px;height:2px;border-radius:2px;background:var(--core);transform-origin:left center;animation:ax-line .7s var(--ax-ease) .25s backwards;pointer-events:none}
+:where(html:not([data-fx-off~="ax"])) .page-status{animation:ax-status-in .5s var(--ax-ease) .12s backwards}
+:where(html:not([data-fx-off~="ax"])) .section-label{animation:ax-label-in .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat){animation:ax-tile-in .5s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(2){animation-delay:calc(var(--ax-step)*1)}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(3){animation-delay:calc(var(--ax-step)*2)}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(4){animation-delay:calc(var(--ax-step)*3)}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(5){animation-delay:calc(var(--ax-step)*4)}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(6){animation-delay:calc(var(--ax-step)*5)}
+:where(html:not([data-fx-off~="ax"])) :is(.qc-tile,.app-tile,.an-kpi,.perf-num,.stat):nth-child(n+7){animation-delay:calc(var(--ax-step)*6)}
+:where(html:not([data-fx-off~="ax"])) .chip-row .chip{animation:ax-chip-in .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .chip-row .chip:nth-child(2){animation-delay:40ms}
+:where(html:not([data-fx-off~="ax"])) .chip-row .chip:nth-child(3){animation-delay:80ms}
+:where(html:not([data-fx-off~="ax"])) .chip-row .chip:nth-child(4){animation-delay:120ms}
+:where(html:not([data-fx-off~="ax"])) .chip-row .chip:nth-child(n+5){animation-delay:160ms}
+:where(html:not([data-fx-off~="ax"])) .info-row{animation:ax-info-in .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .info-row:nth-child(2){animation-delay:40ms}
+:where(html:not([data-fx-off~="ax"])) .info-row:nth-child(3){animation-delay:80ms}
+:where(html:not([data-fx-off~="ax"])) .info-row:nth-child(4){animation-delay:120ms}
+:where(html:not([data-fx-off~="ax"])) .info-row:nth-child(n+5){animation-delay:160ms}
+:where(html:not([data-fx-off~="ax"])) .btn-row>*{animation:ax-btn-in .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .btn-row>*:nth-child(2){animation-delay:50ms}
+:where(html:not([data-fx-off~="ax"])) .btn-row>*:nth-child(n+3){animation-delay:100ms}
+:where(html:not([data-fx-off~="ax"])) .acc-note{animation:ax-note-in .6s ease .15s backwards}
+:where(html:not([data-fx-off~="ax"])) .set-row{animation:ax-setrow-in .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .modal>*{animation:ax-modal-child .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .modal>*:nth-child(2){animation-delay:60ms}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .modal>*:nth-child(3){animation-delay:110ms}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .modal>*:nth-child(n+4){animation-delay:160ms}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .sheet>*{animation:ax-sheet-child .45s var(--ax-ease) backwards}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .sheet>*:nth-child(2){animation-delay:60ms}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .sheet>*:nth-child(3){animation-delay:110ms}
+:where(html:not([data-fx-off~="ax"])) .overlay.open .sheet>*:nth-child(n+4){animation-delay:160ms}
+:where(html:not([data-fx-off~="ax"])) .chip.on{animation:ax-chip-select .45s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) :is(.field,.add-row input,.modal input,.modal select,.set-row input[type=text]):focus{animation:ax-focus-bloom .5s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) :is(button,.chip,.pill-btn,.tab,.nav button):focus-visible{outline:2px solid rgb(var(--core-rgb)/.8);outline-offset:2px;animation:ax-focus-ring .3s var(--ax-ease)}
+:where(html:not([data-fx-off~="ax"])) input[type=range]::-webkit-slider-thumb{transition:scale .2s var(--ax-spring)}
+:where(html:not([data-fx-off~="ax"])) input[type=range]:active::-webkit-slider-thumb{scale:1.25}
+:where(html:not([data-fx-off~="ax"])) .mini-orb{position:relative}
+:where(html:not([data-fx-off~="ax"])) .mini-orb::after{content:"";position:absolute;inset:0;border-radius:50%;border:1px solid var(--core);opacity:0;pointer-events:none;animation:ax-ping 3.2s ease-out infinite}
+}
+@keyframes ax-title-in{from{opacity:0;transform:translateX(-10px)}
+}
+@keyframes ax-line{from{transform:scaleX(0)}
+}
+@keyframes ax-status-in{from{opacity:0;transform:translateY(-6px)}
+}
+@keyframes ax-label-in{from{opacity:0;transform:translateX(-6px)}
+}
+@keyframes ax-tile-in{from{opacity:0;transform:translateY(8px) scale(.985)}
+}
+@keyframes ax-chip-in{from{opacity:0;transform:scale(.92)}
+}
+@keyframes ax-info-in{from{opacity:0;transform:translateX(-6px)}
+}
+@keyframes ax-btn-in{from{opacity:0;transform:translateY(6px)}
+}
+@keyframes ax-note-in{from{opacity:0}
+}
+@keyframes ax-setrow-in{from{opacity:0;transform:translateY(4px)}
+}
+@keyframes ax-modal-child{from{opacity:0;transform:translateY(8px)}
+}
+@keyframes ax-sheet-child{from{opacity:0;transform:translateY(8px)}
+}
+@keyframes ax-chip-select{0%{transform:scale(.965)}
+60%{transform:scale(1.025)}
+100%{transform:scale(1)}
+}
+@keyframes ax-focus-bloom{from{box-shadow:0 0 0 0 rgb(var(--core-rgb)/.4)}
+to{box-shadow:0 0 0 6px rgb(var(--core-rgb)/0)}
+}
+@keyframes ax-focus-ring{from{outline-offset:7px;outline-color:rgb(var(--core-rgb)/0)}
+}
+@keyframes ax-sheen{from{background-position:130%0}
+to{background-position:-30%0}
+}
+@keyframes ax-ping{0%{opacity:.4;transform:scale(1)}
+70%,100%{opacity:0;transform:scale(2.2)}
+}
+
+/* ============ GROUP "pm"  --  Premium upgrades   (source: premium.css, 33 rules; switch off with <html data-fx-off="pm">) ============ */
+:root:where(:not([data-fx-off~="pm"])){--ease-premium:cubic-bezier(.16,1,.3,1);--ease-spring:cubic-bezier(.22,1.45,.36,1);--dur-fast:.14s;--dur-med:.3s}
+:where(html:not([data-fx-off~="pm"])) .page{animation-duration:.42s;animation-timing-function:var(--ease-premium)}
+@keyframes pageIn{from{opacity:0;transform:translateY(12px) scale(.992)}
+to{opacity:1;transform:translateY(0) scale(1)}
+}
+@keyframes pageInR{from{opacity:0;transform:translateX(24px) scale(.99)}
+to{opacity:1;transform:translateX(0) scale(1)}
+}
+@keyframes pageInL{from{opacity:0;transform:translateX(-24px) scale(.99)}
+to{opacity:1;transform:translateX(0) scale(1)}
+}
+@keyframes headerIn{from{opacity:0;transform:translateY(-8px)}
+to{opacity:1;transform:none}
+}
+@keyframes rowIn{from{opacity:0;transform:translateY(9px)}
+to{opacity:1;transform:none}
+}
+@keyframes setCardIn{0%{opacity:0;transform:translateY(22px) scale(.985)}
+100%{opacity:1;transform:none}
+}
+@keyframes msgIn{0%{opacity:0;transform:translateY(14px) scale(.96)}
+62%{opacity:1;transform:translateY(-2px) scale(1.006)}
+100%{opacity:1;transform:none}
+}
+@keyframes toastIn{0%{opacity:0;transform:translateY(18px) scale(.94)}
+60%{opacity:1;transform:translateY(-3px) scale(1.012)}
+100%{opacity:1;transform:none}
+}
+@keyframes tcPop{0%{transform:scale(.96)}
+55%{transform:scale(1.02)}
+100%{transform:scale(1)}
+}
+@keyframes themePick{0%{transform:scale(1)}
+40%{transform:scale(1.12)}
+70%{transform:scale(.98)}
+100%{transform:scale(1)}
+}
+@keyframes dotPop{0%{transform:scale(.3)}
+55%{transform:scale(1.5)}
+80%{transform:scale(.94)}
+100%{transform:scale(1)}
+}
+@keyframes icoPop{0%{transform:scale(.5);opacity:0}
+60%{transform:scale(1.12);opacity:1}
+100%{transform:none;opacity:1}
+}
+@keyframes orbPulse{0%,100%{opacity:.62;transform:scale(.88)}
+38%{opacity:1;transform:scale(1.08)}
+68%{opacity:.8;transform:scale(.98)}
+}
+:where(html:not([data-fx-off~="pm"])) .ripple{background:radial-gradient(circle,rgb(var(--fg-rgb)/.26) 0%,rgb(var(--fg-rgb)/.10) 45%,rgb(var(--fg-rgb)/0) 72%);animation:rippleOut .8s var(--ease-premium) forwards}
+:where(html:not([data-fx-off~="pm"])) .skel{background:linear-gradient(105deg,var(--panel) 35%,rgb(var(--fg-rgb)/.09) 50%,var(--panel) 65%);background-size:240% 100%;animation-duration:1.5s;animation-timing-function:cubic-bezier(.4,0,.2,1)}
+:where(html:not([data-fx-off~="pm"])) .overlay.open .sheet,:where(html:not([data-fx-off~="pm"])) .overlay.open .modal{transition:transform .6s var(--ease-premium),opacity .3s ease}
+:where(html:not([data-fx-off~="pm"])) ::selection{background:rgb(var(--core-rgb)/.32);color:inherit}
+:root:where(:not([data-fx-off~="pm"])){caret-color:var(--core)}
+:where(html:not([data-fx-off~="pm"])) ::-webkit-scrollbar-thumb:hover{background:rgb(var(--core-rgb)/.5)}
+/* The pm overlays are created by js/fx/motion-pack.js whether or not the "pm" pack is switched on. Their
+   positioning below is gated on the pack, so with "pm" off they became ordinary block children of <body> and
+   the canvas (the full window high) pushed the whole app down: a black screen until a page switch.
+   Out of flow always; hidden when the pack is off. (audit 2026-10-30) */
+.pm-aura,.pm-dust,.pm-progress,.pm-edge,.pm-spark{position:fixed;left:0;top:0;pointer-events:none}
+html[data-fx-off~="pm"] :is(.pm-aura,.pm-dust,.pm-progress,.pm-edge,.pm-spark){display:none}
+:where(html:not([data-fx-off~="pm"])) .pm-aura{position:fixed;left:0;top:0;width:520px;height:520px;border-radius:50%;pointer-events:none;z-index:0;opacity:0;background:radial-gradient(circle,rgb(var(--core-rgb)/.10) 0%,rgb(var(--core-rgb)/.045) 35%,transparent 68%);transition:opacity .5s ease;will-change:transform}
+:where(html:not([data-fx-off~="pm"])) .pm-aura.on{opacity:1}
+:where(html:not([data-fx-off~="pm"])) .pm-tilt{transition:transform .14s ease-out!important;will-change:transform}
+:where(html:not([data-fx-off~="pm"])) .pm-spark{position:fixed;width:4px;height:4px;border-radius:50%;pointer-events:none;z-index:60;will-change:transform,opacity}
+:where(html:not([data-fx-off~="pm"])) .pm-progress{position:fixed;left:0;right:0;top:0;height:2px;z-index:40;pointer-events:none;transform:scaleX(0);transform-origin:left center;opacity:0;background:linear-gradient(90deg,var(--core),var(--speak));transition:opacity .3s ease;will-change:transform}
+:where(html:not([data-fx-off~="pm"])) .pm-progress.on{opacity:.9}
+:where(html:not([data-fx-off~="pm"])) .pm-dust{position:fixed;inset:0;width:100vw;height:100vh;z-index:0;pointer-events:none}
+:where(html:not([data-fx-off~="pm"])) .page{transition:scale .6s var(--ease-premium),opacity .45s ease}
+:where(html:not([data-fx-off~="pm"])) body.pm-overlay-open .page.active{scale:.985;opacity:.72}
+@property --pm-a{syntax:"<angle>";inherits:false;initial-value:0deg}
+:where(html:not([data-fx-off~="pm"])) .chat-dock::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;opacity:0;transition:opacity .4s ease;background:conic-gradient(from var(--pm-a),transparent 0 68%,rgb(var(--core-rgb)/.95) 84%,rgb(var(--speak-rgb)/.95) 92%,transparent 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;animation:pm-spin 3.4s linear infinite;animation-play-state:paused}
+:where(html:not([data-fx-off~="pm"])) .chat-dock:focus-within::before{opacity:1;animation-play-state:running}
+@keyframes pm-spin{to{--pm-a:360deg}
+}
+:where(html:not([data-fx-off~="pm"])) ::view-transition-old(root),:where(html:not([data-fx-off~="pm"])) ::view-transition-new(root){animation:none;mix-blend-mode:normal}
+:where(html:not([data-fx-off~="pm"])) ::view-transition-new(root){animation:pm-reveal .8s var(--ease-premium) both}
+@keyframes pm-reveal{from{clip-path:circle(0 at var(--vt-x,50%) var(--vt-y,50%))}
+to{clip-path:circle(var(--vt-r,150vmax) at var(--vt-x,50%) var(--vt-y,50%))}
+}
+:root:where(:not([data-fx-off~="pm"])).pm-vt,:root:where(:not([data-fx-off~="pm"])).pm-vt *{transition:none!important}
+:where(html:not([data-fx-off~="pm"])) .page-header{position:relative;z-index:3;transition:box-shadow .35s ease}
+:where(html:not([data-fx-off~="pm"])) .page-header .page-title{transform-origin:left center;transition:scale .35s var(--ease-premium)}
+:where(html:not([data-fx-off~="pm"])) .page.pm-scrolled>.page-header{box-shadow:0 1px 0 rgb(var(--core-rgb)/.16),0 14px 22px -20px rgba(0,0,0,.65)}
+:where(html:not([data-fx-off~="pm"])) .page.pm-scrolled>.page-header .page-title{scale:.94}
+:where(html:not([data-fx-off~="pm"])) .pm-edge{position:fixed;inset:0;pointer-events:none;z-index:9;opacity:0;box-shadow:inset 0 0 80px -24px var(--pm-edge,var(--core))}
+:root:where(:not([data-fx-off~="pm"])):is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pm-dust{opacity:.45}
+:root:where(:not([data-fx-off~="pm"])):is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pm-aura{opacity:0}
+:root:where(:not([data-fx-off~="pm"])):is([data-theme="ink"],[data-theme="oat"],[data-theme="lime"]) .pm-aura.on{opacity:.5}
+@media (prefers-reduced-motion:reduce){:where(html:not([data-fx-off~="pm"])) .pm-aura,:where(html:not([data-fx-off~="pm"])) .pm-spark,:where(html:not([data-fx-off~="pm"])) .pm-dust,:where(html:not([data-fx-off~="pm"])) .pm-edge,:where(html:not([data-fx-off~="pm"])) .pm-progress{display:none}
+:where(html:not([data-fx-off~="pm"])) .chat-dock::before{animation:none}
+:where(html:not([data-fx-off~="pm"])) body.pm-overlay-open .page.active{scale:1;opacity:1}
+}
+
+/* ============ GROUP "lx"  --  Hover polish (Luxe)   (source: luxe.css, 104 rules; switch off with <html data-fx-off="lx">) ============ */
+:root:where(:not([data-fx-off~="lx"])){--lx-ease:var(--ease-premium,cubic-bezier(.16,1,.3,1));--lx-spring:var(--ease-spring,cubic-bezier(.22,1.45,.36,1))}
+:where(html:not([data-fx-off~="lx"])) .home-greet{background:linear-gradient(100deg,var(--muted) 40%,var(--text) 50%,var(--muted) 60%)0 0/260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+:where(html:not([data-fx-off~="lx"])) .cc-greet{background:linear-gradient(100deg,var(--text-soft) 40%,var(--text) 50%,var(--text-soft) 60%)0 0/260% 100%;-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+:where(html:not([data-fx-off~="lx"])) .home-caption{transition:text-shadow .8s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) body.sara-active .home-caption{text-shadow:0 0 14px rgb(var(--core-rgb)/.35)}
+:where(html:not([data-fx-off~="lx"])) .qa-btn svg{transition:rotate .4s var(--lx-spring),scale .4s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .qa-btn:hover svg{rotate:-12deg;scale:1.18}
+:where(html:not([data-fx-off~="lx"])) .cc-bar-fill{background-image:linear-gradient(100deg,transparent 30%,rgb(255 255 255/.55) 50%,transparent 70%);background-size:250% 100%;background-repeat:no-repeat;background-position:130%0}
+@property --lx-a{syntax:"<angle>";inherits:false;initial-value:0deg}
+:where(html:not([data-fx-off~="lx"])) .clock-card::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;pointer-events:none;opacity:0;transition:opacity .4s ease;background:conic-gradient(from var(--lx-a),transparent 0 72%,rgb(var(--core-rgb)/.9) 86%,rgb(var(--speak-rgb)/.9) 93%,transparent 100%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;animation:lx-spin 4s linear infinite;animation-play-state:paused}
+:where(html:not([data-fx-off~="lx"])) .clock-card:hover::before{opacity:1;animation-play-state:running}
+:where(html:not([data-fx-off~="lx"])) .tc-temp{display:inline-block;transform-origin:left center;transition:scale .4s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .today-card:hover .tc-temp{scale:1.08}
+:where(html:not([data-fx-off~="lx"])) #stage::before{content:"";position:absolute;inset:-5%;border-radius:50%;pointer-events:none;border:1px dashed rgb(var(--core-rgb)/.15);background:radial-gradient(circle at 50%0,rgb(var(--speak-rgb)/.95)0 2.5px,rgb(var(--speak-rgb)/.25) 3px,transparent 6px)}
+:where(html:not([data-fx-off~="lx"])) .offline-strip{background-image:repeating-linear-gradient(135deg,rgb(var(--danger-rgb)/.10)0 10px,transparent 10px 20px);background-size:28px 28px}
+:where(html:not([data-fx-off~="lx"])) .dock-btn.send svg{transition:translate .3s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .dock-btn.send:hover svg{translate:2px -1px}
+:where(html:not([data-fx-off~="lx"])) .dock-btn.mic{transition:box-shadow .35s ease,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s}
+:where(html:not([data-fx-off~="lx"])) .dock-btn.mic:hover{box-shadow:0 0 0 6px rgb(var(--core-rgb)/.12),0 0 18px -2px rgb(var(--core-rgb)/.35)}
+:where(html:not([data-fx-off~="lx"])) #chatInputField::placeholder{transition:opacity .35s ease}
+:where(html:not([data-fx-off~="lx"])) #chatInputField:focus::placeholder{opacity:.35}
+:where(html:not([data-fx-off~="lx"])) .msg.user{transition:box-shadow .3s ease,border-color .3s ease}
+:where(html:not([data-fx-off~="lx"])) .msg.user:hover{border-color:rgb(var(--core-rgb)/.4);box-shadow:0 0 18px -8px rgb(var(--core-rgb)/.5)}
+:where(html:not([data-fx-off~="lx"])) .music-card.playing .mc-play{position:relative}
+:where(html:not([data-fx-off~="lx"])) .music-card.playing .mc-play::after{content:"";position:absolute;inset:0;border-radius:50%;border:1px solid var(--core);pointer-events:none;opacity:0}
+:where(html:not([data-fx-off~="lx"])) .music-card .spectrum{transition:opacity .4s ease,filter .6s ease}
+:where(html:not([data-fx-off~="lx"])) .music-card.playing .spectrum{filter:drop-shadow(0 0 6px rgb(var(--core-rgb)/.45))}
+:where(html:not([data-fx-off~="lx"])) .art-block{transition:transform .24s var(--mc-ease,ease),box-shadow .4s var(--mc-ease,ease),filter .4s ease,opacity .4s ease,background-image .6s ease,scale .5s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .art-block:hover{scale:1.035}
+:where(html:not([data-fx-off~="lx"])) .seek-thumb{transition:left .5s linear,transform .2s var(--mc-ease,ease),box-shadow .25s ease,background-color .3s,opacity .25s ease,scale .25s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .seek-wrap:hover .seek-thumb{scale:1.3;box-shadow:0 0 14px rgb(var(--core-rgb)/.55)}
+:where(html:not([data-fx-off~="lx"])) .mini-player .mp-btn,:where(html:not([data-fx-off~="lx"])) .mp-btn{transition:color .6s,scale .22s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .mp-btn:hover{scale:1.15}
+:where(html:not([data-fx-off~="lx"])) .mp-btn:active{scale:.9}
+:where(html:not([data-fx-off~="lx"])) .vol-btn svg{transition:rotate .35s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .vol-btn:hover svg{rotate:-9deg}
+:where(html:not([data-fx-off~="lx"])) .mc-chev{transition:transform .25s var(--mc-ease,ease),color .2s,translate .3s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .mc-head:hover .mc-chev{translate:0 2px}
+:where(html:not([data-fx-off~="lx"])) .music-card{transition:border-color .25s var(--mc-ease,ease),box-shadow .4s var(--mc-ease,ease),translate .45s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .music-card:hover{box-shadow:var(--shadow-hover)}
+:where(html:not([data-fx-off~="lx"])) #page-settings .set-search{transition:border-color .2s,box-shadow .2s,scale .35s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .set-search:focus{scale:1.015}
+:where(html:not([data-fx-off~="lx"])) input[type=range]::-webkit-slider-thumb{transition:scale .2s var(--ease-spring,cubic-bezier(.22,1.45,.36,1)),box-shadow .25s ease}
+:where(html:not([data-fx-off~="lx"])) input[type=range]:hover::-webkit-slider-thumb{box-shadow:0 0 0 5px rgb(var(--core-rgb)/.16),0 0 14px rgb(var(--core-rgb)/.5)}
+:where(html:not([data-fx-off~="lx"])) .theme-card::after{content:"";position:absolute;inset:-3px;border-radius:inherit;pointer-events:none;opacity:0;border:1px solid rgb(var(--core-rgb)/.55);box-shadow:0 0 16px rgb(var(--core-rgb)/.35)}
+:where(html:not([data-fx-off~="lx"])) .set-card-title{transition:translate .35s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .set-card:hover .set-card-title{translate:3px 0}
+:where(html:not([data-fx-off~="lx"])) .cs-mode-btn,:where(html:not([data-fx-off~="lx"])) .sec-seg button{transition:translate .25s var(--lx-ease),border-color .2s,color .2s,background .2s}
+:where(html:not([data-fx-off~="lx"])) .cs-mode-btn:hover,:where(html:not([data-fx-off~="lx"])) .sec-seg button:hover{translate:0-1px}
+:where(html:not([data-fx-off~="lx"])) .stat{transition:border-color .2s,transform .15s,box-shadow .35s ease}
+:where(html:not([data-fx-off~="lx"])) .stat:hover{box-shadow:inset 0-2px 0 rgb(var(--core-rgb)/.7),0 0 16px rgb(var(--core-rgb)/.12)}
+:where(html:not([data-fx-off~="lx"])) .chip{background-image:linear-gradient(rgb(var(--core-rgb)/.12),rgb(var(--core-rgb)/.12));background-repeat:no-repeat;background-size:0% 100%;transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),box-shadow .2s,background-size .4s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .chip:hover{background-size:100% 100%}
+:where(html:not([data-fx-off~="lx"])) .toggle{transition:background .25s,scale .3s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .toggle:hover{scale:1.07}
+:where(html:not([data-fx-off~="lx"])) .section-label::after{content:"";display:inline-block;width:48px;height:1px;margin-left:10px;vertical-align:middle;transform-origin:left center;background:linear-gradient(90deg,var(--line),transparent)}
+:where(html:not([data-fx-off~="lx"])) .info-row b.ok{transition:text-shadow .6s ease;text-shadow:0 0 10px rgb(var(--core-rgb)/.28)}
+:where(html:not([data-fx-off~="lx"])) .pill-btn{transition:border-color .2s,color .2s,background-color .2s,box-shadow .25s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease);outline:1px solid transparent;outline-offset:0}
+:where(html:not([data-fx-off~="lx"])) .pill-btn:hover:not(:disabled){outline-color:rgb(var(--core-rgb)/.30);outline-offset:3px}
+:where(html:not([data-fx-off~="lx"])) .pill-btn.primary{background-image:linear-gradient(115deg,rgb(255 255 255/0) 30%,rgb(255 255 255/.22) 50%,rgb(255 255 255/0) 70%);background-size:250% 100%;background-position:120%0;background-repeat:no-repeat}
+:where(html:not([data-fx-off~="lx"])) .pill-btn.primary:hover:not(:disabled){background-image:linear-gradient(115deg,rgb(255 255 255/0) 30%,rgb(255 255 255/.22) 50%,rgb(255 255 255/0) 70%);background-position:-20%0;transition:background-position .9s var(--lx-ease),border-color .2s,color .2s,background-color .2s,box-shadow .25s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) #page-settings .pill-btn{transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),box-shadow .25s,translate .3s var(--lx-ease),scale .16s var(--lx-ease),outline-color .3s ease,outline-offset .4s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .pill-btn svg,:where(html:not([data-fx-off~="lx"])) .chip svg{transition:rotate .35s var(--lx-spring),scale .35s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .pill-btn:hover svg,:where(html:not([data-fx-off~="lx"])) .chip:hover svg{rotate:8deg;scale:1.12}
+:where(html:not([data-fx-off~="lx"])) .pill-btn:active:not(:disabled){box-shadow:inset 0 2px 6px rgba(0,0,0,.35)}
+:where(html:not([data-fx-off~="lx"])) .nav button{transition:color .2s,transform .12s ease-out,text-shadow .3s ease,translate .3s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .nav button:hover{translate:0-1px}
+:where(html:not([data-fx-off~="lx"])) .toast{transition:opacity .22s,transform .22s,box-shadow .2s,scale .3s var(--lx-ease)}
+:where(html:not([data-fx-off~="lx"])) .toast:hover{scale:1.025}
+:where(html:not([data-fx-off~="lx"])) .link-btn:hover{text-shadow:0 0 12px rgb(var(--core-rgb)/.5)}
+:where(html:not([data-fx-off~="lx"])) .dock-btn{transition:box-shadow .2s,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s}
+:where(html:not([data-fx-off~="lx"])) .dock-btn:hover{scale:1.1}
+:where(html:not([data-fx-off~="lx"])) .dock-btn:active{scale:.92}
+:where(html:not([data-fx-off~="lx"])) .mini-orb{transition:background .5s,box-shadow .5s,scale .3s var(--lx-spring)}
+:where(html:not([data-fx-off~="lx"])) .mini-orb:hover{scale:1.35}
+@media (prefers-reduced-motion:no-preference){:where(html:not([data-fx-off~="lx"])) .home-greet,:where(html:not([data-fx-off~="lx"])) .cc-greet{animation:lx-aurora-text 11s cubic-bezier(.4,0,.2,1) infinite}
+:where(html:not([data-fx-off~="lx"])) .qa-btn{animation:lx-rise-in .6s var(--lx-ease) backwards}
+:where(html:not([data-fx-off~="lx"])) .qa-btn:nth-child(2){animation-delay:70ms}
+:where(html:not([data-fx-off~="lx"])) .qa-btn:nth-child(3){animation-delay:140ms}
+:where(html:not([data-fx-off~="lx"])) .qa-btn:nth-child(n+4){animation-delay:210ms}
+:where(html:not([data-fx-off~="lx"])) #stage::before{animation:lx-orbit 42s linear infinite}
+:where(html:not([data-fx-off~="lx"])) .cc-bar-fill{animation:lx-gloss 5s cubic-bezier(.4,0,.2,1) infinite}
+:where(html:not([data-fx-off~="lx"])) .nx-rel{animation:lx-soft-pulse 3.2s ease-in-out infinite}
+:where(html:not([data-fx-off~="lx"])) .plan-steps li{animation:lx-step-in .5s var(--lx-ease) backwards}
+:where(html:not([data-fx-off~="lx"])) .plan-steps li:nth-child(2){animation-delay:60ms}
+:where(html:not([data-fx-off~="lx"])) .plan-steps li:nth-child(3){animation-delay:120ms}
+:where(html:not([data-fx-off~="lx"])) .plan-steps li:nth-child(4){animation-delay:180ms}
+:where(html:not([data-fx-off~="lx"])) .plan-steps li:nth-child(n+5){animation-delay:240ms}
+:where(html:not([data-fx-off~="lx"])) .offline-strip{animation:lx-stripes 1.6s linear infinite}
+:where(html:not([data-fx-off~="lx"])) .sleep-badge{animation:lx-breathe 3.4s ease-in-out infinite}
+:where(html:not([data-fx-off~="lx"])) .msg.user{animation-name:lx-msg-user}
+:where(html:not([data-fx-off~="lx"])) .msg.sara{animation-name:lx-msg-sara}
+:where(html:not([data-fx-off~="lx"])) .music-card.playing .art-block{animation:lx-float 6s ease-in-out infinite}
+:where(html:not([data-fx-off~="lx"])) .music-card.playing .mc-play::after{animation:lx-ring-ping 2.6s ease-out infinite}
+:where(html:not([data-fx-off~="lx"])) .accent-pv{animation:lx-float 5s ease-in-out infinite}
+:where(html:not([data-fx-off~="lx"])) .theme-card.on::after{animation:lx-halo 3.2s ease-in-out infinite}
+:where(html:not([data-fx-off~="lx"])) .perf-bar>*{transform-origin:left center;animation:lx-seg-grow .8s var(--lx-ease) backwards}
+:where(html:not([data-fx-off~="lx"])) .perf-bar>*:nth-child(2){animation-delay:80ms}
+:where(html:not([data-fx-off~="lx"])) .perf-bar>*:nth-child(3){animation-delay:160ms}
+:where(html:not([data-fx-off~="lx"])) .perf-bar>*:nth-child(4){animation-delay:240ms}
+:where(html:not([data-fx-off~="lx"])) .perf-bar>*:nth-child(n+5){animation-delay:320ms}
+:where(html:not([data-fx-off~="lx"])) .section-label::after{animation:lx-hairline .9s var(--lx-ease) .2s backwards}
+:where(html:not([data-fx-off~="lx"])) .overlay.open .modal,:where(html:not([data-fx-off~="lx"])) .overlay.open .sheet{animation:lx-open-glow 1s ease-out}
+}
+@keyframes lx-spin{to{--lx-a:360deg}
+}
+@keyframes lx-aurora-text{0%{background-position:130%0}
+34%,100%{background-position:-130%0}
+}
+@keyframes lx-rise-in{from{opacity:0;transform:translateY(14px) scale(.96)}
+}
+@keyframes lx-orbit{to{transform:rotate(360deg)}
+}
+@keyframes lx-gloss{0%{background-position:130%0}
+45%,100%{background-position:-30%0}
+}
+@keyframes lx-soft-pulse{0%,100%{opacity:.7}
+50%{opacity:1}
+}
+@keyframes lx-step-in{from{opacity:0;transform:translateX(-10px)}
+}
+@keyframes lx-stripes{to{background-position:28px 0}
+}
+@keyframes lx-breathe{0%,100%{opacity:.7;transform:scale(.98)}
+50%{opacity:1;transform:scale(1.04)}
+}
+@keyframes lx-msg-user{0%{opacity:0;transform:translateX(22px) scale(.97)}
+65%{opacity:1;transform:translateX(-2px) scale(1.004)}
+100%{opacity:1;transform:none}
+}
+@keyframes lx-msg-sara{0%{opacity:0;transform:translateX(-16px)}
+65%{opacity:1;transform:translateX(2px)}
+100%{opacity:1;transform:none}
+}
+@keyframes lx-float{0%,100%{translate:0 0}
+50%{translate:0-3px}
+}
+@keyframes lx-ring-ping{0%{opacity:.5;transform:scale(1)}
+80%,100%{opacity:0;transform:scale(1.7)}
+}
+@keyframes lx-halo{0%,100%{opacity:.25}
+50%{opacity:.9}
+}
+@keyframes lx-seg-grow{from{transform:scaleX(0)}
+}
+@keyframes lx-hairline{from{transform:scaleX(0);opacity:0}
+}
+@keyframes lx-open-glow{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb)/.35)}
+100%{box-shadow:0 0 0 18px rgb(var(--core-rgb)/0)}
+}
+@media (prefers-reduced-motion:reduce){:where(html:not([data-fx-off~="lx"])) .home-greet,:where(html:not([data-fx-off~="lx"])) .cc-greet{background:none;-webkit-text-fill-color:currentColor}
+:where(html:not([data-fx-off~="lx"])) #stage::before,:where(html:not([data-fx-off~="lx"])) .clock-card::before{display:none}
+}
+
+/* ============ GROUP "au"  --  Detail effects (Aurum)   (source: aurum.css, 166 rules; switch off with <html data-fx-off="au">) ============ */
+:root:where(:not([data-fx-off~="au"])){--au-ease:var(--ease-premium,cubic-bezier(.16,1,.3,1));--au-spring:var(--ease-spring,cubic-bezier(.22,1.45,.36,1))}
+:where(html:not([data-fx-off~="au"])) .pal-input{transition:border-color .3s ease,box-shadow .3s ease}
+:where(html:not([data-fx-off~="au"])) .pal-input:focus{border-bottom-color:var(--core);box-shadow:0 1px 0 0 var(--core)}
+:where(html:not([data-fx-off~="au"])) .pal-item{transition:translate .22s var(--au-ease),background .2s,color .2s,box-shadow .25s}
+:where(html:not([data-fx-off~="au"])) .pal-item:hover{translate:3px 0}
+:where(html:not([data-fx-off~="au"])) .pal-item.sel{box-shadow:inset 2px 0 0 var(--core)}
+:where(html:not([data-fx-off~="au"])) .pal-item small{transition:color .25s}
+:where(html:not([data-fx-off~="au"])) .pal-item:hover small,:where(html:not([data-fx-off~="au"])) .pal-item.sel small{color:var(--text-soft)}
+:where(html:not([data-fx-off~="au"])) .pal-item{transition:translate .22s var(--au-ease),background .2s,color .2s,box-shadow .25s,scale .2s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .pal-item:active{scale:.985}
+:where(html:not([data-fx-off~="au"])) .n-title{transition:translate .3s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .note-row2:hover .n-title{translate:4px 0}
+:where(html:not([data-fx-off~="au"])) .n-snip{transition:color .3s ease}
+:where(html:not([data-fx-off~="au"])) .note-row2:hover .n-snip{color:var(--text-soft)}
+:where(html:not([data-fx-off~="au"])) .n-time{transition:color .3s ease}
+:where(html:not([data-fx-off~="au"])) .note-row2:hover .n-time{color:var(--text-soft)}
+:where(html:not([data-fx-off~="au"])) .group-label::after{content:"";display:inline-block;width:32px;height:1px;margin-left:10px;vertical-align:middle;background:linear-gradient(90deg,currentColor,transparent);opacity:.3;transition:width .45s var(--au-ease),opacity .3s}
+:where(html:not([data-fx-off~="au"])) .group-label:hover::after{width:64px;opacity:.55}
+:where(html:not([data-fx-off~="au"])) .r-time{transition:color .3s .2s,scale .25s var(--au-spring);transform-origin:right center}
+:where(html:not([data-fx-off~="au"])) .row:hover .r-time{scale:1.06}
+:where(html:not([data-fx-off~="au"])) .r-text{transition:color .3s .2s,opacity .4s ease}
+:where(html:not([data-fx-off~="au"])) .row.done .r-text{opacity:.55}
+:where(html:not([data-fx-off~="au"])) .row .dot::after{content:"";position:absolute;inset:-2px;border-radius:50%;border:1.5px solid var(--core);opacity:0;pointer-events:none}
+:where(html:not([data-fx-off~="au"])) .auto-card{transition:border-color .2s,translate .35s var(--au-ease),box-shadow .35s ease}
+:where(html:not([data-fx-off~="au"])) .auto-card:hover{translate:0-1px;box-shadow:var(--shadow-hover)}
+:where(html:not([data-fx-off~="au"])) .auto-actions{opacity:.6;transition:opacity .3s ease}
+:where(html:not([data-fx-off~="au"])) .auto-card:hover .auto-actions,:where(html:not([data-fx-off~="au"])) .auto-card:focus-within .auto-actions{opacity:1}
+:where(html:not([data-fx-off~="au"])) .a-name{transition:color .25s}
+:where(html:not([data-fx-off~="au"])) .auto-card:hover .a-name{color:var(--core)}
+:where(html:not([data-fx-off~="au"])) .rt-step{transition:border-color .2s,translate .25s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .rt-step:hover,:where(html:not([data-fx-off~="au"])) .rt-step:focus-within{border-color:rgb(var(--core-rgb)/.4);translate:2px 0}
+:where(html:not([data-fx-off~="au"])) .rt-x{transition:rotate .35s var(--au-spring),color .2s,scale .2s}
+:where(html:not([data-fx-off~="au"])) .rt-x:hover{rotate:90deg;scale:1.15}
+:where(html:not([data-fx-off~="au"])) .sec-num{transition:border-color .2s,translate .25s var(--au-ease),box-shadow .3s ease}
+:where(html:not([data-fx-off~="au"])) .sec-num:hover{translate:0-1px;border-color:rgb(var(--core-rgb)/.4);box-shadow:0 10px 22px -14px rgb(var(--core-rgb)/.45)}
+:where(html:not([data-fx-off~="au"])) .sec-event{transition:translate .25s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .sec-event:hover{translate:3px 0}
+:where(html:not([data-fx-off~="au"])) .sec-chip{transition:box-shadow .3s ease}
+:where(html:not([data-fx-off~="au"])) .sec-chip:hover{box-shadow:0 0 12px -2px currentColor}
+:where(html:not([data-fx-off~="au"])) .sec-mode{transition:border-color .25s,color .25s,translate .25s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .sec-mode:hover{translate:0-1px}
+:where(html:not([data-fx-off~="au"])) .sec-tool{transition:color .2s}
+:where(html:not([data-fx-off~="au"])) .sec-event:hover .sec-tool{color:var(--text)}
+:where(html:not([data-fx-off~="au"])) .sec-block{transition:border-color .3s ease}
+:where(html:not([data-fx-off~="au"])) .sec-block:hover{border-color:rgb(var(--core-rgb)/.28)}
+:where(html:not([data-fx-off~="au"])) .app-tile{background-image:linear-gradient(115deg,transparent 30%,rgb(var(--fg-rgb)/.07) 50%,transparent 70%);background-size:250% 100%;background-position:130%0;background-repeat:no-repeat;transition:border-color .2s,transform .15s,background-position .9s var(--au-ease),box-shadow .3s ease,opacity .35s ease,scale .3s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .app-tile:hover{background-position:-30%0}
+:where(html:not([data-fx-off~="au"])) .apps-search{transition:scale .3s var(--au-ease),border-color .2s,box-shadow .25s}
+:where(html:not([data-fx-off~="au"])) .apps-search:focus{scale:1.012}
+:where(html:not([data-fx-off~="au"])) .app-tile:hover{box-shadow:0 10px 26px -14px rgb(var(--core-rgb)/.45)}
+:where(html:not([data-fx-off~="au"])) .apps-grid:has(.app-tile:hover) .app-tile:not(:hover){opacity:.8;scale:.99}
+:where(html:not([data-fx-off~="au"])) .tog{transition:opacity .3s ease,translate .25s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .tog-grid:has(.tog:hover) .tog:not(:hover){opacity:.86}
+:where(html:not([data-fx-off~="au"])) .cs-ring-wrap{filter:drop-shadow(0 0 8px rgb(var(--core-rgb)/.35))}
+:where(html:not([data-fx-off~="au"])) .set-row{transition:box-shadow .3s ease}
+:where(html:not([data-fx-off~="au"])) .set-row:has(input:focus,select:focus){box-shadow:inset 2px 0 0 var(--core)}
+:where(html:not([data-fx-off~="au"])) .s-name{transition:translate .3s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .set-row:hover .s-name{translate:2px 0}
+:where(html:not([data-fx-off~="au"])) .s-sub{transition:color .3s ease}
+:where(html:not([data-fx-off~="au"])) .set-row:hover .s-sub{color:var(--text-soft)}
+:where(html:not([data-fx-off~="au"])) .slider-val{transition:scale .3s var(--au-spring),color .2s;transform-origin:right center}
+:where(html:not([data-fx-off~="au"])) .slider-wrap:hover .slider-val{scale:1.12;color:var(--core)}
+:where(html:not([data-fx-off~="au"])) .danger-zone{transition:box-shadow .5s ease}
+:where(html:not([data-fx-off~="au"])) .danger-zone:hover{box-shadow:inset 0 0 22px -8px rgb(var(--danger-rgb,255 77 94)/.22)}
+:where(html:not([data-fx-off~="au"])) .tog:hover{translate:2px 0}
+:where(html:not([data-fx-off~="au"])) .stat{transition:border-color .2s,transform .15s,box-shadow .35s ease,opacity .3s ease}
+:where(html:not([data-fx-off~="au"])) .stat-grid:has(.stat:hover) .stat:not(:hover){opacity:.84}
+:where(html:not([data-fx-off~="au"])) .an-kpi{transition:scale .28s var(--ax-ease,cubic-bezier(.22,1,.36,1)),opacity .3s ease,border-color .2s}
+:where(html:not([data-fx-off~="au"])) .an-kpis:has(.an-kpi:hover) .an-kpi:not(:hover){opacity:.82}
+:where(html:not([data-fx-off~="au"])) .chip{transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--au-spring),scale .16s var(--au-ease),box-shadow .2s,background-size .4s var(--au-ease),opacity .3s ease}
+:where(html:not([data-fx-off~="au"])) .chip-row:has(.chip:hover) .chip:not(:hover):not(.on){opacity:.78}
+:where(html:not([data-fx-off~="au"])) .theme-card{transition:border-color var(--dur-med,.28s),box-shadow var(--dur-med,.28s),transform var(--dur-fast,.16s) var(--ease-premium,ease),color .2s,opacity .3s ease}
+:where(html:not([data-fx-off~="au"])) .theme-grid:has(.theme-card:hover) .theme-card:not(:hover):not(.on){opacity:.82}
+:where(html:not([data-fx-off~="au"])) .chat-dock:has(#chatInputField:not(:placeholder-shown)) .dock-btn.send{box-shadow:0 0 0 4px rgb(var(--core-rgb)/.18),0 0 20px -2px rgb(var(--core-rgb)/.5)}
+:where(html:not([data-fx-off~="au"])) .chat-dock:has(#chatInputField:not(:placeholder-shown)) .dock-btn.send{scale:1.08}
+:where(html:not([data-fx-off~="au"])) .dock-btn.mic{transition:box-shadow .35s ease,transform var(--dur-fast,.12s) var(--au-spring),scale .25s var(--au-spring),background .2s,color .2s,opacity .3s ease}
+:where(html:not([data-fx-off~="au"])) .chat-dock:has(#chatInputField:not(:placeholder-shown)) .dock-btn.mic{opacity:.5}
+:where(html:not([data-fx-off~="au"])) .chat-dock{transition:border-color .28s,box-shadow .28s,opacity .2s,translate .3s var(--au-ease),scale .4s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .chat-dock:focus-within{scale:1.006}
+:where(html:not([data-fx-off~="au"])) .session-switcher{transition:translate .25s var(--au-ease),border-color .2s}
+:where(html:not([data-fx-off~="au"])) .session-switcher:hover{translate:0-1px}
+:where(html:not([data-fx-off~="au"])) .mic-wave{filter:drop-shadow(0 0 6px rgb(var(--core-rgb)/.4))}
+:where(html:not([data-fx-off~="au"])) .setup-bar-fill{box-shadow:0 0 12px rgb(var(--core-rgb)/.55)}
+:where(html:not([data-fx-off~="au"])) .audio-close{transition:color .2s,scale .25s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .audio-close:hover{scale:1.12}
+:where(html:not([data-fx-off~="au"])) .nav-ind::after{content:"";position:absolute;inset:2px;border-radius:inherit;background:var(--core);filter:blur(9px);opacity:.3;z-index:-1;pointer-events:none}
+:where(html:not([data-fx-off~="au"])) .page-header .page-title::after{box-shadow:0 0 10px rgb(var(--core-rgb)/.5)}
+html:where(:not([data-fx-off~="au"]))::before{content:"";position:fixed;inset:0;z-index:100;pointer-events:none;opacity:.03;background-image:url(data:image/svg+xml,%3Csvg\ xmlns=%27http://www.w3.org/2000/svg%27\ width=%27160%27\ height=%27160%27%3E%3Cfilter\ id=%27n%27%3E%3CfeTurbulence\ type=%27fractalNoise%27\ baseFrequency=%27.9%27\ numOctaves=%272%27\ stitchTiles=%27stitch%27/%3E%3CfeColorMatrix\ values=%270\ 0\ 0\ 0\ 1\ 0\ 0\ 0\ 0\ 1\ 0\ 0\ 0\ 0\ 1\ 0\ 0\ 0\ .55\ 0%27/%3E%3C/filter%3E%3Crect\ width=%27100%25%27\ height=%27100%25%27\ filter=%27url%28%23n%29%27/%3E%3C/svg%3E);background-size:160px 160px}
+html:where(:not([data-fx-off~="au"]))::after{content:"";position:fixed;top:-20%;bottom:-20%;left:0;width:28vw;z-index:1;pointer-events:none;opacity:0;background:linear-gradient(100deg,transparent,rgb(var(--core-rgb)/.045),transparent);transform:translateX(-40vw) skewX(-12deg)}
+:where(html:not([data-fx-off~="au"])) body.sara-active .nav{box-shadow:inset 0 1px 0 rgb(var(--fg-rgb)/.06),0 0 22px -8px rgb(var(--core-rgb)/.4)}
+:where(html:not([data-fx-off~="au"])) body.sara-active .chat-dock{border-color:rgb(var(--core-rgb)/.35)}
+:where(html:not([data-fx-off~="au"])) body.sara-speaking .chat-dock{box-shadow:0 0 22px -6px rgb(var(--speak-rgb)/.4)}
+:where(html:not([data-fx-off~="au"])) body.sara-active .mini-orb{box-shadow:0 0 14px var(--core),0 0 30px rgb(var(--core-rgb)/.45)}
+:where(html:not([data-fx-off~="au"])) body.focus-mode .nav{opacity:.55}
+:where(html:not([data-fx-off~="au"])) .page-header{transition:box-shadow .35s ease,opacity 1.2s ease}
+:where(html:not([data-fx-off~="au"])) body.au-idle .nav{opacity:.45}
+:where(html:not([data-fx-off~="au"])) body.au-idle .page-header{opacity:.6}
+:where(html:not([data-fx-off~="au"])) .pm-dust{opacity:.6;transition:opacity 2s ease}
+:root:where(:not([data-fx-off~="au"])) body.au-idle .pm-dust{opacity:1}
+:where(html:not([data-fx-off~="au"])) #stage::before{transition:border-color 2s ease}
+:where(html:not([data-fx-off~="au"])) body.au-idle #stage::before{border-color:rgb(var(--core-rgb)/.32)}
+:where(html:not([data-fx-off~="au"])) ::-webkit-scrollbar-thumb:active{background:var(--core)}
+:where(html:not([data-fx-off~="au"])) input[type=range]::-webkit-slider-runnable-track{transition:box-shadow .3s ease}
+:where(html:not([data-fx-off~="au"])) input[type=range]:hover::-webkit-slider-runnable-track{box-shadow:0 0 12px rgb(var(--core-rgb)/.3)}
+:where(html:not([data-fx-off~="au"])) .toggle:focus-visible{box-shadow:0 0 0 3px rgb(var(--core-rgb)/.4)}
+:where(html:not([data-fx-off~="au"])) kbd{border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;transition:translate .15s ease,border-bottom-width .15s ease}
+:where(html:not([data-fx-off~="au"])) kbd:active{translate:0 1px;border-bottom-width:1px}
+:where(html:not([data-fx-off~="au"])) .nx-title{transition:translate .3s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .next-card:hover .nx-title{translate:3px 0}
+:where(html:not([data-fx-off~="au"])) .plan-card-title{transition:translate .3s var(--au-ease)}
+:where(html:not([data-fx-off~="au"])) .plan-card:hover .plan-card-title{translate:3px 0}
+:where(html:not([data-fx-off~="au"])) .qc-name,:where(html:not([data-fx-off~="au"])) .qc-sub{transition:color .25s}
+:where(html:not([data-fx-off~="au"])) .qc-tile:hover .qc-name{color:var(--text)}
+:where(html:not([data-fx-off~="au"])) .qc-tile:hover .qc-sub{color:var(--text-soft)}
+:where(html:not([data-fx-off~="au"])) .volume-row .vol-x{transition:opacity .2s,rotate .35s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .volume-row .vol-x:hover{rotate:90deg}
+:where(html:not([data-fx-off~="au"])) .perf-legend>*{transition:opacity .3s ease}
+:where(html:not([data-fx-off~="au"])) .perf-legend:has(>*:hover)>*:not(:hover){opacity:.6}
+:where(html:not([data-fx-off~="au"])) .mr-fg{filter:drop-shadow(0 0 4px rgb(var(--core-rgb)/.5))}
+:where(html:not([data-fx-off~="au"])) .tab{transition:color .2s,scale .2s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .tab:active{scale:.95}
+:where(html:not([data-fx-off~="au"])) .acc-note{transition:color .3s ease}
+:where(html:not([data-fx-off~="au"])) .acc-note:hover{color:var(--text-soft)}
+@media (prefers-reduced-motion:no-preference){:where(html:not([data-fx-off~="au"])) .pal-overlay.open .pal{animation:au-ring-out 1s ease-out}
+:where(html:not([data-fx-off~="au"])) .pal-overlay.open .pal-foot{animation:au-rise-sm .5s var(--au-ease) .18s backwards}
+:where(html:not([data-fx-off~="au"])) .pal-empty{animation:au-float-soft 4s ease-in-out infinite}
+:where(html:not([data-fx-off~="au"])) .group-label.overdue{animation:au-soft-pulse 2.8s ease-in-out infinite}
+:where(html:not([data-fx-off~="au"])) .row.completing .dot::after{animation:au-dot-ring .6s ease-out}
+:where(html:not([data-fx-off~="au"])) .mode-note{animation:au-rise-sm .6s var(--au-ease) backwards}
+:where(html:not([data-fx-off~="au"])) .rt-empty{animation:au-float-soft 4.5s ease-in-out infinite}
+:where(html:not([data-fx-off~="au"])) .page.stagger-in .page-body .auto-card{animation:au-rise-sm .5s var(--au-ease) backwards}
+:where(html:not([data-fx-off~="au"])) .page.stagger-in .page-body .auto-card:nth-of-type(2){animation-delay:60ms}
+:where(html:not([data-fx-off~="au"])) .page.stagger-in .page-body .auto-card:nth-of-type(3){animation-delay:120ms}
+:where(html:not([data-fx-off~="au"])) .page.stagger-in .page-body .auto-card:nth-of-type(n+4){animation-delay:180ms}
+:where(html:not([data-fx-off~="au"])) .sec-warn{animation:au-soft-pulse 3s ease-in-out infinite}
+:where(html:not([data-fx-off~="au"])) .sec-mode.sec-armed{animation:au-soft-pulse 2.6s ease-in-out infinite}
+:where(html:not([data-fx-off~="au"])) .app-tile:hover svg{animation:au-bob .9s ease}
+:where(html:not([data-fx-off~="au"])) .cs-themes button:hover{animation:au-pop .45s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .just-picked{animation:au-ring-out .9s ease-out}
+:where(html:not([data-fx-off~="au"])) .overlay.open .cs-greet,:where(html:not([data-fx-off~="au"])) .overlay.open .cs-sub{animation:au-rise-sm .5s var(--au-ease) .1s backwards}
+:where(html:not([data-fx-off~="au"])) .overlay.open .cs-panel{animation:au-rise-sm .55s var(--au-ease) .05s backwards}
+:where(html:not([data-fx-off~="au"])) .overlay.open .cs-controls .pill-btn{animation:au-pop-in .45s var(--au-spring) .2s backwards}
+:where(html:not([data-fx-off~="au"])) .overlay.open .cs-controls .pill-btn:nth-child(2){animation-delay:.27s}
+:where(html:not([data-fx-off~="au"])) .overlay.open .cs-controls .pill-btn:nth-child(n+3){animation-delay:.34s}
+:where(html:not([data-fx-off~="au"])) .m-error{animation:au-shake .45s ease}
+:where(html:not([data-fx-off~="au"])) .overlay.open .m-actions .pill-btn{animation:au-pop-in .45s var(--au-spring) .15s backwards}
+:where(html:not([data-fx-off~="au"])) .overlay.open .m-actions .pill-btn:nth-child(2){animation-delay:.22s}
+:where(html:not([data-fx-off~="au"])) .overlay.open .m-sub{animation:au-rise-sm .5s var(--au-ease) .12s backwards}
+:where(html:not([data-fx-off~="au"])) .setup-log>*{animation:au-log-in .35s var(--au-ease) backwards}
+:where(html:not([data-fx-off~="au"])) .overlay.open .sheet-head{background:linear-gradient(90deg,rgb(var(--core-rgb)/.45),transparent)0 100%/100% 1px no-repeat;animation:ax-sheet-child .45s var(--ax-ease,cubic-bezier(.22,1,.36,1)) backwards,au-line-draw .9s var(--au-ease) .15s backwards}
+html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out infinite}
+:where(html:not([data-fx-off~="au"])) body.sara-active .mini-orb{animation-duration:1.3s}
+:where(html:not([data-fx-off~="au"])) img{animation:au-fade .6s ease backwards}
+:where(html:not([data-fx-off~="au"])) .today-card :is(.tc-top,.tc-cond,.tc-sub,.tc-next){animation:au-rise-sm .55s var(--au-ease) backwards}
+:where(html:not([data-fx-off~="au"])) .today-card .tc-cond{animation-delay:.06s}
+:where(html:not([data-fx-off~="au"])) .today-card .tc-sub{animation-delay:.12s}
+:where(html:not([data-fx-off~="au"])) .today-card .tc-next{animation-delay:.18s}
+:where(html:not([data-fx-off~="au"])) .transport .t-play:hover{animation:au-pulse-ring .9s ease-out}
+:where(html:not([data-fx-off~="au"])) .audio-btn:hover{animation:au-pop .4s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .sleep-options button:hover{animation:au-pop .4s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .ap-chip:hover,:where(html:not([data-fx-off~="au"])) .ap-btn:hover{animation:au-pop .4s var(--au-spring)}
+:where(html:not([data-fx-off~="au"])) .overlay.open .weather-hero>*{animation:au-rise-sm .5s var(--au-ease) backwards}
+:where(html:not([data-fx-off~="au"])) .overlay.open .weather-hero>*:nth-child(2){animation-delay:.07s}
+:where(html:not([data-fx-off~="au"])) .overlay.open .weather-hero>*:nth-child(3){animation-delay:.14s}
+:where(html:not([data-fx-off~="au"])) .overlay.open .weather-hero>*:nth-child(n+4){animation-delay:.21s}
+:where(html:not([data-fx-off~="au"])) .src-badge:hover{animation:au-pop .4s var(--au-spring)}
+}
+@keyframes au-ring-out{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb)/.4)}
+100%{box-shadow:0 0 0 20px rgb(var(--core-rgb)/0)}
+}
+@keyframes au-rise-sm{from{opacity:0;transform:translateY(8px)}
+}
+@keyframes au-float-soft{0%,100%{translate:0 0}
+50%{translate:0-4px}
+}
+@keyframes au-soft-pulse{0%,100%{opacity:.78}
+50%{opacity:1}
+}
+@keyframes au-dot-ring{0%{opacity:.8;transform:scale(1)}
+100%{opacity:0;transform:scale(2.2)}
+}
+@keyframes au-shake{0%,100%{translate:0 0}
+20%{translate:-5px 0}
+40%{translate:5px 0}
+60%{translate:-3px 0}
+80%{translate:3px 0}
+}
+@keyframes au-bob{0%,100%{translate:0 0}
+35%{translate:0-3px}
+70%{translate:0 1px}
+}
+@keyframes au-pop{0%{scale:1}
+45%{scale:1.07}
+100%{scale:1}
+}
+@keyframes au-pop-in{from{opacity:0;transform:scale(.9)}
+}
+@keyframes au-sweep{0%,55%{opacity:0;transform:translateX(-40vw) skewX(-12deg)}
+65%{opacity:1}
+90%{opacity:1}
+100%{opacity:0;transform:translateX(140vw) skewX(-12deg)}
+}
+@keyframes au-fade{from{opacity:0}
+}
+@keyframes au-log-in{from{opacity:0;transform:translateX(-8px)}
+}
+@keyframes au-line-draw{from{background-size:0 1px}
+}
+@keyframes au-pulse-ring{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb)/.5)}
+100%{box-shadow:0 0 0 14px rgb(var(--core-rgb)/0)}
+}

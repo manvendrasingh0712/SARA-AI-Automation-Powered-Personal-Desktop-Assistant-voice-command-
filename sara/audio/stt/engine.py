@@ -11,6 +11,11 @@ from .helpers import (
     _lang_from_stt_language,
     _is_hallucinated_repetition,
     _is_known_hallucination,
+    _is_prompt_echo,
+    choose_transcript,
+    need_main_model,
+    pick_after_hinglish_first,
+    _is_degenerate_text,
     _is_foreign_script_hallucination,
 )
 from .vocabulary import vocabulary_hint
@@ -467,13 +472,23 @@ class SpeechToText:
         # True once it has PROVEN the model can infer, and _warm_recognisers
         # reads it to avoid paying the first-inference cost twice.
         self._main_model_warmed = False
+        try:
+            from sara.audio.ducking import recover_after_crash
 
-        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="stt-model-load") as _pool:
+            _restored = recover_after_crash()
+            if _restored:
+                print(f"[STT] restored the volume of {_restored} app(s) that a previous run had turned down")
+        except Exception:
+            pass
+
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="stt-model-load") as _pool:
+            _hinglish_future = _pool.submit(self._load_hinglish_model)
             _whisper_future = _pool.submit(self._load_faster_whisper)
             _wakeword_future = _pool.submit(self._load_wakeword)
             _wake_whisper_future = _pool.submit(self._load_fast_wake_whisper)
 
             self._whisper_model = _whisper_future.result()
+            self._hinglish_model: Optional[object] = _hinglish_future.result()
             self._wakeword_model: Optional["_OWWModel"] = _wakeword_future.result()
             self._wake_whisper_model: Optional[object] = _wake_whisper_future.result()
 
@@ -702,6 +717,71 @@ class SpeechToText:
         # inference never runs and the proof proves nothing.
         list(segments)
 
+    @staticmethod
+    def _gpu_free_mb() -> int:
+        """Free GPU memory in MB (0 when it cannot be read)."""
+        try:
+            import subprocess
+
+            out = subprocess.check_output(
+                ["nvidia-smi", "--query-gpu=memory.total,memory.used", "--format=csv,noheader,nounits"],
+                timeout=4, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            ).decode().split(",")
+            return int(out[0]) - int(out[1])
+        except Exception:
+            return 0
+
+    def _dump_utterance(self, audio_np, text: str, confidence: float) -> None:
+        """STT_DEBUG_DUMP_AUDIO: keep the capture so a real-world failure can be replayed."""
+        try:
+            import json as _json
+            import wave as _wave
+            from pathlib import Path as _Path
+
+            from config import app_data_subdir
+
+            root = _Path(str(app_data_subdir("logs"))) / "stt_dumps"
+            root.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{int((time.time() % 1) * 1000):03d}"
+            pcm = (np.clip(audio_np, -1.0, 1.0) * 32767).astype(np.int16)
+            with _wave.open(str(root / f"{stamp}.wav"), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(self.SAMPLE_RATE)
+                w.writeframes(pcm.tobytes())
+            with open(root / "index.jsonl", "a", encoding="utf-8") as f:
+                f.write(_json.dumps({"file": f"{stamp}.wav", "text": text, "confidence": round(confidence, 3),
+                                     "seconds": round(len(pcm) / self.SAMPLE_RATE, 2), "threshold": round(self.energy_threshold)},
+                                    ensure_ascii=False) + "\n")
+            wavs = sorted(root.glob("*.wav"))
+            for old in wavs[:-200]:
+                old.unlink(missing_ok=True)
+        except Exception as e:
+            print(f"[STT] could not save the debug capture: {e}")
+
+    def _load_hinglish_model(self) -> Optional[object]:
+        """Second recogniser for Hindi / Hinglish (see helpers.choose_transcript). None when off or unavailable."""
+        name = str(getattr(Config, "WHISPER_HINGLISH_MODEL", "") or "").strip()
+        if not name or not _HAS_WHISPER:
+            return None
+        device = str(getattr(Config, "WHISPER_HINGLISH_DEVICE", "cpu") or "cpu").lower()
+        if device == "auto":
+            device = "cuda" if self._gpu_free_mb() >= int(getattr(Config, "WHISPER_HINGLISH_GPU_MIN_FREE_MB", 900)) else "cpu"
+        try:
+            model = _load_whisper_model_offline_first(
+                model_size_or_path=name,
+                device=device,
+                compute_type="int8_float16" if device == "cuda" else "int8",
+                **({} if device == "cuda" else {"cpu_threads": max(4, (os.cpu_count() or 4) // 2)}),
+            )
+            # CTranslate2 pays its kernel bring-up on the first inference: pay it now, on silence.
+            list(model.transcribe(np.zeros(8000, dtype=np.float32), beam_size=1, vad_filter=False)[0])
+            print(f"[STT] Hinglish model ready: {name} ({device})")
+            return model
+        except Exception as e:
+            print(f"[STT] Hinglish model '{name}' unavailable ({type(e).__name__}: {e}); using the main model only.")
+            return None
+
     def _load_faster_whisper(self) -> Optional[object]:
         if not _HAS_WHISPER:
             print("[STT Error] faster-whisper not installed. Offline STT will fail.")
@@ -714,6 +794,8 @@ class SpeechToText:
         print(f"[STT] Loading Faster-Whisper '{model_size}'...")
 
         try:
+            if str(getattr(Config, "WHISPER_MAIN_DEVICE", "cuda") or "cuda").lower() == "cpu":
+                raise RuntimeError("WHISPER_MAIN_DEVICE=cpu")
             model = _load_whisper_model_offline_first(
                 model_size_or_path=model_size,
                 device="cuda",
@@ -744,7 +826,10 @@ class SpeechToText:
             return model
 
         except Exception as gpu_error:
-            print(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
+            if "WHISPER_MAIN_DEVICE=cpu" in str(gpu_error):
+                print("[STT] Main model on the CPU as configured (WHISPER_MAIN_DEVICE=cpu).")
+            else:
+                print(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
             try:
                 model = _load_whisper_model_offline_first(
                     model_size_or_path=model_size,
@@ -2503,6 +2588,140 @@ class SpeechToText:
             return _STATIC_TRANSCRIBE_PROMPT_EN + hint
         return self._STATIC_TRANSCRIBE_PROMPT_NEUTRAL + hint
 
+    def _start_ducking(self, mode: str):
+        """Turn other apps down while a COMMAND is being captured. Returns the ducker (to restore) or None."""
+        if mode not in ("command", "dictate") or not getattr(Config, "VOICE_DUCK_OTHER_AUDIO", True):
+            return None
+        try:
+            from sara.audio.ducking import AudioDucker
+
+            ducker = AudioDucker(level=float(getattr(Config, "VOICE_DUCK_LEVEL", 0.15)))
+            n = ducker.duck()
+            if n and getattr(Config, "DEBUG_MODE", False):
+                print(f"[STT] other audio turned down ({n} app session(s)) while listening")
+            return ducker
+        except Exception as e:
+            print(f"[STT] ducking unavailable ({type(e).__name__}: {e})")
+            return None
+
+    @staticmethod
+    def _level_for_main(pcm_i16) -> "np.ndarray":
+        """Raise a quiet clip to RMS ~0.08 (never more than x30, never clipping): the main model loses words at RMS ~200."""
+        a = pcm_i16.astype(np.float32) / 32768.0
+        rms = float(np.sqrt(np.mean(a ** 2))) if len(a) else 0.0
+        if rms < 1e-4:
+            return a
+        return np.clip(a * min(0.08 / rms, 30.0), -1.0, 1.0)
+
+    def _hinglish_first(self, raw_np, no_speech_thr):
+        """
+        Run the Hinglish model on the raw recording. Returns {"text", "segs", "lp", "done", "ms"}; done=True when its
+        answer is final (see helpers.need_main_model).
+        """
+        try:
+            from sara.core.intent.engine import detect_intent
+
+            routes = lambda t: detect_intent(t)[0] != "chat"
+        except Exception:
+            routes = lambda t: False
+        t0 = time.perf_counter()
+        segs, _ = self._hinglish_model.transcribe(
+            raw_np, beam_size=2, condition_on_previous_text=False, vad_filter=False,
+            no_speech_threshold=no_speech_thr, temperature=0.0, compression_ratio_threshold=2.0,
+            log_prob_threshold=-1.0,
+        )
+        segs = [s for s in segs if getattr(s, "no_speech_prob", 0.0) < no_speech_thr]
+        text = "".join(s.text for s in segs).strip()
+        lp = (sum(s.avg_logprob for s in segs) / len(segs)) if segs else -9.0
+        heard = bool(segs)
+        if text and (_is_hallucinated_repetition(text, min_repeats=3) or _is_degenerate_text(text) or lp < -1.0):
+            text, segs = "", []
+        done = (not heard) or not need_main_model(
+            text, lp, routes, float(getattr(Config, "WHISPER_HINGLISH_CONFIDENT_LP", -0.3))
+        )
+        return {"text": text, "segs": segs, "lp": lp, "done": done, "heard": heard,
+                "ms": (time.perf_counter() - t0) * 1000, "routes": routes}
+
+    def _pick_after_first(self, first, a_text, usable, info):
+        """The main model has also listened: choose between its text and the Hinglish model's."""
+        lp = (sum(s.avg_logprob for s in usable) / len(usable)) if usable else -9.0
+        which, chosen = pick_after_hinglish_first(
+            first["text"], a_text, getattr(info, "language", None),
+            float(getattr(info, "language_probability", 0.0) or 0.0), lp, first["routes"],
+            min_en_prob=float(getattr(Config, "WHISPER_HINGLISH_MIN_EN_PROB", 0.9)),
+            min_logprob=float(getattr(Config, "WHISPER_HINGLISH_MIN_LOGPROB", -0.5)),
+        )
+        if getattr(Config, "DEBUG_MODE", False):
+            print(
+                f"[STT] hinglish={first['text'][:50]!r} (lp {first['lp']:.2f}, {first['ms']:.0f} ms) | "
+                f"main={a_text[:50]!r} ({getattr(info, 'language', '?')} "
+                f"{float(getattr(info, 'language_probability', 0.0) or 0.0):.2f}, lp {lp:.2f}) -> using "
+                f"{'main' if which == 'A' else 'hinglish'}"
+            )
+        if which == "B" and first["segs"]:
+            return chosen, first["segs"]
+        return a_text, usable
+
+    def _maybe_use_hinglish(self, audio_np, text, usable, info, beam_size, no_speech_thr):
+        """Returns (text, usable_segments) after applying choose_transcript()."""
+        try:
+            from sara.core.intent.engine import detect_intent
+
+            def routes(t: str) -> bool:
+                return detect_intent(t)[0] != "chat"
+        except Exception:
+            def routes(t: str) -> bool:
+                return False
+
+        box = {}
+
+        # Nothing was heard at all (every segment judged "no speech"): the second model would only invent text
+        # on that audio -- the live log had "kahaan kahaan kahaan ...", "li, li, li ...", "yayaya ..." from it.
+        if not usable and not text:
+            return text, usable
+
+        def run_b() -> str:
+            t0 = time.perf_counter()
+            segs, _ = self._hinglish_model.transcribe(
+                audio_np, beam_size=1, condition_on_previous_text=False, vad_filter=False,
+                no_speech_threshold=no_speech_thr, temperature=0.0, compression_ratio_threshold=2.0,
+                log_prob_threshold=-1.0,
+            )
+            segs = [s for s in segs if getattr(s, "no_speech_prob", 0.0) < no_speech_thr]
+            out = "".join(s.text for s in segs).strip()
+            box["ms"] = (time.perf_counter() - t0) * 1000
+            lp = (sum(s.avg_logprob for s in segs) / len(segs)) if segs else -9.0
+            box["lp"] = lp
+            # A looped / contentless / very unsure result is worse than the main model's text.
+            if _is_hallucinated_repetition(out, min_repeats=3) or _is_degenerate_text(out) or lp < -1.0:
+                box["rejected"] = out
+                return ""
+            box["segs"] = segs
+            return out
+
+        lp = (sum(s.avg_logprob for s in usable) / len(usable)) if usable else -9.0
+        which, chosen = choose_transcript(
+            text,
+            getattr(info, "language", None),
+            float(getattr(info, "language_probability", 0.0) or 0.0),
+            lp,
+            run_b,
+            routes,
+            min_en_prob=float(getattr(Config, "WHISPER_HINGLISH_MIN_EN_PROB", 0.85)),
+            min_logprob=float(getattr(Config, "WHISPER_HINGLISH_MIN_LOGPROB", -0.6)),
+        )
+        if getattr(Config, "DEBUG_MODE", False):
+            if "ms" in box:
+                print(
+                    f"[STT] main={text[:60]!r} ({getattr(info, 'language', '?')} "
+                    f"{float(getattr(info, 'language_probability', 0.0) or 0.0):.2f}, lp {lp:.2f}) | "
+                    f"hinglish={chosen[:60] if which == 'B' else (box.get('rejected') or '')[:60]!r} "
+                    f"(lp {box.get('lp', 0):.2f}, {box['ms']:.0f} ms) -> using {which}"
+                )
+        if which == "B" and box.get("segs"):
+            return chosen, box["segs"]
+        return text, usable
+
     def _transcribe(
         self,
         audio_bytes: bytes,
@@ -2532,30 +2751,69 @@ class SpeechToText:
                 Config, "STT_TEMPERATURE_FALLBACK", (0.0, 0.4, 0.8)
             )
 
-            segments, _ = model.transcribe(
-                audio_np,
-                beam_size=beam_size,
-                best_of=beam_size,
-                temperature=temperature,
-                language=forced_lang,
-                task="transcribe",
-                initial_prompt=self._get_transcribe_prompt(forced_lang),
-                condition_on_previous_text=False,
-                vad_filter=False,  # Handled upstream by WebRTC
-                no_speech_threshold=no_speech_thr,
-                log_prob_threshold=float(
-                    getattr(Config, "STT_LOG_PROB_THRESHOLD", -1.0)
-                ),
-                compression_ratio_threshold=float(
-                    getattr(Config, "STT_COMPRESSION_RATIO_THRESHOLD", 2.4)
-                ),
-            )
+            # "Hinglish model first": it listens to the untouched recording (a level boost hurts it: -8 points
+            # measured); the main model only when it is not sure. Skipped for previews and when English is pinned.
+            first = None
+            if (
+                model_override is None
+                and forced_lang in (None, "hi")
+                and getattr(self, "_hinglish_model", None) is not None
+                and getattr(Config, "WHISPER_HINGLISH_FIRST", True)
+            ):
+                try:
+                    first = self._hinglish_first(
+                        np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0, no_speech_thr
+                    )
+                except Exception as _e:
+                    print(f"[STT] Hinglish pass failed ({type(_e).__name__}: {_e}); using the main model.")
 
-            segments = list(segments)
-            usable = [
-                s for s in segments if getattr(s, "no_speech_prob", 0.0) < no_speech_thr
-            ]
-            text = "".join(segment.text for segment in usable).strip()
+            if first is not None and first["done"]:
+                usable = first["segs"]
+                text = first["text"]
+                _info = None
+            else:
+                main_audio = audio_np
+                if first is not None and getattr(Config, "WHISPER_MAIN_GAIN", True):
+                    main_audio = self._level_for_main(np.frombuffer(audio_bytes, dtype=np.int16))
+                segments, _info = model.transcribe(
+                    main_audio,
+                    beam_size=beam_size,
+                    best_of=beam_size,
+                    temperature=temperature,
+                    language=forced_lang,
+                    task="transcribe",
+                    initial_prompt=self._get_transcribe_prompt(forced_lang),
+                    condition_on_previous_text=False,
+                    vad_filter=False,  # Handled upstream by WebRTC
+                    no_speech_threshold=no_speech_thr,
+                    log_prob_threshold=float(
+                        getattr(Config, "STT_LOG_PROB_THRESHOLD", -1.0)
+                    ),
+                    compression_ratio_threshold=float(
+                        getattr(Config, "STT_COMPRESSION_RATIO_THRESHOLD", 2.4)
+                    ),
+                )
+
+                segments = list(segments)
+                usable = [
+                    s for s in segments if getattr(s, "no_speech_prob", 0.0) < no_speech_thr
+                ]
+                text = "".join(segment.text for segment in usable).strip()
+
+                if first is not None:
+                    text, usable = self._pick_after_first(first, text, usable, _info)
+                elif (
+                    model_override is None
+                    and forced_lang in (None, "hi")
+                    and getattr(self, "_hinglish_model", None) is not None
+                ):
+                    # older ordering (WHISPER_HINGLISH_FIRST=False): main model first, Hinglish model second
+                    try:
+                        text, usable = self._maybe_use_hinglish(
+                            audio_np, text, usable, _info, beam_size, no_speech_thr
+                        )
+                    except Exception as _e:
+                        print(f"[STT] Hinglish pass failed ({type(_e).__name__}: {_e}); keeping the main transcript.")
 
             # ── STT CONFIDENCE SIGNAL ────────────────────────────────────
             # Mean of (1 - no_speech_prob) across the SAME `usable`
@@ -2595,6 +2853,13 @@ class SpeechToText:
                     print(f"[STT] Discarded known hallucination phrase: {text[:80]!r}")
                 return TranscriptionResult("", 0.0)
 
+            # The style prompt echoed back, or text with no content (punctuation only, one unit
+            # repeated "ndndnd...", "vay,vay,..."): invented on silence / music, never a command.
+            if _is_prompt_echo(text) or _is_degenerate_text(text):
+                if getattr(Config, "DEBUG_MODE", False):
+                    print(f"[STT] Discarded prompt-echo / degenerate text: {text[:80]!r}")
+                return TranscriptionResult("", 0.0)
+
             # D43: the two filters above are phrase-shaped and
             # repetition-shaped, and the target machine produced a
             # hallucination that is neither --
@@ -2627,6 +2892,8 @@ class SpeechToText:
 
             word_count = max(1, len(text.split()))
             speech_rate = word_count / duration_s if duration_s > 0 else 0.0
+            if model_override is None and getattr(Config, "STT_DEBUG_DUMP_AUDIO", False):
+                self._dump_utterance(audio_np, text, confidence)
             return TranscriptionResult(text, confidence, speech_rate)
 
         except Exception as e:
@@ -2672,17 +2939,22 @@ class SpeechToText:
                 "dictate": {"timeout": 8.0, "max_duration": 60.0},
             }.get(mode, {"timeout": 8.0, "max_duration": 12.0})
 
-            audio = self._collect_speech(
-                timeout=cfg["timeout"],
-                max_duration=cfg["max_duration"],
-                silence_limit=self._silence_gate.silence_limit,
-                # NEW: only "command"/"dictate" callers pass this (see
-                # core_wiring.py's ears.listen(mode="command", ...) call) --
-                # "wake" mode never does, so the live-caption preview
-                # mechanism above is naturally inert during wake-word
-                # detection without needing an explicit mode check here.
-                on_partial_transcript=on_partial_transcript,
-            )
+            ducker = self._start_ducking(mode)
+            try:
+                audio = self._collect_speech(
+                    timeout=cfg["timeout"],
+                    max_duration=cfg["max_duration"],
+                    silence_limit=self._silence_gate.silence_limit,
+                    # NEW: only "command"/"dictate" callers pass this (see
+                    # core_wiring.py's ears.listen(mode="command", ...) call) --
+                    # "wake" mode never does, so the live-caption preview
+                    # mechanism above is naturally inert during wake-word
+                    # detection without needing an explicit mode check here.
+                    on_partial_transcript=on_partial_transcript,
+                )
+            finally:
+                if ducker is not None:
+                    ducker.restore()
             if not audio:
                 return TranscriptionResult("", 0.0)
 

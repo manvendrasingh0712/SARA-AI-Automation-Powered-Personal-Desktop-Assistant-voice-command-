@@ -28,6 +28,16 @@
 'use strict';
 const fs = require('fs'), path = require('path'), vm = require('vm');
 const JS = path.join(__dirname, '..');
+function findSrc(root, name) {
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+    if (e.name === 'tests') continue;
+    const p = path.join(root, e.name);
+    if (e.isDirectory()) { const r = findSrc(p, name); if (r) return r; }
+    else if (e.name === name) return p;
+  }
+  return null;
+}
+
 let failed = 0, passed = 0;
 function ok(cond, msg) { if (cond) passed++; else { failed++; console.error('  FAIL: ' + msg); } }
 function eq(a, b, msg) { ok(JSON.stringify(a) === JSON.stringify(b), msg + '  (got ' + JSON.stringify(a) + ', want ' + JSON.stringify(b) + ')'); }
@@ -79,7 +89,7 @@ function makeEnv() {
   win.window = win;
   const ctx = vm.createContext(win);
   win.pywebview = undefined;
-  function load(name) { vm.runInContext(fs.readFileSync(path.join(JS, name), 'utf8'), ctx, { filename: name }); }
+  function load(name) { vm.runInContext(fs.readFileSync(findSrc(JS, name), 'utf8'), ctx, { filename: name }); }
   load('ui.js');
   load('core.js');
   return { win, S: win.SARA, scripts, errors, stubs };
@@ -145,7 +155,7 @@ section('core.js: preview fallback only when there is no bridge at all');
 /* ---- mock.js itself: an unknown name must be loud, not ok() ---- */
 section('mock.js: unknown names are explicit failures');
 (function () {
-  const src = fs.readFileSync(path.join(JS, 'mock.js'), 'utf8');
+  const src = fs.readFileSync(findSrc(JS, 'mock.js'), 'utf8');
   ok(!/default:\s*return ok\(\);/.test(src), "mock.js no longer has `default: return ok();`");
   ok(/default:/.test(src) && /unknown_method/.test(src), 'mock.js default branch returns an unknown_method failure');
 })();
@@ -153,8 +163,47 @@ section('mock.js: unknown names are explicit failures');
 section('index.html: mock.js is not in the production script list');
 (function () {
   const html = fs.readFileSync(path.join(JS, '..', 'index.html'), 'utf8');
-  ok(!/<script src="js\/mock\.js"><\/script>/.test(html), 'index.html does not statically load js/mock.js');
-  ok(/<script src="js\/core\.js"><\/script>/.test(html), 'index.html still loads js/core.js');
+  ok(!/mock\.js/.test(html), 'index.html does not load mock.js');
+  const man = JSON.parse(fs.readFileSync(path.join(JS, '..', 'assets.json'), 'utf8'));
+  ok(man.js.indexOf('js/core/core.js') >= 0, 'assets.json still loads js/core/core.js');
+  ok(!man.js.some(function (p) { return /mock\.js$/.test(p); }), 'mock.js is not in the bundle');
+})();
+
+section('core.js: SARA.api hooks observe calls without changing them');
+(async function () {
+  const env = makeEnv(), S = env.S, log = [];
+  env.win.pywebview = { api: {
+    get_x: function (a) { return { ok: true, data: [a] }; },
+    del_x: function () { return { ok: true }; },
+    bad_x: function () { throw new Error('boom'); }
+  } };
+  S.api.before('del_x', function (args) { log.push('before:' + args[1]); return { snap: args[1] }; });
+  S.api.after('del_x', function (res, args, ctx) { log.push('after:' + res.ok + ':' + ctx.snap); });
+  S.api.after('get_x', function () { throw new Error('hook bug'); });
+  S.api.after('get_x', function (res) { log.push('second:' + res.data[0]); });
+  S.api.after('bad_x', function (res) { log.push('bad:' + (res && res.error)); });
+  S.api.after('bad_x', function (res) { log.push('onError:' + (res && res.error)); }, true);
+
+  const r1 = await S.callApi('del_x', 7); await new Promise(function (r) { setTimeout(r, 5); });
+  eq(r1, { ok: true }, 'hooked call returns the backend result unchanged');
+  eq(log.slice(0, 2), ['before:7', 'after:true:7'], 'before runs first and its value reaches after as ctx');
+  const r2 = await S.callApi('get_x', 5); await new Promise(function (r) { setTimeout(r, 5); });
+  eq(r2, { ok: true, data: [5] }, 'a throwing hook does not change the result');
+  ok(log.indexOf('second:5') >= 0, 'a throwing hook does not stop the next hook');
+  await S.callApi('bad_x'); await new Promise(function (r) { setTimeout(r, 5); });
+  ok(log.indexOf('bad:call_failed') >= 0, 'after hooks see the explicit failure object');
+  const raw = await S.api.raw('del_x', 9); await new Promise(function (r) { setTimeout(r, 5); });
+  eq(raw, { ok: true }, 'SARA.api.raw still calls the backend');
+  ok(log.indexOf('before:9') < 0, 'SARA.api.raw skips hooks');
+})();
+
+section('ui.js: SARA.onToast listeners run for every toast and cannot break it');
+(function () {
+  const env = makeEnv(), S = env.S; let got = null;
+  S.onToast(function () { throw new Error('listener bug'); });
+  S.onToast(function (icon, color, msg) { got = [icon, color, msg]; });
+  S.toast('ti-x', '#fff', 'hello');
+  eq(got, ['ti-x', '#fff', 'hello'], 'listener receives the toast arguments even after another listener threw');
 })();
 
 /* ---- results ---- */

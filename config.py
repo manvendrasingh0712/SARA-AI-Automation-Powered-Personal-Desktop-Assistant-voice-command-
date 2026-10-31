@@ -916,6 +916,13 @@ class Config:
     AEC_SAMPLE_RATE: int = _int(os.getenv("AEC_SAMPLE_RATE"), default=16000)
 
     AEC_STREAM_DELAY_MS: int = _int(os.getenv("AEC_STREAM_DELAY_MS"), default=80)
+    # System-audio reference (WASAPI loopback): remove YouTube / music / video-call audio from the microphone.
+    # The loopback copy arrives ~25 ms after the echo reaches the mic, so the mic path is delayed by
+    # AEC_EXT_MIC_DELAY_MS while such audio is playing (measured: echo removal 4 dB -> 26 dB at 80 ms).
+    AEC_SYSTEM_REFERENCE: bool = _bool(os.getenv("AEC_SYSTEM_REFERENCE", "True"), default=True)
+    AEC_LOOPBACK_DEVICE: str = os.getenv("AEC_LOOPBACK_DEVICE", "")        # part of a device name; empty = automatic
+    AEC_EXT_MIC_DELAY_MS: int = _int(os.getenv("AEC_EXT_MIC_DELAY_MS"), default=80)
+    AEC_EXT_MIN_RMS: int = _int(os.getenv("AEC_EXT_MIN_RMS"), default=25)  # int16 RMS that counts as "something is playing"
 
     AEC_ENABLE_NS: bool = _bool(os.getenv("AEC_ENABLE_NS", "True"), default=True)
     AEC_ENABLE_AGC: bool = _bool(os.getenv("AEC_ENABLE_AGC", "False"), default=False)
@@ -951,6 +958,31 @@ class Config:
 
     WHISPER_MODEL_SIZE: str = os.getenv("WHISPER_MODEL_SIZE", "medium")
     WHISPER_BEAM_SIZE: int = _int(os.getenv("WHISPER_BEAM_SIZE"), default=2)
+    # Second recogniser for Hindi / Hinglish (a Whisper-base fine-tune that writes Roman Hinglish). Empty = off.
+    # Runs only when the main model's transcript is not a clear English command; see
+    # sara/audio/stt/helpers.py choose_transcript() for the rule and the measurements behind it.
+    # Turn OTHER applications (YouTube, Spotify ...) down while SARA listens for a command, then restore them.
+    # Without this the microphone hears the video together with you and transcribes it (see sara/audio/ducking.py).
+    # Opt-in: keep the last 200 captured utterances (16 kHz WAV + what was recognised) in logs/stt_dumps so a
+    # problem heard in real use can be replayed and measured. Audio never leaves the PC. Off by default.
+    STT_DEBUG_DUMP_AUDIO: bool = _bool(os.getenv("STT_DEBUG_DUMP_AUDIO", "False"), default=False)
+    VOICE_DUCK_OTHER_AUDIO: bool = _bool(os.getenv("VOICE_DUCK_OTHER_AUDIO", "True"), default=True)
+    VOICE_DUCK_LEVEL: float = _float(os.getenv("VOICE_DUCK_LEVEL"), default=0.15)    # 0.15 = 15 % of their volume
+    WHISPER_HINGLISH_MODEL: str = os.getenv("WHISPER_HINGLISH_MODEL", "")
+    WHISPER_HINGLISH_DEVICE: str = os.getenv("WHISPER_HINGLISH_DEVICE", "cpu")   # cpu (no GPU memory), cuda, or auto
+    # "auto" uses the GPU only when at least this much memory is free (4 GB cards share it with TTS and the LLM)
+    WHISPER_HINGLISH_GPU_MIN_FREE_MB: int = _int(os.getenv("WHISPER_HINGLISH_GPU_MIN_FREE_MB"), default=900)
+    WHISPER_HINGLISH_MIN_EN_PROB: float = _float(os.getenv("WHISPER_HINGLISH_MIN_EN_PROB"), default=0.9)
+    WHISPER_HINGLISH_MIN_LOGPROB: float = _float(os.getenv("WHISPER_HINGLISH_MIN_LOGPROB"), default=-0.5)
+    # True = the Hinglish model listens first and the main model only when needed (measured best on real voice);
+    # False = the main model first (older behaviour).
+    WHISPER_HINGLISH_FIRST: bool = _bool(os.getenv("WHISPER_HINGLISH_FIRST", "True"), default=True)
+    # A confident (log-probability >=) plain sentence from the Hinglish model needs no second opinion.
+    WHISPER_HINGLISH_CONFIDENT_LP: float = _float(os.getenv("WHISPER_HINGLISH_CONFIDENT_LP"), default=-0.3)
+    # Device of the MAIN model: cuda or cpu (cpu leaves the 4 GB GPU to TTS, the LLM and the Hinglish model)
+    WHISPER_MAIN_DEVICE: str = os.getenv("WHISPER_MAIN_DEVICE", "cuda")
+    # Quiet voices: level the clip's RMS before the main model (it lost words at RMS ~200; +10 points measured)
+    WHISPER_MAIN_GAIN: bool = _bool(os.getenv("WHISPER_MAIN_GAIN", "True"), default=True)
     # Names appended to the Whisper prompt so they are spelled right
     # ("Jaipur", not "Jypur"). STT_EXTRA_VOCABULARY = your own words, comma
     # separated (your name, your city, favourite artists). See

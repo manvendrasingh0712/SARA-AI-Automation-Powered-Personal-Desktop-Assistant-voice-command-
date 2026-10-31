@@ -37,7 +37,10 @@ from .window_mgmt import (
     minimize_active_window, close_active_window, snap_window_left,
     snap_window_right, switch_window,
 )
-from .media_keys import play_pause_media, next_track, previous_track, stop_media
+from .media_keys import (
+    play_pause_media, pause_media, resume_media, media_action_for,
+    next_track, previous_track, stop_media,
+)
 from .shortcuts import (
     type_text, press_key, copy_selection, paste_clipboard, select_all, undo, redo,
     new_tab, close_tab, next_tab, prev_tab, reload_page, zoom_in, zoom_out, zoom_reset,
@@ -52,6 +55,7 @@ from .files_notes import (
     read_notes,
     clear_notes,
     get_notes,
+    delete_note,
     add_todo,
     list_todos,
     complete_todo,
@@ -88,13 +92,13 @@ __all__ = [
     "restart_system", "cancel_shutdown", "show_desktop", "minimize_all_windows",
     "restore_windows", "maximize_active_window", "minimize_active_window",
     "close_active_window", "snap_window_left", "snap_window_right", "switch_window",
-    "play_pause_media", "next_track", "previous_track", "stop_media", "type_text",
+    "play_pause_media", "pause_media", "resume_media", "media_action_for", "next_track", "previous_track", "stop_media", "type_text",
     "press_key", "copy_selection", "paste_clipboard", "select_all", "undo", "redo",
     "new_tab", "close_tab", "next_tab", "prev_tab", "reload_page", "zoom_in",
     "zoom_out", "zoom_reset", "scroll_up", "scroll_down", "scroll_top",
     "scroll_bottom", "wifi_on", "wifi_off", "bluetooth_on", "bluetooth_off",
     "dark_mode", "light_mode", "find_file", "find_and_open_file", "empty_recycle_bin", "take_note",
-    "read_notes", "clear_notes", "get_notes",
+    "read_notes", "clear_notes", "get_notes", "delete_note",
     "add_todo", "list_todos", "complete_todo", "delete_todo",
     "set_timer", "cancel_timer", "start_stopwatch", "lap_stopwatch", "stop_stopwatch",
     "open_downloads", "open_documents", "open_desktop_folder", "open_pictures",

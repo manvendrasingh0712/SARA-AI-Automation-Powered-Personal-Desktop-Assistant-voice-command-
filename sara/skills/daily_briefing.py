@@ -223,13 +223,13 @@ def _result(future, label: str):
 @skill(
     name="daily_briefing",
     patterns=[
-        r"(?:give me |what'?s )?(?:my )?daily briefing",
+        r"(?:give me |what'?s |tell me about |tell me |show me |read me )?(?:my )?daily'?s? (?:brief|briefing|summary|update)s?",
         r"morning briefing",
         r"brief me(?: on my day)?",
         r"aaj ka (?:update|briefing)",
         r"mera din kaisa (?:hai|rahega)",
     ],
-    gate=("briefing", "brief me", "aaj ka", "mera din"),
+    gate=("briefing", "brief", "brief me", "aaj ka", "mera din"),
     description="Speaks weather, reminders (with times), an exam countdown and headlines as one briefing",
     category="daily",
     examples=("give me my daily briefing", "morning briefing", "aaj ka briefing"),

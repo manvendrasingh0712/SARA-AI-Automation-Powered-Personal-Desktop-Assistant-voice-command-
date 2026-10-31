@@ -78,8 +78,9 @@ _EXTRACTION_PROMPT_TEMPLATE = (
     "You are extracting durable, long-term facts worth remembering about "
     "the user from a short conversation snippet. Only extract facts that "
     "would still matter weeks from now (preferences, names, ongoing "
-    "projects, important dates) -- NOT small talk, greetings, or "
-    "one-off questions.\n\n"
+    "projects, important dates) -- NOT small talk, greetings, "
+    "one-off questions, things the user only asked about or mentioned in passing, guesses, or anything the assistant said. State only what the user clearly told you about themselves; each fact must start with the word User. Ignore voice commands and what the assistant did "
+    "(opening apps, volume, brightness, pausing or playing music, searching): those are actions, not facts.\n\n"
     "Conversation snippet:\n{conversation}\n\n"
     "Reply with 1 to {max_facts} short factual sentences, one per line, "
     "each under 20 words. If there is nothing durable worth remembering, "
@@ -87,6 +88,51 @@ _EXTRACTION_PROMPT_TEMPLATE = (
 )
 
 _BULLET_PREFIX_RE = re.compile(r"^[\-\*\d\.\)\s]+")
+
+
+# Hedged or one-off phrasing is not something worth remembering for weeks.
+_WEAK_FACT_RE = re.compile(
+    r"\b(likely|probably|possibly|perhaps|might|may have|seems?|appears?|"
+    r"confused|unsure|not sure|asked (?:about|if|whether|for)|"
+    r"mentioned|wondered|tried to|was talking about)\b",
+    re.IGNORECASE,
+)
+
+# What the user DID this session is a log, not a fact about them: "User toggled play and pause several
+# times", "User adjusted volume from mute to 50%". 59 such lines had been stored as long-term memory.
+_ACTIVITY_FACT_RE = re.compile(
+    r"\b(toggl\w*|resum\w*|paus(?:e|es|ed|ing)|play(?:s|ed|ing)?|muted?|unmuted?|adjust\w*|"
+    r"turned (?:on|off)|switch(?:ed|es)? (?:to|on|off)|opened?|closed?|launch\w*|search(?:ed|es)?|"
+    r"requested|asked|said|told|tried|clicked|typed|set (?:the )?(?:volume|brightness|timer)|"
+    r"(?:several|multiple|many|a few) times|frequently|repeatedly|often|again and again|"
+    r"volume|brightness|playback|track|skip\w*)\b",
+    re.IGNORECASE,
+)
+
+
+# Model embroidery on top of one real sentence ("They express deep emotional connection to music").
+_RAMBLE_RE = re.compile(
+    r"\b(identif\w*|refers? to (?:themselves|himself|herself)|express\w*|emotional|appreciat\w*|"
+    r"gratitude|connection|value\w*|indicat\w*|suggest\w*|habit of)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_durable_fact(fact: str) -> bool:
+    """Facts about the user, stated plainly. Rejects guesses and one-off remarks."""
+    f = fact.strip()
+    if not re.match(r"^(user|the user)\b", f, re.IGNORECASE):
+        return False
+    # Preferences ("User likes/prefers/loves ...") may mention music apps, so only an activity verb
+    # WITHOUT a preference verb is rejected.
+    if _ACTIVITY_FACT_RE.search(f) and not re.search(
+        r"\b(likes?|loves?|prefers?|favou?rite|enjoys?|is from|lives? in|works? (?:at|for|as)|studies|"
+        r"name is|birthday|born|sister|brother|mother|father|wife|husband|friend)\b", f, re.IGNORECASE
+    ):
+        return False
+    if _RAMBLE_RE.search(f) or len(f) > 160:
+        return False
+    return not _WEAK_FACT_RE.search(f)
 
 
 def _extract_facts(brain, conversation_text: str, max_facts: int) -> List[str]:
@@ -122,6 +168,8 @@ def _extract_facts(brain, conversation_text: str, max_facts: int) -> List[str]:
         # drop truncated/garbage facts like "User's name is"
         _w = cleaned.rstrip(" .:;,").split()
         if len(_w) < 4 or _w[-1].lower() in ("is", "are", "was", "has", "the", "a", "an", "of", "to", "in"):
+            continue
+        if not _is_durable_fact(cleaned):
             continue
         facts.append(cleaned)
     return facts[:max_facts]
