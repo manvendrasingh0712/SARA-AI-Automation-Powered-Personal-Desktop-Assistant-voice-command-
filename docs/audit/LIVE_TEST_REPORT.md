@@ -54,15 +54,16 @@ Result: 400 pass, 47 flagged. By cause:
 - **#395, #409** and the "bye" item #463: connection to the test page dropped while the python process was alive (the PC went to sleep for 27
   minutes around #409); "bye" ends SARA by design. **No native crash, `fault.log` empty**, whereas the first run had 4 real crashes.
 
-## Side effects of testing on your PC (please know)
-- Two **"project review" events dated 2 Nov 4:00 PM are in your Google Calendar**, created by the test runs (read-only check found exactly
-  these two). I did not delete them: it is your Google data.
-- The plan's "delete all my notes" test (confirmed with "yes") empties `sara_notes.txt`; there is no notes file now. If you had real notes there
-  they were lost in the runs of the last days (I could not tell what was in the file before).
-- Mode state: `active_mode = study` and `focus_mode = 1` are stored (set by the plan's mode commands); proactive nudges stay off until you switch mode.
-- Hundreds of test commands are in `conversation_log`, `long_term_memory` and the analytics counters. Not deleted.
-- Volume was put back to 80 % and brightness to 70 % (the values before the first run).
-
+## Side effects of testing on your PC (cleaned up afterwards)
+- Settings the test commands had left behind were put back from the decision log (database backup taken first): muted, notifications,
+  telemetry, the four proactive nudges, study / focus mode, mic sensitivity (gaming mode had left it at 20), speech speed, language mode.
+  Not touched: the saved GUI theme.
+- Today's test conversation turns (2,570 rows) and their 167 memory rows were removed; turns that are not in the test plan stayed.
+  Older test days (29-31 Oct), the consolidated memory facts and the analytics counters were left alone.
+- Two "project review" events (2 Nov, 4:00 PM) created by the test runs are still in Google Calendar: deleting them was blocked as an
+  external write, so they need to be removed by hand.
+- The plan's "delete all my notes" test empties `sara_notes.txt`; there is no notes file now.
+- Volume was put back to 80 % and brightness to 70 %.
 
 ## Open issues round (after the final run)
 | Issue | Result |
