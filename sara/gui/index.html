@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=7ae0cd6e96">
+<link rel="stylesheet" href="bundle/app.css?v=c851bc0c55">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -28,6 +28,7 @@
   <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
   <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></symbol>
   <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.8-.5-1.2-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.4-4-7.4-9-7.4z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/></symbol>
   <symbol id="i-accessibility" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.8"/><path d="M5 8.5l7 1.5 7-1.5M12 10v4M9 20l3-6 3 6"/></symbol>
@@ -68,39 +69,52 @@
 
   <!-- ================= HOME ================= -->
   <section class="page active" id="page-home">
-    <div class="clock-card" id="clockCard" role="button" tabindex="0" title="Open clock" data-clock-theme="sara" data-mode="clock" style="position:absolute;left:32px;top:28px;width:210px;">
-      <div class="cc-greet" id="ccGreet">Good day</div>
-      <div class="cc-modelabel" id="ccModeLabel" hidden></div>
-      <div class="cc-timewrap"><span class="cc-time" id="ccTime">--:--</span><span class="cc-ampm" id="ccAmpm"></span><span class="cc-sec" id="ccSec"></span></div>
-      <div class="cc-date" id="ccDate"></div>
-      <div class="cc-status" id="ccStatus" hidden></div>
-      <div class="cc-bar"><div class="cc-bar-fill" id="ccBarFill"></div></div>
+    <div class="page-header home-header">
+      <div class="page-heading"><div class="page-title" data-name="Home"><span id="homeGreetWord">Hello</span><span id="homeGreetComma">, </span><span class="home-greet" id="greetName"></span></div><div class="page-sub">Your day at a glance</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
-    <div class="home-greet" id="greetName"></div>
-    <div class="stage" id="stage" title="Tap Sara to wake"><canvas id="org" width="400" height="400"></canvas><div class="home-activity" id="homeActivity" role="status" aria-live="polite" hidden><span class="act-glyph" id="actGlyph">&#9673;</span><span class="act-text" id="actText"></span></div></div>
-    <div class="plan-card" id="planCard" hidden><div class="plan-card-title" id="planTitle">Running plan…</div><ol class="plan-steps" id="planSteps"></ol></div>
-    <div class="home-caption core-idle" id="homeCaption">idle</div>
-    <div class="home-hint" id="homeHint">Say “Sara”, or tap the orb.</div>
-    <div class="home-actions"><button class="link-btn" id="stopBtn" hidden>stop Sara</button><button class="link-btn" id="pauseBtn">pause listening</button></div>
-
-    <div class="today-card" id="todayCard" role="button" tabindex="0" title="Open Today">
-      <div class="tc-top">
-        <div class="tc-temp" id="tcTemp">--°</div>
-        <div><div class="tc-cond" id="tcCond">Weather</div><div class="tc-sub" id="tcSub"></div></div>
+    <div class="home-grid">
+      <div class="clock-card" id="clockCard" role="button" tabindex="0" title="Open clock" data-clock-theme="sara" data-mode="clock">
+        <div class="cc-greet" id="ccGreet">Good day</div>
+        <div class="cc-modelabel" id="ccModeLabel" hidden></div>
+        <div class="cc-timewrap"><span class="cc-time" id="ccTime">--:--</span><span class="cc-ampm" id="ccAmpm"></span><span class="cc-sec" id="ccSec"></span></div>
+        <div class="cc-date" id="ccDate"></div>
+        <div class="cc-status" id="ccStatus" hidden></div>
+        <div class="cc-bar"><div class="cc-bar-fill" id="ccBarFill"></div></div>
       </div>
-      <div class="tc-next" id="tcNext"></div>
-    </div>
+      <div class="today-card" id="todayCard" role="button" tabindex="0" title="Open Today">
+        <div class="tc-top">
+          <div class="tc-temp" id="tcTemp">--°</div>
+          <div><div class="tc-cond" id="tcCond">Weather</div><div class="tc-sub" id="tcSub"></div></div>
+        </div>
+        <div class="tc-next" id="tcNext"></div>
+      </div>
 
-    <div class="usage-card" id="usageCard" role="button" tabindex="0" title="Open analytics" hidden>
-      <div class="uc-top"><span class="uc-label">Last 7 days</span><b class="uc-total" id="ucTotal">0</b></div>
-      <div class="uc-bars" id="ucBars" aria-hidden="true"></div>
-      <div class="uc-days" id="ucDays" aria-hidden="true"></div>
-    </div>
+      <div class="usage-card" id="usageCard" role="button" tabindex="0" title="Open analytics" hidden>
+        <div class="uc-top"><span class="uc-label">Last 7 days</span><b class="uc-total" id="ucTotal">0</b></div>
+        <div class="uc-bars" id="ucBars" aria-hidden="true"></div>
+        <div class="uc-days" id="ucDays" aria-hidden="true"></div>
+      </div>
 
-    <div class="next-card" id="nextCard" role="button" tabindex="0" title="Open Today" hidden>
-      <div class="nx-label">Next</div>
-      <div class="nx-title" id="nxTitle"></div>
-      <div class="nx-rel" id="nxRel"></div>
+      <div class="next-card" id="nextCard" role="button" tabindex="0" title="Open Today" hidden>
+        <div class="nx-label">Next</div>
+        <div class="nx-title" id="nxTitle"></div>
+        <div class="nx-rel" id="nxRel"></div>
+      </div>
+      <div class="home-center">
+        <div class="stage" id="stage" title="Tap Sara to wake"><canvas id="org" width="400" height="400"></canvas><div class="home-activity" id="homeActivity" role="status" aria-live="polite" hidden><span class="act-glyph" id="actGlyph">&#9673;</span><span class="act-text" id="actText"></span></div></div>
+        <div class="plan-card" id="planCard" hidden><div class="plan-card-title" id="planTitle">Running plan…</div><ol class="plan-steps" id="planSteps"></ol></div>
+        <div class="home-caption core-idle" id="homeCaption">idle</div>
+        <div class="home-hint" id="homeHint">Say “Sara”, or tap the orb.</div>
+        <div class="home-actions"><button class="link-btn" id="stopBtn" hidden>stop Sara</button><button class="link-btn" id="pauseBtn">pause listening</button></div>
+        <div class="quick-dock" id="quickDock" role="group" aria-label="Quick controls">
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setActive" title="Wake-word listening: turn off to pause Sara"><svg class="ic" aria-hidden="true"><use href="#i-mic"/></svg><span class="qc-name">Listening</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setFocus" title="Focus mode: fewer interruptions"><svg class="ic" aria-hidden="true"><use href="#i-focus"/></svg><span class="qc-name">Focus</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:show_notifications" title="Notifications: on-screen alerts"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span class="qc-name">Alerts</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:voice_replies" title="Voice replies: Sara speaks"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><span class="qc-name">Voice</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setMute" title="Mute: silence Sara now"><svg class="ic" aria-hidden="true"><use href="#i-volume-off"/></svg><span class="qc-name">Mute</span><i class="qc-sw" aria-hidden="true"></i></button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -255,8 +269,7 @@
       <div class="set-layout">
       <nav class="set-rail" id="setRail" aria-label="Settings sections">
         <span class="set-rail-ind" aria-hidden="true"></span>
-        <button type="button" class="on" aria-current="true" data-target="grp-quick">Quick controls</button>
-        <button type="button" data-target="grp-assistant">Assistant</button>
+        <button type="button" class="on" aria-current="true" data-target="grp-assistant">Assistant</button>
         <button type="button" data-target="grp-voice">Voice</button>
         <button type="button" data-target="grp-appearance">Appearance</button>
         <button type="button" data-target="grp-presets">Presets</button>
@@ -273,13 +286,6 @@
 
         <section class="set-card" id="grp-quick">
           <div class="set-card-head"><div class="set-card-title">Quick controls</div><div class="set-card-sub">the switches you reach for most</div></div>
-          <div class="qc-grid">
-            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setActive"><span class="qc-name">Listening</span><span class="qc-sub">wake word</span><i class="qc-sw" aria-hidden="true"></i></button>
-            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setFocus"><span class="qc-name">Focus mode</span><span class="qc-sub">fewer interruptions</span><i class="qc-sw" aria-hidden="true"></i></button>
-            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:show_notifications"><span class="qc-name">Notifications</span><span class="qc-sub">on-screen alerts</span><i class="qc-sw" aria-hidden="true"></i></button>
-            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:voice_replies"><span class="qc-name">Voice replies</span><span class="qc-sub">Sara speaks</span><i class="qc-sw" aria-hidden="true"></i></button>
-            <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setMute"><span class="qc-name">Mute</span><span class="qc-sub">silence Sara now</span><i class="qc-sw" aria-hidden="true"></i></button>
-          </div>
         </section>
 
         <!-- 1. ASSISTANT -->
@@ -732,6 +738,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=b6e76d2128"></script>
+<script src="bundle/app.js?v=dd34934a78"></script>
 </body>
 </html>
