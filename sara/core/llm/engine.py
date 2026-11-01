@@ -8,6 +8,8 @@ from __future__ import annotations
 from .prompt import _build_base_prompt, _time_of_day
 from .streaming import WarmupResult, _split_sentences, _clause_flush, _clean_markdown, _estimate_tokens, _strip_emoji
 from .clients import _get_ollama_client, _get_gemini_client, _build_gemini_generate_config, ollama_load_options
+from .gemini_gate import GeminiGate, register as register_gate
+from sara.core.rolling_summary import RollingSummary
 
 
 import logging
@@ -504,6 +506,20 @@ class SaraLLM:
         # have silently degraded to local-only Ollama instead of the
         # intended Gemini-primary/Ollama-fallback setup.
         self._primary_backend = getattr(self._cfg, "LLM_BACKEND", "gemini")
+        # Part 3 / P15: per-model quota buckets + breaker + failover chain (0 = no local cap; the meter still counts).
+        self._gate = register_gate(GeminiGate(
+            rpm=int(getattr(self._cfg, "GEMINI_RPM", 0) or 0),
+            rpd=int(getattr(self._cfg, "GEMINI_RPD", 0) or 0),
+            cooldown_s=float(getattr(self._cfg, "LLM_CIRCUIT_BREAKER_COOLDOWN_S", 60.0)),
+        ))
+        # Part 3 / P8: turns that fall out of the (capped) local history are folded into a short "conversation so far" line.
+        self._rolling = None
+        if self._primary_backend == "ollama" and getattr(self._cfg, "ROLLING_SUMMARY_ENABLED", False):
+            self._rolling = RollingSummary(
+                self._summarize_dropped,
+                every=int(getattr(self._cfg, "ROLLING_SUMMARY_EVERY", 4)),
+                max_chars=int(getattr(self._cfg, "ROLLING_SUMMARY_MAX_CHARS", 420)),
+            )
         # Gemini -> Ollama automatic fallback (see _stream_generic /
         # generate_response_stream). Only meaningful when Gemini is the
         # primary backend -- Ollama has nowhere further to fall back to.
@@ -838,7 +854,12 @@ class SaraLLM:
         memory_context: Optional[str] = None,
         reference_context: Optional[str] = None,
     ) -> list:
-        msgs: list = [{"role": "system", "content": self.system_instruction}]
+        _sys = self.system_instruction
+        _rolling = getattr(self, "_rolling", None)
+        if _rolling is not None and _rolling.line:
+            # changes only when a background summary job finishes, so the prefix stays stable between updates
+            _sys = f"{_sys}\n\nEarlier in this conversation (older turns, summarised): {_rolling.line}"
+        msgs: list = [{"role": "system", "content": _sys}]
         # PROMPT-CACHE ORDER (E2E 2026-10-29): the stable part first -- the
         # cached system instruction, then the conversation history -- and
         # the per-turn context messages last, right before the new user
@@ -991,10 +1012,41 @@ class SaraLLM:
     # ── History ────────────────────────────────────────────────────────
 
     def _append_history(self, prompt: str, reply: str) -> None:
+        dropped = None
         with self._history_lock:
             if self._history and self._history[-1][0] == prompt:
                 self._history.pop()
+            rolling = getattr(self, "_rolling", None)
+            if rolling is not None and self._history.maxlen and len(self._history) == self._history.maxlen:
+                dropped = self._history[0]          # the append below pushes this exchange out of the window
             self._history.append((prompt, reply))
+        if dropped is not None:
+            rolling.note_dropped(*dropped)
+
+    def _summarize_dropped(self, previous: str, batch: List[Tuple[str, str]]) -> str:
+        """One small local-model call that folds the dropped exchanges into the running summary (P8)."""
+        client = _get_ollama_client(self._cfg)
+        if not client:
+            return ""
+        turns = "\n".join(f"User: {_clip_history(u)}\nSara: {_clip_history(a)}" for u, a in batch)
+        r = client.chat(
+            model=self._ollama_fast_model_name,
+            messages=[
+                {"role": "system", "content": (
+                    "You keep a running memory of what the USER told the assistant about themselves. Merge the earlier "
+                    "summary and the new turns into ONE note of at most 60 words. Keep ONLY facts about the user and the "
+                    "people around them: names, relations, places, dates, plans, preferences, allergies, things to do "
+                    "later. Drop general-knowledge questions and the assistant's answers to them. If the new turns hold "
+                    "no such facts, return the earlier summary unchanged. Plain text, no preamble."
+                )},
+                {"role": "user", "content": f"Earlier summary: {previous or '(none)'}\n\nNew turns:\n{turns}"},
+            ],
+            stream=False,
+            think=False,
+            options={**ollama_load_options(self._cfg), "num_predict": 120, "temperature": 0.0},
+            keep_alive=getattr(self._cfg, "OLLAMA_KEEP_ALIVE", "5m"),
+        )
+        return (getattr(getattr(r, "message", None), "content", "") or "").strip()
 
     def record_exchange(self, user_input: str, reply: str) -> None:
         """
@@ -1369,7 +1421,11 @@ class SaraLLM:
                                 )
 
                     if attempt < stage_retries and not non_transient:
-                        delay = min(max_delay, base_delay * (2**attempt))
+                        # P15: full-jitter backoff (many clients retrying in lock-step is what keeps a 429 going);
+                        # the server's own Retry-After, when it is within max_delay, wins over the jitter.
+                        delay = GeminiGate.backoff(
+                            attempt, base=base_delay, cap=max_delay, retry_after_s=_server_retry_after_s(e)
+                        )
                         if isinstance(e, _EmptyReplyError):
                             delay = min(delay, 0.2)  # nothing is overloaded; just ask again
                         if is_debug:
@@ -1377,7 +1433,8 @@ class SaraLLM:
                                 f"[LLM:{stage_name}] Retry {attempt+1}/{stage_retries} "
                                 f"in {delay:.1f}s: {e}"
                             )
-                        time.sleep(delay)
+                        if not GeminiGate.interruptible_sleep(delay, cancel_event):
+                            return  # barge-in / cancel during the backoff: do not retry for a user who moved on
                     else:
                         # This stage is exhausted (or non-retryable) having
                         # yielded zero tokens. Break out of the attempt loop
@@ -1733,27 +1790,54 @@ class SaraLLM:
             self._gemini_fast_model_name if _is_simple_query(prompt) else self._gemini_model_name
         )
         _budget = getattr(self._cfg, "GEMINI_THINKING_BUDGET", None)
-        raw_stream = client.models.generate_content_stream(
-            model=used_model,
-            contents=contents,
-            config=_build_gemini_generate_config(
-                types,
-                None,  # a streamed reply can legitimately run long: no whole-request I/O timeout here
+        gate = getattr(self, "_gate", None)
+        if gate is not None:
+            # P15 failover: the requested model, then the main / fast Gemini models; none allowed -> raise at once
+            # (non-transient) so the stage loop hands the turn to the local model without any backoff.
+            allowed = gate.choose(used_model, (self._gemini_model_name, self._gemini_fast_model_name))
+            if allowed is None:
+                raise _ClientUnavailableError("Gemini quota gate closed (rate limit / breaker); using the local model.")
+            used_model = allowed
+            gate.note_request(used_model)
+        try:
+            raw_stream = client.models.generate_content_stream(
                 model=used_model,
-                thinking_budget=_budget,
-                system_instruction=self.system_instruction,
-                temperature=float(getattr(self._cfg, "GEMINI_TEMPERATURE", 0.7)),
-                top_p=float(getattr(self._cfg, "GEMINI_TOP_P", 0.9)),
-                top_k=int(getattr(self._cfg, "GEMINI_TOP_K", 40)),
-                max_output_tokens=int(getattr(self._cfg, "GEMINI_MAX_OUTPUT_TOKENS", 200)),
-            ),
-        )
+                contents=contents,
+                config=_build_gemini_generate_config(
+                    types,
+                    None,  # a streamed reply can legitimately run long: no whole-request I/O timeout here
+                    model=used_model,
+                    thinking_budget=_budget,
+                    system_instruction=self.system_instruction,
+                    temperature=float(getattr(self._cfg, "GEMINI_TEMPERATURE", 0.7)),
+                    top_p=float(getattr(self._cfg, "GEMINI_TOP_P", 0.9)),
+                    top_k=int(getattr(self._cfg, "GEMINI_TOP_K", 40)),
+                    max_output_tokens=int(getattr(self._cfg, "GEMINI_MAX_OUTPUT_TOKENS", 200)),
+                ),
+            )
+        except Exception as exc:
+            self._gate_note_failure(gate, used_model, exc)
+            raise
 
         def _iter():
-            for chunk in raw_stream:
-                yield getattr(chunk, "text", None)
+            try:
+                for chunk in raw_stream:
+                    yield getattr(chunk, "text", None)
+            except Exception as exc:
+                self._gate_note_failure(gate, used_model, exc)
+                raise
+            if gate is not None:
+                gate.note_result(used_model, True)
 
         return _iter()
+
+    @staticmethod
+    def _gate_note_failure(gate, model: str, exc: BaseException) -> None:
+        if gate is None:
+            return
+        asked = _server_retry_after_s(exc)
+        # a Retry-After of an hour or more is a daily-quota 429: block this model at once
+        gate.note_result(model, False, retry_after_s=asked, hard=bool(asked and asked >= 3600))
 
     # ── Public streaming API ───────────────────────────────────────────
 

@@ -11,6 +11,7 @@ import platform
 
 
 from config import Config
+from sara.core.com_thread import run_on_com_thread
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +52,15 @@ def set_volume(level: int) -> str:
 
         level = max(0, min(100, int(level)))
 
-        devices = AudioUtilities.GetSpeakers()
-        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        volume = cast(interface, POINTER(IAudioEndpointVolume))
+        def _work():
+            # every COM pointer is created, used and deleted HERE, on the one COM thread (sara/core/com_thread.py)
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            volume = cast(interface, POINTER(IAudioEndpointVolume))
+            volume.SetMasterVolumeLevelScalar(level / 100.0, None)
+            del volume, interface, devices
 
-        volume.SetMasterVolumeLevelScalar(level / 100.0, None)
+        run_on_com_thread(_work)
         return f"Volume set to {level}%."
     except ImportError:
         return "Volume control requires 'pycaw' and 'comtypes'. Run: pip install pycaw comtypes"
@@ -72,18 +77,20 @@ def adjust_volume(delta: int) -> str:
         from comtypes import CLSCTX_ALL
         from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 
-        devices = AudioUtilities.GetSpeakers()
-        interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        volume = cast(interface, POINTER(IAudioEndpointVolume))
+        def _work():
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            volume = cast(interface, POINTER(IAudioEndpointVolume))
+            # BUG FIX: GetMasterVolumeLevelScalar can return None on some drivers
+            current = volume.GetMasterVolumeLevelScalar()
+            if current is None:
+                current = 0.0
+            new = max(0.0, min(1.0, current + (delta / 100.0)))
+            volume.SetMasterVolumeLevelScalar(new, None)
+            del volume, interface, devices
+            return new
 
-        # BUG FIX: GetMasterVolumeLevelScalar can return None on some drivers
-        current = volume.GetMasterVolumeLevelScalar()
-        if current is None:
-            current = 0.0
-
-        new_level = max(0.0, min(1.0, current + (delta / 100.0)))
-        volume.SetMasterVolumeLevelScalar(new_level, None)
-
+        new_level = run_on_com_thread(_work)
         return f"Volume adjusted to {round(new_level * 100)}%."
     except ImportError:
         return "Volume control requires 'pycaw' and 'comtypes'. Run: pip install pycaw comtypes"
@@ -101,7 +108,7 @@ def get_brightness_status() -> str:
     try:
         import screen_brightness_control as sbc
 
-        levels = sbc.get_brightness()
+        levels = run_on_com_thread(sbc.get_brightness)
         level = levels[0] if isinstance(levels, list) else levels
         return f"Screen brightness is currently at {level}%."
     except ImportError:
@@ -116,7 +123,7 @@ def set_brightness(level: int) -> str:
         import screen_brightness_control as sbc
 
         level = max(0, min(100, int(level)))
-        sbc.set_brightness(level)
+        run_on_com_thread(lambda: sbc.set_brightness(level))
         return f"Brightness set to {level}%."
     except ImportError:
         return "Brightness control requires 'screen-brightness-control'. Run: pip install screen-brightness-control"
@@ -129,10 +136,10 @@ def adjust_brightness(delta: int) -> str:
     try:
         import screen_brightness_control as sbc
 
-        current = sbc.get_brightness()
+        current = run_on_com_thread(sbc.get_brightness)
         current = current[0] if isinstance(current, list) else current
         new_level = max(0, min(100, current + delta))
-        sbc.set_brightness(new_level)
+        run_on_com_thread(lambda: sbc.set_brightness(new_level))
         return f"Brightness adjusted to {new_level}%."
     except ImportError:
         return "Brightness control requires 'screen-brightness-control'. Run: pip install screen-brightness-control"

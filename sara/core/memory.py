@@ -14,6 +14,7 @@ import difflib
 import json
 import logging
 import queue
+import re
 import sqlite3
 import threading
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
@@ -51,6 +52,24 @@ _VALID_ROLES = frozenset({"user", "assistant", "system"})
 # fall behind.
 _ACTION_LOG_MAX_ENTRIES = 500
 _VALID_OUTCOMES = frozenset({"success", "fail", "skipped"})
+
+
+_WHY_STOPWORDS = frozenset({
+    "the", "my", "a", "an", "of", "for", "to", "did", "i", "you", "change", "changed", "set", "why", "was", "is", "it",
+    "maine", "mera", "meri", "mere", "ka", "ki", "ke", "ko", "kyu", "kyun", "kyon", "kiya", "tha", "thi", "badla", "badli",
+})
+
+
+def _shares_a_content_word(query: str, key_display: str, threshold: float = 0.75) -> bool:
+    """True when a meaningful word of the query (stop-words and 1-2 letter words dropped) is the same as, or a close spelling
+    of, a word of the setting key. Whole-string similarity alone matched unrelated settings on shared letters."""
+    q_words = [w for w in re.findall(r"\w+", query) if len(w) > 2 and w not in _WHY_STOPWORDS]
+    k_words = [w for w in re.findall(r"\w+", key_display) if len(w) > 2]
+    for qw in q_words:
+        for kw in k_words:
+            if difflib.SequenceMatcher(None, qw, kw).ratio() >= threshold:
+                return True
+    return False
 
 
 class PreferencesDB:
@@ -165,6 +184,11 @@ class PreferencesDB:
                 reason      TEXT,
                 timestamp   TEXT    NOT NULL
             );
+            -- Part 3 / P6: these were full table scans (checked with EXPLAIN QUERY PLAN) for the time-range and
+            -- per-action queries (recent actions, streaks, "what did you do", history by date).
+            CREATE INDEX IF NOT EXISTS idx_conversation_log_timestamp ON conversation_log(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_action_log_timestamp ON action_log(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_action_log_name_outcome ON action_log(action_name, outcome);
             """)
         # MIGRATION (NEW): existing DBs created before the `reason` column
         # existed won't have it -- CREATE TABLE IF NOT EXISTS above is a
@@ -715,8 +739,11 @@ class PreferencesDB:
             # Bonus for a direct substring match either direction --
             # handles "mic" matching "mic sensitivity" even though the
             # whole-string ratio alone would be fairly low.
-            if normalized_query in key_display or key_display in normalized_query:
+            substring_hit = normalized_query in key_display or key_display in normalized_query
+            if substring_hit:
                 ratio = max(ratio, 0.75)
+            elif not _shares_a_content_word(normalized_query, key_display):
+                continue    # live test: "why did I change the volume" matched the "ui theme" entry on the letters "the" alone
             if ratio > best_score:
                 best_score = ratio
                 best_entry = entry
@@ -1112,6 +1139,9 @@ class PreferencesDB:
 
         if self._write_conn is not None:
             try:
+                from sara.core.db_common import optimize_and_checkpoint
+
+                optimize_and_checkpoint(self._write_conn, truncate=True)   # fresh planner statistics, small WAL file
                 self._write_conn.close()
             except sqlite3.Error as e:
                 logger.warning("Error closing write connection: %s", e)

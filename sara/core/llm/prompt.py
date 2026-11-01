@@ -110,6 +110,14 @@ _STREAM_INTERRUPTED_MESSAGES = {
 # ══════════════════════════════════════════════════════════════════════
 
 
+# Live test: "are you connected to the internet" was answered "No, I don't have internet access" although web search, weather and news
+# are tools of this assistant. One short, true sentence stops the model denying its own tools.
+_CAPABILITIES = (
+    " You can open apps, control volume and brightness, keep notes and reminders, and when the PC is online search the web and "
+    "read weather and news. Never say you have no internet access or cannot do these things."
+)
+
+
 def _security_rule() -> str:
     """Untrusted-content rule block (T5); empty when SECURITY_MODE=off."""
     from sara.core.security.untrusted import security_rule
@@ -171,6 +179,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
                 "Use their name occasionally when it feels natural — not "
                 "every single turn."
             )
+        base += _CAPABILITIES
         base += _security_rule()
         return base + _ACTION_RULES
 
@@ -193,6 +202,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
                 f" User ka naam {user_name} hai. "
                 "Kabhi kabhi naam lo — har baar nahi."
             )
+        base += _CAPABILITIES
         base += _security_rule()
         return base + _ACTION_RULES
 
@@ -215,6 +225,7 @@ def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str])
     )
     if user_name:
         base += f" The user's name is {user_name}; use it rarely, not every turn."
+    base += _CAPABILITIES
     base += _security_rule()
     return base + _ACTION_RULES
 

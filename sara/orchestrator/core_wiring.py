@@ -582,6 +582,23 @@ class _WakeWatcher:
 # ----------------------------------------------------------------------------
 
 
+def _wait_for_model(brain, ui_update, timeout_s: float) -> bool:
+    """Hold the start-up screen until the local model has loaded (bounded by `timeout_s`; 0 = do not wait).
+
+    Live test: "Hello! I am Sara. Systems are online." was spoken about 35 s after launch, but the language model only answered
+    from about 55 s on, so a command given right after the greeting waited 18-23 s with no sign of life. The greeting (and the
+    "ready" state of the start-up screen) now follow the model. Never raises; True when the model reported ready in time."""
+    if not timeout_s or timeout_s <= 0:
+        return True
+    try:
+        ui_update("boot_progress", "Warming up the language model...", 97)
+        result = brain.wait_until_warm(timeout=float(timeout_s))
+        return bool(getattr(result, "ok", True))
+    except Exception as exc:  # noqa: BLE001 -- a missing / failed model must not block start-up
+        logger.debug("model warm-up wait skipped: %s", exc)
+        return False
+
+
 def _festival_greeting() -> Optional[str]:
     """
     Returns a special greeting if today matches a known festival, else
@@ -703,6 +720,43 @@ def run_sara_logic(
         reminder_composer=reminder_composer,
     )
     proactive_engine.start()
+
+    # GC pause histogram (always) and, once the models are warm, GC hygiene for the audio loop (see sara/core/gc_tuning.py).
+    try:
+        from sara.core import gc_tuning
+
+        gc_tuning.install_histogram()
+        gc_tuning.start_reporter(60.0)
+        if getattr(Config, "GC_TUNING_ENABLED", True):
+            _gc_timer = threading.Timer(float(getattr(Config, "GC_TUNING_DELAY_S", 75.0)), gc_tuning.tune_after_warmup)
+            _gc_timer.daemon = True
+            _gc_timer.start()
+    except Exception as _e:  # noqa: BLE001
+        logger.debug("gc tuning not started: %s", _e)
+
+    # Part 3 / P16: no EcoQoS throttling when minimised, optional keep-warm of the local model while idle.
+    try:
+        from sara.core import proc_tuning
+
+        if getattr(Config, "POWER_THROTTLING_OPT_OUT", True):
+            proc_tuning.disable_power_throttling(above_normal=bool(getattr(Config, "PROCESS_ABOVE_NORMAL", False)))
+        _warm_s = float(getattr(Config, "KEEP_WARM_INTERVAL_S", 0.0))
+        if _warm_s > 0:
+            from sara.core.llm.clients import _get_ollama_client, ollama_load_options
+
+            def _ping_ollama() -> None:
+                _get_ollama_client(Config).chat(
+                    model=Config.OLLAMA_MODEL,
+                    messages=[{"role": "user", "content": "hi"}],
+                    options={**ollama_load_options(Config), "num_predict": 1},
+                    keep_alive=getattr(Config, "OLLAMA_KEEP_ALIVE", "30m"),
+                )
+
+            proc_tuning.KeepWarm(
+                _ping_ollama, _warm_s, idle=lambda: activity_tracker.idle_seconds() >= _warm_s / 2
+            ).start()
+    except Exception as _e:  # noqa: BLE001
+        logger.debug("process tuning not started: %s", _e)
 
     # Installed-app index for "open <app>" (replaces ~2.8 s of Windows Search waits with a dictionary lookup).
     if getattr(Config, "APP_INDEX_ENABLED", True):
@@ -890,6 +944,7 @@ def run_sara_logic(
         return False
 
     try:
+        _wait_for_model(brain, ui_update, float(getattr(Config, "STARTUP_WARM_WAIT_S", 45.0)))
         ui_update("boot_progress", "Ready!", 100)
 
         greeting = _festival_greeting() or "Hello! I am Sara. Systems are online."
@@ -907,7 +962,6 @@ def run_sara_logic(
 
             _t_pending("wake")
             wake_watcher.begin_session()
-
             activity_tracker.touch()
             try:
                 db.record_interaction_day()

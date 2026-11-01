@@ -498,6 +498,27 @@ class Config:
     GEMINI_FAST_MODEL: str = os.getenv("GEMINI_FAST_MODEL", "")
     # Optional top tier for the learned router (empty = tier absent).
     GEMINI_PRO_MODEL: str = os.getenv("GEMINI_PRO_MODEL", "")
+    # Windows process tuning (sara/core/proc_tuning.py): opt out of EcoQoS "efficiency mode" so a minimised SARA is not slowed
+    # down; ABOVE_NORMAL priority is opt-in; KEEP_WARM_INTERVAL_S > 0 pings the local model while idle (skipped on battery).
+    POWER_THROTTLING_OPT_OUT: bool = _bool(os.getenv("POWER_THROTTLING_OPT_OUT"), default=True)
+    PROCESS_ABOVE_NORMAL: bool = _bool(os.getenv("PROCESS_ABOVE_NORMAL"), default=False)
+    KEEP_WARM_INTERVAL_S: float = _float(os.getenv("KEEP_WARM_INTERVAL_S"), default=0.0)
+    # Answer cache for stable knowledge questions (sara/core/response_cache.py). Never caches time, weather, news, prices,
+    # personal / memory questions, tool turns or hinted turns.
+    RESPONSE_CACHE_ENABLED: bool = _bool(os.getenv("RESPONSE_CACHE_ENABLED"), default=True)
+    RESPONSE_CACHE_TTL_DAYS: float = _float(os.getenv("RESPONSE_CACHE_TTL_DAYS"), default=7.0)
+    RESPONSE_CACHE_MAX_ENTRIES: int = _int(os.getenv("RESPONSE_CACHE_MAX_ENTRIES"), default=500)
+    # Turns that fall out of the capped local history are folded into a short "conversation so far" line (sara/core/
+    # rolling_summary.py), updated by one background call to the local model every ROLLING_SUMMARY_EVERY dropped turns.
+    ROLLING_SUMMARY_ENABLED: bool = _bool(os.getenv("ROLLING_SUMMARY_ENABLED"), default=True)
+    ROLLING_SUMMARY_EVERY: int = _int(os.getenv("ROLLING_SUMMARY_EVERY"), default=2)
+    ROLLING_SUMMARY_MAX_CHARS: int = _int(os.getenv("ROLLING_SUMMARY_MAX_CHARS"), default=420)
+    # Seconds between health checks of the local Ollama server (restarted if it dies mid-session; 0 = off).
+    OLLAMA_WATCHDOG_INTERVAL_S: float = _float(os.getenv("OLLAMA_WATCHDOG_INTERVAL_S"), default=15.0)
+    # Local request caps per model (the quota gate, sara/core/llm/gemini_gate.py). 0 = no local cap (the usage meter still
+    # counts). Set them to your plan's limits to fall back to the local model BEFORE Google answers 429.
+    GEMINI_RPM: int = _int(os.getenv("GEMINI_RPM"), default=0)
+    GEMINI_RPD: int = _int(os.getenv("GEMINI_RPD"), default=0)
     GEMINI_MAX_HISTORY_TOKENS: int = _int(
         os.getenv("GEMINI_MAX_HISTORY_TOKENS"), default=30_000
     )
@@ -540,6 +561,9 @@ class Config:
     LLM_RETRY_MAX_DELAY_S: float = _float(
         os.getenv("LLM_RETRY_MAX_DELAY_S"), default=8.0
     )
+    # Seconds the start-up screen (and the spoken greeting) wait for the local model to finish loading, so "systems are online" is true when
+    # it is said. 0 = do not wait (the greeting comes at once, as before).
+    STARTUP_WARM_WAIT_S: float = _float(os.getenv("STARTUP_WARM_WAIT_S"), default=45.0)
     LLM_WARMUP_WAIT_S: float = _float(os.getenv("LLM_WARMUP_WAIT_S"), default=20.0)
 
     # ── Primary-backend circuit breaker ──────────────────────────────────
@@ -762,7 +786,10 @@ class Config:
         os.getenv("ENDPOINT_EARLY_CUT_BACKOFF_MS"), default=100
     )
     # ── Core ──────────────────────────────────────────────────────────────
-    DEBUG_MODE: bool = _bool(os.getenv("DEBUG_MODE", "False"), default=False)
+    # Profile: "prod" (default) forces DEBUG_MODE off whatever .env says: no devtools, no per-frame diagnostics, INFO logging.
+    # "dev" keeps DEBUG_MODE as set in .env. Release builds are always prod.
+    SARA_PROFILE: str = "dev" if os.getenv("SARA_PROFILE", "prod").strip().lower() == "dev" else "prod"
+    DEBUG_MODE: bool = SARA_PROFILE == "dev" and _bool(os.getenv("DEBUG_MODE", "False"), default=False)
     # Passive wake detection is handled exclusively by OpenWakeWord.
     WAKE_WORD: str = os.getenv("WAKE_WORD", "hey sara").lower().strip()
     SARA_NAME: str = os.getenv("SARA_NAME", "Sara")
@@ -1444,6 +1471,9 @@ class Config:
     GROUNDING_TIMEOUT_S: float = _float(os.getenv("GROUNDING_TIMEOUT_S"), default=4.0)
     # Learn answer length / language preference from behaviour (one cached prompt line). See sara/core/style_profile.py.
     STYLE_PROFILE_ENABLED: bool = _bool(os.getenv("STYLE_PROFILE_ENABLED", "True"), default=True)
+    # gc.freeze() + a higher gen-0 threshold once the models are warm (sara/core/gc_tuning.py); the pause histogram is always on.
+    GC_TUNING_ENABLED: bool = _bool(os.getenv("GC_TUNING_ENABLED", "True"), default=True)
+    GC_TUNING_DELAY_S: float = _float(os.getenv("GC_TUNING_DELAY_S"), default=75.0)
     # Backstop on the chat model's reply: no false "done" claims, no repetition loops (sara/core/llm/guardrails.py).
     REPLY_GUARDRAILS_ENABLED: bool = _bool(os.getenv("REPLY_GUARDRAILS_ENABLED", "True"), default=True)
     # Risk-tiered read-back: a low-confidence transcript of an impactful (tier 2) command is read back before it runs.

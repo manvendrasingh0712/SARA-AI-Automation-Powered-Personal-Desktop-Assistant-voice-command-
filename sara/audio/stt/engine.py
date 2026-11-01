@@ -303,6 +303,10 @@ class SpeechToText:
 
     # v8.1: mic-disconnect watchdog poll interval.
     _WATCHDOG_INTERVAL: float = 7.0
+    # P18: the capture callback runs ~31x/s even in total silence, so "no callback for this long while the stream still says it is
+    # active" means a stalled device (USB hiccup, driver freeze), not a quiet room. 0 = detector off.
+    _STALL_S: float = 6.0
+    _last_cb: float = 0.0                      # time.monotonic() of the newest capture callback (0 = none yet)
 
     def __init__(self, aec=None, on_audio_level=None) -> None:
         """
@@ -1193,6 +1197,7 @@ class SpeechToText:
                 callback=self._audio_callback,
             )
             self._stream.start()
+            self._last_cb = time.monotonic()
             try:
                 _dev_idx = self._stream.device
                 _dev_info = sd.query_devices(_dev_idx)
@@ -1414,6 +1419,7 @@ class SpeechToText:
     def _audio_callback(self, indata, frames, time_info, status) -> None:
         if self._closed:
             return
+        self._last_cb = time.monotonic()
         # D60: the stream-status report is RATE-LIMITED, because an
         # unbounded print here is self-worsening. `status` is set on
         # overflow/underflow -- i.e. exactly when the audio device is
@@ -1465,6 +1471,7 @@ class SpeechToText:
     def _pa_callback(self, in_data, frame_count, time_info, status_flags):
         if self._closed:
             return (None, _pyaudio.paContinue if _HAS_PYAUDIO else None)
+        self._last_cb = time.monotonic()
 
         # D60: rate-limited for the same reason as the sounddevice path
         # above -- an unbounded print from the real-time callback when the
@@ -1809,13 +1816,14 @@ class SpeechToText:
             if _HAS_SD:
                 # sounddevice streams expose an `.active` bool property.
                 active = getattr(stream, "active", None)
-                return bool(active) if active is not None else True
+                alive = bool(active) if active is not None else True
             else:
                 # PyAudio streams expose an `is_active()` method.
                 is_active = getattr(stream, "is_active", None)
-                if callable(is_active):
-                    return bool(is_active())
-                return True
+                alive = bool(is_active()) if callable(is_active) else True
+            if alive and self._STALL_S > 0 and self._last_cb and (time.monotonic() - self._last_cb) > self._STALL_S:
+                return False          # stream claims to be active but delivers nothing: stalled device -> reopen
+            return alive
         except Exception:
             return False
 

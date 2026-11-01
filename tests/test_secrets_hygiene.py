@@ -17,7 +17,7 @@ def test_scanner_flags_planted_keys_without_printing_them(tmp_path, capsys):
     scan = _load("check_no_secrets")
     fake_key = "AIza" + "x" * 35
     bad = tmp_path / "leak.py"
-    bad.write_text(f'GEMINI = "{fake_key}"\nrefresh_token = "1//0abcdefghijklmnopqrstuvwxyz"\n', encoding="utf-8")
+    bad.write_text(f'GEMINI = "{fake_key}"\nrefresh_token = "1//0abcdefghijklmnopqrstuvwxyz"\n', encoding="utf-8")  # secret-scan: allow
     assert scan.main([str(bad)]) == 1
     out = capsys.readouterr().out
     assert "leak.py:1" in out and "leak.py:2" in out and fake_key not in out

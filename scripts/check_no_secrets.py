@@ -32,6 +32,8 @@ def tracked_files() -> list[Path]:
 
 def scan_text(text: str):
     for lineno, line in enumerate(text.splitlines(), 1):
+        if "secret-scan: allow" in line:   # a deliberately fake value (the scanner's own test)
+            continue
         for name, rx in PATTERNS.items():
             if rx.search(line):
                 yield lineno, name

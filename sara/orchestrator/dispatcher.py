@@ -1333,6 +1333,35 @@ def _handle_command(
     _t_mark("route_done")
     ui_update("status", "thinking")
     _match_reply_language(brain, user_input, context_state)
+    # Part 3 / P7: a stable knowledge question that was answered before is answered from the cache (still spoken through the TTS).
+    # Only a plain chat turn with no memory / grounding / reference hint is eligible; see sara/core/response_cache.py for the rules.
+    _rc = _rc_scope = None
+    if intent == "chat" and chat_route == "chat" and not context_hint and getattr(Config, "RESPONSE_CACHE_ENABLED", True):
+        try:
+            from sara.core import response_cache as _rcm
+
+            if _rcm.is_cacheable_question(user_input):
+                _rc = _rcm.shared_cache(
+                    Config.DB_PATH, float(getattr(Config, "RESPONSE_CACHE_TTL_DAYS", 7.0)),
+                    int(getattr(Config, "RESPONSE_CACHE_MAX_ENTRIES", 500)),
+                )
+                _rc_scope = _rcm.scope_of(brain)
+                _cached = _rc.get(user_input, *_rc_scope)
+                if _cached:
+                    logger.info("[Cache] answered from the response cache")
+                    ui_update("status", "speaking")
+                    sentences = tts.speak_stream(
+                        # sentence by sentence, like the model's stream, so the TTS starts on the first sentence
+                        iter(re.findall(r"[^.!?\n]+[.!?]*\s*", _cached) or [_cached]),
+                        on_first_chunk=lambda: ui_update("status", "speaking"),
+                        on_chunk=lambda s: ui_update("transcript_chunk", "sara", s),
+                    )
+                    context_state["last_reply"] = " ".join(sentences)
+                    return " ".join(sentences)
+        except Exception as _c:  # noqa: BLE001 -- the cache is an optimisation; the normal answer follows
+            logger.debug("response cache skipped: %s", _c)
+            _rc = None
+    _rc_clean = _rc is not None      # the only hints allowed on a cached turn are tone hints (mood / time of day), never content
     try:
         mood_mix_hint = _build_turn_mood_mix_hint(user_input, context_state)
         if mood_mix_hint:
@@ -1346,6 +1375,7 @@ def _handle_command(
 
                     block = ground(user_input, web_tools.search_web, float(getattr(Config, "GROUNDING_TIMEOUT_S", 4.0)))
                     if block:
+                        _rc_clean = False
                         context_hint = (context_hint + chr(10) + block) if context_hint else block
             except Exception as _g:  # noqa: BLE001 -- grounding is optional; the normal answer still goes out
                 print(f"[Grounding] skipped: {_g}")
@@ -1369,6 +1399,11 @@ def _handle_command(
             on_chunk=lambda s: ui_update("transcript_chunk", "sara", s),
         )
         context_state["last_reply"] = " ".join(sentences)
+        if _rc_clean and not cancel_event.is_set():
+            try:
+                _rc.put(user_input, context_state["last_reply"], *_rc_scope)
+            except Exception as _c:  # noqa: BLE001
+                logger.debug("response cache store skipped: %s", _c)
         return " ".join(sentences)
     except Exception as e:
         print(f"[Error] LLM stream failed: {e}")

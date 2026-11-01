@@ -350,12 +350,26 @@ def main() -> None:
 
     threading.Thread(target=_start_ollama, name="ollama-start", daemon=True).start()
 
+    # Part 3 / P18: bring Ollama back if it dies mid-session (only after it was seen up; capped restarts).
+    ollama_watchdog = None
+    try:
+        from sara.orchestrator.ollama_watchdog import OllamaWatchdog
+
+        ollama_watchdog = OllamaWatchdog(
+            ollama_manager, interval_s=float(getattr(Config, "OLLAMA_WATCHDOG_INTERVAL_S", 15.0))
+        )
+        ollama_watchdog.start()
+    except Exception as _wd:  # noqa: BLE001
+        logger.debug("ollama watchdog not started: %s", _wd)
+
     try:
         from sara.gui.app import main as webview_main
 
         webview_main()
 
     finally:
+        if ollama_watchdog is not None:
+            ollama_watchdog.stop()          # before the manager stops Ollama, or it would "restart" it
         # Stops only the Ollama process started by this SARA instance.
         # An externally running Ollama server is never terminated.
         ollama_manager.stop()
