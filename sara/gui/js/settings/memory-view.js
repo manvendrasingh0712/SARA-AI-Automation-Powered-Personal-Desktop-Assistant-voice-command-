@@ -235,6 +235,8 @@
       list.textContent = '';
       more.hidden = true;
       showStatus('Loading\u2026', 'mv-loading');
+      const wait0 = list.querySelector('.mv-loading');                  // shimmering rows instead of the plain word (removed below when the data arrives)
+      if (wait0 && SARA.skeleton) { wait0.textContent = ''; wait0.setAttribute('aria-label', 'Loading memories'); SARA.skeleton.fill(wait0, 4, 'row'); }
     } else if (state.loading) {
       return;
     }

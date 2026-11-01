@@ -205,6 +205,7 @@ EXPECTED_METHODS = {
     "get_display_name",
     "get_frequent_misses",
     "export_memory",
+    "clear_response_cache",
     "get_assistant_active",
     "get_master_volume",
     "get_media_status",
@@ -288,8 +289,8 @@ EXPECTED_METHODS = {
     "submit_feedback",
 }
 
-assert len(EXPECTED_METHODS) == 94, (
-    "EXPECTED_METHODS must contain exactly 94 entries, found "
+assert len(EXPECTED_METHODS) == 95, (
+    "EXPECTED_METHODS must contain exactly 95 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

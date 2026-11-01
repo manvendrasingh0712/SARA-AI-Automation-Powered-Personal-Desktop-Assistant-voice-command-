@@ -26,12 +26,15 @@
     { id: 'violet',  name: 'Lilac',      description: 'Indigo glow',     category: 'light',      tags: ['futuristic'] },
     { id: 'slate',   name: 'Midnight',   description: 'iOS dark',        category: 'minimal',    tags: ['dark'] },
     { id: 'ember',   name: 'Ember',      description: 'Molten warm',     category: 'warm',       tags: ['dark'] },
-    { id: 'cyber',   name: 'Cyber Blue', description: 'Electric',        category: 'futuristic', tags: ['dark'] },
     { id: 'aurora',  name: 'Aurora',     description: 'Northern lights', category: 'futuristic', tags: ['dark'] },
     { id: 'neon',    name: 'Neon Black', description: 'Electric blue',   category: 'futuristic', tags: ['dark'] },
     { id: 'ink',     name: 'Mono Ink',   description: 'Black & vermilion', category: 'minimal',  tags: ['dark'] },
     { id: 'oat',     name: 'Oat & Sage', description: 'Calm & matte',      category: 'light',    tags: ['minimal'] },
     { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
+    { id: 'obsidian', name: 'Obsidian Gold', description: 'Black & brushed gold', category: 'warm',       tags: ['dark'] },
+    { id: 'ocean',    name: 'Deep Ocean',    description: 'Midnight water',       category: 'futuristic', tags: ['dark'] },
+    { id: 'sunset',   name: 'Sunset Glass',  description: 'Plum & coral',         category: 'futuristic', tags: ['dark'] },
+    { id: 'forest',   name: 'Forest Night',  description: 'Moss & sage',          category: 'dark',       tags: ['dark'] },
     { id: 'custom',  name: 'Custom',     description: 'Your colours',      category: 'minimal',  tags: ['dark', 'light'] }
   ];
   const ids = LIST.map((t) => t.id);
@@ -100,8 +103,10 @@
     if (animate) animateSwitch();
     root.dataset.theme = current; applyHue(); paintUi();
     SARA.emit('theme', current);
+    if (animate && SARA.sound && SARA.sound.interacted) SARA.sound.themeSwitch();     // only for a user-driven switch, not the start-up apply
   }
-  function normId(id) { return ids.indexOf(id) >= 0 ? id : 'sara'; }
+  const RENAMED = { cyber: 'ocean' };                          // a removed theme id keeps working: Cyber Blue -> Deep Ocean
+  function normId(id) { id = RENAMED[id] || id; return ids.indexOf(id) >= 0 ? id : 'sara'; }
   function normHue(v) { if (v === null || v === undefined || v === '') return null; const n = Number(v); return isNaN(n) ? null : ((n % 360) + 360) % 360; }
 
   SARA.theme = {

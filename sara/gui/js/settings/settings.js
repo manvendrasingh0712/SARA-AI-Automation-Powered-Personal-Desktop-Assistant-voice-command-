@@ -43,6 +43,7 @@
   /* ---- language ---- */
   function showLang(lang) {
     document.querySelectorAll('#langChips .chip').forEach((c) => c.classList.toggle('on', c.dataset.lang === lang));
+    try { document.documentElement.lang = (lang === 'hi') ? 'hi' : 'en'; } catch (e) { /* ignore */ }   // screen readers / fonts pick the right voice
   }
   $('langChips').addEventListener('click', function (e) {
     const chip = e.target.closest('.chip'); if (!chip) return;
@@ -59,6 +60,30 @@
   }
   slider('micSlider', 'micSliderVal', 'set_mic_sensitivity');
   slider('speedSlider', 'speedSliderVal', 'set_speech_speed');
+  // soft tick while dragging the voice sliders (throttled inside the sound engine)
+  ['micSlider', 'speedSlider'].forEach(function (id) { $(id).addEventListener('input', function () { SARA.sound.sliderTick(); }); });
+
+  /* ---- sound volume + packs (per device, localStorage only: SARA.sound owns persistence) ---- */
+  (function () {
+    const vol = $('soundVolume'), volVal = $('soundVolumeVal'), packs = $('soundPacks');
+    if (!vol || !packs) return;
+    vol.value = Math.round(SARA.sound.volume * 100); volVal.textContent = vol.value;
+    let tick = 0;
+    vol.addEventListener('input', function () {
+      volVal.textContent = vol.value; SARA.sound.setVolume(vol.value / 100);
+      clearTimeout(tick); tick = setTimeout(function () { SARA.sound.tap(); }, 120);     // let the user hear the new level
+    });
+    SARA.sound.packs.forEach(function (p) {
+      const c = document.createElement('span'); c.className = 'chip' + (p.id === SARA.sound.pack ? ' on' : ''); c.dataset.pack = p.id; c.textContent = p.label;
+      c.setAttribute('role', 'button'); c.tabIndex = 0; packs.appendChild(c);
+    });
+    function pick(c) {
+      if (!c) return; SARA.sound.setPack(c.dataset.pack);
+      packs.querySelectorAll('.chip').forEach(function (x) { x.classList.toggle('on', x === c); });
+    }
+    packs.addEventListener('click', function (e) { pick(e.target.closest('.chip')); });
+    packs.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(e.target.closest('.chip')); } });
+  })();
   function setSlider(id, valId, v) {
     const n = parseInt(v, 10); if (isNaN(n)) return; $(id).value = n; $(valId).textContent = n;
   }
@@ -194,7 +219,7 @@
     }
 
     /* ---- sliders: track fill ---- */
-    const sliders = [$('micSlider'), $('speedSlider')].filter(Boolean);
+    const sliders = [$('micSlider'), $('speedSlider'), $('soundVolume')].filter(Boolean);
     function fill(s) { s.style.setProperty('--fill', (((s.value - s.min) / ((s.max - s.min) || 1)) * 100).toFixed(1)); }
     sliders.forEach(function (s) {
       fill(s); s.addEventListener('input', function () { fill(s); });

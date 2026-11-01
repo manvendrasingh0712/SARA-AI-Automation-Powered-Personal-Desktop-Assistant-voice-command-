@@ -3,9 +3,11 @@
    Load LAST (after flow.css).
    ========================================================================== */
 
-/* ---- HIGH: richer glass, everything on ---- */
+/* ---- HIGH: everything on (permanent surfaces stay blur-free in every tier, see flow.css) ---- */
 html[data-quality="high"]{--glass-blur:14px;}
-html[data-quality="high"] :is(.glass,.nav){backdrop-filter:blur(var(--glass-blur)) saturate(1.4);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.4);}
+
+/* ---- the 42 s orbit ring around the orb is a High-tier extra (P2-4); it is a permanent loop on the most-viewed page ---- */
+html:not([data-quality="high"]) #stage::before{animation:none;}
 
 /* ---- BALANCED: no floating dust (3D tilt is switched off in JS) ---- */
 html[data-quality="balanced"] .pm-dust{display:none;}

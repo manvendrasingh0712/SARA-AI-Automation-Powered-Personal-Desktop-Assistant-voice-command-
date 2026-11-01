@@ -9,9 +9,9 @@
 /* ---- background glow: blue only (no teal/purple/amber from the time-of-day tint) ---- */
 :root[data-theme="neon"] body::before{
   background:
-    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgb(var(--core-rgb) / .10), transparent 70%),
-    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgb(var(--think-rgb) / .08), transparent 70%),
-    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgb(var(--speak-rgb) / .045), transparent 70%);
+    radial-gradient(38% 34% at 28% 32%, rgb(var(--core-rgb) / .10), transparent 70%),
+    radial-gradient(34% 30% at 74% 66%, rgb(var(--think-rgb) / .08), transparent 70%),
+    radial-gradient(26% 24% at 62% 22%, rgb(var(--speak-rgb) / .045), transparent 70%);
 }
 :root[data-theme="neon"] ::-webkit-scrollbar-thumb{background:rgb(var(--core-rgb) / .35);}
 

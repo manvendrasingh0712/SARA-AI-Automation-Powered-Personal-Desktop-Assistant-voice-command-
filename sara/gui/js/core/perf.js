@@ -71,6 +71,11 @@
     });
   }
 
+  function renderQuota(u) {                 // Gemini requests sent today (only shown once the cloud model was used)
+    const el = SARA.$('perfQuota'); if (!el) return;
+    const parts = u && typeof u === 'object' ? Object.keys(u).map(function (m) { const v = u[m] || [0, 0]; return m + ': ' + v[0] + (v[1] ? ' / ' + v[1] : '') + ' today'; }) : [];
+    el.hidden = !parts.length; el.textContent = parts.length ? 'Gemini requests \u2014 ' + parts.join(' \u00b7 ') : '';
+  }
   function render(summary, turns) {
     const count = isNum(summary.count) ? summary.count : 0;
     SARA.$('perfP50').textContent = secs(summary.ttfa_p50);
@@ -78,6 +83,7 @@
     if (!summary.enabled && count === 0) setNote('Timing collection is off.');
     else setNote(count < MIN_SAMPLES ? 'collecting...' : '');
     renderBar(summary.stage_avg);
+    renderQuota(summary.gemini_usage);
     renderRecent(turns);
     SARA.setToggle(SARA.$('perfToggle'), !!summary.enabled);
   }

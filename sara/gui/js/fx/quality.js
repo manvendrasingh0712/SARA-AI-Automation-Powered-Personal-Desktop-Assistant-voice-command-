@@ -1,10 +1,10 @@
 /* ==========================================================================
    quality.js -- Settings > Appearance > "Visual quality" (Low / Balanced / High) + hidden developer tools.
-   * SARA.quality.get() / set(tier) / allows(feature)   -- js/premium.js asks allows('aura'|'dust'|'tilt'|'magnetic'|'spark'|'decrypt'|'reveal')
+   * SARA.quality.get() / set(tier) / allows(feature)   -- js/fx/motion-pack.js asks allows('aura'|'dust'|'tilt'|'magnetic'|'spark'|'decrypt'|'reveal')
    * <html data-quality="low|balanced|high"> drives style/quality.css (blur, ambient layers, decorative loops)
    * Developer mode: click the "Visual quality" label 5 times -> reveals an FPS-meter switch and per-pack effect switches
      (turn a whole effects stylesheet off live and watch the FPS number: that is how we find what is heavy). Ctrl+Shift+F toggles the meter.
-   Stored in localStorage only (it is a per-device choice) -> no backend change. Load BEFORE js/premium.js.
+   Stored in localStorage only (it is a per-device choice) -> no backend change. Loads before js/fx/motion-pack.js (order in assets.json).
    ========================================================================== */
 (function () {
   'use strict';
@@ -19,14 +19,14 @@
   };
   const TIERS = ['low', 'balanced', 'high'];
   const FEATURES = {
-    high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1 },
-    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1 },
-    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0 }
+    high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
+    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
+    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0, p6: 0, hoverpreview: 0, hints: 0, radial: 1 }
   };
   const NOTES = {
     low: 'Fastest. No blur, aura, dust or tilt, and decorative loops are off. Best for older or busy PCs.',
-    balanced: 'Recommended. Smooth, with light effects (aura, magnetic buttons, sparks).',
-    high: 'Everything on: stronger blur, floating dust, 3D tilt. Needs a decent GPU.'
+    balanced: 'Recommended. Smooth, with light effects (cursor aura). Magnetic buttons and click sparks are High only.',
+    high: 'Everything on: floating dust, 3D tilt, magnetic buttons, click sparks. Needs a decent GPU.'
   };
   /* ---- fine-tune registry: every effect has its own on/off (js = checked by js/motion-pack.js, css = <html data-fx-off="..."> gates style/motion-pack.css) ---- */
   const FX = [
@@ -35,7 +35,8 @@
     ['reveal', 'Theme circle reveal', 'a theme change expands from the click', 'js'], ['numberroll', 'Number roll', 'stats count up to new values', 'js'], ['progress', 'Scroll progress line', 'hairline at the top of long pages', 'js'],
     ['edgepulse', 'Toast edge pulse', 'screen edge glows on a notification', 'js'], ['idle', 'Idle calm', 'dims the chrome after 25 s without input', 'js'],
     ['ax', 'Entrance & hover animations', 'page entrances, press and hover motion', 'css'], ['pm', 'Premium upgrades', 'smoother page, message and toast timing', 'css'],
-    ['lx', 'Hover polish', 'icon springs, gloss and beams on hover', 'css'], ['au', 'Detail effects', 'small interaction details across the app', 'css']
+    ['lx', 'Hover polish', 'icon springs, gloss and beams on hover', 'css'], ['au', 'Detail effects', 'small interaction details across the app', 'css'], ['p6', 'Motion polish', 'list stagger, card hover lift, orb reveal after start-up', 'css'],
+    ['hoverpreview', 'Theme hover preview', 'pointing at a theme card shows it live', 'js'], ['hints', 'Rotating hints', 'the Home hint line suggests things to say when idle', 'js'], ['radial', 'Orb quick actions', 'press and hold the orb for a ring of actions', 'js']
   ];
   const off = new Set();
   try { const a = JSON.parse(ls.get('sara_fx_off') || '[]'); if (Array.isArray(a)) a.forEach(function (x) { if (FX.some(function (f) { return f[0] === x; })) off.add(x); }); } catch (e) { /* none */ }

@@ -99,7 +99,6 @@
 /* ---- theme chip: small confirm-pop the instant a theme is picked (js/clock-card.js toggles '.just-picked'
    off again after ~260ms) -- separate from the chip's normal hover/press motion in components.css. ---- */
 #csThemes .chip.just-picked{animation:themePick .32s var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
-@keyframes themePick{0%{transform:scale(1);}45%{transform:scale(1.14);}100%{transform:scale(1);}}
 
 /* ==========================================================================
    Themes -- isolated to .clock-card / .clock-sheet via [data-clock-theme].

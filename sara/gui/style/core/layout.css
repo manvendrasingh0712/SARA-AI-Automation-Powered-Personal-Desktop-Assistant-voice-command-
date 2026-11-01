@@ -10,14 +10,10 @@
 .page.slide-r{animation-name:pageInR;}
 .page.slide-l{animation-name:pageInL;}
 .page.active{display:flex;}
-@keyframes pageIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-@keyframes pageInR{from{opacity:0;transform:translateX(28px);}to{opacity:1;transform:translateX(0);}}
-@keyframes pageInL{from{opacity:0;transform:translateX(-28px);}to{opacity:1;transform:translateX(0);}}
 
 /* ---- inner-page header: arrives a beat after the page body so it reads as "settling in",
    not a separate flash -- same duration/easing family as the page transition itself. ---- */
 .page-header{flex:none;display:flex;align-items:center;justify-content:space-between;padding:28px 40px 6px;animation:headerIn .32s var(--ease-premium,cubic-bezier(.22,1,.36,1)) .04s both;}
-@keyframes headerIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
 .page-title{font-size:20px;font-weight:500;color:var(--text);}
 .page-status{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);}
 .page-status span{transition:color .4s;}
@@ -25,7 +21,6 @@
   width:11px;height:11px;border-radius:50%;background:var(--core);box-shadow:0 0 8px var(--core);
   animation:orbPulse 2.6s ease-in-out infinite;transition:background .5s, box-shadow .5s;cursor:pointer;flex:none;
 }
-@keyframes orbPulse{0%,100%{opacity:.65;transform:scale(0.9);}50%{opacity:1;transform:scale(1.08);}}
 .page-body{flex:1;min-height:0;padding:16px 40px 110px;overflow-y:auto;}
 
 /* ---- staggered list entrance: the first handful of rows/setting-cards on a freshly-shown page ease
@@ -33,7 +28,6 @@
    delays a page feeling ready, and only fires once per element (page revisits reuse cached DOM, so this
    only really plays on first render / first data arrival, not on every nav tap). ---- */
 .page.stagger-in .page-body .row,.page.stagger-in .page-body .set-card{animation:rowIn .34s var(--ease-premium,cubic-bezier(.22,1,.36,1)) both;}
-@keyframes rowIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;}}
 .page.stagger-in .page-body .row:nth-of-type(1),.page.stagger-in .page-body .set-card:nth-of-type(1){animation-delay:.02s;}
 .page.stagger-in .page-body .row:nth-of-type(2),.page.stagger-in .page-body .set-card:nth-of-type(2){animation-delay:.05s;}
 .page.stagger-in .page-body .row:nth-of-type(3),.page.stagger-in .page-body .set-card:nth-of-type(3){animation-delay:.08s;}
@@ -46,7 +40,6 @@
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
   display:flex;gap:2px;padding:5px;border-radius:999px;
   background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-rest);
-  backdrop-filter:blur(var(--glass-blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.6);
   opacity:.85;transition:opacity .25s;
   z-index:10;max-width:92vw;overflow-x:auto;scrollbar-width:none;
 }
@@ -98,11 +91,8 @@
 .toast.paused .t-bar{animation-play-state:paused;}
 @keyframes tBar{from{transform:scaleX(1);}to{transform:scaleX(0);}}
 @keyframes tCheck{to{stroke-dashoffset:0;}}
-@keyframes icoPop{0%{transform:scale(.6);opacity:0;}100%{transform:none;opacity:1;}}
 @media (prefers-reduced-motion:reduce){.toast .t-ico.is-check path{stroke-dashoffset:0;animation:none;}}
 .toast .t-x:hover{color:var(--text);}
-@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.96);}to{opacity:1;transform:none;}}
-@keyframes dotPop{0%{transform:scale(.3);}60%{transform:scale(1.55);}100%{transform:scale(1);}}
 
 /* ---- preview-mode strip (shown only when the backend bridge is missing) ---- */
 .offline-strip{

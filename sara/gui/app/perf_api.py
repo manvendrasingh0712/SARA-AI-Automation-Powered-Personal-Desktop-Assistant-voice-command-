@@ -64,6 +64,14 @@ class ApiPerfMixin:
             _apply_saved(self, telemetry)
             data = dict(telemetry.get_summary(_clamp(window_turns, 5, 500, 50)))
             data["enabled"] = bool(telemetry.is_enabled())
+            try:
+                from sara.core.llm.gemini_gate import latest_usage
+
+                quota = latest_usage()
+                if quota:                                    # {"gemini-2.5-flash": [requests today, daily cap or 0]}
+                    data["gemini_usage"] = {m: [int(v[0]), int(v[1])] for m, v in quota.items()}
+            except Exception:
+                pass
             return {"ok": True, "data": data}
         except Exception as e:
             print(f"[get_perf_summary error] {e}")

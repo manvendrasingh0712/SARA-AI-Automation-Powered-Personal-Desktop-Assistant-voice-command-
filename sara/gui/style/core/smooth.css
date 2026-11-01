@@ -21,3 +21,13 @@ body:not([data-page="home"])::before{animation-play-state:paused;}
 
 /* 6) touch / click responsiveness: no 300ms tap delay, no grey tap flash */
 button,.chip,.pill-btn,.theme-card,.nav button,.app-tile,.row,[role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+
+/* Safety net: files without their own prefers-reduced-motion handling (apps, flow, palette, quality, perf, router-view, security, themes) stop looping and snap. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

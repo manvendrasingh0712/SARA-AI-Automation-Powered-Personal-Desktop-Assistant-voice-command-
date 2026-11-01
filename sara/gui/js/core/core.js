@@ -164,6 +164,7 @@
     document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('active', b.dataset.page === name));
     document.body.dataset.page = name; SARA.current = name;
     SARA.emit('page', name);
+    if (SARA.sound && SARA.sound.interacted) SARA.sound.pageSwitch();
   };
   SARA.$('navBar').addEventListener('click', function (e) {
     const b = e.target.closest('button[data-page]'); if (!b) return;

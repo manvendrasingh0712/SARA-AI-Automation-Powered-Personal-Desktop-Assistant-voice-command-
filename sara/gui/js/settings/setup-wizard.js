@@ -176,6 +176,7 @@
   async function dismiss(wake) {
     await SARA.callApi('mark_setup_wizard_seen');
     SARA.closeOverlay('setupWizardOverlay');
+    SARA.emit('setup_done', { first: wizardFirst });          // js/shared/tour.js offers the quick tour once after the first run
     if (wake === true) wakeOrb();
   }
   $('setupRecheck').addEventListener('click', refresh);

@@ -9,7 +9,6 @@
 .chat-log{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0;overflow-y:auto;margin:0 calc(var(--pad-x) * -1);padding:0 max(var(--pad-x),calc((100% - 640px) / 2 + var(--pad-x))) 10px;}
 .chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
 .msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:msgIn .32s cubic-bezier(.2,.8,.2,1);}
-@keyframes msgIn{from{opacity:0;transform:translateY(6px) scale(.97);}to{opacity:1;transform:none;}}
 .msg.user{align-self:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 15px;color:var(--text);}
 .msg.sara{align-self:flex-start;color:var(--core);padding:2px 2px;}
 .msg.preview{opacity:.6;font-style:italic;}
@@ -26,7 +25,6 @@
 .msg-ghost{position:fixed;margin:0;max-width:none;z-index:30;pointer-events:none;animation:none;will-change:transform,opacity;}
 /* ---- streaming blur-to-sharp (js/chat.js revealText): freshly revealed text fades in from a light blur ---- */
 .msg-text .new{animation:chunkIn .25s ease-out both;}
-@keyframes chunkIn{from{opacity:.4;filter:blur(3px);}to{opacity:1;filter:blur(0);}}
 @media (prefers-reduced-motion:reduce){.msg-text .new{animation:none;}}
 .msg.sara.streaming::after,.msg.sara.typing::after{content:'▍';margin-left:2px;animation:blink 1s steps(2) infinite;}
 @keyframes blink{50%{opacity:0;}}

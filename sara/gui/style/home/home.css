@@ -43,7 +43,7 @@ canvas#org{width:100%;height:100%;display:block;}
 .core-thinking{color:var(--think);} .core-speaking{color:var(--speak);}
 /* working = halfway between --think and --speak (same mix js/home.js uses for the orb); hex is the fallback for old webviews */
 .core-working{color:#ba98b4;color:color-mix(in srgb,var(--think) 50%,var(--speak));}
-.home-hint{margin-top:6px;font-size:11.5px;color:var(--faint);min-height:16px;max-width:60vw;text-align:center;opacity:0;animation:fadeIn 1.8s ease forwards 1.1s;}
+.home-hint{margin-top:6px;font-size:11.5px;color:var(--muted);min-height:16px;max-width:60vw;text-align:center;opacity:0;animation:fadeIn 1.8s ease forwards 1.1s;}
 .home-hint.muted{visibility:hidden;}   /* hidden while the live caption uses its spot */
 @keyframes fadeIn{to{opacity:1;}}
 
@@ -286,3 +286,28 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 .hp-sub{font-size:11.5px;color:var(--muted);margin-top:1px;}
 .hp-foot{display:flex;justify-content:flex-end;padding:6px 0 4px;border-top:1px solid var(--line);}
 @media (prefers-reduced-motion:reduce){.home-pop{transition:opacity .01s;translate:-50% 0;}}
+
+/* F3: soft cross-fade while js/home/hints.js swaps the hint line */
+.home-hint{transition:opacity .32s ease;}
+.home-hint.hint-swap{opacity:0;}
+
+/* ---- F7: "Last 7 days" usage card (top right of Home; js/home/usage-card.js). Bars grow with transform only. ---- */
+.usage-card{
+  position:absolute;right:32px;top:84px;width:190px;padding:12px 14px 10px;border-radius:16px;
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-rest);cursor:pointer;
+  transition:border-color .2s,translate .28s var(--ease-premium,ease),box-shadow .28s ease;
+}
+.usage-card[hidden]{display:none;}
+.usage-card:hover{border-color:rgb(var(--core-rgb) / .45);}
+.uc-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.uc-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.uc-total{font-size:16px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;}
+.uc-bars{display:flex;align-items:flex-end;gap:5px;height:38px;}
+.uc-bar{flex:1;height:100%;border-radius:3px;background:var(--core);opacity:.45;transform-origin:50% 100%;transform:scaleY(var(--v,.06));}
+.uc-bar.today{opacity:.95;}
+.usage-card:not(.ready) .uc-bar{transform:scaleY(.04);}
+@media (prefers-reduced-motion:no-preference){.uc-bar{transition:transform .55s var(--ease-premium,cubic-bezier(.22,1,.36,1));}}
+.uc-days{display:flex;gap:5px;margin-top:4px;}
+.uc-days span{flex:1;text-align:center;font-size:10px;color:var(--muted);}
+#page-home.ambient-t2 .usage-card{opacity:.2;transition:opacity 1s ease;}
+@media (max-width:900px){.usage-card{display:none;}}

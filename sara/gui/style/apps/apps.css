@@ -13,3 +13,10 @@
 .apps-search{max-width:720px;margin:0 0 4px;}
 .sys-chips{max-width:720px;}
 #page-apps .page-body{padding-bottom:130px;}
+
+/* F8: reorder hint + drag feedback (js/apps/apps-order.js) */
+.apps-hint{font-size:11.5px;color:var(--muted);margin:-4px 0 8px;}
+.apps-hint .link-btn{margin-left:4px;}
+.app-tile.dragging{opacity:.4;}
+.app-tile[draggable=true]{cursor:grab;}
+.app-tile[draggable=true]:active{cursor:grabbing;}

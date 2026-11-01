@@ -202,7 +202,10 @@
     for (let i = 0; i < toastListeners.length; i++) { try { toastListeners[i].apply(null, arguments); } catch (e) { /* cosmetic only */ } }
     return showToast.apply(this, arguments);
   };
-  SARA.ok = (m) => SARA.toast('ti-check', '#3FD8C4', m, { variant: 'success' });
+  SARA.ok = (m) => {
+    if (SARA.sound && SARA.sound.play && performance.now() - (SARA.sound.lastPlayAt || 0) > 250) SARA.sound.success();
+    return SARA.toast('ti-check', '#3FD8C4', m, { variant: 'success' });
+  };
   SARA.fail = (m) => SARA.toast('ti-alert-triangle', '#D97A6B', m, { variant: 'error' });
 
   let hintShown = 0;
@@ -215,37 +218,110 @@
     SARA.toast('ti-bulb', '#8B6FD8', 'Tip: ask "why did you say that?" and Sara will explain.');
   };
 
-  /* ---- sound blips (Web Audio, no files). Every sound goes through tone(), which returns silently when SARA.sound.on is false. ---- */
-  let actx = null;
-  SARA.sound = {
-    on: (function () { try { return localStorage.getItem('sara_ui_sounds') !== 'off'; } catch (e) { return true; } })(),
-    set(v) { this.on = !!v; try { localStorage.setItem('sara_ui_sounds', this.on ? 'on' : 'off'); } catch (e) {} },
-    tone(freq, dur, type, vol, delay) {          // delay = seconds from now (lets one call schedule a small sequence)
-      if (!this.on) return;
-      try {
-        actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-        if (actx.state === 'suspended') actx.resume();
-        const d = dur || 0.05, v = vol || 0.04, t0 = actx.currentTime + (delay || 0);
-        const o = actx.createOscillator(), g = actx.createGain();
-        o.type = type || 'sine'; o.frequency.value = freq || 440;
-        g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(v, t0 + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
-        o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + d + 0.02);
-      } catch (e) { /* audio unavailable -- ignore */ }
-    },
-    tap() { this.tone(500, 0.04, 'sine', 0.035); },
-    toggle(on) { this.tone(on ? 720 : 340, 0.05, 'triangle', 0.03); },
-    wake() { this.tone(520, 0.09, 'sine', 0.05); setTimeout(() => SARA.sound.tone(780, 0.12, 'sine', 0.05), 90); },
-    // --- event sounds (each < 150ms, quiet) ---
-    sent()     { this.tone(520, 0.05, 'sine', 0.028);     this.tone(700, 0.07, 'sine', 0.026, 0.04); },     // chat: message sent
-    received() { this.tone(660, 0.06, 'triangle', 0.026); this.tone(500, 0.09, 'triangle', 0.022, 0.05); }, // chat: Sara replied
-    added()    { this.tone(600, 0.05, 'sine', 0.03);      this.tone(900, 0.09, 'sine', 0.026, 0.04); },     // reminder added
-    done()     { this.tone(660, 0.06, 'sine', 0.03);      this.tone(830, 0.09, 'sine', 0.028, 0.05); },     // reminder completed
-    notify()   { this.tone(880, 0.12, 'sine', 0.028);     this.tone(1320, 0.09, 'sine', 0.01, 0.01); },     // notification arrived
-    run()      { [440, 554, 660].forEach((f, i) => this.tone(f, 0.05, 'triangle', 0.026, i * 0.04)); },     // routine started
-    saved()    { this.tone(520, 0.06, 'triangle', 0.028); this.tone(780, 0.09, 'triangle', 0.026, 0.05); }, // routine saved
-    error()    { this.tone(240, 0.07, 'sine', 0.03);      this.tone(190, 0.08, 'sine', 0.028, 0.06); }      // something failed (soft, low)
+  /* ---- premium UI sound engine (Web Audio, no files). The public API (tap/toggle/wake/sent/received/added/done/notify/run/saved/error/
+     tone/on/set) is unchanged; new: volume, 4 sound packs, soft low-pass + short synthetic reverb + compressor, layered partials,
+     and event sounds for listening / thinking / speaking / boot / page + theme switches. Per-device choices live in localStorage. ---- */
+  let actx = null, bus = null, lpF = null, wetG = null;
+  const LS = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* blocked */ } }
   };
+  // root = base frequency (Hz); partials = [ratio, amplitude]; wet = reverb mix; cutoff = low-pass (Hz); gain = pack loudness
+  const PACKS = {
+    glass:   { label: 'Glass',   root: 523.25, type: 'sine',     partials: [[1, 1], [2.76, 0.22], [5.40, 0.07]], wet: 0.24, cutoff: 7500, gain: 1.0 },
+    soft:    { label: 'Soft',    root: 440.00, type: 'triangle', partials: [[1, 1], [2, 0.12]],                  wet: 0.14, cutoff: 3800, gain: 1.0 },
+    minimal: { label: 'Minimal', root: 587.33, type: 'sine',     partials: [[1, 1]],                              wet: 0.04, cutoff: 6000, gain: 0.9 },
+    scifi:   { label: 'Sci-Fi',  root: 392.00, type: 'sawtooth', partials: [[1, 0.5], [1.005, 0.5]],             wet: 0.30, cutoff: 2600, gain: 0.6 }
+  };
+  // each note = [semitones from root, delay s, duration s, volume 0..1]
+  const EVENTS = {
+    tap:         [[0, 0, .05, .55]],
+    toggleOn:    [[0, 0, .06, .6], [7, .045, .09, .6]],
+    toggleOff:   [[7, 0, .06, .5], [0, .045, .09, .5]],
+    wake:        [[0, 0, .10, .9], [7, .08, .14, .9], [12, .16, .22, .7]],
+    listenStart: [[0, 0, .08, .7], [7, .06, .14, .8]],
+    listenEnd:   [[7, 0, .07, .6], [0, .06, .12, .6]],
+    thinking:    [[0, 0, .18, .35], [3, .14, .18, .3]],
+    speakStart:  [[0, 0, .06, .5]],
+    sent:        [[0, 0, .05, .55], [5, .04, .07, .5]],
+    received:    [[7, 0, .06, .55], [0, .05, .09, .45]],
+    added:       [[0, 0, .05, .6], [9, .04, .09, .55]],
+    done:        [[0, 0, .06, .6], [4, .05, .06, .55], [7, .10, .12, .6]],
+    notify:      [[12, 0, .14, .6], [19, .01, .10, .2]],
+    run:         [[0, 0, .05, .5], [4, .04, .05, .5], [7, .08, .07, .5]],
+    saved:       [[0, 0, .06, .55], [7, .05, .10, .55]],
+    success:     [[0, 0, .07, .6], [7, .07, .07, .6], [12, .14, .18, .7]],
+    error:       [[-5, 0, .08, .6], [-10, .07, .12, .6]],
+    bootDone:    [[0, 0, .12, .7], [7, .10, .14, .7], [12, .20, .16, .7], [16, .30, .30, .6]],
+    themeSwitch: [[0, 0, .08, .5], [12, .06, .16, .5]],
+    pageSwitch:  [[0, 0, .04, .35]],
+    sliderTick:  [[0, 0, .02, .25]]
+  };
+  const MIN_GAP = { tap: 40, sliderTick: 45, pageSwitch: 90, thinking: 400 };   // ms; stops machine-gun repeats
+  const BASE_VOL = 0.06, lastAt = {};
+
+  function makeIR(ctx, seconds, decay) {            // synthetic reverb tail (decaying noise)
+    const rate = ctx.sampleRate, len = Math.floor(rate * seconds), buf = ctx.createBuffer(2, len, rate);
+    for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay); }
+    return buf;
+  }
+  function applyPack() {
+    if (!actx) return; const p = PACKS[S.pack] || PACKS.glass;
+    lpF.frequency.setTargetAtTime(p.cutoff, actx.currentTime, 0.02); wetG.gain.setTargetAtTime(p.wet, actx.currentTime, 0.02);
+  }
+  function ensure() {
+    if (actx) { if (actx.state === 'suspended') actx.resume(); return actx; }
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    bus = actx.createGain(); bus.gain.value = S.volume;
+    lpF = actx.createBiquadFilter(); lpF.type = 'lowpass'; lpF.Q.value = 0.5;
+    const dry = actx.createGain(), verb = actx.createConvolver(); wetG = actx.createGain();
+    verb.buffer = makeIR(actx, 0.9, 2.6);
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.15;
+    bus.connect(lpF); lpF.connect(dry); lpF.connect(verb); verb.connect(wetG);
+    dry.connect(comp); wetG.connect(comp); comp.connect(actx.destination);
+    applyPack();
+    return actx;
+  }
+  function voice(freq, delay, dur, o) {
+    const c = ensure(), t0 = c.currentTime + (delay || 0), vol = o.vol || 0.04, atk = o.attack || 0.006;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(vol, t0 + atk); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.connect(bus);
+    (o.partials || [[1, 1]]).forEach(function (p) {
+      const osc = c.createOscillator(), pg = c.createGain();
+      osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(freq * p[0], t0); pg.gain.value = p[1];
+      osc.connect(pg); pg.connect(g); osc.start(t0); osc.stop(t0 + dur + 0.03);
+    });
+  }
+  function play(name) {
+    if (!S.on || document.hidden) return;
+    const ev = EVENTS[name]; if (!ev) return;
+    const now = performance.now(); if (now - (lastAt[name] || 0) < (MIN_GAP[name] || 0)) return; lastAt[name] = now; S.lastPlayAt = now;
+    try {
+      const p = PACKS[S.pack] || PACKS.glass;
+      ev.forEach(function (n) { voice(p.root * Math.pow(2, n[0] / 12), n[1], n[2], { vol: BASE_VOL * p.gain * n[3], type: p.type, partials: p.partials }); });
+    } catch (e) { /* audio unavailable -- ignore */ }
+  }
+  const S = SARA.sound = {
+    on: (function () { return LS.get('sara_ui_sounds') !== 'off'; })(),
+    volume: (function () { const v = parseFloat(LS.get('sara_ui_volume')); return isNaN(v) ? 0.8 : Math.max(0, Math.min(1, v)); })(),
+    pack: (function () { const p = LS.get('sara_ui_sound_pack'); return PACKS[p] ? p : 'glass'; })(),
+    packs: Object.keys(PACKS).map(function (k) { return { id: k, label: PACKS[k].label }; }),
+    set(v) { this.on = !!v; LS.set('sara_ui_sounds', this.on ? 'on' : 'off'); },
+    setVolume(v) { this.volume = Math.max(0, Math.min(1, +v || 0)); LS.set('sara_ui_volume', String(this.volume)); if (actx) bus.gain.setTargetAtTime(this.volume, actx.currentTime, 0.02); },
+    setPack(id) { if (!PACKS[id]) return; this.pack = id; LS.set('sara_ui_sound_pack', id); applyPack(); play('success'); },
+    play: play,
+    tone(freq, dur, type, vol, delay) {            // legacy raw tone; kept for existing callers. The bus already applies the volume.
+      if (!this.on) return;
+      try { voice(freq || 440, delay || 0, dur || 0.05, { vol: vol || 0.04, type: type || 'sine' }); } catch (e) { /* audio unavailable */ }
+    },
+    toggle(on) { play(on ? 'toggleOn' : 'toggleOff'); }
+  };
+  // page / theme switch sounds wait for the first real click or key, so nothing plays while the app is just starting up
+  ['pointerdown', 'keydown'].forEach(function (ev) { window.addEventListener(ev, function () { S.interacted = true; }, { capture: true, once: true, passive: true }); });
+  ['tap', 'wake', 'listenStart', 'listenEnd', 'thinking', 'speakStart', 'sent', 'received', 'added', 'done', 'notify', 'run', 'saved',
+   'success', 'error', 'bootDone', 'themeSwitch', 'pageSwitch', 'sliderTick'].forEach(function (n) { S[n] = function () { play(n); }; });
 
   /* ---- boot overlay (driven by 'boot_progress' + 'backend_ready' events) ----
      The percentage the backend sends is only the TARGET; the bar eases toward it every frame so it never jumps. */
@@ -270,6 +346,11 @@
   function finishBoot() {
     if (bootDone) return; bootDone = true;
     const o = boot; boot = null; if (!o) return;
+    try { SARA.sound.bootDone(); } catch (e) { /* audio may be blocked before the first gesture */ }
+    try {
+      const st = document.getElementById('stage');
+      if (st && !SARA.reduceMotion && SARA.quality && SARA.quality.allows('p6')) { st.classList.add('orb-enter'); setTimeout(function () { st.classList.remove('orb-enter'); }, 800); }
+    } catch (e) { /* cosmetic only */ }
     o.root.style.pointerEvents = 'none'; o.root.style.opacity = '0';
     setTimeout(() => o.root.remove(), 420);
   }

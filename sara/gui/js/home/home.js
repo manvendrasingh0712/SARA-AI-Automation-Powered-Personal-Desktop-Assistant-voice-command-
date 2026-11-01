@@ -139,7 +139,15 @@
     if (!BACKEND_TO_MODE[state] && !warnedStatus[state]) { warnedStatus[state] = 1; console.warn('[status] unknown backend status "' + state + '" -> showing idle'); }
     if (next === 'idle' && modeName !== 'idle') idleSince = Date.now();
     if (next === 'waking' && modeName !== 'waking') wakeAt = performance.now();
+    const prevMode = modeName;
     modeName = next;
+    if (SARA.sound && prevMode !== next && SARA._statusSeen) {      // transition sounds; the wake chime already covers waking -> listening
+      if (next === 'listening' && prevMode !== 'waking') SARA.sound.listenStart();
+      else if (prevMode === 'listening') SARA.sound.listenEnd();
+      else if (next === 'thinking' || next === 'working') SARA.sound.thinking();
+      if (next === 'speaking') SARA.sound.speakStart();
+    }
+    SARA._statusSeen = true;
     if (next !== 'idle') { setAmbientTier(0); lastActivity = Date.now(); }
     refreshChrome();
     $('stopBtn').hidden = (next === 'idle');
@@ -347,6 +355,7 @@
   /* ---- perf: pause the rAF loop entirely when nobody can see it (tab hidden or a different page),
      and adaptively trim particle/ring density on slow machines instead of just getting janky. ---- */
   let orbRunning = false, lastFrameTs = 0, avgFrameMs = 16.7, quality = 1;
+  const ORB_MIN_GAP_MS = 12.4;
   const shouldRunOrb = () => !document.hidden && (SARA.current || 'home') === 'home';
   function scheduleOrb() { if (!orbRunning) { orbRunning = true; lastFrameTs = 0; requestAnimationFrame(draw); } }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) scheduleOrb(); });
@@ -355,6 +364,9 @@
   function draw(now) {
     if (!shouldRunOrb()) { orbRunning = false; return; }   // resumed by scheduleOrb() once visible/on-page again
     now = now || performance.now();
+    // Part 3 / P3: the orb advances per FRAME, so a 144 Hz display ran it at 144 fps (2.4x the 60 Hz pace) and spent the
+    // script time for it. Cap at ~72 fps: 60 Hz displays are unchanged, 144 Hz draws every second refresh.
+    if (lastFrameTs && now - lastFrameTs < ORB_MIN_GAP_MS) { requestAnimationFrame(draw); return; }
     const dt = lastFrameTs ? (now - lastFrameTs) : 16.7; lastFrameTs = now;
     avgFrameMs += (Math.min(dt, 200) - avgFrameMs) * 0.05;                 // smoothed frame time (clamp huge tab-switch gaps)
     // Below ~50fps -> step quality down a notch; once frame time is healthy again, ease back up

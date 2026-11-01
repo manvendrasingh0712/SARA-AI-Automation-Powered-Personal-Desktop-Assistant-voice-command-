@@ -82,6 +82,20 @@ class ApiNotesMixin:
             print(f"[delete_note error] {e}")
             return {"ok": False, "message": "Could not delete that note.", "text": ""}
 
+    # ── Answer cache (sara/core/response_cache.py) ────────────────────────────
+    def clear_response_cache(self):
+        """Settings > Memory > "Forget cached answers": drops every cached chat answer (the cache is only an
+        optimisation; nothing else is touched). Returns {"ok": True, "cleared": <rows>}."""
+        try:
+            from config import Config
+            from sara.core import response_cache
+
+            n = response_cache.shared_cache(Config.DB_PATH).clear()
+            return {"ok": True, "cleared": int(n)}
+        except Exception as e:
+            print(f"[clear_response_cache error] {type(e).__name__}")
+            return {"ok": False}
+
     # ── Memory page ────────────────────────────────────────────────────
     def export_memory(self):
         try:

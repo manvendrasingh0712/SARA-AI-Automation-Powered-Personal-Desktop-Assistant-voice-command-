@@ -1,23 +1,24 @@
 /* ==========================================================================
    ambient.css  --  very slow drifting teal/purple/amber glow behind everything (barely noticeable on purpose).
-   Pure CSS (GPU transform only), plus two lightweight reactive touches:
-   1) cursor parallax -- --mx/--my (px) are set by js/fx.js on a throttled rAF loop and nudge the
-      gradient centres a few px toward the pointer. 2) body.sara-active (toggled by js/home.js
-      refreshChrome() whenever Sara is listening/thinking/speaking/working) saturates + brightens
-      the glow a touch, so the room itself feels like it's paying attention.
+   Pure CSS (GPU transform + opacity only). body.sara-active (toggled by js/home/home.js refreshChrome() whenever Sara
+   is listening/thinking/speaking/working) brings the glow to full strength, so the room itself feels like it's paying
+   attention. (The old cursor parallax rewrote --mx/--my on :root on every pointer move, which re-styled the whole
+   document -- measured at 54% of a core on the settings page -- and repainted this 150%-size layer; it was removed.)
    Sits between the body gradient and the app; the vignette in tokens.css stays on top.
    ========================================================================== */
 body::before{
   content:'';position:fixed;inset:-25%;z-index:0;pointer-events:none;
   background:
-    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgb(var(--core-rgb) / .075), transparent 70%),
-    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgb(var(--think-rgb) / .07), transparent 70%),
-    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgb(var(--speak-rgb) / .035), transparent 70%);
+    radial-gradient(38% 34% at 28% 32%, rgb(var(--core-rgb) / .075), transparent 70%),
+    radial-gradient(34% 30% at 74% 66%, rgb(var(--think-rgb) / .07), transparent 70%),
+    radial-gradient(26% 24% at 62% 22%, rgb(var(--speak-rgb) / .035), transparent 70%);
   animation:nebulaDrift 80s ease-in-out infinite alternate;
   will-change:transform;
-  transition:filter .8s ease;
+  opacity:.85;
+  transition:opacity .8s ease;
 }
-body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
+body.sara-active::before{opacity:1;}
+html[data-quality="low"] body::before{animation-play-state:paused;}
 @keyframes nebulaDrift{
   0%{transform:translate3d(-2%,-1%,0) rotate(0deg) scale(1);}
   50%{transform:translate3d(2.5%,1.5%,0) rotate(3deg) scale(1.06);}
@@ -37,9 +38,9 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
 @supports (color:color-mix(in srgb,red 10%,transparent)){
   body::before{
     background:
-      radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--core) 75%,var(--amb-1)) 10%,transparent), transparent 70%),
-      radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--think) 75%,var(--amb-2)) 9%,transparent), transparent 70%),
-      radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--speak) 75%,var(--amb-3)) 6%,transparent), transparent 70%);
+      radial-gradient(38% 34% at 28% 32%, color-mix(in srgb,color-mix(in srgb,var(--core) 75%,var(--amb-1)) 10%,transparent), transparent 70%),
+      radial-gradient(34% 30% at 74% 66%, color-mix(in srgb,color-mix(in srgb,var(--think) 75%,var(--amb-2)) 9%,transparent), transparent 70%),
+      radial-gradient(26% 24% at 62% 22%, color-mix(in srgb,color-mix(in srgb,var(--speak) 75%,var(--amb-3)) 6%,transparent), transparent 70%);
   }
 }
 @media (prefers-reduced-motion:reduce){:root.tint-ready{transition:none;}}
