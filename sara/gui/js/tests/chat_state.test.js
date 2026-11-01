@@ -89,6 +89,7 @@ function queryAll(root, sel, acc) {
 }
 
 /* ---- minimal fake SARA event bus, matching core.js's SARA.on/SARA.emit shape ---- */
+const guiSent = new Set();        // texts the fake window 'sent' itself (typed / tile), for the voice-vs-typed test
 function makeFakeSara(elements) {
   const listeners = {};
   return {
@@ -101,6 +102,9 @@ function makeFakeSara(elements) {
     sendCommand() { return Promise.resolve({ ok: true }); },
     wake() {},
     fmtClockTime() { return '12:00 PM'; },
+    dayKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); },
+    dayLabel(key) { return 'Today:' + key; },
+    takeGuiSent(t) { return guiSent.delete(String(t).toLowerCase()); },
     reduceMotion: true,   // forces canAnimate() false everywhere -> deterministic, synchronous
                            // reveals in every test, with no need to fake requestAnimationFrame.
     sound: { sent() {}, received() {} }
@@ -131,13 +135,17 @@ function loadChatModule() {
     cancelAnimationFrame() {},
     performance: { now: () => Date.now() },
     setTimeout,
-    clearTimeout
+    clearTimeout,
+    setInterval: () => 0
   };
   vm.createContext(sandbox);
   vm.runInContext(chatSource, sandbox, { filename: 'chat.js' });
 
   return { SARA, log, elements };
 }
+
+/* the day chip is a child of the log too; the old checks count message bubbles only */
+function bubbles(log) { return log.children.filter((c) => c.classList.contains('msg')); }
 
 /* ---- tiny assert/test runner ---- */
 let passed = 0, failed = 0;
@@ -154,12 +162,12 @@ test('transcript_chunk x2 + matching transcript (finalize) does not duplicate th
   const { SARA, log } = loadChatModule();
   SARA.emit('ev:transcript_chunk', 'sara', 'Hello');
   SARA.emit('ev:transcript_chunk', 'sara', 'world.');
-  assert(log.children.length === 1, 'exactly one bubble exists after two streamed chunks');
+  assert(bubbles(log).length === 1, 'exactly one bubble exists after two streamed chunks');
 
   SARA.emit('ev:transcript', 'sara', 'Hello world.');
-  assert(log.children.length === 1, 'finalize (ev:transcript for the same streamed reply) must not add a second bubble');
+  assert(bubbles(log).length === 1, 'finalize (ev:transcript for the same streamed reply) must not add a second bubble');
 
-  const body = log.children[0].querySelector('.msg-text');
+  const body = bubbles(log)[0].querySelector('.msg-text');
   assert(body && body.textContent === 'Hello world.', 'streamed text is the concatenation of both chunks');
 });
 
@@ -169,7 +177,7 @@ test('findUrls(): duplicate URLs collapsed, result capped at 3 action buttons', 
                'also http://c.com, http://d.com, http://e.com';
   SARA.emit('ev:transcript', 'sara', text);
 
-  const bubble = log.children[log.children.length - 1];
+  const bubble = bubbles(log)[bubbles(log).length - 1];
   const buttons = bubble.querySelectorAll('.msg-action');
   assert(buttons.length === 3, 'at most 3 action buttons are rendered (findUrls out.slice(0, 3))');
 
@@ -181,10 +189,10 @@ test('findUrls(): duplicate URLs collapsed, result capped at 3 action buttons', 
 test('transcript_partial: dropPreview() removes the caption once the text goes empty', () => {
   const { SARA, log } = loadChatModule();
   SARA.emit('ev:transcript_partial', 'user', 'thinking about');
-  assert(log.children.length === 1, 'a live caption bubble is created while partial text is non-empty');
+  assert(bubbles(log).length === 1, 'a live caption bubble is created while partial text is non-empty');
 
   SARA.emit('ev:transcript_partial', 'user', '');
-  assert(log.children.length === 0, 'dropPreview() removes the caption bubble instead of leaving it lingering');
+  assert(bubbles(log).length === 0, 'dropPreview() removes the caption bubble instead of leaving it lingering');
 });
 
 test('ev:transcript (non-streaming) sara reply renders instantly, nothing left to animate', () => {
@@ -192,11 +200,44 @@ test('ev:transcript (non-streaming) sara reply renders instantly, nothing left t
   const fullText = 'This is the complete reply already spoken by TTS.';
   SARA.emit('ev:transcript', 'sara', fullText);
 
-  assert(log.children.length === 1, 'a single bubble is created for the reply');
-  const bubble = log.children[0];
+  assert(bubbles(log).length === 1, 'a single bubble is created for the reply');
+  const bubble = bubbles(log)[0];
   const body = bubble.querySelector('.msg-text');
   assert(body && body.textContent === fullText, 'the full text is shown immediately, not partially revealed');
   assert(!bubble.classList.contains('typing'), 'no "typing" class is left pending -- nothing queued to animate');
+});
+
+test('day chip: one "Today" chip before the first message, none between messages of the same day', () => {
+  const { SARA, log } = loadChatModule();
+  SARA.emit('ev:transcript', 'user', 'hello');
+  SARA.emit('ev:transcript', 'sara', 'hi there');
+  SARA.emit('ev:transcript', 'user', 'again');
+  const seps = log.children.filter((c) => c.classList.contains('day-sep'));
+  assert(seps.length === 1, 'exactly one day chip for three messages of one day');
+  assert(log.children[0] === seps[0], 'the chip sits above the first message');
+  assert(/^Today/.test(seps[0].children[0].textContent), 'the chip text comes from SARA.dayLabel');
+  assert(bubbles(log).length === 3, 'the chip does not count as a message');
+});
+
+test('voice vs typed: a user line the window did not send gets the mic marker', () => {
+  const { SARA, log } = loadChatModule();
+  guiSent.add('open notepad');
+  SARA.emit('ev:transcript', 'user', 'open notepad');           // echo of a typed command
+  SARA.emit('ev:transcript', 'user', 'what time is it');        // nobody typed this -> spoken
+  const [typed, spoken] = bubbles(log);
+  assert(!typed.classList.contains('voice'), 'typed / clicked command carries no mic marker');
+  assert(spoken.classList.contains('voice'), 'spoken command carries the mic marker');
+});
+
+test('reply route: reply_meta route is stored on the bubble, regen is for llm answers only', () => {
+  const { SARA, log } = loadChatModule();
+  SARA.emit('ev:reply_meta', 't1', 'llm');
+  SARA.emit('ev:transcript', 'sara', 'A model answer.');
+  SARA.emit('ev:reply_meta', 't2', 'command');
+  SARA.emit('ev:transcript', 'sara', 'Done, notepad is open.');
+  const [a, b] = bubbles(log);
+  assert(a.dataset.route === 'llm', 'model answer is tagged route=llm');
+  assert(b.dataset.route === 'command', 'action reply is tagged route=command');
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

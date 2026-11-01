@@ -10,7 +10,12 @@
 .chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
 .msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:msgIn .32s cubic-bezier(.2,.8,.2,1);}
 .msg.user{align-self:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 15px;color:var(--text);}
-.msg.sara{align-self:flex-start;color:var(--core);padding:2px 2px;}
+/* Sara's replies are read, so they use the normal text colour; the accent is only a thin bar at the left (the colour used to
+   be the accent itself, which is tiring for long answers and made every reply look like a link or a warning). */
+.msg.sara{align-self:flex-start;color:var(--text);padding:2px 2px 2px 13px;border-left:2px solid rgb(var(--core-rgb) / .55);}
+/* messages from the same sender in a row sit closer together; a time stamp is only shown when the minute changes */
+.msg.grp{margin-top:-9px;}
+.msg .ts.dup{display:none;}
 .msg.preview{opacity:.6;font-style:italic;}
 /* ---- thinking dots (js/chat.js showThinking): 3 dots in --think (the orb's thinking colour) travelling as a sine wave ---- */
 .msg.thinking{display:flex;align-items:center;gap:5px;padding:10px 4px 8px;color:var(--think);}
@@ -30,7 +35,8 @@
 @keyframes blink{50%{opacity:0;}}
 .msg .ts{display:block;font-size:10.5px;color:var(--muted);margin-top:5px;font-style:normal;}
 /* ---- thumbs on assistant replies (js/chat.js attachThumbs): hidden until hover/focus, always shown on touch ---- */
-.msg-feedback{display:flex;gap:4px;margin-top:4px;opacity:0;transition:opacity .2s ease;}
+/* the thumbs sit beside the message (they used to reserve an empty line under every reply, which stretched the log and the accent bar) */
+.msg-feedback{position:absolute;left:100%;bottom:1px;display:flex;gap:4px;margin:0 0 0 8px;opacity:0;transition:opacity .2s ease;}
 .msg:hover .msg-feedback,.msg:focus-within .msg-feedback,.msg-feedback:focus-within{opacity:1;}
 @media (hover:none){.msg-feedback{opacity:1;}}
 .msg-fb-btn{background:transparent;border:1px solid var(--line);border-radius:999px;padding:2px 9px;font:inherit;font-size:12px;line-height:1.4;color:var(--muted);cursor:pointer;}
@@ -139,8 +145,12 @@
 .msg-tool:disabled{opacity:.45;cursor:default;}
 .msg-tool svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
 .msg-tool.done{color:var(--success,#3fd8c4);}
+/* "Try again" re-asks the last question, so it is offered only on the newest reply when that reply came from the language model (never
+   after an action such as "close Notepad", which would run the action a second time) */
 .msg-tool[data-act="regen"]{display:none;}
-.msg.is-last-sara .msg-tool[data-act="regen"]{display:grid;}
+.msg.sara.is-last-sara[data-route="llm"] .msg-tool[data-act="regen"]{display:grid;}
+/* the newest model answer keeps its toolbar visible (not only on hover) so "Try again" is not hidden; older replies stay hover-only */
+.msg.sara.is-last-sara[data-route="llm"] .msg-tools{opacity:.9;translate:0 0;pointer-events:auto;}
 @media (hover:none){.msg-tools{opacity:1;translate:0 0;pointer-events:auto;}}
 
 /* ---------- markdown ---------- */
@@ -237,3 +247,15 @@
 
 /* quality tiers: Low drops the sheen */
 html[data-quality="low"] .msg.thinking::before{display:none;}
+
+/* ---- day chips ("Today" / "Yesterday" / date) ---- */
+.day-sep{align-self:center;display:flex;align-items:center;gap:10px;width:100%;margin:2px 0;color:var(--muted);font-size:11px;letter-spacing:.06em;}
+.day-sep::before,.day-sep::after{content:'';flex:1;height:1px;background:var(--line);}
+.day-sep span{padding:0 2px;}
+
+/* ---- spoken messages carry a small microphone before the text ---- */
+.msg.user.voice .msg-text::before{
+  content:'';display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;background:currentColor;opacity:.5;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E") center/contain no-repeat;
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E") center/contain no-repeat;
+}

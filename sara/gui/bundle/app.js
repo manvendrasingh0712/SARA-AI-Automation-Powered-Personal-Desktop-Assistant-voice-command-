@@ -56,6 +56,17 @@
     const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
     return h + ':' + m + ' ' + ap;
   };
+  SARA.dayKey = function (d) {               // Date -> "2026-11-02" (local day)
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  SARA.dayLabel = function (key, now) {      // "2026-11-02" -> "Today" / "Yesterday" / "Sat, Oct 31"
+    now = now || new Date();
+    if (key === SARA.dayKey(now)) return 'Today';
+    const y = new Date(now.getTime()); y.setDate(y.getDate() - 1);
+    if (key === SARA.dayKey(y)) return 'Yesterday';
+    const p = String(key).split('-').map(Number);
+    return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  };
   SARA.fmtDuration = function (sec) {        // 125 -> "2:05"
     sec = Math.max(0, Math.round(sec || 0));
     return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
@@ -511,10 +522,21 @@
     if (connected !== lastConnected) { lastConnected = connected; SARA.emit('connection', connected); }
   };
 
+  SARA.normSent = function (t) { return String(t || '').trim().toLowerCase().replace(/[\s.,;!]+$/, ''); };
+  SARA.takeGuiSent = function (text) {       // true once per GUI-sent text: the chat uses it to tell typed / clicked messages from spoken ones
+    const k = SARA.normSent(text), now = Date.now();
+    SARA._guiSent = (SARA._guiSent || []).filter(function (e) { return now - e.t < 20000; });
+    const i = SARA._guiSent.findIndex(function (e) { return e.k === k; });
+    if (i < 0) return false;
+    SARA._guiSent.splice(i, 1);
+    return true;
+  };
   /* Send a typed command exactly like the old GUI: dispatch + usage-analytics counter. */
   SARA.sendCommand = function (text) {
     text = (text || '').trim();
     if (!text) return Promise.resolve({ ok: false });
+    SARA._guiSent = (SARA._guiSent || []).filter(function (e) { return Date.now() - e.t < 20000; });
+    SARA._guiSent.push({ k: SARA.normSent(text), t: Date.now() });      // the echo of this text is NOT a voice message
     SARA.callApi('record_command_usage', text);
     return SARA.callApi('send_text_command', text);
   };
@@ -2854,6 +2876,8 @@
   const log = $('chatLog'), scroller = log, input = $('chatInputField');   // the log itself scrolls (style/chat.css), so the dock sits outside its edge-fade mask
   const dock = input.closest('.chat-dock');
   let streaming = null, preview = null, thinkingEl = null;
+  let lastDay = '';
+  let lastMsg = null;           // { stamp, role } of the newest bubble: decides whether a time stamp is shown and whether the bubbles are grouped
 
   /* ---- state-aware dock (style/chat.css): idle/hover/focus are handled by CSS alone (:hover,
      :focus-within) so they can never get "stuck". Only the states below are JS-driven, and every
@@ -3007,7 +3031,19 @@
     div.className = 'msg ' + (role === 'user' ? 'user' : 'sara');
     const body = document.createElement('span'); body.className = 'msg-text';
     const ts = document.createElement('span'); ts.className = 'ts'; ts.textContent = SARA.fmtClockTime(new Date());
+    // time stamp only when the minute changes (every bubble repeating "8:19 PM" was clutter); the time stays in the tooltip
+    const stamp = ts.textContent, r = role === 'user' ? 'user' : 'sara';
+    if (lastMsg && lastMsg.stamp === stamp) ts.classList.add('dup');
+    if (lastMsg && lastMsg.role === r && lastMsg.stamp === stamp) div.classList.add('grp');
+    div.title = stamp; lastMsg = { stamp: stamp, role: r };
     div.appendChild(body); div.appendChild(ts);
+    const dk = SARA.dayKey(new Date());
+    if (dk !== lastDay) {                       // first message of a day: a "Today" / "Yesterday" / date chip (chat apps all do this)
+      lastDay = dk; div.classList.remove('grp');
+      const sep = document.createElement('div'); sep.className = 'day-sep'; sep.dataset.day = dk; sep.setAttribute('role', 'separator');
+      const lab = document.createElement('span'); lab.textContent = SARA.dayLabel(dk); sep.appendChild(lab);
+      if (thinkingEl && role === 'user') log.insertBefore(sep, thinkingEl); else log.appendChild(sep);
+    }
     if (thinkingEl && role === 'user') log.insertBefore(div, thinkingEl); else log.appendChild(div);   // the thinking dots always stay last
     const b = { div: div, body: body, full: String(text == null ? '' : text), shown: 0, raf: 0, acc: 0, last: 0, settled: null, spans: [] };
     if (animate && b.full.length) startTyper(b);
@@ -3031,6 +3067,10 @@
     for (let i = 0; i < 3; i++) { const d = document.createElement('span'); d.className = 'dot'; div.appendChild(d); }
     log.appendChild(div); thinkingEl = div; scrollDown(true);
   }
+  setInterval(function () {                     // "Today" turns into "Yesterday" while the app stays open past midnight
+    if (document.hidden) return;
+    log.querySelectorAll('.day-sep').forEach(function (sp) { if (sp.firstChild) sp.firstChild.textContent = SARA.dayLabel(sp.dataset.day); });
+  }, 60000);
   function hideThinking() { if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; } }
   const PREVIEW_STALE_MS = 8000;       // safety net: if the "clear" (empty partial) event is ever lost, the dim caption removes itself
   let previewTimer = 0;
@@ -3074,11 +3114,14 @@
   }
 
   let pendingReplyTurn = null;
-  SARA.on('ev:reply_meta', function (turnId) {
+  let pendingReplyRoute = null;
+  SARA.on('ev:reply_meta', function (turnId, route) {
     pendingReplyTurn = typeof turnId === 'string' && turnId ? turnId.slice(0, 40) : null;
+    pendingReplyRoute = route === 'llm' ? 'llm' : (route ? 'command' : null);
   });
 
   function attachThumbs(bubble) {
+    if (bubble && bubble.div && pendingReplyRoute) { bubble.div.dataset.route = pendingReplyRoute; pendingReplyRoute = null; }
     if (!bubble || !bubble.div || !pendingReplyTurn) return;
     const turnId = pendingReplyTurn;
     pendingReplyTurn = null;
@@ -3115,7 +3158,9 @@
     if (role === 'user') {
       finalizeStream(); dropPreview();
       const fly = takeFly(text);
+      const typed = SARA.takeGuiSent(text);       // sent by this window (typed, tile, palette, radial) -> not a voice message
       const ub = makeBubble('user', text, false); SARA.sound.sent();
+      if (!typed) { ub.div.classList.add('voice'); ub.div.title += ' \u00b7 voice'; }
       if (fly) flyUp(ub.div, fly);
     } else if (role === 'sara' && streaming) {
       const liveBubble = streaming;

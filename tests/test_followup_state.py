@@ -89,3 +89,28 @@ def test_slow_memory_search_does_not_hold_back_the_reply():
     assert b._search_within_deadline("q") == ["hit"]
     b._cfg = SimpleNamespace(RAG_DEADLINE_S=0)
     assert b._search_within_deadline("q") == ["hit"]
+
+
+def test_route_is_command_for_actions_and_llm_for_model_answers():
+    state = {}
+    brain, tts = Brain(), Tts()
+    dispatcher._handle_command("what time is it", brain, tts, None, None, None, None, lambda *a: None, {}, context_state=state)
+    assert state["last_route"] == "command"
+    dispatcher._handle_command("tell me about the river ganga in one line", brain, tts, None, None, None, None, lambda *a: None, {}, context_state=state)
+    assert state["last_route"] == "llm"
+    assert state["prev_user_input"] == "what time is it"
+
+
+def test_asking_the_same_question_again_is_not_served_from_the_response_cache():
+    class CountingBrain(Brain):
+        calls = 0
+
+        def generate_response_stream(self, prompt, reference_context=None):
+            CountingBrain.calls += 1
+            yield "Photosynthesis ek process hai jisme paudhe sunlight se khana banate hain."
+
+    state, tts, brain = {}, Tts(), CountingBrain()
+    q = "photosynthesis kya hota hai"
+    for _ in range(3):
+        dispatcher._handle_command(q, brain, tts, None, None, None, None, lambda *a: None, {}, context_state=state)
+    assert CountingBrain.calls == 3      # a repeat is a "try again": the model is asked every time, never a cache hit

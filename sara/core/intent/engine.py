@@ -922,11 +922,27 @@ def _apply_question_guard(text: str, result: Tuple[str, Optional[re.Match]]) -> 
     return "chat", None
 
 
+_SENTENCE_END_RE = re.compile(r"[\s.,;!]+$")
+_ABBREVIATION_END_RE = re.compile(r"(?:\b[A-Za-z]\.){2,}$")        # "5 p.m." / "U.S." keep their last dot
+
+
+def _strip_sentence_end(text: str) -> str:
+    """Speech-to-text hands over "Switch to Spotify." with a capital and a full stop, and the handlers used to receive
+    "Spotify." as the app name ("I couldn't find an open window for 'Spotify.'."). Trailing . , ; ! and spaces are not part of
+    any command, so they are removed here, once, for every intent. A question mark is kept (it separates questions from
+    commands), as are the dots of abbreviations such as "p.m."."""
+    if _ABBREVIATION_END_RE.search(text):
+        return text
+    cleaned = _SENTENCE_END_RE.sub("", text)
+    return cleaned if cleaned else text
+
+
 def detect_intent(text: str) -> Tuple[str, Optional[re.Match]]:
     """Resolve a command locally while preserving negation and legacy match groups."""
     stripped = text.strip() if isinstance(text, str) else ""
     if not stripped:
         return "chat", None
+    stripped = _strip_sentence_end(stripped)
     if len(stripped) > _max_intent_chars() and not _LONG_TEXT_ALLOWED_RE.match(stripped):
         # A command is a short sentence. A 3,000-character STT hallucination loop or a pasted article only costs
         # up to ~300 ms of regex backtracking (measured) and is never a command: straight to chat.
