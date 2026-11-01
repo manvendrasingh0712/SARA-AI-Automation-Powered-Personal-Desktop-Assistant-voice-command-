@@ -33,6 +33,18 @@
   --ease-spring: cubic-bezier(.34,1.56,.64,1);
   --dur-fast: .16s;
   --dur-med: .28s;
+  --dur-slow: .45s;
+  /* Redesign spec section 4.2 / 4.4: spacing scale, radii and type roles (font shorthands: use as  font: var(--t-title)) */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px; --sp-8:40px;
+  --r-ctl:12px; --r-sm:16px; --r-card:20px; --r-hero:24px; --r-pill:999px;
+  --t-display:500 56px/1 var(--font);
+  --t-title:600 24px/1.2 var(--font);
+  --t-section:600 15px/1.3 var(--font);
+  --t-body:400 14px/1.55 var(--font);
+  --t-label:500 14px/1.3 var(--font);
+  --t-helper:400 12px/1.4 var(--font);
+  --t-caption:500 11px/1.3 var(--font);
+  --t-stat:600 22px/1.1 var(--font);
   --glass-blur: 24px;                            /* iOS-style frosted glass (components.css adds saturate) */
 }
 
@@ -50,6 +62,8 @@
   --glass-bg:rgb(var(--panel-rgb) / .72);
   --glass-border:rgb(var(--fg-rgb) / .08);
   --glow:rgb(var(--core-rgb) / .22);
+  --focus-ring:rgb(var(--core-rgb) / .55);                                  /* one focus ring for every control (components.css) */
+  --card-hairline:linear-gradient(90deg,transparent,rgb(var(--core-rgb) / .45),transparent);   /* the 1px accent line on top of cards */
   --scrim:rgb(var(--void-rgb,4 8 8) / .72);
   /* skill cards (js/skill_cards.js reads these) follow the theme */
   --sara-card-bg:var(--panel-2); --sara-text:var(--text); --sara-accent:var(--core);
@@ -471,6 +485,26 @@ html[data-quality="low"] body::before{animation-play-state:paused;}
 }
 .offline-strip[hidden]{display:none;}
 
+/* ==== style/core/shell.css ==== */
+/* ==========================================================================
+   shell.css  --  app-shell tokens and helpers from the redesign spec (sections 4.3, 4.6, 5).
+   Phase 1 only DEFINES them: nothing here moves an existing element. Phase 2 (sidebar + header) uses them.
+   ========================================================================== */
+:root{
+  --sidebar-w:72px; --sidebar-w-open:232px; --header-h:64px;
+  --pad-x:32px; --pad-top:24px; --pad-bottom:40px;
+  --content-a:720px;           /* reading pages: Chat, Notes, Apps, Automation */
+  --content-b:1144px;          /* workspace pages: Home, Settings */
+  --gutter:16px; --gutter-section:24px;
+  /* z-index scale (spec 5) */
+  --z-content:1; --z-header:5; --z-sidebar:10; --z-mini-player:20; --z-sheet:40; --z-modal:50; --z-palette:60; --z-toast:70; --z-offline:80;
+}
+
+/* icon sprite (index.html: <svg><use href="#i-home"/></svg>); size by class, colour follows the text */
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;}
+.ic.sm{width:16px;height:16px;}
+.ic.lg{width:24px;height:24px;}
+
 /* ==== style/core/components.css ==== */
 /* ==========================================================================
    components.css  --  shared building blocks reused by several pages:
@@ -550,6 +584,10 @@ input::placeholder{color:var(--muted);}
 .toggle.on::after{transform:translateX(18px);}
 .toggle:focus-visible{box-shadow:0 0 0 2px rgb(var(--core-rgb) / .35);}
 @media (prefers-reduced-motion:reduce){.toggle.liquid::after{animation:none;}}
+
+/* Redesign phase 1: same focus ring as every other control. (The >= 44 px hit area comes from making the whole setting row the click target, phase 4c:
+   .toggle::before is already the halo ring of the one-shot feedback in settings.css.) */
+.toggle:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
 
 /* ---- slider ---- */
 input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;background:var(--line);border-radius:2px;outline:none;}
@@ -675,6 +713,42 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 .accent-pv .ap-status span{display:inline-flex;align-items:center;gap:4px;}
 .accent-pv .ap-status i{width:7px;height:7px;border-radius:50%;display:block;}
 .ap-status .ok i{background:var(--success);} .ap-status .wn i{background:var(--warning);} .ap-status .er i{background:var(--danger);} .ap-status .in i{background:var(--info);}
+
+/* ==========================================================================
+   Redesign phase 1 -- shared building blocks (nothing below changes an existing page by itself)
+   ========================================================================== */
+
+/* one focus ring everywhere; :where() keeps specificity at 0 so every existing, more specific focus rule still wins */
+:where(a,button,input,select,textarea,summary,[role="button"],[role="switch"],[role="radio"],[role="tab"],[tabindex]):focus-visible{
+  outline:2px solid var(--focus-ring);outline-offset:2px;
+}
+
+/* card = the generic surface; .set-card gets the same accent hairline on its top edge (no animation, so no cost) */
+.card{position:relative;background:var(--panel);border:1px solid rgb(var(--fg-rgb) / .09);border-radius:var(--r-card);padding:var(--sp-5) var(--sp-6);box-shadow:var(--shadow-rest);}
+.card:hover{border-color:rgb(var(--core-rgb) / .28);box-shadow:var(--shadow-hover);}
+.card::before,#page-settings .set-card::before{
+  content:'';position:absolute;top:0;left:var(--r-card);right:var(--r-card);height:1px;background:var(--card-hairline);opacity:.6;pointer-events:none;
+}
+
+/* segmented control (spec 4.7): replaces .tabs / .rt-seg / .sec-seg page by page. Markup:
+   <div class="seg" role="radiogroup"><button role="radio" aria-checked="true">One</button><button role="radio" aria-checked="false">Two</button></div>
+   The selected segment can be marked either with aria-checked="true" or with .on */
+.seg{display:inline-flex;align-items:stretch;gap:2px;padding:2px;min-height:40px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-ctl);}
+.seg>button{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);padding:0 var(--sp-4);border:none;background:none;border-radius:calc(var(--r-ctl) - 3px);
+  font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
+  transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
+.seg>button:hover{color:var(--text);}
+.seg>button[aria-checked="true"],.seg>button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
+.seg>button:disabled{opacity:.45;cursor:default;}
+
+/* badge / status dot (spec 4.7): tinted with the status colour, never decoration */
+.badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 var(--sp-2);border-radius:var(--r-pill);font:var(--t-caption);letter-spacing:.02em;
+  color:var(--text-soft);background:rgb(var(--fg-rgb) / .08);white-space:nowrap;}
+.badge.ok{color:var(--success);background:rgb(var(--success-rgb) / .14);}
+.badge.warn{color:var(--warning);background:rgb(var(--warning-rgb) / .14);}
+.badge.info{color:var(--info);background:rgb(var(--info-rgb) / .14);}
+.badge.danger{color:var(--danger);background:rgb(var(--danger-rgb) / .14);}
+.badge.dot::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;}
 
 /* ==== style/home/home.css ==== */
 /* ==========================================================================
@@ -2349,9 +2423,9 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 .set-card .acc-section{max-width:none;border-bottom:none;border-top:1px solid var(--line);}
 .skills-scroll{max-height:320px;overflow-y:auto;}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;}
-.stat{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;min-width:0;transition:border-color .2s,transform .15s,box-shadow .2s;}
+.stat{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-sm);min-width:0;transition:border-color .2s,transform .15s,box-shadow .2s;}
 .stat:hover{border-color:rgb(var(--core-rgb) / .4);transform:translateY(-2px);box-shadow:0 0 16px rgb(var(--core-rgb) / .12);}
-.stat b{font-size:15px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.stat b{font-size:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .stat span{font-size:11px;color:var(--muted);}
 
 /* ---- proactive toggles (compact 2-column grid inside Assistant card) ---- */
@@ -2434,7 +2508,7 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 #page-settings .mr-bg{stroke:var(--line);}
 #page-settings .mr-fg{stroke:var(--core);stroke-dasharray:var(--p,0) 100;transition:stroke-dasharray .9s var(--ease-premium);filter:drop-shadow(0 0 3px rgb(var(--core-rgb) / .45));}
 #page-settings .mem-ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:19px;font-weight:500;font-variant-numeric:tabular-nums;}
-#page-settings .stat{border-radius:14px;background:linear-gradient(180deg,rgb(var(--fg-rgb) / .03),transparent),var(--panel-2);}
+#page-settings .stat{border-radius:var(--r-sm);background:linear-gradient(180deg,rgb(var(--fg-rgb) / .03),transparent),var(--panel-2);}
 #page-settings .stat b{font-size:17px;}
 
 /* ---- performance ---- */

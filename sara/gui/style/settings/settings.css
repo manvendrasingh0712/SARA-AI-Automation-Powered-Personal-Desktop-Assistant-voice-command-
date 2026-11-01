@@ -68,9 +68,9 @@
 .set-card .acc-section{max-width:none;border-bottom:none;border-top:1px solid var(--line);}
 .skills-scroll{max-height:320px;overflow-y:auto;}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;}
-.stat{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;min-width:0;transition:border-color .2s,transform .15s,box-shadow .2s;}
+.stat{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-sm);min-width:0;transition:border-color .2s,transform .15s,box-shadow .2s;}
 .stat:hover{border-color:rgb(var(--core-rgb) / .4);transform:translateY(-2px);box-shadow:0 0 16px rgb(var(--core-rgb) / .12);}
-.stat b{font-size:15px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
+.stat b{font-size:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .stat span{font-size:11px;color:var(--muted);}
 
 /* ---- proactive toggles (compact 2-column grid inside Assistant card) ---- */
@@ -153,7 +153,7 @@
 #page-settings .mr-bg{stroke:var(--line);}
 #page-settings .mr-fg{stroke:var(--core);stroke-dasharray:var(--p,0) 100;transition:stroke-dasharray .9s var(--ease-premium);filter:drop-shadow(0 0 3px rgb(var(--core-rgb) / .45));}
 #page-settings .mem-ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:19px;font-weight:500;font-variant-numeric:tabular-nums;}
-#page-settings .stat{border-radius:14px;background:linear-gradient(180deg,rgb(var(--fg-rgb) / .03),transparent),var(--panel-2);}
+#page-settings .stat{border-radius:var(--r-sm);background:linear-gradient(180deg,rgb(var(--fg-rgb) / .03),transparent),var(--panel-2);}
 #page-settings .stat b{font-size:17px;}
 
 /* ---- performance ---- */
