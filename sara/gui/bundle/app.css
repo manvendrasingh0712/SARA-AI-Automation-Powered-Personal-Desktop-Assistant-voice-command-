@@ -2740,6 +2740,13 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 /* Phase 3: the five quick switches moved to the Home dock (#quickDock); the card stays in the DOM (settings-fx.js still looks it up) but is not shown */
 #page-settings #grp-quick{display:none !important;}
 
+/* Phase 4a: the cards are wrapped in .set-group containers. Until the master-detail layout (4b) the wrappers are transparent, so the grid, the `order` rules and
+   the rail behave exactly as before, and the group heading is not shown yet. */
+#page-settings .set-group,#page-settings .set-group-grid{display:contents;}
+#page-settings .set-group-head{display:none;}
+/* the four cards without an `order` used to sit first in their DOM order (router, presets, access, security); the DOM order changed with the groups, so state it */
+#page-settings #grp-router{order:-4;} #page-settings #grp-presets{order:-3;} #page-settings #grp-access{order:-2;} #page-settings #grp-security{order:-1;}
+
 /* ==== style/settings/perf.css ==== */
 /* ==========================================================================
    perf.css -- Settings > System > "Response speed" block.

@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=c851bc0c55">
+<link rel="stylesheet" href="bundle/app.css?v=7ede034cec">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -283,277 +283,288 @@
         <button type="button" data-target="grp-advanced">Advanced</button>
       </nav>
       <div class="set-cards">
-
-        <section class="set-card" id="grp-quick">
-          <div class="set-card-head"><div class="set-card-title">Quick controls</div><div class="set-card-sub">the switches you reach for most</div></div>
-        </section>
-
-        <!-- 1. ASSISTANT -->
-        <section class="set-card" id="grp-assistant">
-          <div class="set-card-head"><div class="set-card-title">Assistant</div><div class="set-card-sub">who Sara is to you</div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Display name</div><div class="s-sub">what Sara calls you</div></div><input type="text" id="setName" placeholder="Your name" autocomplete="off"></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Wake-word listening</div><div class="s-sub">turn off to pause Sara completely</div></div><div class="toggle on" id="setActive" role="switch" tabindex="0" aria-checked="true"></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Focus mode</div><div class="s-sub">fewer interruptions</div></div><div class="toggle" id="setFocus" role="switch" tabindex="0" aria-checked="false"></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Notifications</div><div class="s-sub">on-screen alerts</div></div><div class="toggle on" data-setting="show_notifications" role="switch" tabindex="0" aria-checked="true"></div></div>
-          <div class="set-card-body">
-            <div class="section-label">Proactive suggestions</div>
-            <div class="acc-note">nudges Sara gives on her own</div>
-            <div class="info-row tog"><span>All proactive suggestions</span><div class="toggle on" data-setting="proactive_mode" role="switch" tabindex="0" aria-checked="true"></div></div>
-            <div class="tog-grid">
-              <div class="info-row tog"><span>Battery</span><div class="toggle on" data-setting="proactive_battery" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Reminders</span><div class="toggle on" data-setting="proactive_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Breaks</span><div class="toggle on" data-setting="proactive_idle" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Streaks</span><div class="toggle on" data-setting="proactive_streak" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Meetings</span><div class="toggle on" data-setting="proactive_meetings" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Routines</span><div class="toggle on" data-setting="proactive_routines" role="switch" tabindex="0" aria-checked="true"></div></div>
-            </div>
-            <div class="section-label">Smart reminders</div>
-            <div class="acc-note">context-aware wording and gentle nudges</div>
-            <div class="tog-grid">
-              <div class="info-row tog"><span>Contextual wording</span><div class="toggle on" data-setting="contextual_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Use my notes</span><div class="toggle on" data-setting="contextual_notes" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Awake awareness</span><div class="toggle on" data-setting="awake_awareness" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="info-row tog"><span>Late-night nudges</span><div class="toggle on" data-setting="late_night_nudges" role="switch" tabindex="0" aria-checked="true"></div></div>
-            </div>
-            <div class="info-row"><span>Nudges so far</span><b id="pvTotal">0</b></div>
-            <div class="acc-note" id="pvBreakdown"></div>
-            <div class="acc-note pv-recent" id="pvRecent" data-skel><span class="skel skel-line"></span></div>
-          </div>
-        </section>
-
-        <!-- 2. VOICE -->
-        <section class="set-card" id="grp-voice">
-          <div class="set-card-head"><div class="set-card-title">Voice</div><div class="set-card-sub">hearing, speaking &amp; sounds</div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Mute Sara</div><div class="s-sub">stop voice replies right now</div></div><div class="toggle" id="setMute" role="switch" tabindex="0" aria-checked="false"></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Voice replies</div><div class="s-sub">Sara speaks her answers</div></div><div class="toggle on" data-setting="voice_replies" role="switch" tabindex="0" aria-checked="true"></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Language</div><div class="s-sub">what Sara listens for</div></div>
-            <div class="chip-row" id="langChips"><span class="chip on" data-lang="auto">Auto</span><span class="chip" data-lang="en">English</span><span class="chip" data-lang="hi">हिन्दी</span></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Mic sensitivity</div><div class="s-sub">how easily Sara picks up your voice</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="micSlider"><span class="slider-val" id="micSliderVal">50</span></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Speech speed</div><div class="s-sub">how fast Sara talks back</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="speedSlider"><span class="slider-val" id="speedSliderVal">50</span></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Sound effects</div><div class="s-sub">soft UI blips</div></div><div class="toggle on" id="setSounds" role="switch" tabindex="0" aria-checked="true"></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Sound volume</div><div class="s-sub">this device only</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="80" id="soundVolume" aria-label="Sound volume"><span class="slider-val" id="soundVolumeVal">80</span></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Sound pack</div><div class="s-sub">tap one to hear it</div></div><div class="chip-row" id="soundPacks"></div></div>
-          <div class="set-row"><div class="set-info"><div class="s-name">Startup sound</div><div class="s-sub">a chime when Sara boots</div></div><div class="toggle" data-setting="startup_sound" role="switch" tabindex="0" aria-checked="false"></div></div>
-        </section>
-
-        <!-- 3. INTELLIGENCE + 5. SKILLS (merged: no dedicated LLM setting exists yet) -->
-        <section class="set-card" id="grp-skills">
-          <div class="set-card-head"><div class="set-card-title">Intelligence &amp; Skills</div><div class="set-card-sub">what Sara can currently do</div></div>
-          <div class="set-card-body">
-            <div class="skills-scroll"><div id="skillsList" class="acc-note" data-skel><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div></div>
-            <div class="acc-note" id="skillRestartNote" hidden>Skill changes apply after you restart SARA.</div>
-          </div>
-        </section>
-
-        <section class="set-card" id="grp-router">
-          <div class="set-card-head"><div class="set-card-title">Smart routing</div><div class="set-card-sub">cheapest model that still answers well</div></div>
-          <div class="set-card-body">
-            <div class="rt-block">
-              <div class="rt-seg" role="group" aria-label="Smart routing mode">
-                <button type="button" class="rt-mode" data-mode="off" aria-pressed="false">Off</button>
-                <button type="button" class="rt-mode" data-mode="shadow" aria-pressed="false">Shadow</button>
-                <button type="button" class="rt-mode" data-mode="on" aria-pressed="false">On</button>
+        <!-- Settings groups (redesign spec 9.2). Each group wraps its existing cards; card ids, data-target values and every control id are unchanged. -->
+        <div class="set-group" id="sg-general" data-group="general" role="region" aria-labelledby="sg-general-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-general-title">General</h2><p class="set-group-desc">Your name, listening, notifications and reminders</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-quick">
+            <div class="set-card-head"><div class="set-card-title">Quick controls</div><div class="set-card-sub">the switches you reach for most</div></div>
+          </section>
+          <section class="set-card" id="grp-assistant">
+            <div class="set-card-head"><div class="set-card-title">Assistant</div><div class="set-card-sub">who Sara is to you</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Display name</div><div class="s-sub">what Sara calls you</div></div><input type="text" id="setName" placeholder="Your name" autocomplete="off"></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Wake-word listening</div><div class="s-sub">turn off to pause Sara completely</div></div><div class="toggle on" id="setActive" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Focus mode</div><div class="s-sub">fewer interruptions</div></div><div class="toggle" id="setFocus" role="switch" tabindex="0" aria-checked="false"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Notifications</div><div class="s-sub">on-screen alerts</div></div><div class="toggle on" data-setting="show_notifications" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="set-card-body">
+              <div class="section-label">Proactive suggestions</div>
+              <div class="acc-note">nudges Sara gives on her own</div>
+              <div class="info-row tog"><span>All proactive suggestions</span><div class="toggle on" data-setting="proactive_mode" role="switch" tabindex="0" aria-checked="true"></div></div>
+              <div class="tog-grid">
+                <div class="info-row tog"><span>Battery</span><div class="toggle on" data-setting="proactive_battery" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Reminders</span><div class="toggle on" data-setting="proactive_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Breaks</span><div class="toggle on" data-setting="proactive_idle" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Streaks</span><div class="toggle on" data-setting="proactive_streak" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Meetings</span><div class="toggle on" data-setting="proactive_meetings" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Routines</span><div class="toggle on" data-setting="proactive_routines" role="switch" tabindex="0" aria-checked="true"></div></div>
               </div>
-              <div class="rt-gate" id="rtGate" hidden></div>
-              <div class="rt-note" id="rtNote" hidden></div>
-              <div class="rt-empty" id="rtEmpty" hidden>Only one model is configured - add GEMINI_FAST_MODEL in .env to let Sara choose</div>
-              <div class="rt-usage" id="rtUsage"></div>
-              <div class="rt-legend" id="rtLegend"></div>
-              <div class="rt-nums" id="rtNums" hidden>
-                <div class="rt-stat"><b id="rtLatency">-</b><span>average response time</span></div>
-                <div class="rt-stat"><b id="rtSaved">-</b><span>calls saved vs always-main</span></div>
+              <div class="section-label">Smart reminders</div>
+              <div class="acc-note">context-aware wording and gentle nudges</div>
+              <div class="tog-grid">
+                <div class="info-row tog"><span>Contextual wording</span><div class="toggle on" data-setting="contextual_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Use my notes</span><div class="toggle on" data-setting="contextual_notes" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Awake awareness</span><div class="toggle on" data-setting="awake_awareness" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Late-night nudges</span><div class="toggle on" data-setting="late_night_nudges" role="switch" tabindex="0" aria-checked="true"></div></div>
               </div>
-              <div class="rt-progress" id="rtCollecting" hidden></div>
-              <div class="rt-reset">
-                <button type="button" class="rt-btn" id="rtReset">Reset learning</button>
-                <div class="rt-confirm" id="rtConfirm" hidden>
-                  <span>Forget everything Sara has learned about routing?</span>
-                  <button type="button" class="rt-btn rt-danger" id="rtResetYes">Yes, reset</button>
-                  <button type="button" class="rt-btn" id="rtResetNo">Cancel</button>
+              <div class="info-row"><span>Nudges so far</span><b id="pvTotal">0</b></div>
+              <div class="acc-note" id="pvBreakdown"></div>
+              <div class="acc-note pv-recent" id="pvRecent" data-skel><span class="skel skel-line"></span></div>
+            </div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-voice" data-group="voice" role="region" aria-labelledby="sg-voice-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-voice-title">Voice &amp; Sound</h2><p class="set-group-desc">How Sara sounds, listens and signals</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-voice">
+            <div class="set-card-head"><div class="set-card-title">Voice</div><div class="set-card-sub">hearing, speaking &amp; sounds</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Mute Sara</div><div class="s-sub">stop voice replies right now</div></div><div class="toggle" id="setMute" role="switch" tabindex="0" aria-checked="false"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Voice replies</div><div class="s-sub">Sara speaks her answers</div></div><div class="toggle on" data-setting="voice_replies" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Language</div><div class="s-sub">what Sara listens for</div></div>
+              <div class="chip-row" id="langChips"><span class="chip on" data-lang="auto">Auto</span><span class="chip" data-lang="en">English</span><span class="chip" data-lang="hi">हिन्दी</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Mic sensitivity</div><div class="s-sub">how easily Sara picks up your voice</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="micSlider"><span class="slider-val" id="micSliderVal">50</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Speech speed</div><div class="s-sub">how fast Sara talks back</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="speedSlider"><span class="slider-val" id="speedSliderVal">50</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Sound effects</div><div class="s-sub">soft UI blips</div></div><div class="toggle on" id="setSounds" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Sound volume</div><div class="s-sub">this device only</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="80" id="soundVolume" aria-label="Sound volume"><span class="slider-val" id="soundVolumeVal">80</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Sound pack</div><div class="s-sub">tap one to hear it</div></div><div class="chip-row" id="soundPacks"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Startup sound</div><div class="s-sub">a chime when Sara boots</div></div><div class="toggle" data-setting="startup_sound" role="switch" tabindex="0" aria-checked="false"></div></div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-appearance" data-group="appearance" role="region" aria-labelledby="sg-appearance-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-appearance-title">Appearance</h2><p class="set-group-desc">Themes, accent colour and accessibility</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-appearance">
+            <div class="set-card-head"><div class="set-card-title">Appearance</div><div class="set-card-sub">theme &amp; accent colour</div></div>
+            <div class="set-card-body">
+              <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
+              <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
+              <div class="set-row"><div class="set-info"><div class="s-name">Auto day / night</div><div class="s-sub">Paper from 06:00 to 18:00, your dark theme at night. This device only.</div></div><div class="toggle" id="autoTheme" role="switch" tabindex="0" aria-checked="false"></div></div>
+              <div class="section-label" id="qualityLabel">Visual quality</div>
+              <div class="chip-row" id="qualityRow" role="radiogroup" aria-label="Visual quality">
+                <button type="button" class="chip" role="radio" aria-checked="false" data-q="low">Low</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-q="balanced">Balanced</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-q="high">High</button>
+              </div>
+              <div class="acc-note" id="qualityNote"></div>
+              <div id="devBlock" hidden></div>
+              <div class="section-label">Accent hue</div>
+              <div class="hue-block">
+                <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170" aria-label="Accent hue"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset to Theme Default</button></div>
+                <div class="accent-pv" id="accentPv" aria-hidden="true">
+                  <span class="ap-chip"></span><span class="ap-btn">Accent</span><span class="ap-link">Link</span>
+                  <span class="ap-status"><span class="ok"><i></i>OK</span><span class="wn"><i></i>Warn</span><span class="er"><i></i>Error</span><span class="in"><i></i>Info</span></span>
                 </div>
               </div>
             </div>
+          </section>
+          <section class="set-card" id="grp-access">
+            <div class="set-card-head"><div class="set-card-title">Accessibility</div><div class="set-card-sub">size, contrast, motion, keyboard</div></div>
+            <div class="set-card-body" id="accessBody"></div>
+          </section>
           </div>
-        </section>
-
-        <section class="set-card" id="grp-calendar">
-          <div class="set-card-head"><div class="set-card-title">Calendar</div><div class="set-card-sub">Google integration</div></div>
-          <div class="set-card-body">
-            <div class="info-row"><span>Google Calendar</span><b id="calStatus"><span class="skel skel-inline"></span></b></div>
-            <div id="calEvents" class="acc-note" data-skel><span class="skel skel-line"></span></div>
-          </div>
-        </section>
-
-        <!-- 4. MEMORY -->
-        <section class="set-card" id="grp-memory">
-          <div class="set-card-head"><div class="set-card-title">Memory</div><div class="set-card-sub">how much Sara remembers</div></div>
-          <div class="set-card-body">
-            <div class="mem-ring" id="memRing" style="--p:0" aria-hidden="true"><svg viewBox="0 0 36 36"><circle class="mr-bg" cx="18" cy="18" r="15.9"/><circle class="mr-fg" cx="18" cy="18" r="15.9" pathLength="100"/></svg><b id="memRingTxt">–</b></div>
-            <div class="stat-grid">
-              <div class="stat"><b id="memExchanges"><span class="skel skel-inline"></span></b><span>Exchanges stored</span></div>
-              <div class="stat"><b id="memSize"><span class="skel skel-inline"></span></b><span>Memory size</span></div>
-              <div class="stat"><b id="memPct"><span class="skel skel-inline"></span></b><span>Memory used</span></div>
-              <div class="stat"><b id="shStreak"><span class="skel skel-inline"></span></b><span>Current streak</span></div>
-              <div class="stat"><b id="shMessages"><span class="skel skel-inline"></span></b><span>Messages total</span></div>
-              <div class="stat"><b id="shDays"><span class="skel skel-inline"></span></b><span>Days used</span></div>
-              <div class="stat"><b id="shNudges"><span class="skel skel-inline"></span></b><span>Proactive nudges</span></div>
+        </div>
+        <div class="set-group" id="sg-intelligence" data-group="intelligence" role="region" aria-labelledby="sg-intelligence-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-intelligence-title">Intelligence</h2><p class="set-group-desc">Skills, smart routing, memory and calendar</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-skills">
+            <div class="set-card-head"><div class="set-card-title">Intelligence &amp; Skills</div><div class="set-card-sub">what Sara can currently do</div></div>
+            <div class="set-card-body">
+              <div class="skills-scroll"><div id="skillsList" class="acc-note" data-skel><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div></div>
+              <div class="acc-note" id="skillRestartNote" hidden>Skill changes apply after you restart SARA.</div>
             </div>
-            <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button><button class="pill-btn" id="clearCacheBtn" title="Forget the cached answers to general-knowledge questions (your memory is not touched)">Forget cached answers</button><button class="pill-btn" id="openMemoryViewerBtn" aria-haspopup="dialog" aria-controls="memViewer">Open memory viewer</button></div>
-            <div class="acc-note">Export saves your recent conversation to memory_export.json next to the app.</div>
-          </div>
-        </section>
-
-        <section class="set-card" id="grp-appearance">
-          <div class="set-card-head"><div class="set-card-title">Appearance</div><div class="set-card-sub">theme &amp; accent colour</div></div>
-          <div class="set-card-body">
-            <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
-            <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
-            <div class="set-row"><div class="set-info"><div class="s-name">Auto day / night</div><div class="s-sub">Paper from 06:00 to 18:00, your dark theme at night. This device only.</div></div><div class="toggle" id="autoTheme" role="switch" tabindex="0" aria-checked="false"></div></div>
-            <div class="section-label" id="qualityLabel">Visual quality</div>
-            <div class="chip-row" id="qualityRow" role="radiogroup" aria-label="Visual quality">
-              <button type="button" class="chip" role="radio" aria-checked="false" data-q="low">Low</button>
-              <button type="button" class="chip" role="radio" aria-checked="false" data-q="balanced">Balanced</button>
-              <button type="button" class="chip" role="radio" aria-checked="false" data-q="high">High</button>
-            </div>
-            <div class="acc-note" id="qualityNote"></div>
-            <div id="devBlock" hidden></div>
-            <div class="section-label">Accent hue</div>
-            <div class="hue-block">
-              <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170" aria-label="Accent hue"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset to Theme Default</button></div>
-              <div class="accent-pv" id="accentPv" aria-hidden="true">
-                <span class="ap-chip"></span><span class="ap-btn">Accent</span><span class="ap-link">Link</span>
-                <span class="ap-status"><span class="ok"><i></i>OK</span><span class="wn"><i></i>Warn</span><span class="er"><i></i>Error</span><span class="in"><i></i>Info</span></span>
+          </section>
+          <section class="set-card" id="grp-router">
+            <div class="set-card-head"><div class="set-card-title">Smart routing</div><div class="set-card-sub">cheapest model that still answers well</div></div>
+            <div class="set-card-body">
+              <div class="rt-block">
+                <div class="rt-seg" role="group" aria-label="Smart routing mode">
+                  <button type="button" class="rt-mode" data-mode="off" aria-pressed="false">Off</button>
+                  <button type="button" class="rt-mode" data-mode="shadow" aria-pressed="false">Shadow</button>
+                  <button type="button" class="rt-mode" data-mode="on" aria-pressed="false">On</button>
+                </div>
+                <div class="rt-gate" id="rtGate" hidden></div>
+                <div class="rt-note" id="rtNote" hidden></div>
+                <div class="rt-empty" id="rtEmpty" hidden>Only one model is configured - add GEMINI_FAST_MODEL in .env to let Sara choose</div>
+                <div class="rt-usage" id="rtUsage"></div>
+                <div class="rt-legend" id="rtLegend"></div>
+                <div class="rt-nums" id="rtNums" hidden>
+                  <div class="rt-stat"><b id="rtLatency">-</b><span>average response time</span></div>
+                  <div class="rt-stat"><b id="rtSaved">-</b><span>calls saved vs always-main</span></div>
+                </div>
+                <div class="rt-progress" id="rtCollecting" hidden></div>
+                <div class="rt-reset">
+                  <button type="button" class="rt-btn" id="rtReset">Reset learning</button>
+                  <div class="rt-confirm" id="rtConfirm" hidden>
+                    <span>Forget everything Sara has learned about routing?</span>
+                    <button type="button" class="rt-btn rt-danger" id="rtResetYes">Yes, reset</button>
+                    <button type="button" class="rt-btn" id="rtResetNo">Cancel</button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
-
-        <!-- 6. SYSTEM (analytics, calendar, system stats, window controls, setup check) -->
-        <section class="set-card" id="grp-presets">
-          <div class="set-card-head"><div class="set-card-title">Presets &amp; backup</div><div class="set-card-sub">one-tap setups, export &amp; import</div></div>
-          <div class="set-card-body" id="presetsBody"></div>
-        </section>
-
-        <section class="set-card" id="grp-access">
-          <div class="set-card-head"><div class="set-card-title">Accessibility</div><div class="set-card-sub">size, contrast, motion, keyboard</div></div>
-          <div class="set-card-body" id="accessBody"></div>
-        </section>
-
-        <section class="set-card" id="grp-system">
-          <div class="set-card-head"><div class="set-card-title">Performance</div><div class="set-card-sub">live system &amp; response speed</div></div>
-          <div class="set-card-body">
-            <div class="section-label">Performance</div>
-            <div class="info-row"><span>Backend</span><b id="sysBackend">—</b></div>
-            <div class="info-row"><span>CPU · RAM</span><b id="sysCpuRam"><span class="skel skel-inline"></span></b></div>
-            <div class="info-row"><span>Disk</span><b id="sysDisk"><span class="skel skel-inline"></span></b></div>
-            <div class="info-row"><span>Network</span><b id="sysNet"><span class="skel skel-inline"></span></b></div>
-
-            <div class="section-label">Response speed</div>
-            <div class="perf-block" id="perfBlock">
-              <div class="perf-nums">
-                <div class="perf-num"><b id="perfP50">-</b><span>TTFA p50 (s)</span></div>
-                <div class="perf-num"><b id="perfP95">-</b><span>TTFA p95 (s)</span></div>
+          </section>
+          <section class="set-card" id="grp-memory">
+            <div class="set-card-head"><div class="set-card-title">Memory</div><div class="set-card-sub">how much Sara remembers</div></div>
+            <div class="set-card-body">
+              <div class="mem-ring" id="memRing" style="--p:0" aria-hidden="true"><svg viewBox="0 0 36 36"><circle class="mr-bg" cx="18" cy="18" r="15.9"/><circle class="mr-fg" cx="18" cy="18" r="15.9" pathLength="100"/></svg><b id="memRingTxt">–</b></div>
+              <div class="stat-grid">
+                <div class="stat"><b id="memExchanges"><span class="skel skel-inline"></span></b><span>Exchanges stored</span></div>
+                <div class="stat"><b id="memSize"><span class="skel skel-inline"></span></b><span>Memory size</span></div>
+                <div class="stat"><b id="memPct"><span class="skel skel-inline"></span></b><span>Memory used</span></div>
+                <div class="stat"><b id="shStreak"><span class="skel skel-inline"></span></b><span>Current streak</span></div>
+                <div class="stat"><b id="shMessages"><span class="skel skel-inline"></span></b><span>Messages total</span></div>
+                <div class="stat"><b id="shDays"><span class="skel skel-inline"></span></b><span>Days used</span></div>
+                <div class="stat"><b id="shNudges"><span class="skel skel-inline"></span></b><span>Proactive nudges</span></div>
               </div>
-              <div class="acc-note" id="perfNote" hidden></div>
-              <div class="acc-note" id="perfQuota" hidden></div>
-              <div class="perf-bar" id="perfBar" role="img" aria-label="Average stage split: no data"></div>
-              <div class="perf-legend" id="perfLegend"></div>
-              <div class="section-label sub">Last 10 turns</div>
-              <div class="perf-recent" id="perfRecent"></div>
-              <div class="info-row tog"><span>Collect timing data</span><div class="toggle on" id="perfToggle" role="switch" tabindex="0" aria-checked="true"></div></div>
+              <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button><button class="pill-btn" id="clearCacheBtn" title="Forget the cached answers to general-knowledge questions (your memory is not touched)">Forget cached answers</button><button class="pill-btn" id="openMemoryViewerBtn" aria-haspopup="dialog" aria-controls="memViewer">Open memory viewer</button></div>
+              <div class="acc-note">Export saves your recent conversation to memory_export.json next to the app.</div>
             </div>
-
+          </section>
+          <section class="set-card" id="grp-calendar">
+            <div class="set-card-head"><div class="set-card-title">Calendar</div><div class="set-card-sub">Google integration</div></div>
+            <div class="set-card-body">
+              <div class="info-row"><span>Google Calendar</span><b id="calStatus"><span class="skel skel-inline"></span></b></div>
+              <div id="calEvents" class="acc-note" data-skel><span class="skel skel-line"></span></div>
+            </div>
+          </section>
           </div>
-        </section>
-
-        <section class="set-card" id="grp-security">
-          <div class="set-card-head"><div class="set-card-title">Security</div><div class="set-card-sub">guards against instructions hidden in web pages, files and notes</div></div>
-          <div class="set-card-body">
-            <div class="section-label">Protection mode</div>
-            <div class="sec-block" id="secBlock">
-              <div class="sec-seg" id="secModes" role="group" aria-label="Protection mode">
-                <button type="button" class="sec-mode" data-mode="standard" aria-pressed="false">Standard</button>
-                <button type="button" class="sec-mode" data-mode="strict" aria-pressed="false">Strict</button>
-                <button type="button" class="sec-mode sec-off" data-mode="off" aria-pressed="false">Off</button>
+        </div>
+        <div class="set-group" id="sg-security" data-group="security" role="region" aria-labelledby="sg-security-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-security-title">Security</h2><p class="set-group-desc">What Sara is allowed to do, and what she blocked</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-security">
+            <div class="set-card-head"><div class="set-card-title">Security</div><div class="set-card-sub">guards against instructions hidden in web pages, files and notes</div></div>
+            <div class="set-card-body">
+              <div class="section-label">Protection mode</div>
+              <div class="sec-block" id="secBlock">
+                <div class="sec-seg" id="secModes" role="group" aria-label="Protection mode">
+                  <button type="button" class="sec-mode" data-mode="standard" aria-pressed="false">Standard</button>
+                  <button type="button" class="sec-mode" data-mode="strict" aria-pressed="false">Strict</button>
+                  <button type="button" class="sec-mode sec-off" data-mode="off" aria-pressed="false">Off</button>
+                </div>
+                <div class="acc-note sec-warn" id="secWarn" role="status" hidden>Protection off lets text from web pages, files or notes trigger actions. Press Off again to confirm.</div>
+                <div class="acc-note" id="secNote" hidden></div>
+                <div class="section-label sub">Last 7 days</div>
+                <div class="sec-nums">
+                  <div class="sec-num"><b id="secBlocked">-</b><span>Blocked</span></div>
+                  <div class="sec-num"><b id="secInjections">-</b><span>Injections detected</span></div>
+                  <div class="sec-num"><b id="secConfirms">-</b><span>Confirmations asked</span></div>
+                </div>
+                <div class="section-label sub">Recent security events</div>
+                <div class="sec-recent" id="secRecent"></div>
               </div>
-              <div class="acc-note sec-warn" id="secWarn" role="status" hidden>Protection off lets text from web pages, files or notes trigger actions. Press Off again to confirm.</div>
-              <div class="acc-note" id="secNote" hidden></div>
-              <div class="section-label sub">Last 7 days</div>
-              <div class="sec-nums">
-                <div class="sec-num"><b id="secBlocked">-</b><span>Blocked</span></div>
-                <div class="sec-num"><b id="secInjections">-</b><span>Injections detected</span></div>
-                <div class="sec-num"><b id="secConfirms">-</b><span>Confirmations asked</span></div>
-              </div>
-              <div class="section-label sub">Recent security events</div>
-              <div class="sec-recent" id="secRecent"></div>
             </div>
+          </section>
           </div>
-        </section>
+        </div>
+        <div class="set-group" id="sg-system" data-group="system" role="region" aria-labelledby="sg-system-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-system-title">System</h2><p class="set-group-desc">Performance, insights, presets and backup, window controls</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-system">
+            <div class="set-card-head"><div class="set-card-title">Performance</div><div class="set-card-sub">live system &amp; response speed</div></div>
+            <div class="set-card-body">
+              <div class="section-label">Performance</div>
+              <div class="info-row"><span>Backend</span><b id="sysBackend">—</b></div>
+              <div class="info-row"><span>CPU · RAM</span><b id="sysCpuRam"><span class="skel skel-inline"></span></b></div>
+              <div class="info-row"><span>Disk</span><b id="sysDisk"><span class="skel skel-inline"></span></b></div>
+              <div class="info-row"><span>Network</span><b id="sysNet"><span class="skel skel-inline"></span></b></div>
 
-        <section class="set-card" id="grp-analytics">
-          <div class="set-card-head"><div class="set-card-title">Analytics</div><div class="set-card-sub">how you use Sara</div></div>
-          <div class="set-card-body">
-            <div class="section-label">Analytics</div>
-            <div id="anLoading" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
-            <div class="an-empty" id="anEmpty" hidden>
-              <div class="an-empty-title">No activity yet</div>
-              <div class="an-empty-sub">Once SARA is used, your activity will appear here.</div>
-            </div>
-            <div class="an-body" id="anBody" hidden>
-              <div class="stat-grid an-kpis">
-                <div class="stat an-kpi" id="anKpiMessages" hidden><b id="anMessages">0</b><span>Messages</span></div>
-                <div class="stat an-kpi" id="anKpiCommands" hidden><b id="anTotal">0</b><span>Commands</span></div>
-                <div class="stat an-kpi" id="anKpiNudges" hidden><b id="anNudges">0</b><span>Proactive nudges</span></div>
-                <div class="stat an-kpi" id="anKpiSuccess" hidden><b id="anSuccess">0</b><span id="anSuccessLbl">Action success</span></div>
+              <div class="section-label">Response speed</div>
+              <div class="perf-block" id="perfBlock">
+                <div class="perf-nums">
+                  <div class="perf-num"><b id="perfP50">-</b><span>TTFA p50 (s)</span></div>
+                  <div class="perf-num"><b id="perfP95">-</b><span>TTFA p95 (s)</span></div>
+                </div>
+                <div class="acc-note" id="perfNote" hidden></div>
+                <div class="acc-note" id="perfQuota" hidden></div>
+                <div class="perf-bar" id="perfBar" role="img" aria-label="Average stage split: no data"></div>
+                <div class="perf-legend" id="perfLegend"></div>
+                <div class="section-label sub">Last 10 turns</div>
+                <div class="perf-recent" id="perfRecent"></div>
+                <div class="info-row tog"><span>Collect timing data</span><div class="toggle on" id="perfToggle" role="switch" tabindex="0" aria-checked="true"></div></div>
               </div>
-              <div class="section-label sub">Peak usage</div>
-              <div class="an-peak"><span>Busiest day</span><b id="anBusiest">—</b></div>
-              <div class="section-label sub">Most used</div>
-              <div id="anTop" class="an-top"></div>
-              <div class="section-label sub">Last 14 days</div>
-              <div class="an-chart" id="anChart">
-                <div class="an-tip" id="anTip" role="tooltip" aria-hidden="true"></div>
-                <div class="trend" id="anTrend" role="group" aria-label="Commands per day, last 14 days"></div>
+
+            </div>
+          </section>
+          <section class="set-card" id="grp-analytics">
+            <div class="set-card-head"><div class="set-card-title">Analytics</div><div class="set-card-sub">how you use Sara</div></div>
+            <div class="set-card-body">
+              <div class="section-label">Analytics</div>
+              <div id="anLoading" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
+              <div class="an-empty" id="anEmpty" hidden>
+                <div class="an-empty-title">No activity yet</div>
+                <div class="an-empty-sub">Once SARA is used, your activity will appear here.</div>
               </div>
-              <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+              <div class="an-body" id="anBody" hidden>
+                <div class="stat-grid an-kpis">
+                  <div class="stat an-kpi" id="anKpiMessages" hidden><b id="anMessages">0</b><span>Messages</span></div>
+                  <div class="stat an-kpi" id="anKpiCommands" hidden><b id="anTotal">0</b><span>Commands</span></div>
+                  <div class="stat an-kpi" id="anKpiNudges" hidden><b id="anNudges">0</b><span>Proactive nudges</span></div>
+                  <div class="stat an-kpi" id="anKpiSuccess" hidden><b id="anSuccess">0</b><span id="anSuccessLbl">Action success</span></div>
+                </div>
+                <div class="section-label sub">Peak usage</div>
+                <div class="an-peak"><span>Busiest day</span><b id="anBusiest">—</b></div>
+                <div class="section-label sub">Most used</div>
+                <div id="anTop" class="an-top"></div>
+                <div class="section-label sub">Last 14 days</div>
+                <div class="an-chart" id="anChart">
+                  <div class="an-tip" id="anTip" role="tooltip" aria-hidden="true"></div>
+                  <div class="trend" id="anTrend" role="group" aria-label="Commands per day, last 14 days"></div>
+                </div>
+                <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+              </div>
+
+              <div class="section-label sub">Recent activity</div>
+              <div class="btn-row">
+                <button class="pill-btn small active" data-filter="all">All</button>
+                <button class="pill-btn small" data-filter="success">Success</button>
+                <button class="pill-btn small" data-filter="fail">Failed</button>
+              </div>
+              <div id="actionTimeline" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
+
+              <div class="section-label sub">Frequently missed commands</div>
+              <div id="missedCommands" class="acc-note" data-skel></div>
+
             </div>
+          </section>
+          <section class="set-card" id="grp-presets">
+            <div class="set-card-head"><div class="set-card-title">Presets &amp; backup</div><div class="set-card-sub">one-tap setups, export &amp; import</div></div>
+            <div class="set-card-body" id="presetsBody"></div>
+          </section>
+          <section class="set-card" id="grp-advanced">
+            <div class="set-card-head"><div class="set-card-title">Advanced</div><div class="set-card-sub">data, window &amp; setup</div></div>
+            <div class="set-card-body">
+              <div class="section-label">Data</div>
+              <div class="btn-row">
+                <button class="pill-btn small" id="btnOpenDataFolder">Open data folder</button>
+              </div>
 
-            <div class="section-label sub">Recent activity</div>
-            <div class="btn-row">
-              <button class="pill-btn small active" data-filter="all">All</button>
-              <button class="pill-btn small" data-filter="success">Success</button>
-              <button class="pill-btn small" data-filter="fail">Failed</button>
+              <div class="section-label">Window &amp; setup</div>
+              <div class="btn-row">
+                <button class="pill-btn small" id="btnWizard">Re-run setup check</button>
+                <button class="pill-btn small" id="btnTour">Replay tour</button>
+                <button class="pill-btn small" id="btnMin">Minimize</button>
+                <button class="pill-btn small" id="btnMax">Maximize</button>
+              </div>
+              <div class="danger-zone">
+                <div><div class="s-name">Danger zone</div><div class="s-sub">closes Sara completely</div></div>
+                <button class="pill-btn small danger" id="btnClose">Close SARA</button>
+              </div>
             </div>
-            <div id="actionTimeline" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
-
-            <div class="section-label sub">Frequently missed commands</div>
-            <div id="missedCommands" class="acc-note" data-skel></div>
-
+          </section>
           </div>
-        </section>
-
-        <section class="set-card" id="grp-advanced">
-          <div class="set-card-head"><div class="set-card-title">Advanced</div><div class="set-card-sub">data, window &amp; setup</div></div>
-          <div class="set-card-body">
-            <div class="section-label">Data</div>
-            <div class="btn-row">
-              <button class="pill-btn small" id="btnOpenDataFolder">Open data folder</button>
-            </div>
-
-            <div class="section-label">Window &amp; setup</div>
-            <div class="btn-row">
-              <button class="pill-btn small" id="btnWizard">Re-run setup check</button>
-              <button class="pill-btn small" id="btnTour">Replay tour</button>
-              <button class="pill-btn small" id="btnMin">Minimize</button>
-              <button class="pill-btn small" id="btnMax">Maximize</button>
-            </div>
-            <div class="danger-zone">
-              <div><div class="s-name">Danger zone</div><div class="s-sub">closes Sara completely</div></div>
-              <button class="pill-btn small danger" id="btnClose">Close SARA</button>
-            </div>
-          </div>
-        </section>
-
+        </div>
       </div>
       </div>
     </div>
