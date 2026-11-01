@@ -11,7 +11,7 @@ Stored as preferences "ui:theme", "ui:accent_hue", "ui:clock_theme" through the 
 No relative imports on purpose: this file can be imported and tested on its own.
 """
 
-_THEMES = ("sara", "paper", "arctic", "emerald", "rose", "violet", "slate", "ember", "cyber", "aurora", "neon", "ink", "oat", "lime", "custom")
+_THEMES = ("sara", "paper", "arctic", "emerald", "rose", "violet", "slate", "ember", "aurora", "neon", "ink", "oat", "lime", "obsidian", "ocean", "sunset", "forest", "custom")
 _CLOCK_THEMES = ("sara", "aurora", "midnight", "glass", "pulse")
 _KEYS = ("theme", "accent_hue", "clock_theme")
 

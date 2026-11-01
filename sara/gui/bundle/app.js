@@ -206,7 +206,10 @@
     for (let i = 0; i < toastListeners.length; i++) { try { toastListeners[i].apply(null, arguments); } catch (e) { /* cosmetic only */ } }
     return showToast.apply(this, arguments);
   };
-  SARA.ok = (m) => SARA.toast('ti-check', '#3FD8C4', m, { variant: 'success' });
+  SARA.ok = (m) => {
+    if (SARA.sound && SARA.sound.play && performance.now() - (SARA.sound.lastPlayAt || 0) > 250) SARA.sound.success();
+    return SARA.toast('ti-check', '#3FD8C4', m, { variant: 'success' });
+  };
   SARA.fail = (m) => SARA.toast('ti-alert-triangle', '#D97A6B', m, { variant: 'error' });
 
   let hintShown = 0;
@@ -219,37 +222,110 @@
     SARA.toast('ti-bulb', '#8B6FD8', 'Tip: ask "why did you say that?" and Sara will explain.');
   };
 
-  /* ---- sound blips (Web Audio, no files). Every sound goes through tone(), which returns silently when SARA.sound.on is false. ---- */
-  let actx = null;
-  SARA.sound = {
-    on: (function () { try { return localStorage.getItem('sara_ui_sounds') !== 'off'; } catch (e) { return true; } })(),
-    set(v) { this.on = !!v; try { localStorage.setItem('sara_ui_sounds', this.on ? 'on' : 'off'); } catch (e) {} },
-    tone(freq, dur, type, vol, delay) {          // delay = seconds from now (lets one call schedule a small sequence)
-      if (!this.on) return;
-      try {
-        actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-        if (actx.state === 'suspended') actx.resume();
-        const d = dur || 0.05, v = vol || 0.04, t0 = actx.currentTime + (delay || 0);
-        const o = actx.createOscillator(), g = actx.createGain();
-        o.type = type || 'sine'; o.frequency.value = freq || 440;
-        g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(v, t0 + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
-        o.connect(g); g.connect(actx.destination); o.start(t0); o.stop(t0 + d + 0.02);
-      } catch (e) { /* audio unavailable -- ignore */ }
-    },
-    tap() { this.tone(500, 0.04, 'sine', 0.035); },
-    toggle(on) { this.tone(on ? 720 : 340, 0.05, 'triangle', 0.03); },
-    wake() { this.tone(520, 0.09, 'sine', 0.05); setTimeout(() => SARA.sound.tone(780, 0.12, 'sine', 0.05), 90); },
-    // --- event sounds (each < 150ms, quiet) ---
-    sent()     { this.tone(520, 0.05, 'sine', 0.028);     this.tone(700, 0.07, 'sine', 0.026, 0.04); },     // chat: message sent
-    received() { this.tone(660, 0.06, 'triangle', 0.026); this.tone(500, 0.09, 'triangle', 0.022, 0.05); }, // chat: Sara replied
-    added()    { this.tone(600, 0.05, 'sine', 0.03);      this.tone(900, 0.09, 'sine', 0.026, 0.04); },     // reminder added
-    done()     { this.tone(660, 0.06, 'sine', 0.03);      this.tone(830, 0.09, 'sine', 0.028, 0.05); },     // reminder completed
-    notify()   { this.tone(880, 0.12, 'sine', 0.028);     this.tone(1320, 0.09, 'sine', 0.01, 0.01); },     // notification arrived
-    run()      { [440, 554, 660].forEach((f, i) => this.tone(f, 0.05, 'triangle', 0.026, i * 0.04)); },     // routine started
-    saved()    { this.tone(520, 0.06, 'triangle', 0.028); this.tone(780, 0.09, 'triangle', 0.026, 0.05); }, // routine saved
-    error()    { this.tone(240, 0.07, 'sine', 0.03);      this.tone(190, 0.08, 'sine', 0.028, 0.06); }      // something failed (soft, low)
+  /* ---- premium UI sound engine (Web Audio, no files). The public API (tap/toggle/wake/sent/received/added/done/notify/run/saved/error/
+     tone/on/set) is unchanged; new: volume, 4 sound packs, soft low-pass + short synthetic reverb + compressor, layered partials,
+     and event sounds for listening / thinking / speaking / boot / page + theme switches. Per-device choices live in localStorage. ---- */
+  let actx = null, bus = null, lpF = null, wetG = null;
+  const LS = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* blocked */ } }
   };
+  // root = base frequency (Hz); partials = [ratio, amplitude]; wet = reverb mix; cutoff = low-pass (Hz); gain = pack loudness
+  const PACKS = {
+    glass:   { label: 'Glass',   root: 523.25, type: 'sine',     partials: [[1, 1], [2.76, 0.22], [5.40, 0.07]], wet: 0.24, cutoff: 7500, gain: 1.0 },
+    soft:    { label: 'Soft',    root: 440.00, type: 'triangle', partials: [[1, 1], [2, 0.12]],                  wet: 0.14, cutoff: 3800, gain: 1.0 },
+    minimal: { label: 'Minimal', root: 587.33, type: 'sine',     partials: [[1, 1]],                              wet: 0.04, cutoff: 6000, gain: 0.9 },
+    scifi:   { label: 'Sci-Fi',  root: 392.00, type: 'sawtooth', partials: [[1, 0.5], [1.005, 0.5]],             wet: 0.30, cutoff: 2600, gain: 0.6 }
+  };
+  // each note = [semitones from root, delay s, duration s, volume 0..1]
+  const EVENTS = {
+    tap:         [[0, 0, .05, .55]],
+    toggleOn:    [[0, 0, .06, .6], [7, .045, .09, .6]],
+    toggleOff:   [[7, 0, .06, .5], [0, .045, .09, .5]],
+    wake:        [[0, 0, .10, .9], [7, .08, .14, .9], [12, .16, .22, .7]],
+    listenStart: [[0, 0, .08, .7], [7, .06, .14, .8]],
+    listenEnd:   [[7, 0, .07, .6], [0, .06, .12, .6]],
+    thinking:    [[0, 0, .18, .35], [3, .14, .18, .3]],
+    speakStart:  [[0, 0, .06, .5]],
+    sent:        [[0, 0, .05, .55], [5, .04, .07, .5]],
+    received:    [[7, 0, .06, .55], [0, .05, .09, .45]],
+    added:       [[0, 0, .05, .6], [9, .04, .09, .55]],
+    done:        [[0, 0, .06, .6], [4, .05, .06, .55], [7, .10, .12, .6]],
+    notify:      [[12, 0, .14, .6], [19, .01, .10, .2]],
+    run:         [[0, 0, .05, .5], [4, .04, .05, .5], [7, .08, .07, .5]],
+    saved:       [[0, 0, .06, .55], [7, .05, .10, .55]],
+    success:     [[0, 0, .07, .6], [7, .07, .07, .6], [12, .14, .18, .7]],
+    error:       [[-5, 0, .08, .6], [-10, .07, .12, .6]],
+    bootDone:    [[0, 0, .12, .7], [7, .10, .14, .7], [12, .20, .16, .7], [16, .30, .30, .6]],
+    themeSwitch: [[0, 0, .08, .5], [12, .06, .16, .5]],
+    pageSwitch:  [[0, 0, .04, .35]],
+    sliderTick:  [[0, 0, .02, .25]]
+  };
+  const MIN_GAP = { tap: 40, sliderTick: 45, pageSwitch: 90, thinking: 400 };   // ms; stops machine-gun repeats
+  const BASE_VOL = 0.06, lastAt = {};
+
+  function makeIR(ctx, seconds, decay) {            // synthetic reverb tail (decaying noise)
+    const rate = ctx.sampleRate, len = Math.floor(rate * seconds), buf = ctx.createBuffer(2, len, rate);
+    for (let c = 0; c < 2; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay); }
+    return buf;
+  }
+  function applyPack() {
+    if (!actx) return; const p = PACKS[S.pack] || PACKS.glass;
+    lpF.frequency.setTargetAtTime(p.cutoff, actx.currentTime, 0.02); wetG.gain.setTargetAtTime(p.wet, actx.currentTime, 0.02);
+  }
+  function ensure() {
+    if (actx) { if (actx.state === 'suspended') actx.resume(); return actx; }
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    bus = actx.createGain(); bus.gain.value = S.volume;
+    lpF = actx.createBiquadFilter(); lpF.type = 'lowpass'; lpF.Q.value = 0.5;
+    const dry = actx.createGain(), verb = actx.createConvolver(); wetG = actx.createGain();
+    verb.buffer = makeIR(actx, 0.9, 2.6);
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 24; comp.ratio.value = 3; comp.attack.value = 0.003; comp.release.value = 0.15;
+    bus.connect(lpF); lpF.connect(dry); lpF.connect(verb); verb.connect(wetG);
+    dry.connect(comp); wetG.connect(comp); comp.connect(actx.destination);
+    applyPack();
+    return actx;
+  }
+  function voice(freq, delay, dur, o) {
+    const c = ensure(), t0 = c.currentTime + (delay || 0), vol = o.vol || 0.04, atk = o.attack || 0.006;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(vol, t0 + atk); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    g.connect(bus);
+    (o.partials || [[1, 1]]).forEach(function (p) {
+      const osc = c.createOscillator(), pg = c.createGain();
+      osc.type = o.type || 'sine'; osc.frequency.setValueAtTime(freq * p[0], t0); pg.gain.value = p[1];
+      osc.connect(pg); pg.connect(g); osc.start(t0); osc.stop(t0 + dur + 0.03);
+    });
+  }
+  function play(name) {
+    if (!S.on || document.hidden) return;
+    const ev = EVENTS[name]; if (!ev) return;
+    const now = performance.now(); if (now - (lastAt[name] || 0) < (MIN_GAP[name] || 0)) return; lastAt[name] = now; S.lastPlayAt = now;
+    try {
+      const p = PACKS[S.pack] || PACKS.glass;
+      ev.forEach(function (n) { voice(p.root * Math.pow(2, n[0] / 12), n[1], n[2], { vol: BASE_VOL * p.gain * n[3], type: p.type, partials: p.partials }); });
+    } catch (e) { /* audio unavailable -- ignore */ }
+  }
+  const S = SARA.sound = {
+    on: (function () { return LS.get('sara_ui_sounds') !== 'off'; })(),
+    volume: (function () { const v = parseFloat(LS.get('sara_ui_volume')); return isNaN(v) ? 0.8 : Math.max(0, Math.min(1, v)); })(),
+    pack: (function () { const p = LS.get('sara_ui_sound_pack'); return PACKS[p] ? p : 'glass'; })(),
+    packs: Object.keys(PACKS).map(function (k) { return { id: k, label: PACKS[k].label }; }),
+    set(v) { this.on = !!v; LS.set('sara_ui_sounds', this.on ? 'on' : 'off'); },
+    setVolume(v) { this.volume = Math.max(0, Math.min(1, +v || 0)); LS.set('sara_ui_volume', String(this.volume)); if (actx) bus.gain.setTargetAtTime(this.volume, actx.currentTime, 0.02); },
+    setPack(id) { if (!PACKS[id]) return; this.pack = id; LS.set('sara_ui_sound_pack', id); applyPack(); play('success'); },
+    play: play,
+    tone(freq, dur, type, vol, delay) {            // legacy raw tone; kept for existing callers. The bus already applies the volume.
+      if (!this.on) return;
+      try { voice(freq || 440, delay || 0, dur || 0.05, { vol: vol || 0.04, type: type || 'sine' }); } catch (e) { /* audio unavailable */ }
+    },
+    toggle(on) { play(on ? 'toggleOn' : 'toggleOff'); }
+  };
+  // page / theme switch sounds wait for the first real click or key, so nothing plays while the app is just starting up
+  ['pointerdown', 'keydown'].forEach(function (ev) { window.addEventListener(ev, function () { S.interacted = true; }, { capture: true, once: true, passive: true }); });
+  ['tap', 'wake', 'listenStart', 'listenEnd', 'thinking', 'speakStart', 'sent', 'received', 'added', 'done', 'notify', 'run', 'saved',
+   'success', 'error', 'bootDone', 'themeSwitch', 'pageSwitch', 'sliderTick'].forEach(function (n) { S[n] = function () { play(n); }; });
 
   /* ---- boot overlay (driven by 'boot_progress' + 'backend_ready' events) ----
      The percentage the backend sends is only the TARGET; the bar eases toward it every frame so it never jumps. */
@@ -274,6 +350,11 @@
   function finishBoot() {
     if (bootDone) return; bootDone = true;
     const o = boot; boot = null; if (!o) return;
+    try { SARA.sound.bootDone(); } catch (e) { /* audio may be blocked before the first gesture */ }
+    try {
+      const st = document.getElementById('stage');
+      if (st && !SARA.reduceMotion && SARA.quality && SARA.quality.allows('p6')) { st.classList.add('orb-enter'); setTimeout(function () { st.classList.remove('orb-enter'); }, 800); }
+    } catch (e) { /* cosmetic only */ }
     o.root.style.pointerEvents = 'none'; o.root.style.opacity = '0';
     setTimeout(() => o.root.remove(), 420);
   }
@@ -462,6 +543,7 @@
     document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('active', b.dataset.page === name));
     document.body.dataset.page = name; SARA.current = name;
     SARA.emit('page', name);
+    if (SARA.sound && SARA.sound.interacted) SARA.sound.pageSwitch();
   };
   SARA.$('navBar').addEventListener('click', function (e) {
     const b = e.target.closest('button[data-page]'); if (!b) return;
@@ -597,12 +679,15 @@
     { id: 'violet',  name: 'Lilac',      description: 'Indigo glow',     category: 'light',      tags: ['futuristic'] },
     { id: 'slate',   name: 'Midnight',   description: 'iOS dark',        category: 'minimal',    tags: ['dark'] },
     { id: 'ember',   name: 'Ember',      description: 'Molten warm',     category: 'warm',       tags: ['dark'] },
-    { id: 'cyber',   name: 'Cyber Blue', description: 'Electric',        category: 'futuristic', tags: ['dark'] },
     { id: 'aurora',  name: 'Aurora',     description: 'Northern lights', category: 'futuristic', tags: ['dark'] },
     { id: 'neon',    name: 'Neon Black', description: 'Electric blue',   category: 'futuristic', tags: ['dark'] },
     { id: 'ink',     name: 'Mono Ink',   description: 'Black & vermilion', category: 'minimal',  tags: ['dark'] },
     { id: 'oat',     name: 'Oat & Sage', description: 'Calm & matte',      category: 'light',    tags: ['minimal'] },
     { id: 'lime',    name: 'Graphite Lime', description: 'Quiet & bold',   category: 'minimal',  tags: ['dark'] },
+    { id: 'obsidian', name: 'Obsidian Gold', description: 'Black & brushed gold', category: 'warm',       tags: ['dark'] },
+    { id: 'ocean',    name: 'Deep Ocean',    description: 'Midnight water',       category: 'futuristic', tags: ['dark'] },
+    { id: 'sunset',   name: 'Sunset Glass',  description: 'Plum & coral',         category: 'futuristic', tags: ['dark'] },
+    { id: 'forest',   name: 'Forest Night',  description: 'Moss & sage',          category: 'dark',       tags: ['dark'] },
     { id: 'custom',  name: 'Custom',     description: 'Your colours',      category: 'minimal',  tags: ['dark', 'light'] }
   ];
   const ids = LIST.map((t) => t.id);
@@ -671,8 +756,10 @@
     if (animate) animateSwitch();
     root.dataset.theme = current; applyHue(); paintUi();
     SARA.emit('theme', current);
+    if (animate && SARA.sound && SARA.sound.interacted) SARA.sound.themeSwitch();     // only for a user-driven switch, not the start-up apply
   }
-  function normId(id) { return ids.indexOf(id) >= 0 ? id : 'sara'; }
+  const RENAMED = { cyber: 'ocean' };                          // a removed theme id keeps working: Cyber Blue -> Deep Ocean
+  function normId(id) { id = RENAMED[id] || id; return ids.indexOf(id) >= 0 ? id : 'sara'; }
   function normHue(v) { if (v === null || v === undefined || v === '') return null; const n = Number(v); return isNaN(n) ? null : ((n % 360) + 360) % 360; }
 
   SARA.theme = {
@@ -985,7 +1072,7 @@
     // so periodic list refreshes never replay it. Timer is per-page and cleared on re-entry.
     if (!SARA.reduceMotion) {
       clearTimeout(page._stg); page.classList.add('stagger-in');
-      page._stg = setTimeout(function () { page.classList.remove('stagger-in'); }, 450);
+      page._stg = setTimeout(function () { page.classList.remove('stagger-in'); }, 700);
     }
     prev = name;
   });
@@ -1051,23 +1138,8 @@
     });
   }
 
-  /* ---- 4) cursor parallax (skipped entirely under reduced-motion) ---- */
-  if (!SARA.reduceMotion) {
-    const root = document.documentElement;
-    let mx = 0, my = 0, tx = 0, ty = 0, raf = 0, lastQx = 0, lastQy = 0;
-    function applyParallax() {
-      raf = 0;
-      tx += (mx - tx) * 0.08; ty += (my - ty) * 0.08;
-      const qx = Math.round(tx), qy = Math.round(ty); if (qx !== lastQx) { lastQx = qx; root.style.setProperty('--mx', qx + 'px'); }
-      if (qy !== lastQy) { lastQy = qy; root.style.setProperty('--my', qy + 'px'); }
-      if (Math.abs(mx - tx) > 0.4 || Math.abs(my - ty) > 0.4) raf = requestAnimationFrame(applyParallax);
-    }
-    window.addEventListener('pointermove', function (e) {
-      mx = (e.clientX / window.innerWidth - 0.5) * 8;    // -4px..4px -- deliberately tiny, this is ambience not a gimmick
-      my = (e.clientY / window.innerHeight - 0.5) * 8;
-      if (!raf) raf = requestAnimationFrame(applyParallax);
-    }, { passive: true });
-  }
+  /* ---- 4) cursor parallax: removed (GUI audit P2-1). It rewrote --mx/--my on :root on every pointer move, which re-styled
+     the entire document (54% of a core on the settings page) for a 4px glow nudge. ---- */
 
   /* ---- 5) ripple: one delegated listener covers buttons added later by any page's own JS too ---- */
   const RIPPLE_SEL = '.pill-btn,.chip,.dock-btn,.qa-btn,.mc-play,.app-tile';
@@ -1666,7 +1738,15 @@
     if (!BACKEND_TO_MODE[state] && !warnedStatus[state]) { warnedStatus[state] = 1; console.warn('[status] unknown backend status "' + state + '" -> showing idle'); }
     if (next === 'idle' && modeName !== 'idle') idleSince = Date.now();
     if (next === 'waking' && modeName !== 'waking') wakeAt = performance.now();
+    const prevMode = modeName;
     modeName = next;
+    if (SARA.sound && prevMode !== next && SARA._statusSeen) {      // transition sounds; the wake chime already covers waking -> listening
+      if (next === 'listening' && prevMode !== 'waking') SARA.sound.listenStart();
+      else if (prevMode === 'listening') SARA.sound.listenEnd();
+      else if (next === 'thinking' || next === 'working') SARA.sound.thinking();
+      if (next === 'speaking') SARA.sound.speakStart();
+    }
+    SARA._statusSeen = true;
     if (next !== 'idle') { setAmbientTier(0); lastActivity = Date.now(); }
     refreshChrome();
     $('stopBtn').hidden = (next === 'idle');
@@ -1874,6 +1954,7 @@
   /* ---- perf: pause the rAF loop entirely when nobody can see it (tab hidden or a different page),
      and adaptively trim particle/ring density on slow machines instead of just getting janky. ---- */
   let orbRunning = false, lastFrameTs = 0, avgFrameMs = 16.7, quality = 1;
+  const ORB_MIN_GAP_MS = 12.4;
   const shouldRunOrb = () => !document.hidden && (SARA.current || 'home') === 'home';
   function scheduleOrb() { if (!orbRunning) { orbRunning = true; lastFrameTs = 0; requestAnimationFrame(draw); } }
   document.addEventListener('visibilitychange', function () { if (!document.hidden) scheduleOrb(); });
@@ -1882,6 +1963,9 @@
   function draw(now) {
     if (!shouldRunOrb()) { orbRunning = false; return; }   // resumed by scheduleOrb() once visible/on-page again
     now = now || performance.now();
+    // Part 3 / P3: the orb advances per FRAME, so a 144 Hz display ran it at 144 fps (2.4x the 60 Hz pace) and spent the
+    // script time for it. Cap at ~72 fps: 60 Hz displays are unchanged, 144 Hz draws every second refresh.
+    if (lastFrameTs && now - lastFrameTs < ORB_MIN_GAP_MS) { requestAnimationFrame(draw); return; }
     const dt = lastFrameTs ? (now - lastFrameTs) : 16.7; lastFrameTs = now;
     avgFrameMs += (Math.min(dt, 200) - avgFrameMs) * 0.05;                 // smoothed frame time (clamp huge tab-switch gaps)
     // Below ~50fps -> step quality down a notch; once frame time is healthy again, ease back up
@@ -2255,6 +2339,107 @@
       applyCfg(Object.keys(cfg).filter(function (k) { return cfg[k] && !before[k]; }));
     }
   };
+})();
+
+;
+/* ==== js/home/hints.js ==== */
+/* ==========================================================================
+   hints.js -- F3. While Sara is idle on the Home page, the small hint line under the orb rotates through things you can say
+   ("Try: what's the weather"), every 8 s with a soft cross-fade. It never touches the line while Sara is awake / listening / speaking,
+   while the window is hidden, on another page, or when something else (the backend footer) has written different text:
+   in that case it takes that text as the new starting line. Feature key 'hints' (off in the Low tier, switchable in Fine-tune effects);
+   no animation under reduced motion (the text just changes). Only commands that exist are listed.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA, doc = document;
+  const hint = doc.getElementById('homeHint'); if (!SARA || !hint) return;
+  const TIPS = [
+    'Try: “what’s the weather”', 'Try: “set a timer for 5 minutes”', 'Try: “remind me to drink water at 5 pm”',
+    'Try: “open Chrome”', 'Try: “volume up”', 'Try: “what time is it”', 'Try: “tell me the news”'
+  ];
+  const EVERY_MS = 8000, FADE_MS = 320;
+  let base = hint.textContent, ours = hint.textContent, step = 0, busy = false;
+
+  function idleHome() {
+    const st = SARA.state && SARA.state.status;                       // 'sleeping' = waiting for the wake word (or paused); anything else = awake / busy
+    return !doc.hidden && (SARA.current || 'home') === 'home' && (!st || st === 'sleeping');
+  }
+  function show(text) {
+    ours = text;
+    if (SARA.reduceMotion || !SARA.quality || !SARA.quality.allows('hints')) { hint.textContent = text; return; }
+    busy = true; hint.classList.add('hint-swap');
+    setTimeout(function () { hint.textContent = text; hint.classList.remove('hint-swap'); busy = false; }, FADE_MS);
+  }
+  function tick() {
+    if (busy || !idleHome() || !SARA.quality || !SARA.quality.allows('hints')) return;
+    if (hint.textContent !== ours) { base = hint.textContent; ours = base; step = 0; return; }     // someone else wrote the line: adopt it, restart the cycle
+    if (!hint.textContent.trim() || hint.offsetParent === null) return;
+    const i = step++ % (TIPS.length + 1);
+    show(i === TIPS.length ? base : TIPS[i]);
+  }
+  setInterval(tick, EVERY_MS);
+  SARA.hints = { tick: tick, tips: TIPS.slice() };
+})();
+
+;
+/* ==== js/home/usage-card.js ==== */
+/* ==========================================================================
+   usage-card.js -- F7. A small "Last 7 days" card on Home (top right): how many commands you gave each day, as seven bars plus the total.
+   Data: the existing get_analytics_dashboard call (daily_trend). Refreshed when the Home page opens, at most once a minute. The card stays
+   hidden until there is something to show (no commands in 7 days = no empty chart), and it is hidden on small windows (style/home/home.css).
+   Click or Enter opens Settings at the full trend chart. Bars animate with transform only, and not at all under reduced motion.
+   Markup: index.html #usageCard.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA, doc = document, $ = SARA.$;
+  const card = $('usageCard'), bars = $('ucBars'), days = $('ucDays'), totalEl = $('ucTotal');
+  if (!card || !bars) return;
+  const DAYS = 7, MIN_GAP_MS = 60000;
+  let lastLoad = 0, busy = false, shown = false;
+
+  function dayLetter(s) { const d = new Date(s + 'T00:00:00'); return isNaN(d.getTime()) ? '' : d.toLocaleDateString([], { weekday: 'narrow' }); }
+  function dayLong(s) { const d = new Date(s + 'T00:00:00'); return isNaN(d.getTime()) ? s : d.toLocaleDateString([], { weekday: 'long' }); }
+
+  function paint(trend) {
+    const week = trend.slice(-DAYS).map(function (t) { return { date: String(t.date || ''), count: Math.max(0, Number(t.count) || 0) }; });
+    const total = week.reduce(function (a, t) { return a + t.count; }, 0), max = Math.max.apply(null, week.map(function (t) { return t.count; }).concat([1]));
+    if (!week.length || total === 0) { card.hidden = true; shown = false; return; }
+    totalEl.textContent = total.toLocaleString();
+    bars.textContent = ''; days.textContent = '';
+    week.forEach(function (t, i) {
+      const b = doc.createElement('span'); b.className = 'uc-bar' + (i === week.length - 1 ? ' today' : ''); b.style.setProperty('--v', (Math.max(0.06, t.count / max)).toFixed(3));
+      b.title = dayLong(t.date) + ': ' + t.count + (t.count === 1 ? ' command' : ' commands'); bars.appendChild(b);
+      const l = doc.createElement('span'); l.textContent = dayLetter(t.date); days.appendChild(l);
+    });
+    card.setAttribute('aria-label', 'Usage in the last 7 days: ' + total + (total === 1 ? ' command' : ' commands') + '. Open analytics.');
+    const first = !shown; shown = true; card.hidden = false;
+    card.classList.remove('ready');
+    if (first && !SARA.reduceMotion) requestAnimationFrame(function () { requestAnimationFrame(function () { card.classList.add('ready'); }); });
+    else card.classList.add('ready');
+  }
+
+  async function load(force) {
+    if (busy || (!force && performance.now() - lastLoad < MIN_GAP_MS)) return;
+    busy = true; lastLoad = performance.now();
+    try {
+      const res = await SARA.callApi('get_analytics_dashboard');
+      const trend = res && res.ok && res.data && res.data.daily_trend;
+      if (Array.isArray(trend)) paint(trend); else { card.hidden = true; shown = false; }
+    } catch (e) { card.hidden = true; shown = false; }
+    finally { busy = false; }
+  }
+
+  function open() {
+    SARA.sound && SARA.sound.tap(); SARA.gotoPage('settings');
+    setTimeout(function () { const t = $('anTrend') || $('anChart'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: SARA.reduceMotion ? 'auto' : 'smooth' }); }, 220);
+  }
+  card.addEventListener('click', open);
+  card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+  SARA.onBoot(function () { load(true); });
+  SARA.on('page', function (p) { if (p === 'home') load(false); });
+  SARA.usageCard = { refresh: function () { return load(true); } };
 })();
 
 ;
@@ -4963,6 +5148,7 @@
     d.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
     return d;
   }
+  SARA.apps = { open: OPEN, tools: TOOLS, run: runItem, icon: ICON };      // read by js/home/radial.js (quick-action ring)
   OPEN.forEach((i) => $('appsGrid').appendChild(tile(i)));
   TOOLS.forEach((i) => $('toolsGrid').appendChild(tile(i)));
   SYSTEM.forEach(function (i) {
@@ -4992,6 +5178,200 @@
   }
   $('searchBtn').addEventListener('click', doSearch);
   $('searchInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+})();
+
+;
+/* ==== js/apps/apps-order.js ==== */
+/* ==========================================================================
+   apps-order.js -- F8. Reorder the tiles on the Apps page ("Open" and "Quick tools") by dragging them, or with the keyboard:
+   focus a tile and press Alt+Left / Alt+Right (Alt+Up / Alt+Down jump a row). Every change shows a toast with Undo; "Reset order" in the
+   hint line restores the built-in order. The order is per device (localStorage 'sara_apps_order', in-memory fallback) and keyed by the
+   tile label, so a tile that is added or removed in js/apps/apps.js never breaks a saved order (unknown labels go to the end).
+   Frontend only: no backend call, no change to what a tile does. Load AFTER js/apps/apps.js.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA, doc = document; if (!SARA) return;
+  const GRIDS = ['appsGrid', 'toolsGrid'], KEY = 'sara_apps_order', mem = {};
+  const ls = {
+    get: function (k) { try { const v = localStorage.getItem(k); if (v !== null) return v; } catch (e) { /* blocked */ } return (k in mem) ? mem[k] : null; },
+    set: function (k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) { /* blocked */ } },
+    del: function (k) { delete mem[k]; try { localStorage.removeItem(k); } catch (e) { /* blocked */ } }
+  };
+  const label = function (t) { const s = t.querySelector('span'); return s ? s.textContent : ''; };
+  const tiles = function (g) { return Array.prototype.slice.call(g.querySelectorAll('.app-tile')); };
+  const gridEls = GRIDS.map(function (id) { return doc.getElementById(id); }).filter(Boolean);
+  if (!gridEls.length) return;
+  const defaults = {};                                            // built-in order, captured before any saved order is applied
+  gridEls.forEach(function (g) { defaults[g.id] = tiles(g).map(label); });
+
+  function read() { try { const o = JSON.parse(ls.get(KEY) || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+  function snapshot() { const o = {}; gridEls.forEach(function (g) { o[g.id] = tiles(g).map(label); }); return o; }
+  function isDefault(o) { return gridEls.every(function (g) { return JSON.stringify((o || snapshot())[g.id]) === JSON.stringify(defaults[g.id]); }); }
+  function arrange(order) {                                       // order: { gridId: [labels] }  (missing / unknown labels keep their place at the end)
+    gridEls.forEach(function (g) {
+      const want = (order && order[g.id]) || []; if (!Array.isArray(want)) return;
+      const all = tiles(g), byLabel = {}; all.forEach(function (t) { byLabel[label(t)] = t; });
+      const seen = {}, out = [];
+      want.forEach(function (l) { if (byLabel[l] && !seen[l]) { seen[l] = 1; out.push(byLabel[l]); } });
+      all.forEach(function (t) { if (!seen[label(t)]) out.push(t); });
+      out.forEach(function (t) { g.appendChild(t); });
+    });
+  }
+  function persist() { if (isDefault()) ls.del(KEY); else ls.set(KEY, JSON.stringify(snapshot())); paintHint(); }
+
+  /* ---- hint line under the "Open" label ---- */
+  const firstLabel = gridEls[0].previousElementSibling;
+  const hint = doc.createElement('div'); hint.className = 'apps-hint';
+  const hintText = doc.createElement('span'); hintText.textContent = 'Drag a tile to reorder it, or focus one and press Alt + arrow keys. ';
+  const reset = doc.createElement('button'); reset.type = 'button'; reset.className = 'link-btn'; reset.textContent = 'Reset order'; reset.hidden = true;
+  hint.appendChild(hintText); hint.appendChild(reset);
+  if (firstLabel && firstLabel.parentNode) firstLabel.parentNode.insertBefore(hint, gridEls[0]);
+  function paintHint() { reset.hidden = isDefault(); }
+
+  /* ---- change + undo ---- */
+  function changed(before) {
+    persist();
+    if (SARA.toast) SARA.toast('ti-check', 'var(--core)', 'Apps reordered', { variant: 'info', undo: function () { arrange(before); persist(); } });
+  }
+  reset.addEventListener('click', function () { const before = snapshot(); arrange(defaults); persist(); if (SARA.toast) SARA.toast('ti-check', 'var(--core)', 'Order reset', { variant: 'info', undo: function () { arrange(before); persist(); } }); });
+
+  /* ---- make tiles draggable ---- */
+  gridEls.forEach(function (g) {
+    const mark = function () { tiles(g).forEach(function (t) { t.draggable = true; t.setAttribute('aria-roledescription', 'reorderable tile'); }); };
+    mark();
+    let drag = null, before = null;
+    g.addEventListener('dragstart', function (e) {
+      const t = e.target.closest && e.target.closest('.app-tile'); if (!t || !g.contains(t)) return;
+      drag = t; before = snapshot(); t.classList.add('dragging');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', label(t)); } catch (err) { /* ignore */ }
+    });
+    g.addEventListener('dragover', function (e) {
+      if (!drag) return; e.preventDefault(); try { e.dataTransfer.dropEffect = 'move'; } catch (err) { /* ignore */ }
+      const over = e.target.closest && e.target.closest('.app-tile'); if (!over || over === drag || !g.contains(over)) return;
+      const r = over.getBoundingClientRect(), after = (e.clientX - r.left) > r.width / 2;      // right half = place after, left half = before
+      const ref = after ? over.nextElementSibling : over;
+      if (ref !== drag && drag.nextElementSibling !== ref) g.insertBefore(drag, ref);
+      else if (ref === null && g.lastElementChild !== drag) g.appendChild(drag);
+    });
+    g.addEventListener('drop', function (e) { if (drag) e.preventDefault(); });
+    g.addEventListener('dragend', function () {
+      if (!drag) return; drag.classList.remove('dragging'); drag = null;
+      if (JSON.stringify(snapshot()) !== JSON.stringify(before)) changed(before);
+      before = null;
+    });
+    /* keyboard: Alt + arrows move the focused tile (the tile's own Enter handler is untouched) */
+    g.addEventListener('keydown', function (e) {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.key.indexOf('Arrow') !== 0) return;
+      const t = e.target.closest && e.target.closest('.app-tile'); if (!t || !g.contains(t)) return;
+      const all = tiles(g), i = all.indexOf(t);
+      const perRow = Math.max(1, Math.round(g.clientWidth / (t.offsetWidth + 10)));
+      const to = e.key === 'ArrowLeft' ? i - 1 : e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowUp' ? i - perRow : i + perRow;
+      if (to < 0 || to >= all.length || to === i) { e.preventDefault(); return; }
+      e.preventDefault(); e.stopPropagation();
+      if (!g._keyBefore) g._keyBefore = snapshot();                 // the order before the first key of this burst
+      g.insertBefore(t, to > i ? all[to].nextElementSibling : all[to]); t.focus(); persist();
+      clearTimeout(g._keyT);                                         // one toast (with Undo) per burst of key presses, not one per press
+      g._keyT = setTimeout(function () { const b = g._keyBefore; g._keyBefore = null; if (b && JSON.stringify(snapshot()) !== JSON.stringify(b)) changed(b); }, 900);
+    }, true);
+  });
+
+  arrange(read()); paintHint();
+  SARA.appsOrder = { reset: function () { arrange(defaults); persist(); }, snapshot: snapshot, defaults: function () { return JSON.parse(JSON.stringify(defaults)); } };
+})();
+
+;
+/* ==== js/home/radial.js ==== */
+/* ==========================================================================
+   radial.js -- F6. Press and hold the orb (about half a second) and six quick actions fan out around it. Tap one to run it; Esc, a tap
+   outside, changing page or hiding the window closes the menu. A normal tap on the orb still wakes Sara exactly as before.
+   The actions are the same tiles as on the Apps page (SARA.apps from js/apps/apps.js: Notepad, Calculator, Chrome, Screenshot, Spotify,
+   Task Manager), run through the same function, so nothing new is sent to the backend. Keyboard: the menu buttons are normal buttons
+   (Tab / arrows / Enter), and the command palette has a "Quick actions" entry that opens the menu (SARA.radial.open()).
+   Feature key 'radial' (Fine-tune effects; turning it off disables the long-press, the palette entry still works).
+   Animation = transform / opacity only, none under reduced motion. Styles: style/shared/guide.css. Load AFTER js/apps/apps.js and js/home/home.js.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA, doc = document; if (!SARA) return;
+  const stage = doc.getElementById('stage'); if (!stage) return;
+  const WANT = ['Notepad', 'Calculator', 'Chrome', 'Screenshot', 'Spotify', 'Task Manager'];
+  const HOLD_MS = 520, MOVE_PX = 9;
+  const NS = 'http://www.w3.org/2000/svg';
+  let menu = null, holdTimer = 0, startX = 0, startY = 0, swallowClick = false, prevFocus = null;
+
+  const allowed = function () { return !SARA.quality || SARA.quality.allows('radial'); };
+
+  function items() {
+    const a = SARA.apps; if (!a || !a.open) return [];
+    return WANT.map(function (l) { return a.open.filter(function (i) { return i.label === l; })[0]; }).filter(Boolean);
+  }
+  function icon(name) {
+    const s = doc.createElementNS(NS, 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+    const g = doc.createElementNS(NS, 'g'); g.innerHTML = (SARA.apps && SARA.apps.icon && SARA.apps.icon[name]) || '';       // static icon markup from apps.js
+    while (g.firstChild) s.appendChild(g.firstChild); return s;
+  }
+
+  function close(restoreFocus) {
+    if (!menu) return;
+    const m = menu; menu = null; doc.removeEventListener('keydown', onKey, true);
+    m.classList.remove('open'); m.classList.add('closing');
+    setTimeout(function () { m.remove(); }, SARA.reduceMotion ? 0 : 180);
+    if (restoreFocus && prevFocus && prevFocus.focus) prevFocus.focus({ preventScroll: true });
+    prevFocus = null;
+  }
+  function onKey(e) {
+    if (!menu) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); return; }
+    if (e.key.indexOf('Arrow') === 0) {                                  // arrows walk around the ring
+      const b = Array.prototype.slice.call(menu.querySelectorAll('.rm-item')), i = b.indexOf(doc.activeElement);
+      e.preventDefault(); const step = (e.key === 'ArrowRight' || e.key === 'ArrowDown') ? 1 : -1;
+      b[(i + step + b.length) % b.length].focus();
+    }
+  }
+
+  function open() {
+    if (menu) return;
+    const list = items(); if (!list.length) return;
+    if ((SARA.current || 'home') !== 'home') return;
+    prevFocus = doc.activeElement;
+    const r = stage.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const radius = Math.max(84, Math.min(118, Math.min(r.width, r.height) * 0.46));
+    menu = doc.createElement('div'); menu.className = 'rm'; menu.setAttribute('role', 'menu'); menu.setAttribute('aria-label', 'Quick actions');
+    menu.style.setProperty('--cx', cx + 'px'); menu.style.setProperty('--cy', cy + 'px');
+    list.forEach(function (it, i) {
+      const ang = (-90 + i * (360 / list.length)) * Math.PI / 180;
+      const b = doc.createElement('button'); b.type = 'button'; b.className = 'rm-item'; b.setAttribute('role', 'menuitem'); b.setAttribute('aria-label', it.label);
+      b.style.setProperty('--x', (Math.cos(ang) * radius).toFixed(1) + 'px'); b.style.setProperty('--y', (Math.sin(ang) * radius).toFixed(1) + 'px');
+      b.style.setProperty('--d', (i * 35) + 'ms');
+      b.appendChild(icon(it.icon)); const lab = doc.createElement('span'); lab.className = 'rm-label'; lab.textContent = it.label; b.appendChild(lab);
+      b.addEventListener('click', function (e) { e.stopPropagation(); close(false); try { SARA.apps.run(it); } catch (err) { console.error('[radial]', err); } });
+      menu.appendChild(b);
+    });
+    menu.addEventListener('pointerdown', function (e) { if (e.target === menu) close(true); });          // a tap outside the ring closes it
+    doc.body.appendChild(menu);
+    doc.addEventListener('keydown', onKey, true);
+    SARA.sound && SARA.sound.tap();
+    requestAnimationFrame(function () { menu && menu.classList.add('open'); const f = menu && menu.querySelector('.rm-item'); if (f && !SARA.reduceMotion) f.focus({ preventScroll: true }); });
+  }
+
+  /* ---- long-press detection on the orb ---- */
+  function cancelHold() { clearTimeout(holdTimer); holdTimer = 0; }
+  stage.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0 || !allowed() || menu) return;
+    startX = e.clientX; startY = e.clientY; cancelHold();
+    holdTimer = setTimeout(function () { holdTimer = 0; swallowClick = true; open(); }, HOLD_MS);
+  });
+  stage.addEventListener('pointermove', function (e) { if (holdTimer && Math.hypot(e.clientX - startX, e.clientY - startY) > MOVE_PX) cancelHold(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) { stage.addEventListener(ev, cancelHold); });
+  stage.addEventListener('contextmenu', function (e) { if (swallowClick || menu) e.preventDefault(); });
+  // the click that ends a long press must not also wake Sara: swallow it in the capture phase, before home.js sees it
+  stage.addEventListener('click', function (e) { if (swallowClick) { swallowClick = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  doc.addEventListener('pointerup', function () { setTimeout(function () { swallowClick = false; }, 0); }, true);
+
+  SARA.on('page', function () { close(false); });
+  doc.addEventListener('visibilitychange', function () { if (doc.hidden) close(false); });
+  SARA.radial = { open: open, close: function () { close(true); }, isOpen: function () { return !!menu; } };
 })();
 
 ;
@@ -5536,6 +5916,7 @@ var LABELS = {
   /* ---- language ---- */
   function showLang(lang) {
     document.querySelectorAll('#langChips .chip').forEach((c) => c.classList.toggle('on', c.dataset.lang === lang));
+    try { document.documentElement.lang = (lang === 'hi') ? 'hi' : 'en'; } catch (e) { /* ignore */ }   // screen readers / fonts pick the right voice
   }
   $('langChips').addEventListener('click', function (e) {
     const chip = e.target.closest('.chip'); if (!chip) return;
@@ -5552,6 +5933,30 @@ var LABELS = {
   }
   slider('micSlider', 'micSliderVal', 'set_mic_sensitivity');
   slider('speedSlider', 'speedSliderVal', 'set_speech_speed');
+  // soft tick while dragging the voice sliders (throttled inside the sound engine)
+  ['micSlider', 'speedSlider'].forEach(function (id) { $(id).addEventListener('input', function () { SARA.sound.sliderTick(); }); });
+
+  /* ---- sound volume + packs (per device, localStorage only: SARA.sound owns persistence) ---- */
+  (function () {
+    const vol = $('soundVolume'), volVal = $('soundVolumeVal'), packs = $('soundPacks');
+    if (!vol || !packs) return;
+    vol.value = Math.round(SARA.sound.volume * 100); volVal.textContent = vol.value;
+    let tick = 0;
+    vol.addEventListener('input', function () {
+      volVal.textContent = vol.value; SARA.sound.setVolume(vol.value / 100);
+      clearTimeout(tick); tick = setTimeout(function () { SARA.sound.tap(); }, 120);     // let the user hear the new level
+    });
+    SARA.sound.packs.forEach(function (p) {
+      const c = document.createElement('span'); c.className = 'chip' + (p.id === SARA.sound.pack ? ' on' : ''); c.dataset.pack = p.id; c.textContent = p.label;
+      c.setAttribute('role', 'button'); c.tabIndex = 0; packs.appendChild(c);
+    });
+    function pick(c) {
+      if (!c) return; SARA.sound.setPack(c.dataset.pack);
+      packs.querySelectorAll('.chip').forEach(function (x) { x.classList.toggle('on', x === c); });
+    }
+    packs.addEventListener('click', function (e) { pick(e.target.closest('.chip')); });
+    packs.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(e.target.closest('.chip')); } });
+  })();
   function setSlider(id, valId, v) {
     const n = parseInt(v, 10); if (isNaN(n)) return; $(id).value = n; $(valId).textContent = n;
   }
@@ -5687,7 +6092,7 @@ var LABELS = {
     }
 
     /* ---- sliders: track fill ---- */
-    const sliders = [$('micSlider'), $('speedSlider')].filter(Boolean);
+    const sliders = [$('micSlider'), $('speedSlider'), $('soundVolume')].filter(Boolean);
     function fill(s) { s.style.setProperty('--fill', (((s.value - s.min) / ((s.max - s.min) || 1)) * 100).toFixed(1)); }
     sliders.forEach(function (s) {
       fill(s); s.addEventListener('input', function () { fill(s); });
@@ -5758,6 +6163,7 @@ var LABELS = {
   $('btnClose').addEventListener('click', function () { if (confirm('Close SARA?')) SARA.callApi('close_window'); });
   $('btnOpenDataFolder').addEventListener('click', () => SARA.callApi('open_data_folder'));
   $('btnWizard').addEventListener('click', () => SARA.showSetupWizard && SARA.showSetupWizard());
+  const tourBtn = $('btnTour'); if (tourBtn) tourBtn.addEventListener('click', () => SARA.tour && SARA.tour.start());
 })();
 
 ;
@@ -5824,6 +6230,13 @@ var LABELS = {
       put($('shNudges'), sh.proactive_nudges != null ? sh.proactive_nudges : '—');
     }
   }
+  const clearCacheBtn = $('clearCacheBtn');
+  if (clearCacheBtn) clearCacheBtn.addEventListener('click', async function () {      // cached chat answers only; memory itself is untouched
+    clearCacheBtn.disabled = true;
+    const res = await SARA.callApi('clear_response_cache');
+    clearCacheBtn.disabled = false;
+    if (res && res.ok) SARA.ok(res.cleared ? 'Forgot ' + res.cleared + ' cached answer' + (res.cleared === 1 ? '' : 's') : 'No cached answers to forget'); else SARA.fail('Could not clear the answer cache');
+  });
   $('exportMemoryBtn').addEventListener('click', async function () {
     const res = await SARA.callApi('export_memory');
     if (res && res.ok) SARA.ok('Exporting memory…'); else SARA.fail('Could not start memory export');
@@ -6110,6 +6523,11 @@ var LABELS = {
     });
   }
 
+  function renderQuota(u) {                 // Gemini requests sent today (only shown once the cloud model was used)
+    const el = SARA.$('perfQuota'); if (!el) return;
+    const parts = u && typeof u === 'object' ? Object.keys(u).map(function (m) { const v = u[m] || [0, 0]; return m + ': ' + v[0] + (v[1] ? ' / ' + v[1] : '') + ' today'; }) : [];
+    el.hidden = !parts.length; el.textContent = parts.length ? 'Gemini requests \u2014 ' + parts.join(' \u00b7 ') : '';
+  }
   function render(summary, turns) {
     const count = isNum(summary.count) ? summary.count : 0;
     SARA.$('perfP50').textContent = secs(summary.ttfa_p50);
@@ -6117,6 +6535,7 @@ var LABELS = {
     if (!summary.enabled && count === 0) setNote('Timing collection is off.');
     else setNote(count < MIN_SAMPLES ? 'collecting...' : '');
     renderBar(summary.stage_avg);
+    renderQuota(summary.gemini_usage);
     renderRecent(turns);
     SARA.setToggle(SARA.$('perfToggle'), !!summary.enabled);
   }
@@ -6543,6 +6962,8 @@ var LABELS = {
       list.textContent = '';
       more.hidden = true;
       showStatus('Loading\u2026', 'mv-loading');
+      const wait0 = list.querySelector('.mv-loading');                  // shimmering rows instead of the plain word (removed below when the data arrives)
+      if (wait0 && SARA.skeleton) { wait0.textContent = ''; wait0.setAttribute('aria-label', 'Loading memories'); SARA.skeleton.fill(wait0, 4, 'row'); }
     } else if (state.loading) {
       return;
     }
@@ -7109,6 +7530,7 @@ var LABELS = {
   async function dismiss(wake) {
     await SARA.callApi('mark_setup_wizard_seen');
     SARA.closeOverlay('setupWizardOverlay');
+    SARA.emit('setup_done', { first: wizardFirst });          // js/shared/tour.js offers the quick tour once after the first run
     if (wake === true) wakeOrb();
   }
   $('setupRecheck').addEventListener('click', refresh);
@@ -7156,6 +7578,8 @@ var LABELS = {
   function build() {
     const out = [];
     PAGES.forEach((p) => out.push({ g: 'Go to', label: p[1], run: () => SARA.gotoPage(p[0]) }));
+    out.push({ g: 'Sara', label: 'Quick actions', hint: 'orb ring', run: () => { SARA.gotoPage('home'); setTimeout(() => SARA.radial && SARA.radial.open(), 260); } });
+    out.push({ g: 'Sara', label: 'Take the quick tour', run: () => SARA.tour && SARA.tour.start() });
     out.push({ g: 'Sara', label: 'Wake Sara', run: () => SARA.wake && SARA.wake() });
     out.push({ g: 'Sara', label: 'Stop Sara', run: () => SARA.callApi('stop_sara') });
     out.push({ g: 'Sara', label: (SARA.state.focus ? 'Turn off' : 'Turn on') + ' focus mode', run: () => SARA.setFocus(!SARA.state.focus, true) });
@@ -7211,11 +7635,11 @@ var LABELS = {
 /* ==== js/fx/quality.js ==== */
 /* ==========================================================================
    quality.js -- Settings > Appearance > "Visual quality" (Low / Balanced / High) + hidden developer tools.
-   * SARA.quality.get() / set(tier) / allows(feature)   -- js/premium.js asks allows('aura'|'dust'|'tilt'|'magnetic'|'spark'|'decrypt'|'reveal')
+   * SARA.quality.get() / set(tier) / allows(feature)   -- js/fx/motion-pack.js asks allows('aura'|'dust'|'tilt'|'magnetic'|'spark'|'decrypt'|'reveal')
    * <html data-quality="low|balanced|high"> drives style/quality.css (blur, ambient layers, decorative loops)
    * Developer mode: click the "Visual quality" label 5 times -> reveals an FPS-meter switch and per-pack effect switches
      (turn a whole effects stylesheet off live and watch the FPS number: that is how we find what is heavy). Ctrl+Shift+F toggles the meter.
-   Stored in localStorage only (it is a per-device choice) -> no backend change. Load BEFORE js/premium.js.
+   Stored in localStorage only (it is a per-device choice) -> no backend change. Loads before js/fx/motion-pack.js (order in assets.json).
    ========================================================================== */
 (function () {
   'use strict';
@@ -7230,14 +7654,14 @@ var LABELS = {
   };
   const TIERS = ['low', 'balanced', 'high'];
   const FEATURES = {
-    high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1 },
-    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1 },
-    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0 }
+    high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
+    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
+    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0, p6: 0, hoverpreview: 0, hints: 0, radial: 1 }
   };
   const NOTES = {
     low: 'Fastest. No blur, aura, dust or tilt, and decorative loops are off. Best for older or busy PCs.',
-    balanced: 'Recommended. Smooth, with light effects (aura, magnetic buttons, sparks).',
-    high: 'Everything on: stronger blur, floating dust, 3D tilt. Needs a decent GPU.'
+    balanced: 'Recommended. Smooth, with light effects (cursor aura). Magnetic buttons and click sparks are High only.',
+    high: 'Everything on: floating dust, 3D tilt, magnetic buttons, click sparks. Needs a decent GPU.'
   };
   /* ---- fine-tune registry: every effect has its own on/off (js = checked by js/motion-pack.js, css = <html data-fx-off="..."> gates style/motion-pack.css) ---- */
   const FX = [
@@ -7246,7 +7670,8 @@ var LABELS = {
     ['reveal', 'Theme circle reveal', 'a theme change expands from the click', 'js'], ['numberroll', 'Number roll', 'stats count up to new values', 'js'], ['progress', 'Scroll progress line', 'hairline at the top of long pages', 'js'],
     ['edgepulse', 'Toast edge pulse', 'screen edge glows on a notification', 'js'], ['idle', 'Idle calm', 'dims the chrome after 25 s without input', 'js'],
     ['ax', 'Entrance & hover animations', 'page entrances, press and hover motion', 'css'], ['pm', 'Premium upgrades', 'smoother page, message and toast timing', 'css'],
-    ['lx', 'Hover polish', 'icon springs, gloss and beams on hover', 'css'], ['au', 'Detail effects', 'small interaction details across the app', 'css']
+    ['lx', 'Hover polish', 'icon springs, gloss and beams on hover', 'css'], ['au', 'Detail effects', 'small interaction details across the app', 'css'], ['p6', 'Motion polish', 'list stagger, card hover lift, orb reveal after start-up', 'css'],
+    ['hoverpreview', 'Theme hover preview', 'pointing at a theme card shows it live', 'js'], ['hints', 'Rotating hints', 'the Home hint line suggests things to say when idle', 'js'], ['radial', 'Orb quick actions', 'press and hold the orb for a ring of actions', 'js']
   ];
   const off = new Set();
   try { const a = JSON.parse(ls.get('sara_fx_off') || '[]'); if (Array.isArray(a)) a.forEach(function (x) { if (FX.some(function (f) { return f[0] === x; })) off.add(x); }); } catch (e) { /* none */ }
@@ -8028,6 +8453,256 @@ var LABELS = {
 })();
 
 ;
+/* ==== js/shared/skeleton.js ==== */
+/* ==========================================================================
+   skeleton.js -- shimmering placeholders while a list or card waits for its FIRST data (frontend only).
+   SARA.skeleton.fill(el, n, kind, ms)   put n placeholder rows ('row' | 'line') into el; if they are still there after `ms` (default 10 s)
+                                         they are replaced by a quiet "taking longer than usual" line, so a skeleton can never stay forever
+   SARA.skeleton.clear(el)               remove the placeholders (a no-op when real content is already there)
+   Wired here, through the API hooks in core.js, to the calls that have a visible wait:
+     list_routines -> #routinesList (first load only: an already filled list is never blanked)     get_weather -> the Today card temperature
+   The memory view calls fill() itself (js/settings/memory-view.js). Failed loads keep using the error cards of js/shared/empty-states.js.
+   Not wired on purpose: the Apps grid (built synchronously, nothing to wait for) and the chat log (no history is fetched; it starts empty).
+   Styles: .skel* in style/core/components.css, .sk-slow in style/shared/empty-states.css. Respects reduced motion (the shimmer is a plain background then).
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA; if (!SARA) return;
+  const doc = document;
+  const timers = new WeakMap();
+
+  function hasSkel(el) { return !!(el && el.querySelector && el.querySelector('.skel')); }
+  function drop(el) { const t = timers.get(el); if (t) { clearTimeout(t); timers.delete(el); } }
+
+  function fill(el, n, kind, ms) {
+    if (!el) return;
+    drop(el);
+    el.textContent = '';
+    for (let i = 0; i < (n || 3); i++) {
+      const s = doc.createElement('span'); s.className = 'skel ' + (kind === 'line' ? 'skel-line' : 'skel-row');
+      if (kind === 'line') s.style.width = (45 + (i * 29) % 45) + '%';
+      s.setAttribute('aria-hidden', 'true'); el.appendChild(s);
+    }
+    el.setAttribute('aria-busy', 'true');
+    timers.set(el, setTimeout(function () {
+      timers.delete(el);
+      if (!hasSkel(el)) return;
+      el.textContent = ''; el.removeAttribute('aria-busy');
+      const p = doc.createElement('div'); p.className = 'sk-slow'; p.setAttribute('role', 'status');
+      p.textContent = 'Still loading — this is taking longer than usual.'; el.appendChild(p);
+    }, ms || 10000));
+  }
+  function clear(el) {
+    if (!el) return;
+    drop(el);
+    if (hasSkel(el)) el.textContent = '';
+    el.removeAttribute('aria-busy');
+  }
+  SARA.skeleton = { fill: fill, clear: clear };
+
+  /* ---- routines list: only when it is empty (first load) ---- */
+  if (SARA.api && SARA.api.before) {
+    SARA.api.before('list_routines', function () {
+      const el = doc.getElementById('routinesList'); if (el && !el.children.length) fill(el, 3, 'row');
+    });
+    SARA.api.after('list_routines', function () { clear(doc.getElementById('routinesList')); }, true);
+
+    /* ---- Today card temperature: the "--°" placeholder becomes a shimmer until the weather arrives ---- */
+    SARA.api.before('get_weather', function () {
+      const t = doc.getElementById('tcTemp');
+      if (!t || t.querySelector('.skel') || !/^\s*--/.test(t.textContent)) return;
+      t.textContent = ''; const s = doc.createElement('span'); s.className = 'skel skel-inline skel-temp'; s.setAttribute('aria-hidden', 'true'); t.appendChild(s);
+      timers.set(t, setTimeout(function () { timers.delete(t); if (t.querySelector('.skel')) t.textContent = '--°'; }, 10000));
+    });
+    SARA.api.after('get_weather', function () {
+      const t = doc.getElementById('tcTemp'); if (!t) return;
+      drop(t); if (t.querySelector('.skel')) t.textContent = '--°';     // renderWeather() overwrites this right after when data came
+    }, true);
+  }
+})();
+
+;
+/* ==== js/shared/whats-new.js ==== */
+/* ==========================================================================
+   whats-new.js -- F12. A small "What's new" sheet, shown ONCE per release of the interface, a moment after start-up.
+   Edit RELEASE below when something visible ships (change `id`, rewrite `items`). A brand-new install (no earlier SARA settings in this
+   browser profile) just records the current id and shows nothing. Per device: localStorage 'sara_whats_new' (in-memory fallback).
+   Reuses the .ax-* dialog look of js/shared/a11y.js (style/shared/a11y.css). SARA.whatsNew.open() shows it on demand.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA, doc = document; if (!SARA) return;
+  const RELEASE = {
+    id: 'gui-2026-11',
+    title: 'What’s new',
+    items: [
+      ['Four new themes', 'Obsidian Gold, Deep Ocean, Sunset Glass and Forest Night. (Cyber Blue is now Deep Ocean.)'],
+      ['Auto day / night', 'Settings › Appearance: Paper by day, your dark theme at night. Hover a theme card to preview it.'],
+      ['Sound packs', 'Settings › Voice: pick Glass, Soft, Minimal or Sci-Fi and set the volume.'],
+      ['Lighter and smoother', 'Less CPU and GPU while idle, no blur behind the dock and cards, calmer Balanced tier.'],
+      ['Shortcuts', 'Press ? for the shortcut list and Ctrl+K for the command palette.']
+    ]
+  };
+  const KEY = 'sara_whats_new', mem = {};
+  const get = function (k) { try { const v = localStorage.getItem(k); if (v !== null) return v; } catch (e) { /* blocked */ } return (k in mem) ? mem[k] : null; };
+  const set = function (k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) { /* blocked */ } };
+  const el = function (tag, cls, text) { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+  const usedBefore = function () {
+    try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ''; if (k.indexOf('sara_') === 0 && k !== KEY) return true; } } catch (e) { /* blocked */ }
+    return false;
+  };
+
+  let dlg = null;
+  function open() {
+    if (dlg) return; const prev = doc.activeElement;
+    const back = el('div', 'ax-back'), box = el('div', 'ax-dialog wn-dialog'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', RELEASE.title);
+    const head = el('div', 'ax-head'); head.appendChild(el('div', 'ax-title', RELEASE.title));
+    const x = el('button', 'ax-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); head.appendChild(x); box.appendChild(head);
+    const body = el('div', 'ax-body wn-body'); const sec = el('section', 'ax-sec');
+    RELEASE.items.forEach(function (it) { const row = el('div', 'ax-row wn-row'); row.appendChild(el('b', 'wn-t', it[0])); row.appendChild(el('span', 'wn-d', it[1])); sec.appendChild(row); });
+    body.appendChild(sec); box.appendChild(body);
+    const foot = el('div', 'wn-foot'); const ok = el('button', 'pill-btn primary', 'Got it'); ok.type = 'button'; foot.appendChild(ok); box.appendChild(foot);
+    back.appendChild(box); doc.body.appendChild(back); dlg = back; requestAnimationFrame(function () { back.classList.add('open'); });
+    const close = function () {
+      if (!dlg) return; doc.removeEventListener('keydown', onKey, true); back.classList.remove('open'); dlg = null;
+      setTimeout(function () { back.remove(); }, 240); if (prev && prev.focus) prev.focus({ preventScroll: true });
+    };
+    const onKey = function (e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+    doc.addEventListener('keydown', onKey, true); x.addEventListener('click', close); ok.addEventListener('click', close);
+    back.addEventListener('pointerdown', function (e) { if (e.target === back) close(); });
+    ok.focus({ preventScroll: true });
+  }
+
+  function maybeShow() {
+    if (get(KEY) === RELEASE.id) return;
+    if (get(KEY) === null && !usedBefore()) { set(KEY, RELEASE.id); return; }           // fresh install: nothing is "new"
+    if (doc.hidden || doc.querySelector('.overlay.open,.pal-overlay.open,.boot-overlay,.ax-back')) { setTimeout(maybeShow, 4000); return; }
+    set(KEY, RELEASE.id); open();
+  }
+  SARA.whatsNew = { open: open, release: RELEASE };
+  if (SARA.onBoot) SARA.onBoot(function () { setTimeout(maybeShow, 3000); });
+})();
+
+;
+/* ==== js/shared/tour.js ==== */
+/* ==========================================================================
+   tour.js -- F5. A short spotlight tour of the Home screen (5 steps), offered ONCE after the first-run setup wizard is closed
+   (the wizard emits 'setup_done' with {first:true}). Skippable at any step (Skip, Esc, or a click on the dark area); "Back" / "Next" move
+   along; it can be replayed any time from Settings (button "Replay tour") or the command palette. Per device: localStorage 'sara_tour_done'
+   (in-memory fallback). Each step spotlights a real element that is visible right now; a step whose element is missing or hidden is skipped.
+   Accessible: role=dialog, focus moves to the card and returns when it closes, Enter / Right = next, Left = back, Esc = skip, text is read from the DOM.
+   Animation = opacity only (the spotlight and the card cross-fade between steps); none under reduced motion. Styles: style/shared/guide.css.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA, doc = document; if (!SARA) return;
+  const KEY = 'sara_tour_done', mem = {};
+  const get = function (k) { try { const v = localStorage.getItem(k); if (v !== null) return v; } catch (e) { /* blocked */ } return (k in mem) ? mem[k] : null; };
+  const set = function (k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) { /* blocked */ } };
+  const el = function (tag, cls, text) { const n = doc.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+
+  const STEPS = [
+    { sel: '#stage', title: 'This is Sara', text: 'Say “Sara”, or tap the orb, and talk. Press and hold the orb for a ring of quick actions.', side: 'right' },
+    { sel: '#navBar', title: 'Move around', text: 'Home, Chat, Notes, Apps, Automation and Settings. Alt + 1–6 jumps between them.', side: 'top' },
+    { sel: '#todayCard', title: 'Today at a glance', text: 'Weather and what is next on your calendar and reminders. Tap it for the full day.', side: 'right' },
+    { sel: '.nav button[data-page="settings"]', title: 'Make it yours', text: 'Themes (even auto day / night), sounds, voice, memory and privacy live in Settings.', side: 'top' },
+    { sel: null, title: 'Two shortcuts', text: 'Ctrl + K opens the command palette; press ? any time to see every keyboard shortcut.' }
+  ];
+
+  let root = null, spot = null, card = null, idx = 0, steps = [], prevFocus = null, busy = false;
+
+  function visible(n) { if (!n) return false; const r = n.getBoundingClientRect(); return r.width > 4 && r.height > 4 && n.offsetParent !== null || (n.id === 'navBar' && r.width > 4); }
+  function resolve() {
+    return STEPS.map(function (s) { return { s: s, node: s.sel ? doc.querySelector(s.sel) : null }; }).filter(function (x) { return !x.s.sel || visible(x.node); });
+  }
+  function place(step) {
+    const node = step.node, pad = 10, vw = window.innerWidth, vh = window.innerHeight;
+    let left, top;
+    if (!node) {                                                    // no target: centred card, no spotlight
+      spot.style.opacity = '0'; left = (vw - card.offsetWidth) / 2; top = (vh - card.offsetHeight) / 2;
+    } else {
+      const r = node.getBoundingClientRect();
+      const x = Math.max(4, r.left - pad), y = Math.max(4, r.top - pad), w = Math.min(vw - 8, r.width + pad * 2), h = Math.min(vh - 8, r.height + pad * 2);
+      spot.style.cssText = 'left:' + x + 'px;top:' + y + 'px;width:' + w + 'px;height:' + h + 'px;border-radius:' + (node.id === 'stage' ? '50%' : '18px') + ';opacity:1';
+      const side = step.s.side;
+      if (side === 'top') { left = x + w / 2 - card.offsetWidth / 2; top = y - card.offsetHeight - 14; }
+      else if (side === 'right') { left = x + w + 16; top = y + h / 2 - card.offsetHeight / 2; }
+      else { left = x + w / 2 - card.offsetWidth / 2; top = y + h + 14; }
+      if (left + card.offsetWidth > vw - 12 && side === 'right') left = x - card.offsetWidth - 16;    // no room on the right: put it on the left
+    }
+    card.style.left = Math.max(12, Math.min(vw - card.offsetWidth - 12, left)) + 'px';
+    card.style.top = Math.max(12, Math.min(vh - card.offsetHeight - 12, top)) + 'px';
+  }
+  function render() {
+    const st = steps[idx]; busy = true;
+    card.classList.remove('show');
+    setTimeout(function () {
+      if (!root) return;
+      card.querySelector('.tr-title').textContent = st.s.title;
+      card.querySelector('.tr-text').textContent = st.s.text;
+      card.querySelector('.tr-count').textContent = (idx + 1) + ' / ' + steps.length;
+      card.querySelector('.tr-back').hidden = idx === 0;
+      card.querySelector('.tr-next').textContent = idx === steps.length - 1 ? 'Done' : 'Next';
+      place(st); card.classList.add('show'); busy = false;
+      card.querySelector('.tr-next').focus({ preventScroll: true });
+    }, SARA.reduceMotion ? 0 : 140);
+  }
+  function end(finished) {
+    if (!root) return;
+    set(KEY, '1'); doc.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
+    const r = root; root = null; r.classList.remove('open'); setTimeout(function () { r.remove(); }, SARA.reduceMotion ? 0 : 220);
+    if (prevFocus && prevFocus.focus) prevFocus.focus({ preventScroll: true });
+    if (finished && SARA.toast) SARA.toast('ti-check', 'var(--core)', 'You are set. Settings › Setup has "Replay tour".', { variant: 'info' });
+  }
+  function go(d) {
+    if (busy && !SARA.reduceMotion) return;
+    const n = idx + d; if (n < 0) return; if (n >= steps.length) { end(true); return; }
+    idx = n; render();
+  }
+  function onKey(e) {
+    if (!root) return;
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); end(false); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    else if (e.key === 'Tab') {                                       // keep focus inside the card
+      const f = Array.prototype.slice.call(card.querySelectorAll('button')).filter(function (b) { return !b.hidden; });
+      if (!f.length) return; const i = f.indexOf(doc.activeElement);
+      if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    }
+  }
+  function onResize() { if (root && steps[idx]) place(steps[idx]); }
+
+  function start() {
+    if (root) return;
+    if ((SARA.current || 'home') !== 'home') SARA.gotoPage('home');
+    setTimeout(function () {
+      steps = resolve(); if (!steps.length) return;
+      idx = 0; prevFocus = doc.activeElement;
+      root = el('div', 'tr'); root.setAttribute('aria-hidden', 'false');
+      spot = el('div', 'tr-spot'); card = el('div', 'tr-card'); card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-label', 'Quick tour');
+      card.appendChild(el('div', 'tr-count')); card.appendChild(el('div', 'tr-title')); card.appendChild(el('div', 'tr-text'));
+      const row = el('div', 'tr-row');
+      const skip = el('button', 'link-btn tr-skip', 'Skip tour'); skip.type = 'button';
+      const back = el('button', 'pill-btn tr-back', 'Back'); back.type = 'button';
+      const next = el('button', 'pill-btn primary tr-next', 'Next'); next.type = 'button';
+      row.appendChild(skip); row.appendChild(back); row.appendChild(next); card.appendChild(row);
+      root.appendChild(spot); root.appendChild(card); doc.body.appendChild(root);
+      skip.addEventListener('click', function () { end(false); }); back.addEventListener('click', function () { go(-1); }); next.addEventListener('click', function () { go(1); });
+      root.addEventListener('pointerdown', function (e) { if (e.target === root) end(false); });        // a click on the dark area skips
+      doc.addEventListener('keydown', onKey, true); window.addEventListener('resize', onResize);
+      requestAnimationFrame(function () { root && root.classList.add('open'); render(); });
+    }, 120);
+  }
+
+  SARA.tour = { start: start, end: function () { end(false); }, done: function () { return get(KEY) === '1'; }, reset: function () { set(KEY, '0'); } };
+  // offered once, right after the first-run wizard closes (not for people who finished it before this tour existed)
+  SARA.on('setup_done', function (info) {
+    if (!info || !info.first || get(KEY) === '1') return;
+    setTimeout(start, 700);
+  });
+})();
+
+;
 /* ==== js/fx/motion-pack.js ==== */
 /* ==========================================================================
    motion-pack.js  --  the SARA motion / effects runtime in ONE file (replaces flow.js, premium.js, aurum.js). Frontend only.
@@ -8042,7 +8717,7 @@ var LABELS = {
    ========================================================================== */
 /* ==========================================================================
    flow.js -- tiny scroll/drag awareness. Sets <html class="is-scrolling"> while anything scrolls (and 160ms after) and
-   <html class="is-dragging"> while a slider / seek bar / mini-player / sheet is being dragged. style/flow.css and js/premium.js
+   <html class="is-dragging"> while a slider / seek bar / mini-player / sheet is being dragged. style/core/flow.css and the pointer effects below
    use those flags to pause decorative work. Frontend only, ~1KB, no dependencies.
    ========================================================================== */
 (function () {
@@ -8066,7 +8741,7 @@ var LABELS = {
    ========================================================================== */
 /* ==========================================================================
    premium.js (v2, polished) -- 14 premium effects for the SARA GUI. Frontend only, NO backend calls, no dependencies.
-   Styles: style/premium.css.  Load right BEFORE js/main.js.  Every effect is skipped under prefers-reduced-motion.
+   Styles: style/fx/motion-pack.css (group "pm").  Loads before js/core/main.js.  Every effect is skipped under prefers-reduced-motion.
    v4: every effect now respects Settings > Visual quality (js/quality.js).
    v3: JS wheel-smoothing removed (native scroll is smoother); hover effects pause while dragging/scrolling.
    v2: the light-wipe page transition is removed; all easing is now time-based (identical feel on 60/90/120/144Hz);
@@ -8226,7 +8901,7 @@ var LABELS = {
   /* ---- 5) number roll on settings stats ---- */
   (function numberRoll() {
     const host = doc.getElementById('page-settings'); if (!host || typeof MutationObserver !== 'function') return;
-    const NUM = '.an-kpi b,.perf-num';
+    const NUM = '.an-kpi b,.perf-num,.tc-temp';
     function roll(el) {
       if (!Q('numberroll')) return;
       if (el.offsetParent === null) { el._pmVal = undefined; return; }
@@ -8348,9 +9023,9 @@ var LABELS = {
    3) idle calm (was aurum.js)
    ========================================================================== */
 /* ==========================================================================
-   aurum.js -- tiny helper for the "idle" effects (78-80) in style/aurum.css.
+   aurum.js -- tiny helper for the "idle" effects (78-80) in style/fx/motion-pack.css (group "au").
    After 25s without input the UI calms down (nav + header dim, dust brightens, orbit ring glows); any input restores it.
-   Frontend only. Load right BEFORE js/main.js (after premium.js). Skipped under prefers-reduced-motion.
+   Frontend only. Loads before js/core/main.js. Skipped under prefers-reduced-motion.
    ========================================================================== */
 (function () {
   'use strict';
@@ -8368,6 +9043,82 @@ var LABELS = {
   });
   document.addEventListener('visibilitychange', function () { if (document.hidden) { clearTimeout(timer); if (idle) { idle = false; body.classList.remove('au-idle'); } } else wake(); });
   wake();
+})();
+
+;
+/* ==== js/fx/theme-extras.js ==== */
+/* ==========================================================================
+   theme-extras.js -- two small theme features (frontend only, per device, localStorage with an in-memory fallback).
+   F2  Hover preview: pointing at a theme card in Settings shows that theme on the whole app until the pointer leaves (nothing is saved or
+       emitted; a click still applies it normally). Feature key 'hoverpreview' (off in the Low tier, switchable in Fine-tune effects).
+   F11 Auto day / night: with the Settings toggle on, "Paper" is applied from 06:00 to 18:00 and the dark theme you had when you switched
+       it on the rest of the day. Applied WITHOUT saving, so your saved theme is never overwritten. Picking a theme yourself turns it off.
+   Uses SARA.theme.apply(id, false) / SARA.theme.current(). Markup: #autoTheme in index.html. Load AFTER js/core/theme.js and js/fx/quality.js.
+   ========================================================================== */
+(function () {
+  'use strict';
+  const SARA = window.SARA; if (!SARA || !SARA.theme) return;
+  const doc = document, root = doc.documentElement, T = SARA.theme;
+  const mem = {};
+  const ls = {
+    get: function (k) { try { const v = localStorage.getItem(k); if (v !== null) return v; } catch (e) { /* blocked */ } return (k in mem) ? mem[k] : null; },
+    set: function (k, v) { mem[k] = v; try { localStorage.setItem(k, v); } catch (e) { /* blocked */ } }
+  };
+  const allows = function (f) { return !SARA.quality || SARA.quality.allows(f); };
+  const ids = function () { return T.list.map(function (t) { return t.id; }); };
+
+  /* ---------------------------------------------------------------- F11 auto day / night */
+  const K_AUTO = 'sara_auto_theme', K_DARK = 'sara_auto_dark', DAY_FROM = 6, DAY_TO = 18;
+  let auto = ls.get(K_AUTO) === '1', applying = false, lastInput = 0;
+  ['pointerdown', 'keydown'].forEach(function (ev) { doc.addEventListener(ev, function () { lastInput = performance.now(); }, { capture: true, passive: true }); });
+
+  const isDay = function (d) { const h = (d || new Date()).getHours(); return h >= DAY_FROM && h < DAY_TO; };
+  function darkTheme() { const d = ls.get(K_DARK); return d && ids().indexOf(d) >= 0 && d !== 'paper' ? d : 'sara'; }
+  function evaluate() {
+    if (!auto) return;
+    const want = isDay() ? 'paper' : darkTheme();
+    if (T.current() === want) return;
+    applying = true; try { T.apply(want, false); } finally { applying = false; }
+  }
+  function setAuto(on, quiet) {
+    auto = !!on; ls.set(K_AUTO, auto ? '1' : '0');
+    const t = doc.getElementById('autoTheme'); if (t && SARA.setToggle) SARA.setToggle(t, auto);
+    if (auto) {
+      const cur = T.current(); if (cur !== 'paper' && cur !== 'custom') ls.set(K_DARK, cur);   // remember the dark theme to come back to at night
+      evaluate();
+    }
+    if (!quiet && SARA.toast) SARA.toast('ti-check', 'var(--core)', auto ? 'Auto day / night is on' : 'Auto day / night is off', { variant: 'info' });
+  }
+  const toggle = doc.getElementById('autoTheme');
+  if (toggle && SARA.bindToggle) { SARA.setToggle(toggle, auto); SARA.bindToggle(toggle, function (on) { setAuto(on); }); }
+  // a theme the user picks (a click or key within 1.5 s of the change) switches auto off; changes made by auto itself or by loading saved prefs do not
+  SARA.on('theme', function () {
+    if (!auto || applying) return;
+    if (performance.now() - lastInput < 1500) { auto = false; ls.set(K_AUTO, '0'); if (toggle && SARA.setToggle) SARA.setToggle(toggle, false); }
+    else setTimeout(evaluate, 0);                                       // e.g. saved prefs just loaded: re-assert the day / night choice
+  });
+  SARA.on('pref', function (k) { if (k === 'theme' && auto) setTimeout(evaluate, 0); });
+  SARA.onBoot && SARA.onBoot(function () { evaluate(); });
+  if (SARA.every) SARA.every(60000, evaluate);
+  evaluate();
+  SARA.autoTheme = { on: function () { return auto; }, set: setAuto, evaluate: evaluate, isDay: isDay };
+
+  /* ---------------------------------------------------------------- F2 hover preview */
+  const grid = doc.getElementById('themeGrid'); let timer = 0, previewing = '';
+  function restore() { clearTimeout(timer); if (previewing) { previewing = ''; root.dataset.theme = T.current(); } }
+  if (grid) {
+    grid.addEventListener('pointerover', function (e) {
+      if (e.pointerType === 'touch' || !allows('hoverpreview') || SARA.reduceMotion) return;
+      const card = e.target.closest('[data-theme-id],.theme-card'); if (!card || !grid.contains(card)) return;
+      const id = card.dataset.themeId || card.dataset.theme || card.getAttribute('data-id') || '';
+      if (!id || id === 'custom' || ids().indexOf(id) < 0 || id === T.current()) return restore();
+      clearTimeout(timer); timer = setTimeout(function () { previewing = id; root.dataset.theme = id; }, 140);
+    });
+    grid.addEventListener('pointerleave', restore);
+    grid.addEventListener('pointerdown', restore);                       // a click applies the theme for real: drop the preview first
+    doc.addEventListener('visibilitychange', function () { if (doc.hidden) restore(); });
+    SARA.on('page', restore);
+  }
 })();
 
 ;

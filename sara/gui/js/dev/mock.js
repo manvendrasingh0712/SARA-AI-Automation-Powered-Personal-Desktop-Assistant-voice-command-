@@ -132,6 +132,7 @@
       case 'delete_note': { const i = S.notes.findIndex(function (n) { return n.id === a[0]; }); if (i < 0) return ok({ ok: false, message: 'That note is already gone.', text: '' }); const gone = S.notes.splice(i, 1)[0]; return ok({ message: 'Note deleted.', text: gone.text }); }
       case 'save_note': S.notes.unshift({ id: Date.now(), text: a[0], timestamp: new Date().toISOString() }); return ok({ message: 'Note saved.', id: null });
       case 'export_memory': return ok({ path: 'memory_export.json' });
+      case 'clear_response_cache': return { ok: true, cleared: 0 };
       case 'mem2_list': var m2op = 'list';
       case 'mem2_update': var m2op = m2op || 'update';
       case 'mem2_forget': var m2op = m2op || 'forget';

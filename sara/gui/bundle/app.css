@@ -18,7 +18,7 @@
      * --core / --think / --speak are derived from those triplets, so they always match.
      * a theme = one  :root[data-theme="name"]  block (js/theme.js sets data-theme + the accent-hue override).
    Themes: sara = Terrarium (default) | paper | arctic = Sky | emerald = Mint | rose = Blush | violet = Lilac (all light)
-           | slate = Midnight | ember | cyber = Cyber Blue | aurora (all dark).  Ids are kept stable so saved prefs keep loading.
+           | slate = Midnight | ember | aurora (all dark; Cyber Blue was removed, it was too close to Midnight).  Ids are kept stable so saved prefs keep loading.
    ========================================================================== */
 
 /* ---- shared, theme-independent tokens ---- */
@@ -121,15 +121,6 @@
 }
 
 /* ---- CYBER BLUE (futuristic dark): navy night, electric blue + cyan + magenta pop ---- */
-:root[data-theme="cyber"], [data-theme-preview="cyber"]{
-  --void:#03070F; --deep:#0A1B38; --panel:#0A1426; --panel-rgb:10 20 38; --panel-2:#112039; --line:#1C3358;
-  --core-rgb:41 151 255; --think-rgb:0 229 255; --speak-rgb:255 79 216;
-  --text:#E0ECFF; --text-soft:#9DB4D6; --muted:#7C93B8; --faint:#44587A;
-  --danger:#FF5C5C; --danger-rgb:255 92 92; --on-core:#020B1A;
-  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.5;
-  --void-rgb:3 7 15; --vignette:rgba(0,0,0,.5);
-}
-
 /* ---- MINT (light): sea-glass white, fresh green + teal + amber ---- */
 :root[data-theme="emerald"], [data-theme-preview="emerald"]{
   --void:#E8F7EF; --deep:#F6FDF9; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F0FAF5; --line:#CDE6DA;
@@ -238,6 +229,46 @@
   --scrim:rgb(15 16 17 / .82);
 }
 
+/* ---- OBSIDIAN GOLD (warm dark): near-black base, brushed gold + copper + champagne ---- */
+:root[data-theme="obsidian"], [data-theme-preview="obsidian"]{
+  --void:#0A0A0B; --deep:#141210; --panel:#121110; --panel-rgb:18 17 16; --panel-2:#1A1815; --line:#2A2620;
+  --core-rgb:224 181 92; --think-rgb:196 132 96; --speak-rgb:240 224 190;
+  --text:#E6DFD0; --text-soft:#B3AA97; --muted:#978E7C; --faint:#5E584C;
+  --danger:#E0786A; --danger-rgb:224 120 106; --on-core:#14100A;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.3;
+  --void-rgb:10 10 11; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- DEEP OCEAN (futuristic dark): midnight water, sky-cyan + indigo + aqua ---- */
+:root[data-theme="ocean"], [data-theme-preview="ocean"]{
+  --void:#060B14; --deep:#0A1626; --panel:#0C1522; --panel-rgb:12 21 34; --panel-2:#112036; --line:#1B2E48;
+  --core-rgb:56 189 248; --think-rgb:99 102 241; --speak-rgb:94 234 212;
+  --text:#D2E0F0; --text-soft:#92A8C2; --muted:#7F95B0; --faint:#4A5C74;
+  --danger:#E5786E; --danger-rgb:229 120 110; --on-core:#04121C;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.3;
+  --void-rgb:6 11 20; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- SUNSET GLASS (futuristic dark): plum night, coral + orchid + amber ---- */
+:root[data-theme="sunset"], [data-theme-preview="sunset"]{
+  --void:#0D0A14; --deep:#1A1026; --panel:#17111F; --panel-rgb:23 17 31; --panel-2:#1F1729; --line:#2E2140;
+  --core-rgb:255 138 101; --think-rgb:192 108 255; --speak-rgb:255 200 124;
+  --text:#EADFF0; --text-soft:#B5A4C4; --muted:#9A89AB; --faint:#5F5070;
+  --danger:#E5566B; --danger-rgb:229 86 107; --on-core:#1A0B06;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.4;
+  --void-rgb:13 10 20; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- FOREST NIGHT (dark): moss-black base, sage green + olive + cream ---- */
+:root[data-theme="forest"], [data-theme-preview="forest"]{
+  --void:#070C09; --deep:#0C1812; --panel:#0E1712; --panel-rgb:14 23 18; --panel-2:#14221A; --line:#1F3226;
+  --core-rgb:120 200 140; --think-rgb:176 196 112; --speak-rgb:240 226 190;
+  --text:#DCE6DA; --text-soft:#A0B4A2; --muted:#8A9E8C; --faint:#536657;
+  --danger:#D9786B; --danger-rgb:217 120 107; --on-core:#07120B;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.2;
+  --void-rgb:7 12 9; --vignette:rgba(0,0,0,.5);
+}
+
 /* ---- reset + body ---- */
 *{box-sizing:border-box;}
 html,body{height:100%;}
@@ -291,24 +322,25 @@ input,select,textarea{font-family:inherit;}
 /* ==== style/core/ambient.css ==== */
 /* ==========================================================================
    ambient.css  --  very slow drifting teal/purple/amber glow behind everything (barely noticeable on purpose).
-   Pure CSS (GPU transform only), plus two lightweight reactive touches:
-   1) cursor parallax -- --mx/--my (px) are set by js/fx.js on a throttled rAF loop and nudge the
-      gradient centres a few px toward the pointer. 2) body.sara-active (toggled by js/home.js
-      refreshChrome() whenever Sara is listening/thinking/speaking/working) saturates + brightens
-      the glow a touch, so the room itself feels like it's paying attention.
+   Pure CSS (GPU transform + opacity only). body.sara-active (toggled by js/home/home.js refreshChrome() whenever Sara
+   is listening/thinking/speaking/working) brings the glow to full strength, so the room itself feels like it's paying
+   attention. (The old cursor parallax rewrote --mx/--my on :root on every pointer move, which re-styled the whole
+   document -- measured at 54% of a core on the settings page -- and repainted this 150%-size layer; it was removed.)
    Sits between the body gradient and the app; the vignette in tokens.css stays on top.
    ========================================================================== */
 body::before{
   content:'';position:fixed;inset:-25%;z-index:0;pointer-events:none;
   background:
-    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgb(var(--core-rgb) / .075), transparent 70%),
-    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgb(var(--think-rgb) / .07), transparent 70%),
-    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgb(var(--speak-rgb) / .035), transparent 70%);
+    radial-gradient(38% 34% at 28% 32%, rgb(var(--core-rgb) / .075), transparent 70%),
+    radial-gradient(34% 30% at 74% 66%, rgb(var(--think-rgb) / .07), transparent 70%),
+    radial-gradient(26% 24% at 62% 22%, rgb(var(--speak-rgb) / .035), transparent 70%);
   animation:nebulaDrift 80s ease-in-out infinite alternate;
   will-change:transform;
-  transition:filter .8s ease;
+  opacity:.85;
+  transition:opacity .8s ease;
 }
-body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
+body.sara-active::before{opacity:1;}
+html[data-quality="low"] body::before{animation-play-state:paused;}
 @keyframes nebulaDrift{
   0%{transform:translate3d(-2%,-1%,0) rotate(0deg) scale(1);}
   50%{transform:translate3d(2.5%,1.5%,0) rotate(3deg) scale(1.06);}
@@ -328,9 +360,9 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
 @supports (color:color-mix(in srgb,red 10%,transparent)){
   body::before{
     background:
-      radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--core) 75%,var(--amb-1)) 10%,transparent), transparent 70%),
-      radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--think) 75%,var(--amb-2)) 9%,transparent), transparent 70%),
-      radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), color-mix(in srgb,color-mix(in srgb,var(--speak) 75%,var(--amb-3)) 6%,transparent), transparent 70%);
+      radial-gradient(38% 34% at 28% 32%, color-mix(in srgb,color-mix(in srgb,var(--core) 75%,var(--amb-1)) 10%,transparent), transparent 70%),
+      radial-gradient(34% 30% at 74% 66%, color-mix(in srgb,color-mix(in srgb,var(--think) 75%,var(--amb-2)) 9%,transparent), transparent 70%),
+      radial-gradient(26% 24% at 62% 22%, color-mix(in srgb,color-mix(in srgb,var(--speak) 75%,var(--amb-3)) 6%,transparent), transparent 70%);
   }
 }
 @media (prefers-reduced-motion:reduce){:root.tint-ready{transition:none;}}
@@ -348,14 +380,10 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
 .page.slide-r{animation-name:pageInR;}
 .page.slide-l{animation-name:pageInL;}
 .page.active{display:flex;}
-@keyframes pageIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-@keyframes pageInR{from{opacity:0;transform:translateX(28px);}to{opacity:1;transform:translateX(0);}}
-@keyframes pageInL{from{opacity:0;transform:translateX(-28px);}to{opacity:1;transform:translateX(0);}}
 
 /* ---- inner-page header: arrives a beat after the page body so it reads as "settling in",
    not a separate flash -- same duration/easing family as the page transition itself. ---- */
 .page-header{flex:none;display:flex;align-items:center;justify-content:space-between;padding:28px 40px 6px;animation:headerIn .32s var(--ease-premium,cubic-bezier(.22,1,.36,1)) .04s both;}
-@keyframes headerIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
 .page-title{font-size:20px;font-weight:500;color:var(--text);}
 .page-status{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);}
 .page-status span{transition:color .4s;}
@@ -363,7 +391,6 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
   width:11px;height:11px;border-radius:50%;background:var(--core);box-shadow:0 0 8px var(--core);
   animation:orbPulse 2.6s ease-in-out infinite;transition:background .5s, box-shadow .5s;cursor:pointer;flex:none;
 }
-@keyframes orbPulse{0%,100%{opacity:.65;transform:scale(0.9);}50%{opacity:1;transform:scale(1.08);}}
 .page-body{flex:1;min-height:0;padding:16px 40px 110px;overflow-y:auto;}
 
 /* ---- staggered list entrance: the first handful of rows/setting-cards on a freshly-shown page ease
@@ -371,7 +398,6 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
    delays a page feeling ready, and only fires once per element (page revisits reuse cached DOM, so this
    only really plays on first render / first data arrival, not on every nav tap). ---- */
 .page.stagger-in .page-body .row,.page.stagger-in .page-body .set-card{animation:rowIn .34s var(--ease-premium,cubic-bezier(.22,1,.36,1)) both;}
-@keyframes rowIn{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;}}
 .page.stagger-in .page-body .row:nth-of-type(1),.page.stagger-in .page-body .set-card:nth-of-type(1){animation-delay:.02s;}
 .page.stagger-in .page-body .row:nth-of-type(2),.page.stagger-in .page-body .set-card:nth-of-type(2){animation-delay:.05s;}
 .page.stagger-in .page-body .row:nth-of-type(3),.page.stagger-in .page-body .set-card:nth-of-type(3){animation-delay:.08s;}
@@ -384,7 +410,6 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
   position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
   display:flex;gap:2px;padding:5px;border-radius:999px;
   background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-rest);
-  backdrop-filter:blur(var(--glass-blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.6);
   opacity:.85;transition:opacity .25s;
   z-index:10;max-width:92vw;overflow-x:auto;scrollbar-width:none;
 }
@@ -436,11 +461,8 @@ body.sara-active::before{filter:saturate(1.4) brightness(1.15);}
 .toast.paused .t-bar{animation-play-state:paused;}
 @keyframes tBar{from{transform:scaleX(1);}to{transform:scaleX(0);}}
 @keyframes tCheck{to{stroke-dashoffset:0;}}
-@keyframes icoPop{0%{transform:scale(.6);opacity:0;}100%{transform:none;opacity:1;}}
 @media (prefers-reduced-motion:reduce){.toast .t-ico.is-check path{stroke-dashoffset:0;animation:none;}}
 .toast .t-x:hover{color:var(--text);}
-@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.96);}to{opacity:1;transform:none;}}
-@keyframes dotPop{0%{transform:scale(.3);}60%{transform:scale(1.55);}100%{transform:scale(1);}}
 
 /* ---- preview-mode strip (shown only when the backend bridge is missing) ---- */
 .offline-strip{
@@ -582,7 +604,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 
 /* ---- shared glass surface (was copy-pasted in 5 rules; tokens: --glass-bg / --glass-border / --glass-blur) ---- */
 .glass,.clock-card,.today-card,.next-card,.home-activity,.plan-card{
-  background:var(--glass-bg);border:1px solid var(--glass-border);backdrop-filter:blur(var(--glass-blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.6);
+  background:var(--glass-bg);border:1px solid var(--glass-border);
 }
 
 /* ---- focus mode look (js/settings.js toggles body.focus-mode): chrome dims, orb breathes slower ---- */
@@ -609,7 +631,6 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 .theme-card:active{transform:scale(.98);}
 .theme-card:focus-visible{outline:2px solid var(--core);outline-offset:2px;}
 .theme-card.on{border-color:var(--core);color:var(--text);box-shadow:0 0 0 1px rgb(var(--core-rgb) / .35),0 0 18px -6px var(--glow);animation:tcPop .32s var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
-@keyframes tcPop{from{transform:scale(.97);}to{transform:scale(1);}}
 .tc-meta{display:flex;flex-direction:column;gap:1px;padding:0 2px;min-width:0;}
 .tc-meta b{font-size:12.5px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .tc-meta small{font-size:10.5px;color:var(--muted);letter-spacing:.03em;}
@@ -701,7 +722,7 @@ canvas#org{width:100%;height:100%;display:block;}
 .core-thinking{color:var(--think);} .core-speaking{color:var(--speak);}
 /* working = halfway between --think and --speak (same mix js/home.js uses for the orb); hex is the fallback for old webviews */
 .core-working{color:#ba98b4;color:color-mix(in srgb,var(--think) 50%,var(--speak));}
-.home-hint{margin-top:6px;font-size:11.5px;color:var(--faint);min-height:16px;max-width:60vw;text-align:center;opacity:0;animation:fadeIn 1.8s ease forwards 1.1s;}
+.home-hint{margin-top:6px;font-size:11.5px;color:var(--muted);min-height:16px;max-width:60vw;text-align:center;opacity:0;animation:fadeIn 1.8s ease forwards 1.1s;}
 .home-hint.muted{visibility:hidden;}   /* hidden while the live caption uses its spot */
 @keyframes fadeIn{to{opacity:1;}}
 
@@ -945,6 +966,31 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 .hp-foot{display:flex;justify-content:flex-end;padding:6px 0 4px;border-top:1px solid var(--line);}
 @media (prefers-reduced-motion:reduce){.home-pop{transition:opacity .01s;translate:-50% 0;}}
 
+/* F3: soft cross-fade while js/home/hints.js swaps the hint line */
+.home-hint{transition:opacity .32s ease;}
+.home-hint.hint-swap{opacity:0;}
+
+/* ---- F7: "Last 7 days" usage card (top right of Home; js/home/usage-card.js). Bars grow with transform only. ---- */
+.usage-card{
+  position:absolute;right:32px;top:84px;width:190px;padding:12px 14px 10px;border-radius:16px;
+  background:var(--glass-bg);border:1px solid var(--glass-border);box-shadow:var(--shadow-rest);cursor:pointer;
+  transition:border-color .2s,translate .28s var(--ease-premium,ease),box-shadow .28s ease;
+}
+.usage-card[hidden]{display:none;}
+.usage-card:hover{border-color:rgb(var(--core-rgb) / .45);}
+.uc-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.uc-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+.uc-total{font-size:16px;font-weight:500;color:var(--text);font-variant-numeric:tabular-nums;}
+.uc-bars{display:flex;align-items:flex-end;gap:5px;height:38px;}
+.uc-bar{flex:1;height:100%;border-radius:3px;background:var(--core);opacity:.45;transform-origin:50% 100%;transform:scaleY(var(--v,.06));}
+.uc-bar.today{opacity:.95;}
+.usage-card:not(.ready) .uc-bar{transform:scaleY(.04);}
+@media (prefers-reduced-motion:no-preference){.uc-bar{transition:transform .55s var(--ease-premium,cubic-bezier(.22,1,.36,1));}}
+.uc-days{display:flex;gap:5px;margin-top:4px;}
+.uc-days span{flex:1;text-align:center;font-size:10px;color:var(--muted);}
+#page-home.ambient-t2 .usage-card{opacity:.2;transition:opacity 1s ease;}
+@media (max-width:900px){.usage-card{display:none;}}
+
 /* ==== style/home/clock-card.css ==== */
 /* ==========================================================================
    clock-card.css -- Clock Card: compact widget on Home (top-left, replaces the
@@ -1047,7 +1093,6 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 /* ---- theme chip: small confirm-pop the instant a theme is picked (js/clock-card.js toggles '.just-picked'
    off again after ~260ms) -- separate from the chip's normal hover/press motion in components.css. ---- */
 #csThemes .chip.just-picked{animation:themePick .32s var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
-@keyframes themePick{0%{transform:scale(1);}45%{transform:scale(1.14);}100%{transform:scale(1);}}
 
 /* ==========================================================================
    Themes -- isolated to .clock-card / .clock-sheet via [data-clock-theme].
@@ -1118,7 +1163,6 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 .chat-log{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0;overflow-y:auto;margin:0 calc(var(--pad-x) * -1);padding:0 max(var(--pad-x),calc((100% - 640px) / 2 + var(--pad-x))) 10px;}
 .chat-log:empty::before{content:'Say "Sara", or type below.';color:var(--muted);font-size:13.5px;text-align:center;margin-top:18vh;}
 .msg{max-width:80%;font-size:14.5px;line-height:1.55;overflow-wrap:anywhere;animation:msgIn .32s cubic-bezier(.2,.8,.2,1);}
-@keyframes msgIn{from{opacity:0;transform:translateY(6px) scale(.97);}to{opacity:1;transform:none;}}
 .msg.user{align-self:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 15px;color:var(--text);}
 .msg.sara{align-self:flex-start;color:var(--core);padding:2px 2px;}
 .msg.preview{opacity:.6;font-style:italic;}
@@ -1135,7 +1179,6 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 .msg-ghost{position:fixed;margin:0;max-width:none;z-index:30;pointer-events:none;animation:none;will-change:transform,opacity;}
 /* ---- streaming blur-to-sharp (js/chat.js revealText): freshly revealed text fades in from a light blur ---- */
 .msg-text .new{animation:chunkIn .25s ease-out both;}
-@keyframes chunkIn{from{opacity:.4;filter:blur(3px);}to{opacity:1;filter:blur(0);}}
 @media (prefers-reduced-motion:reduce){.msg-text .new{animation:none;}}
 .msg.sara.streaming::after,.msg.sara.typing::after{content:'▍';margin-left:2px;animation:blink 1s steps(2) infinite;}
 @keyframes blink{50%{opacity:0;}}
@@ -1483,6 +1526,13 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 .apps-search{max-width:720px;margin:0 0 4px;}
 .sys-chips{max-width:720px;}
 #page-apps .page-body{padding-bottom:130px;}
+
+/* F8: reorder hint + drag feedback (js/apps/apps-order.js) */
+.apps-hint{font-size:11.5px;color:var(--muted);margin:-4px 0 8px;}
+.apps-hint .link-btn{margin-left:4px;}
+.app-tile.dragging{opacity:.4;}
+.app-tile[draggable=true]{cursor:grab;}
+.app-tile[draggable=true]:active{cursor:grabbing;}
 
 /* ==== style/apps/music.css ==== */
 /* ==========================================================================
@@ -2319,7 +2369,6 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 @keyframes setFlash{0%{opacity:0;}25%{opacity:1;}100%{opacity:0;}}
 @keyframes setBloom{0%{opacity:0;clip-path:circle(0 at var(--bx,50%) var(--by,50%));}20%{opacity:1;}100%{opacity:0;clip-path:circle(140% at var(--bx,50%) var(--by,50%));}}
 #page-settings.set-enter .set-card{animation:setCardIn .55s var(--ease-premium) both;animation-delay:calc(var(--i,0) * 45ms);}
-@keyframes setCardIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 
 /* ---- quick controls ---- */
 #page-settings .qc-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:14px 0 16px;}
@@ -2393,7 +2442,7 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 .an-peak b{color:var(--text);font-weight:500;text-align:right;font-variant-numeric:tabular-nums;}
 .an-peak b::before{content:'';display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:var(--speak);vertical-align:middle;}
 .an-top{display:flex;flex-direction:column;gap:8px;}
-.bar-row .b-rank{flex:none;width:14px;text-align:right;color:var(--faint);font-size:11.5px;font-variant-numeric:tabular-nums;}
+.bar-row .b-rank{flex:none;width:14px;text-align:right;color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums;}
 #anTop .bar-row .b-name{flex:0 1 46%;min-width:0;}
 #anTop .bar-row:first-child .b-name{color:var(--text);}
 .an-chart{position:relative;padding-top:24px;}
@@ -2875,9 +2924,9 @@ body.sara-speaking .nav::before{opacity:1;animation:navBreath 3.2s ease-in-out i
 /* ---- background glow: blue only (no teal/purple/amber from the time-of-day tint) ---- */
 :root[data-theme="neon"] body::before{
   background:
-    radial-gradient(38% 34% at calc(28% + var(--mx,0px)) calc(32% + var(--my,0px)), rgb(var(--core-rgb) / .10), transparent 70%),
-    radial-gradient(34% 30% at calc(74% - var(--mx,0px)) calc(66% - var(--my,0px)), rgb(var(--think-rgb) / .08), transparent 70%),
-    radial-gradient(26% 24% at calc(62% + var(--mx,0px)) calc(22% + var(--my,0px)), rgb(var(--speak-rgb) / .045), transparent 70%);
+    radial-gradient(38% 34% at 28% 32%, rgb(var(--core-rgb) / .10), transparent 70%),
+    radial-gradient(34% 30% at 74% 66%, rgb(var(--think-rgb) / .08), transparent 70%),
+    radial-gradient(26% 24% at 62% 22%, rgb(var(--speak-rgb) / .045), transparent 70%);
 }
 :root[data-theme="neon"] ::-webkit-scrollbar-thumb{background:rgb(var(--core-rgb) / .35);}
 
@@ -3031,6 +3080,16 @@ body:not([data-page="home"])::before{animation-play-state:paused;}
 
 /* 6) touch / click responsiveness: no 300ms tap delay, no grey tap flash */
 button,.chip,.pill-btn,.theme-card,.nav button,.app-tile,.row,[role="button"]{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+
+/* Safety net: files without their own prefers-reduced-motion handling (apps, flow, palette, quality, perf, router-view, security, themes) stop looping and snap. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* ==== style/fx/motion-pack.css ==== */
 /* ==========================================================================
@@ -3547,9 +3606,7 @@ html:where(:not([data-fx-off~="au"]))::after{content:"";position:fixed;top:-20%;
 :where(html:not([data-fx-off~="au"])) .overlay.open .m-sub{animation:au-rise-sm .5s var(--au-ease) .12s backwards}
 :where(html:not([data-fx-off~="au"])) .setup-log>*{animation:au-log-in .35s var(--au-ease) backwards}
 :where(html:not([data-fx-off~="au"])) .overlay.open .sheet-head{background:linear-gradient(90deg,rgb(var(--core-rgb)/.45),transparent)0 100%/100% 1px no-repeat;animation:ax-sheet-child .45s var(--ax-ease,cubic-bezier(.22,1,.36,1)) backwards,au-line-draw .9s var(--au-ease) .15s backwards}
-html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out infinite}
 :where(html:not([data-fx-off~="au"])) body.sara-active .mini-orb{animation-duration:1.3s}
-:where(html:not([data-fx-off~="au"])) img{animation:au-fade .6s ease backwards}
 :where(html:not([data-fx-off~="au"])) .today-card :is(.tc-top,.tc-cond,.tc-sub,.tc-next){animation:au-rise-sm .55s var(--au-ease) backwards}
 :where(html:not([data-fx-off~="au"])) .today-card .tc-cond{animation-delay:.06s}
 :where(html:not([data-fx-off~="au"])) .today-card .tc-sub{animation-delay:.12s}
@@ -3594,13 +3651,6 @@ html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out 
 }
 @keyframes au-pop-in{from{opacity:0;transform:scale(.9)}
 }
-@keyframes au-sweep{0%,55%{opacity:0;transform:translateX(-40vw) skewX(-12deg)}
-65%{opacity:1}
-90%{opacity:1}
-100%{opacity:0;transform:translateX(140vw) skewX(-12deg)}
-}
-@keyframes au-fade{from{opacity:0}
-}
 @keyframes au-log-in{from{opacity:0;transform:translateX(-8px)}
 }
 @keyframes au-line-draw{from{background-size:0 1px}
@@ -3608,6 +3658,27 @@ html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out 
 @keyframes au-pulse-ring{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb)/.5)}
 100%{box-shadow:0 0 0 14px rgb(var(--core-rgb)/0)}
 }
+
+/* ============ GROUP "p6"  --  Motion polish (GUI audit, phase 6)   (switch off with <html data-fx-off="p6">; always off in the Low tier) ============
+   transform / opacity only, no new infinite loops. Already present before this group (so not added again): orb state fades (halo .7s, sweep .6s,
+   canvas colour easing), live mic / voice level on the orb, toast check-mark draw, number roll, chat chunk fade, spring-curve buttons, page slides. */
+@media (prefers-reduced-motion:no-preference){
+  /* P6-3: staggered entrance for list rows and the Apps grid, only inside the short .stagger-in window after a page switch (fx.js); first 8 items, 40 ms apart */
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body .app-tile{animation:rowIn .34s var(--ease-premium,cubic-bezier(.22,1,.36,1)) both}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(2){animation-delay:40ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(3){animation-delay:80ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(4){animation-delay:120ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(5){animation-delay:160ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(6){animation-delay:200ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(7){animation-delay:240ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(n+8){animation-delay:280ms}
+  /* P6-10: hover depth on the Home cards: 2 px lift + the existing hover shadow (no blur). `translate` is independent of the tilt's `transform`. */
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) :is(.today-card,.next-card,.plan-card,.home-activity){transition:translate .28s var(--ease-premium,cubic-bezier(.22,1,.36,1)),box-shadow .28s ease}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) :is(.today-card,.next-card,.plan-card,.home-activity):hover{translate:0 -2px;box-shadow:var(--shadow-hover)}
+  /* P6-7: after start-up the orb eases in (scale .85 -> 1, fade) once; the class is added by ui.js finishBoot() and removed again */
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) #stage.orb-enter{animation:orbEnter .6s var(--ease-premium,cubic-bezier(.22,1,.36,1)) both}
+}
+@keyframes orbEnter{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
 
 /* ==== style/settings/router-view.css ==== */
 /* ==========================================================================
@@ -3653,13 +3724,13 @@ html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out 
 
 /* ==== style/core/flow.css ==== */
 /* ==========================================================================
-   flow.css  --  smoothness pass. Load LAST (after aurum.css). Theme-independent.
+   flow.css  --  smoothness pass. Loads after motion-pack.css (order in assets.json). Theme-independent.
    Everything here removes cost from scrolling / dragging / typing; nothing changes layout or behaviour.
    ========================================================================== */
 
-/* 1) Frosted glass is re-blurred every frame while content scrolls underneath it. Smaller radius + no saturate pass = same look, far cheaper. */
+/* 1) Permanent surfaces (dock, home cards) no longer use backdrop-filter at all: the slowly drifting glow behind them forced a
+      re-blur every frame (measured: GPU 15% -> ~5% idle on Home). Only overlays / palette / toasts blur, while they are open. */
 :root{--glass-blur:10px;}
-.glass,.nav{backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));}
 /* the sticky Settings rail sat on top of the scrolling page with a live blur -> use a solid-ish panel instead */
 #page-settings .set-rail{backdrop-filter:none;-webkit-backdrop-filter:none;background:color-mix(in srgb,var(--panel) 94%,transparent);}
 
@@ -3688,7 +3759,7 @@ html::before,html::after{display:none !important;}
 /* 8) Hundreds of rows animating in at once on long pages (Settings!) made page switches stutter -> only tiles / chips / buttons animate in */
 .set-row,.info-row,.acc-note{animation:none !important;}
 
-/* 9) While you scroll or drag, the ambient decoration rests (set by js/flow.js) */
+/* 9) While you scroll or drag, the ambient decoration rests (set by js/fx/motion-pack.js) */
 html.is-scrolling body::before,html.is-dragging body::before,
 html.is-scrolling #stage::before,html.is-dragging #stage::before,
 html.is-scrolling .mini-orb::after,html.is-dragging .mini-orb::after{animation-play-state:paused;}
@@ -3700,9 +3771,11 @@ html.is-dragging .pm-aura{opacity:0;}
    Load LAST (after flow.css).
    ========================================================================== */
 
-/* ---- HIGH: richer glass, everything on ---- */
+/* ---- HIGH: everything on (permanent surfaces stay blur-free in every tier, see flow.css) ---- */
 html[data-quality="high"]{--glass-blur:14px;}
-html[data-quality="high"] :is(.glass,.nav){backdrop-filter:blur(var(--glass-blur)) saturate(1.4);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.4);}
+
+/* ---- the 42 s orbit ring around the orb is a High-tier extra (P2-4); it is a permanent loop on the most-viewed page ---- */
+html:not([data-quality="high"]) #stage::before{animation:none;}
 
 /* ---- BALANCED: no floating dust (3D tilt is switched off in JS) ---- */
 html[data-quality="balanced"] .pm-dust{display:none;}
@@ -3844,6 +3917,14 @@ html[data-motion="reduce"] *,html[data-motion="reduce"] *::before,html[data-moti
 html[data-motion="reduce"] :is(.pm-aura,.pm-dust,.pm-spark,.orb-fx,.pm-edge,.pm-progress){display:none !important;}
 @media (prefers-reduced-motion:reduce){.ax-dialog,.ax-back{transition:none;translate:0 0;}.ax-confirm{animation:none;}}
 
+/* F12: What's new sheet (js/shared/whats-new.js) */
+.wn-dialog{width:min(460px,100%);}
+.wn-body{display:block;}
+.wn-row{flex-direction:column;gap:2px;padding:9px 0;}
+.wn-t{font-size:13.5px;font-weight:600;color:var(--text);}
+.wn-d{font-size:12.5px;line-height:1.45;color:var(--text-soft);}
+.wn-foot{display:flex;justify-content:flex-end;padding:4px 18px 16px;}
+
 /* ==== style/shared/empty-states.css ==== */
 /* empty-plus.css -- styles for js/empty-plus.js (empty + error states). Load LAST. */
 .es{max-width:640px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;padding:30px 12px 26px;color:var(--muted);}
@@ -3862,3 +3943,60 @@ html[data-motion="reduce"] :is(.pm-aura,.pm-dust,.pm-spark,.orb-fx,.pm-edge,.pm-
 @media (prefers-reduced-motion:no-preference){.es:not(.compact) .es-svg{animation:esFloat 5s ease-in-out infinite;}}
 @keyframes esFloat{0%,100%{translate:0 0;}50%{translate:0 -4px;}}
 html[data-quality="low"] .es-svg{animation:none;}
+
+/* ---- skeleton placeholders (js/shared/skeleton.js) ---- */
+.sk-slow{font-size:12px;color:var(--muted);padding:10px 2px;}
+.tc-temp .skel-temp{width:58px;height:26px;display:inline-block;vertical-align:middle;border-radius:8px;}
+
+/* ==== style/shared/guide.css ==== */
+/* ==========================================================================
+   guide.css -- the quick-action ring on the orb (js/home/radial.js, F6) and the spotlight tour (js/shared/tour.js, F5).
+   transform / opacity only; no motion under reduced motion. Token colours only.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- F6 radial menu */
+.rm{position:fixed;inset:0;z-index:70;background:transparent;}
+.rm-item{
+  position:absolute;left:var(--cx);top:var(--cy);width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);
+  background:var(--panel);border:1px solid var(--glass-border,var(--line));box-shadow:var(--shadow-hover);
+  transform:translate(0,0) scale(.4);opacity:0;
+}
+.rm.open .rm-item{transform:translate(var(--x),var(--y)) scale(1);opacity:1;}
+.rm.closing .rm-item{transform:translate(0,0) scale(.4);opacity:0;}
+.rm-item svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.rm-item:hover,.rm-item:focus-visible{border-color:var(--core);color:var(--core);outline:none;box-shadow:var(--shadow-hover),0 0 0 2px rgb(var(--core-rgb) / .35);}
+.rm-label{
+  position:absolute;top:calc(100% + 6px);left:50%;translate:-50% 0;white-space:nowrap;font-size:11.5px;color:var(--text-soft);
+  background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:2px 9px;opacity:0;pointer-events:none;
+}
+.rm-item:hover .rm-label,.rm-item:focus-visible .rm-label{opacity:1;}
+@media (prefers-reduced-motion:no-preference){
+  .rm-item{transition:transform .34s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) var(--d,0ms),opacity .2s ease var(--d,0ms),border-color .15s,color .15s,box-shadow .15s;}
+  .rm.closing .rm-item{transition:transform .16s ease,opacity .16s ease;}
+  .rm-label{transition:opacity .15s ease;}
+}
+html[data-motion="reduce"] .rm-item{transition:none;}
+
+/* ---------------------------------------------------------------- F5 tour */
+.tr{position:fixed;inset:0;z-index:140;opacity:0;}
+.tr.open{opacity:1;}
+.tr-spot{
+  position:fixed;pointer-events:none;border-radius:18px;opacity:0;
+  box-shadow:0 0 0 9999px rgb(var(--void-rgb,5 8 12) / .74),0 0 0 2px rgb(var(--core-rgb) / .7);
+}
+.tr-card{
+  position:fixed;width:min(320px,calc(100vw - 24px));padding:16px 18px 14px;border-radius:16px;background:var(--panel);
+  border:1px solid var(--line);box-shadow:var(--shadow-hover);opacity:0;
+}
+.tr-card.show{opacity:1;}
+.tr-count{font-size:10.5px;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;font-variant-numeric:tabular-nums;}
+.tr-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
+.tr-text{font-size:13px;line-height:1.5;color:var(--text-soft);}
+.tr-row{display:flex;align-items:center;gap:8px;margin-top:14px;}
+.tr-skip{margin-right:auto;}
+.tr-row .pill-btn{padding:7px 14px;}
+@media (prefers-reduced-motion:no-preference){
+  .tr{transition:opacity .22s ease;}
+  .tr-spot,.tr-card{transition:opacity .14s ease;}
+}

@@ -11,7 +11,7 @@
    ========================================================================== */
 /* ==========================================================================
    flow.js -- tiny scroll/drag awareness. Sets <html class="is-scrolling"> while anything scrolls (and 160ms after) and
-   <html class="is-dragging"> while a slider / seek bar / mini-player / sheet is being dragged. style/flow.css and js/premium.js
+   <html class="is-dragging"> while a slider / seek bar / mini-player / sheet is being dragged. style/core/flow.css and the pointer effects below
    use those flags to pause decorative work. Frontend only, ~1KB, no dependencies.
    ========================================================================== */
 (function () {
@@ -35,7 +35,7 @@
    ========================================================================== */
 /* ==========================================================================
    premium.js (v2, polished) -- 14 premium effects for the SARA GUI. Frontend only, NO backend calls, no dependencies.
-   Styles: style/premium.css.  Load right BEFORE js/main.js.  Every effect is skipped under prefers-reduced-motion.
+   Styles: style/fx/motion-pack.css (group "pm").  Loads before js/core/main.js.  Every effect is skipped under prefers-reduced-motion.
    v4: every effect now respects Settings > Visual quality (js/quality.js).
    v3: JS wheel-smoothing removed (native scroll is smoother); hover effects pause while dragging/scrolling.
    v2: the light-wipe page transition is removed; all easing is now time-based (identical feel on 60/90/120/144Hz);
@@ -195,7 +195,7 @@
   /* ---- 5) number roll on settings stats ---- */
   (function numberRoll() {
     const host = doc.getElementById('page-settings'); if (!host || typeof MutationObserver !== 'function') return;
-    const NUM = '.an-kpi b,.perf-num';
+    const NUM = '.an-kpi b,.perf-num,.tc-temp';
     function roll(el) {
       if (!Q('numberroll')) return;
       if (el.offsetParent === null) { el._pmVal = undefined; return; }
@@ -317,9 +317,9 @@
    3) idle calm (was aurum.js)
    ========================================================================== */
 /* ==========================================================================
-   aurum.js -- tiny helper for the "idle" effects (78-80) in style/aurum.css.
+   aurum.js -- tiny helper for the "idle" effects (78-80) in style/fx/motion-pack.css (group "au").
    After 25s without input the UI calms down (nav + header dim, dust brightens, orbit ring glows); any input restores it.
-   Frontend only. Load right BEFORE js/main.js (after premium.js). Skipped under prefers-reduced-motion.
+   Frontend only. Loads before js/core/main.js. Skipped under prefers-reduced-motion.
    ========================================================================== */
 (function () {
   'use strict';

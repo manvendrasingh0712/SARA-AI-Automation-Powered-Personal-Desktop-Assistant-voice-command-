@@ -1,11 +1,11 @@
 /* ==========================================================================
-   flow.css  --  smoothness pass. Load LAST (after aurum.css). Theme-independent.
+   flow.css  --  smoothness pass. Loads after motion-pack.css (order in assets.json). Theme-independent.
    Everything here removes cost from scrolling / dragging / typing; nothing changes layout or behaviour.
    ========================================================================== */
 
-/* 1) Frosted glass is re-blurred every frame while content scrolls underneath it. Smaller radius + no saturate pass = same look, far cheaper. */
+/* 1) Permanent surfaces (dock, home cards) no longer use backdrop-filter at all: the slowly drifting glow behind them forced a
+      re-blur every frame (measured: GPU 15% -> ~5% idle on Home). Only overlays / palette / toasts blur, while they are open. */
 :root{--glass-blur:10px;}
-.glass,.nav{backdrop-filter:blur(var(--glass-blur));-webkit-backdrop-filter:blur(var(--glass-blur));}
 /* the sticky Settings rail sat on top of the scrolling page with a live blur -> use a solid-ish panel instead */
 #page-settings .set-rail{backdrop-filter:none;-webkit-backdrop-filter:none;background:color-mix(in srgb,var(--panel) 94%,transparent);}
 
@@ -34,7 +34,7 @@ html::before,html::after{display:none !important;}
 /* 8) Hundreds of rows animating in at once on long pages (Settings!) made page switches stutter -> only tiles / chips / buttons animate in */
 .set-row,.info-row,.acc-note{animation:none !important;}
 
-/* 9) While you scroll or drag, the ambient decoration rests (set by js/flow.js) */
+/* 9) While you scroll or drag, the ambient decoration rests (set by js/fx/motion-pack.js) */
 html.is-scrolling body::before,html.is-dragging body::before,
 html.is-scrolling #stage::before,html.is-dragging #stage::before,
 html.is-scrolling .mini-orb::after,html.is-dragging .mini-orb::after{animation-play-state:paused;}

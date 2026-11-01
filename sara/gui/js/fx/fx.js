@@ -39,7 +39,7 @@
     // so periodic list refreshes never replay it. Timer is per-page and cleared on re-entry.
     if (!SARA.reduceMotion) {
       clearTimeout(page._stg); page.classList.add('stagger-in');
-      page._stg = setTimeout(function () { page.classList.remove('stagger-in'); }, 450);
+      page._stg = setTimeout(function () { page.classList.remove('stagger-in'); }, 700);
     }
     prev = name;
   });
@@ -105,23 +105,8 @@
     });
   }
 
-  /* ---- 4) cursor parallax (skipped entirely under reduced-motion) ---- */
-  if (!SARA.reduceMotion) {
-    const root = document.documentElement;
-    let mx = 0, my = 0, tx = 0, ty = 0, raf = 0, lastQx = 0, lastQy = 0;
-    function applyParallax() {
-      raf = 0;
-      tx += (mx - tx) * 0.08; ty += (my - ty) * 0.08;
-      const qx = Math.round(tx), qy = Math.round(ty); if (qx !== lastQx) { lastQx = qx; root.style.setProperty('--mx', qx + 'px'); }
-      if (qy !== lastQy) { lastQy = qy; root.style.setProperty('--my', qy + 'px'); }
-      if (Math.abs(mx - tx) > 0.4 || Math.abs(my - ty) > 0.4) raf = requestAnimationFrame(applyParallax);
-    }
-    window.addEventListener('pointermove', function (e) {
-      mx = (e.clientX / window.innerWidth - 0.5) * 8;    // -4px..4px -- deliberately tiny, this is ambience not a gimmick
-      my = (e.clientY / window.innerHeight - 0.5) * 8;
-      if (!raf) raf = requestAnimationFrame(applyParallax);
-    }, { passive: true });
-  }
+  /* ---- 4) cursor parallax: removed (GUI audit P2-1). It rewrote --mx/--my on :root on every pointer move, which re-styled
+     the entire document (54% of a core on the settings page) for a 4px glow nudge. ---- */
 
   /* ---- 5) ripple: one delegated listener covers buttons added later by any page's own JS too ---- */
   const RIPPLE_SEL = '.pill-btn,.chip,.dock-btn,.qa-btn,.mc-play,.app-tile';

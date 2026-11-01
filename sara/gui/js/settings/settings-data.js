@@ -60,6 +60,13 @@
       put($('shNudges'), sh.proactive_nudges != null ? sh.proactive_nudges : '—');
     }
   }
+  const clearCacheBtn = $('clearCacheBtn');
+  if (clearCacheBtn) clearCacheBtn.addEventListener('click', async function () {      // cached chat answers only; memory itself is untouched
+    clearCacheBtn.disabled = true;
+    const res = await SARA.callApi('clear_response_cache');
+    clearCacheBtn.disabled = false;
+    if (res && res.ok) SARA.ok(res.cleared ? 'Forgot ' + res.cleared + ' cached answer' + (res.cleared === 1 ? '' : 's') : 'No cached answers to forget'); else SARA.fail('Could not clear the answer cache');
+  });
   $('exportMemoryBtn').addEventListener('click', async function () {
     const res = await SARA.callApi('export_memory');
     if (res && res.ok) SARA.ok('Exporting memory…'); else SARA.fail('Could not start memory export');

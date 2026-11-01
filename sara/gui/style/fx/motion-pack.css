@@ -512,9 +512,7 @@ html:where(:not([data-fx-off~="au"]))::after{content:"";position:fixed;top:-20%;
 :where(html:not([data-fx-off~="au"])) .overlay.open .m-sub{animation:au-rise-sm .5s var(--au-ease) .12s backwards}
 :where(html:not([data-fx-off~="au"])) .setup-log>*{animation:au-log-in .35s var(--au-ease) backwards}
 :where(html:not([data-fx-off~="au"])) .overlay.open .sheet-head{background:linear-gradient(90deg,rgb(var(--core-rgb)/.45),transparent)0 100%/100% 1px no-repeat;animation:ax-sheet-child .45s var(--ax-ease,cubic-bezier(.22,1,.36,1)) backwards,au-line-draw .9s var(--au-ease) .15s backwards}
-html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out infinite}
 :where(html:not([data-fx-off~="au"])) body.sara-active .mini-orb{animation-duration:1.3s}
-:where(html:not([data-fx-off~="au"])) img{animation:au-fade .6s ease backwards}
 :where(html:not([data-fx-off~="au"])) .today-card :is(.tc-top,.tc-cond,.tc-sub,.tc-next){animation:au-rise-sm .55s var(--au-ease) backwards}
 :where(html:not([data-fx-off~="au"])) .today-card .tc-cond{animation-delay:.06s}
 :where(html:not([data-fx-off~="au"])) .today-card .tc-sub{animation-delay:.12s}
@@ -559,13 +557,6 @@ html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out 
 }
 @keyframes au-pop-in{from{opacity:0;transform:scale(.9)}
 }
-@keyframes au-sweep{0%,55%{opacity:0;transform:translateX(-40vw) skewX(-12deg)}
-65%{opacity:1}
-90%{opacity:1}
-100%{opacity:0;transform:translateX(140vw) skewX(-12deg)}
-}
-@keyframes au-fade{from{opacity:0}
-}
 @keyframes au-log-in{from{opacity:0;transform:translateX(-8px)}
 }
 @keyframes au-line-draw{from{background-size:0 1px}
@@ -573,3 +564,24 @@ html:where(:not([data-fx-off~="au"]))::after{animation:au-sweep 20s ease-in-out 
 @keyframes au-pulse-ring{0%{box-shadow:0 0 0 0 rgb(var(--core-rgb)/.5)}
 100%{box-shadow:0 0 0 14px rgb(var(--core-rgb)/0)}
 }
+
+/* ============ GROUP "p6"  --  Motion polish (GUI audit, phase 6)   (switch off with <html data-fx-off="p6">; always off in the Low tier) ============
+   transform / opacity only, no new infinite loops. Already present before this group (so not added again): orb state fades (halo .7s, sweep .6s,
+   canvas colour easing), live mic / voice level on the orb, toast check-mark draw, number roll, chat chunk fade, spring-curve buttons, page slides. */
+@media (prefers-reduced-motion:no-preference){
+  /* P6-3: staggered entrance for list rows and the Apps grid, only inside the short .stagger-in window after a page switch (fx.js); first 8 items, 40 ms apart */
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body .app-tile{animation:rowIn .34s var(--ease-premium,cubic-bezier(.22,1,.36,1)) both}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(2){animation-delay:40ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(3){animation-delay:80ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(4){animation-delay:120ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(5){animation-delay:160ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(6){animation-delay:200ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(7){animation-delay:240ms}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) .page.stagger-in .page-body :is(.row,.app-tile):nth-child(n+8){animation-delay:280ms}
+  /* P6-10: hover depth on the Home cards: 2 px lift + the existing hover shadow (no blur). `translate` is independent of the tilt's `transform`. */
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) :is(.today-card,.next-card,.plan-card,.home-activity){transition:translate .28s var(--ease-premium,cubic-bezier(.22,1,.36,1)),box-shadow .28s ease}
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) :is(.today-card,.next-card,.plan-card,.home-activity):hover{translate:0 -2px;box-shadow:var(--shadow-hover)}
+  /* P6-7: after start-up the orb eases in (scale .85 -> 1, fade) once; the class is added by ui.js finishBoot() and removed again */
+  :where(html:not([data-fx-off~="p6"]):not([data-quality="low"]):not([data-motion="reduce"])) #stage.orb-enter{animation:orbEnter .6s var(--ease-premium,cubic-bezier(.22,1,.36,1)) both}
+}
+@keyframes orbEnter{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}

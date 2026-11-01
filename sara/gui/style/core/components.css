@@ -130,7 +130,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 
 /* ---- shared glass surface (was copy-pasted in 5 rules; tokens: --glass-bg / --glass-border / --glass-blur) ---- */
 .glass,.clock-card,.today-card,.next-card,.home-activity,.plan-card{
-  background:var(--glass-bg);border:1px solid var(--glass-border);backdrop-filter:blur(var(--glass-blur)) saturate(1.6);-webkit-backdrop-filter:blur(var(--glass-blur)) saturate(1.6);
+  background:var(--glass-bg);border:1px solid var(--glass-border);
 }
 
 /* ---- focus mode look (js/settings.js toggles body.focus-mode): chrome dims, orb breathes slower ---- */
@@ -157,7 +157,6 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 .theme-card:active{transform:scale(.98);}
 .theme-card:focus-visible{outline:2px solid var(--core);outline-offset:2px;}
 .theme-card.on{border-color:var(--core);color:var(--text);box-shadow:0 0 0 1px rgb(var(--core-rgb) / .35),0 0 18px -6px var(--glow);animation:tcPop .32s var(--ease-spring,cubic-bezier(.34,1.56,.64,1));}
-@keyframes tcPop{from{transform:scale(.97);}to{transform:scale(1);}}
 .tc-meta{display:flex;flex-direction:column;gap:1px;padding:0 2px;min-width:0;}
 .tc-meta b{font-size:12.5px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .tc-meta small{font-size:10.5px;color:var(--muted);letter-spacing:.03em;}

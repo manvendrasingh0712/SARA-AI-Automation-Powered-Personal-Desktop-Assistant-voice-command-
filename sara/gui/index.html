@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=fa92966ae3">
+<link rel="stylesheet" href="bundle/app.css?v=68f05b1a29">
 </head>
 <body data-page="home">
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
@@ -41,6 +41,12 @@
         <div><div class="tc-cond" id="tcCond">Weather</div><div class="tc-sub" id="tcSub"></div></div>
       </div>
       <div class="tc-next" id="tcNext"></div>
+    </div>
+
+    <div class="usage-card" id="usageCard" role="button" tabindex="0" title="Open analytics" hidden>
+      <div class="uc-top"><span class="uc-label">Last 7 days</span><b class="uc-total" id="ucTotal">0</b></div>
+      <div class="uc-bars" id="ucBars" aria-hidden="true"></div>
+      <div class="uc-days" id="ucDays" aria-hidden="true"></div>
     </div>
 
     <div class="next-card" id="nextCard" role="button" tabindex="0" title="Open Today" hidden>
@@ -271,6 +277,8 @@
           <div class="set-row"><div class="set-info"><div class="s-name">Mic sensitivity</div><div class="s-sub">how easily Sara picks up your voice</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="micSlider"><span class="slider-val" id="micSliderVal">50</span></div></div>
           <div class="set-row"><div class="set-info"><div class="s-name">Speech speed</div><div class="s-sub">how fast Sara talks back</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="speedSlider"><span class="slider-val" id="speedSliderVal">50</span></div></div>
           <div class="set-row"><div class="set-info"><div class="s-name">Sound effects</div><div class="s-sub">soft UI blips</div></div><div class="toggle on" id="setSounds" role="switch" tabindex="0" aria-checked="true"></div></div>
+          <div class="set-row"><div class="set-info"><div class="s-name">Sound volume</div><div class="s-sub">this device only</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="80" id="soundVolume" aria-label="Sound volume"><span class="slider-val" id="soundVolumeVal">80</span></div></div>
+          <div class="set-row"><div class="set-info"><div class="s-name">Sound pack</div><div class="s-sub">tap one to hear it</div></div><div class="chip-row" id="soundPacks"></div></div>
           <div class="set-row"><div class="set-info"><div class="s-name">Startup sound</div><div class="s-sub">a chime when Sara boots</div></div><div class="toggle" data-setting="startup_sound" role="switch" tabindex="0" aria-checked="false"></div></div>
         </section>
 
@@ -336,7 +344,7 @@
               <div class="stat"><b id="shDays"><span class="skel skel-inline"></span></b><span>Days used</span></div>
               <div class="stat"><b id="shNudges"><span class="skel skel-inline"></span></b><span>Proactive nudges</span></div>
             </div>
-            <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button><button class="pill-btn" id="openMemoryViewerBtn" aria-haspopup="dialog" aria-controls="memViewer">Open memory viewer</button></div>
+            <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button><button class="pill-btn" id="clearCacheBtn" title="Forget the cached answers to general-knowledge questions (your memory is not touched)">Forget cached answers</button><button class="pill-btn" id="openMemoryViewerBtn" aria-haspopup="dialog" aria-controls="memViewer">Open memory viewer</button></div>
             <div class="acc-note">Export saves your recent conversation to memory_export.json next to the app.</div>
           </div>
         </section>
@@ -346,6 +354,7 @@
           <div class="set-card-body">
             <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
             <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Auto day / night</div><div class="s-sub">Paper from 06:00 to 18:00, your dark theme at night. This device only.</div></div><div class="toggle" id="autoTheme" role="switch" tabindex="0" aria-checked="false"></div></div>
             <div class="section-label" id="qualityLabel">Visual quality</div>
             <div class="chip-row" id="qualityRow" role="radiogroup" aria-label="Visual quality">
               <button type="button" class="chip" role="radio" aria-checked="false" data-q="low">Low</button>
@@ -392,6 +401,7 @@
                 <div class="perf-num"><b id="perfP95">-</b><span>TTFA p95 (s)</span></div>
               </div>
               <div class="acc-note" id="perfNote" hidden></div>
+              <div class="acc-note" id="perfQuota" hidden></div>
               <div class="perf-bar" id="perfBar" role="img" aria-label="Average stage split: no data"></div>
               <div class="perf-legend" id="perfLegend"></div>
               <div class="section-label sub">Last 10 turns</div>
@@ -479,6 +489,7 @@
             <div class="section-label">Window &amp; setup</div>
             <div class="btn-row">
               <button class="pill-btn small" id="btnWizard">Re-run setup check</button>
+              <button class="pill-btn small" id="btnTour">Replay tour</button>
               <button class="pill-btn small" id="btnMin">Minimize</button>
               <button class="pill-btn small" id="btnMax">Maximize</button>
             </div>
@@ -682,6 +693,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=7a8a3ebc53"></script>
+<script src="bundle/app.js?v=3e0b3d0c4a"></script>
 </body>
 </html>

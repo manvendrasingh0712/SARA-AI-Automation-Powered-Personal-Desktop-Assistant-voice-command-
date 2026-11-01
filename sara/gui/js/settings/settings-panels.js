@@ -40,4 +40,5 @@
   $('btnClose').addEventListener('click', function () { if (confirm('Close SARA?')) SARA.callApi('close_window'); });
   $('btnOpenDataFolder').addEventListener('click', () => SARA.callApi('open_data_folder'));
   $('btnWizard').addEventListener('click', () => SARA.showSetupWizard && SARA.showSetupWizard());
+  const tourBtn = $('btnTour'); if (tourBtn) tourBtn.addEventListener('click', () => SARA.tour && SARA.tour.start());
 })();

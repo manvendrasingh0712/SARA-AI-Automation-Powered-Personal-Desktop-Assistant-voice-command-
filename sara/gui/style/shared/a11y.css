@@ -53,3 +53,11 @@ html[data-motion="reduce"] *,html[data-motion="reduce"] *::before,html[data-moti
   animation-duration:.001ms !important;animation-delay:0s !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;transition-delay:0s !important;scroll-behavior:auto !important;}
 html[data-motion="reduce"] :is(.pm-aura,.pm-dust,.pm-spark,.orb-fx,.pm-edge,.pm-progress){display:none !important;}
 @media (prefers-reduced-motion:reduce){.ax-dialog,.ax-back{transition:none;translate:0 0;}.ax-confirm{animation:none;}}
+
+/* F12: What's new sheet (js/shared/whats-new.js) */
+.wn-dialog{width:min(460px,100%);}
+.wn-body{display:block;}
+.wn-row{flex-direction:column;gap:2px;padding:9px 0;}
+.wn-t{font-size:13.5px;font-weight:600;color:var(--text);}
+.wn-d{font-size:12.5px;line-height:1.45;color:var(--text-soft);}
+.wn-foot{display:flex;justify-content:flex-end;padding:4px 18px 16px;}

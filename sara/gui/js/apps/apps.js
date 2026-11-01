@@ -70,6 +70,7 @@
     d.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
     return d;
   }
+  SARA.apps = { open: OPEN, tools: TOOLS, run: runItem, icon: ICON };      // read by js/home/radial.js (quick-action ring)
   OPEN.forEach((i) => $('appsGrid').appendChild(tile(i)));
   TOOLS.forEach((i) => $('toolsGrid').appendChild(tile(i)));
   SYSTEM.forEach(function (i) {

@@ -1,0 +1,51 @@
+/* ==========================================================================
+   guide.css -- the quick-action ring on the orb (js/home/radial.js, F6) and the spotlight tour (js/shared/tour.js, F5).
+   transform / opacity only; no motion under reduced motion. Token colours only.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- F6 radial menu */
+.rm{position:fixed;inset:0;z-index:70;background:transparent;}
+.rm-item{
+  position:absolute;left:var(--cx);top:var(--cy);width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text);
+  background:var(--panel);border:1px solid var(--glass-border,var(--line));box-shadow:var(--shadow-hover);
+  transform:translate(0,0) scale(.4);opacity:0;
+}
+.rm.open .rm-item{transform:translate(var(--x),var(--y)) scale(1);opacity:1;}
+.rm.closing .rm-item{transform:translate(0,0) scale(.4);opacity:0;}
+.rm-item svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
+.rm-item:hover,.rm-item:focus-visible{border-color:var(--core);color:var(--core);outline:none;box-shadow:var(--shadow-hover),0 0 0 2px rgb(var(--core-rgb) / .35);}
+.rm-label{
+  position:absolute;top:calc(100% + 6px);left:50%;translate:-50% 0;white-space:nowrap;font-size:11.5px;color:var(--text-soft);
+  background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:2px 9px;opacity:0;pointer-events:none;
+}
+.rm-item:hover .rm-label,.rm-item:focus-visible .rm-label{opacity:1;}
+@media (prefers-reduced-motion:no-preference){
+  .rm-item{transition:transform .34s var(--ease-spring,cubic-bezier(.34,1.56,.64,1)) var(--d,0ms),opacity .2s ease var(--d,0ms),border-color .15s,color .15s,box-shadow .15s;}
+  .rm.closing .rm-item{transition:transform .16s ease,opacity .16s ease;}
+  .rm-label{transition:opacity .15s ease;}
+}
+html[data-motion="reduce"] .rm-item{transition:none;}
+
+/* ---------------------------------------------------------------- F5 tour */
+.tr{position:fixed;inset:0;z-index:140;opacity:0;}
+.tr.open{opacity:1;}
+.tr-spot{
+  position:fixed;pointer-events:none;border-radius:18px;opacity:0;
+  box-shadow:0 0 0 9999px rgb(var(--void-rgb,5 8 12) / .74),0 0 0 2px rgb(var(--core-rgb) / .7);
+}
+.tr-card{
+  position:fixed;width:min(320px,calc(100vw - 24px));padding:16px 18px 14px;border-radius:16px;background:var(--panel);
+  border:1px solid var(--line);box-shadow:var(--shadow-hover);opacity:0;
+}
+.tr-card.show{opacity:1;}
+.tr-count{font-size:10.5px;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;font-variant-numeric:tabular-nums;}
+.tr-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px;}
+.tr-text{font-size:13px;line-height:1.5;color:var(--text-soft);}
+.tr-row{display:flex;align-items:center;gap:8px;margin-top:14px;}
+.tr-skip{margin-right:auto;}
+.tr-row .pill-btn{padding:7px 14px;}
+@media (prefers-reduced-motion:no-preference){
+  .tr{transition:opacity .22s ease;}
+  .tr-spot,.tr-card{transition:opacity .14s ease;}
+}

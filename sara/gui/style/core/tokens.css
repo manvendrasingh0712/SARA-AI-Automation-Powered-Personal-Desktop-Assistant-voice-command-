@@ -6,7 +6,7 @@
      * --core / --think / --speak are derived from those triplets, so they always match.
      * a theme = one  :root[data-theme="name"]  block (js/theme.js sets data-theme + the accent-hue override).
    Themes: sara = Terrarium (default) | paper | arctic = Sky | emerald = Mint | rose = Blush | violet = Lilac (all light)
-           | slate = Midnight | ember | cyber = Cyber Blue | aurora (all dark).  Ids are kept stable so saved prefs keep loading.
+           | slate = Midnight | ember | aurora (all dark; Cyber Blue was removed, it was too close to Midnight).  Ids are kept stable so saved prefs keep loading.
    ========================================================================== */
 
 /* ---- shared, theme-independent tokens ---- */
@@ -109,15 +109,6 @@
 }
 
 /* ---- CYBER BLUE (futuristic dark): navy night, electric blue + cyan + magenta pop ---- */
-:root[data-theme="cyber"], [data-theme-preview="cyber"]{
-  --void:#03070F; --deep:#0A1B38; --panel:#0A1426; --panel-rgb:10 20 38; --panel-2:#112039; --line:#1C3358;
-  --core-rgb:41 151 255; --think-rgb:0 229 255; --speak-rgb:255 79 216;
-  --text:#E0ECFF; --text-soft:#9DB4D6; --muted:#7C93B8; --faint:#44587A;
-  --danger:#FF5C5C; --danger-rgb:255 92 92; --on-core:#020B1A;
-  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.5;
-  --void-rgb:3 7 15; --vignette:rgba(0,0,0,.5);
-}
-
 /* ---- MINT (light): sea-glass white, fresh green + teal + amber ---- */
 :root[data-theme="emerald"], [data-theme-preview="emerald"]{
   --void:#E8F7EF; --deep:#F6FDF9; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F0FAF5; --line:#CDE6DA;
@@ -224,6 +215,46 @@
   --shadow-rest: 0 1px 2px rgba(0,0,0,.4), 0 8px 18px -12px rgba(0,0,0,.6);
   --shadow-hover: 0 2px 4px rgba(0,0,0,.4), 0 14px 28px -14px rgba(0,0,0,.7), 0 0 0 1px rgb(var(--core-rgb) / .30);
   --scrim:rgb(15 16 17 / .82);
+}
+
+/* ---- OBSIDIAN GOLD (warm dark): near-black base, brushed gold + copper + champagne ---- */
+:root[data-theme="obsidian"], [data-theme-preview="obsidian"]{
+  --void:#0A0A0B; --deep:#141210; --panel:#121110; --panel-rgb:18 17 16; --panel-2:#1A1815; --line:#2A2620;
+  --core-rgb:224 181 92; --think-rgb:196 132 96; --speak-rgb:240 224 190;
+  --text:#E6DFD0; --text-soft:#B3AA97; --muted:#978E7C; --faint:#5E584C;
+  --danger:#E0786A; --danger-rgb:224 120 106; --on-core:#14100A;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.3;
+  --void-rgb:10 10 11; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- DEEP OCEAN (futuristic dark): midnight water, sky-cyan + indigo + aqua ---- */
+:root[data-theme="ocean"], [data-theme-preview="ocean"]{
+  --void:#060B14; --deep:#0A1626; --panel:#0C1522; --panel-rgb:12 21 34; --panel-2:#112036; --line:#1B2E48;
+  --core-rgb:56 189 248; --think-rgb:99 102 241; --speak-rgb:94 234 212;
+  --text:#D2E0F0; --text-soft:#92A8C2; --muted:#7F95B0; --faint:#4A5C74;
+  --danger:#E5786E; --danger-rgb:229 120 110; --on-core:#04121C;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.3;
+  --void-rgb:6 11 20; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- SUNSET GLASS (futuristic dark): plum night, coral + orchid + amber ---- */
+:root[data-theme="sunset"], [data-theme-preview="sunset"]{
+  --void:#0D0A14; --deep:#1A1026; --panel:#17111F; --panel-rgb:23 17 31; --panel-2:#1F1729; --line:#2E2140;
+  --core-rgb:255 138 101; --think-rgb:192 108 255; --speak-rgb:255 200 124;
+  --text:#EADFF0; --text-soft:#B5A4C4; --muted:#9A89AB; --faint:#5F5070;
+  --danger:#E5566B; --danger-rgb:229 86 107; --on-core:#1A0B06;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.4;
+  --void-rgb:13 10 20; --vignette:rgba(0,0,0,.5);
+}
+
+/* ---- FOREST NIGHT (dark): moss-black base, sage green + olive + cream ---- */
+:root[data-theme="forest"], [data-theme-preview="forest"]{
+  --void:#070C09; --deep:#0C1812; --panel:#0E1712; --panel-rgb:14 23 18; --panel-2:#14221A; --line:#1F3226;
+  --core-rgb:120 200 140; --think-rgb:176 196 112; --speak-rgb:240 226 190;
+  --text:#DCE6DA; --text-soft:#A0B4A2; --muted:#8A9E8C; --faint:#536657;
+  --danger:#D9786B; --danger-rgb:217 120 107; --on-core:#07120B;
+  --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:1.2;
+  --void-rgb:7 12 9; --vignette:rgba(0,0,0,.5);
 }
 
 /* ---- reset + body ---- */

@@ -30,7 +30,8 @@
     "style/fx/quality.css",
     "style/settings/settings-presets.css",
     "style/shared/a11y.css",
-    "style/shared/empty-states.css"
+    "style/shared/empty-states.css",
+    "style/shared/guide.css"
   ],
   "js": [
     "js/core/ui.js",
@@ -41,6 +42,8 @@
     "js/fx/fx.js",
     "js/fx/motion.js",
     "js/home/home.js",
+    "js/home/hints.js",
+    "js/home/usage-card.js",
     "js/home/today.js",
     "js/home/clock-card.js",
     "js/chat/chat.js",
@@ -48,6 +51,8 @@
     "js/notes/notes-reminders.js",
     "js/apps/music.js",
     "js/apps/apps.js",
+    "js/apps/apps-order.js",
+    "js/home/radial.js",
     "js/automation/routine-actions.js",
     "js/automation/routine-builder.js",
     "js/automation/automation.js",
@@ -65,7 +70,11 @@
     "js/settings/settings-presets.js",
     "js/shared/a11y.js",
     "js/shared/empty-states.js",
+    "js/shared/skeleton.js",
+    "js/shared/whats-new.js",
+    "js/shared/tour.js",
     "js/fx/motion-pack.js",
+    "js/fx/theme-extras.js",
     "js/settings/router-view.js",
     "js/core/main.js"
   ]

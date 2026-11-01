@@ -15,3 +15,7 @@
 @media (prefers-reduced-motion:no-preference){.es:not(.compact) .es-svg{animation:esFloat 5s ease-in-out infinite;}}
 @keyframes esFloat{0%,100%{translate:0 0;}50%{translate:0 -4px;}}
 html[data-quality="low"] .es-svg{animation:none;}
+
+/* ---- skeleton placeholders (js/shared/skeleton.js) ---- */
+.sk-slow{font-size:12px;color:var(--muted);padding:10px 2px;}
+.tc-temp .skel-temp{width:58px;height:26px;display:inline-block;vertical-align:middle;border-radius:8px;}

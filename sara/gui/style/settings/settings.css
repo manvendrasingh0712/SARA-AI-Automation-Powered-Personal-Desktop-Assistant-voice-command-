@@ -110,7 +110,6 @@
 @keyframes setFlash{0%{opacity:0;}25%{opacity:1;}100%{opacity:0;}}
 @keyframes setBloom{0%{opacity:0;clip-path:circle(0 at var(--bx,50%) var(--by,50%));}20%{opacity:1;}100%{opacity:0;clip-path:circle(140% at var(--bx,50%) var(--by,50%));}}
 #page-settings.set-enter .set-card{animation:setCardIn .55s var(--ease-premium) both;animation-delay:calc(var(--i,0) * 45ms);}
-@keyframes setCardIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
 
 /* ---- quick controls ---- */
 #page-settings .qc-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;padding:14px 0 16px;}
@@ -184,7 +183,7 @@
 .an-peak b{color:var(--text);font-weight:500;text-align:right;font-variant-numeric:tabular-nums;}
 .an-peak b::before{content:'';display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:var(--speak);vertical-align:middle;}
 .an-top{display:flex;flex-direction:column;gap:8px;}
-.bar-row .b-rank{flex:none;width:14px;text-align:right;color:var(--faint);font-size:11.5px;font-variant-numeric:tabular-nums;}
+.bar-row .b-rank{flex:none;width:14px;text-align:right;color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums;}
 #anTop .bar-row .b-name{flex:0 1 46%;min-width:0;}
 #anTop .bar-row:first-child .b-name{color:var(--text);}
 .an-chart{position:relative;padding-top:24px;}
