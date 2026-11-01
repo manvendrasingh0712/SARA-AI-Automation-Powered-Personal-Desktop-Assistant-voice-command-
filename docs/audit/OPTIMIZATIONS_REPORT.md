@@ -56,3 +56,55 @@ Still not done (and why): O16 speculative generation (needs spoken turns to prov
 (downloads + recordings), O23 per-intent acks (cached-ack audio must be re-synthesised and listened to), O24-O26 GUI/orb/barge-in/earcons (need a screen
 recording and live audio), O9 "offer undo" (would add speech to every volume change; the `undo` command already exists), the other giant-function
 splits in `SPLIT_PLAN.md`, vulture/bandit/ruff (not installed).
+
+## Part 3 (SARA_OPTIMIZATIONS_PART3_PROMPT.md, P1-P20) - 2026-10-31
+
+Tests: **3668 -> 3760 passed, 1 skipped** (+92 after round 2). `scripts/check_no_secrets.py`: 0 findings. `gen_env_example.py --check`: 0 undocumented (284 keys).
+"verified" = measured or seen on this PC; "unverified" = not measured here. Measurements use this PC (qwen3:4b-instruct on Ollama, Windows 11).
+
+| ID | Status | Tests added | Before -> After | Notes |
+|---|---|---|---|---|
+| P1 profile | done | `test_profile.py` | - | `SARA_PROFILE=dev|prod`; `DEBUG_MODE` only follows `.env` in the dev profile (owner line below). |
+| P2 logging | done, **verified live** | `test_log_pipeline.py` (+ an end-to-end fresh-process test) | `logger.info` on the caller thread: median 285 us -> 42 us, p99 586 us -> 129 us (n=5000, file handler only; the old console handler made it slower still) | queue + one writer thread, redaction of keys/tokens/GOCSPX before any file, same-call-site rate limit, `sara.jsonl` (ts, level, component, turn_id, msg), async stdout. **Live start-up found a real bug** (`root` undefined in `logging_config.setup_logging`) that the unit tests missed; fixed and pinned by the new end-to-end test. |
+| P3 GUI rendering budget | done in part, measured (round 2) | `test_gui_perf_budget.py` | idle home page, renderer CPU (share of one core) high/balanced/low: **20.8 / 16.4 / 13.4 % -> 10.4 / 8.7 / 8.4 %**; script time 9.8 / 7.9 / 7.1 % -> 4.1 / 3.5 / 3.5 % (144 Hz display, one 6 s sample per tier) | cause: the home orb loop drew at the display refresh (144 fps) and animates per frame; now capped at about 72 fps (60 Hz displays unchanged). **Visible change:** on a 144 Hz screen the orb moves at half its old speed (still 1.2x the 60 Hz pace). Frame times were already healthy in every tier (p95 7 ms), so no auto-switch to a lighter tier was added. Not needed: hidden pages are already `display:none`, and the Low/Balanced/High quality tiers, FPS meter and long-task counter already exist (`quality.js`). Remaining idle cost is the orb draw itself (233 ms of 8 s in a CPU profile). |
+| P4 bundle size | measured, **not done on purpose** | - | window load 1.5 s total; `app.css` 307 KB took 196 ms and `app.js` 534 KB 245 ms during start-up | served from localhost, so bytes are not the cost (the time is the Python server busy booting); a minifier would add a build dependency for no measurable gain. |
+| P5 | **not done** | - | - | needs profiling evidence first. |
+| P6 SQLite | done, measured | `test_db_common.py` | conversation time-range query 13.2 ms -> 0.11 ms; per-action count 12.3 ms -> 0.21 ms (100k synthetic rows, median of 30; `EXPLAIN QUERY PLAN` SCAN -> SEARCH USING INDEX) | shared pragmas (WAL, synchronous=NORMAL, busy_timeout 5 s, temp_store=MEMORY, 20 MB cache), `PRAGMA optimize` + WAL truncate on close. A reminders `(triggered, due_at)` index changed the row order of an unordered query, so it was **removed**. Real-DB gain depends on its size (the real DB has 700 rows: no visible change expected). |
+| P7 response cache | done, **verified live** | `test_response_cache.py` (48) | the same question twice: 2nd answer logged `[Cache] answered from the response cache`; "what is the time right now" was not cached | strict rules: never time/date/weather/news/price, personal or memory words, pronoun follow-ups, digits, tool turns, content hints (tone hints are allowed), bad/short replies. Key = text + language + persona hash + model; 7-day TTL, 500-entry LRU, SQLite `response_cache.db`. Time saved per hit = the LLM call (about 0.9 s in the logs for a short reply); audio start was **not** measured. Optional embedding near-duplicate match is implemented and tested but not wired to an embedder. "Forget cache" in Settings is **not** built (delete the rows of `response_cache.db`, or set `RESPONSE_CACHE_ENABLED=false`). |
+| P8 rolling summary | done, measured (small sample) | `test_rolling_summary.py` (6) | recall of a fact told 12 turns earlier: **0/5 -> 4/5**; prompt +85-205 chars, hard cap 420 (flat, not growing) | summary of dropped turns by the local model in the background every 2 dropped turns, kept in the system prompt. First version summarised trivia and scored 0/5; the prompt was changed to keep only facts about the user. n=5 is small: treat as "clearly helps", not as a benchmark. Entity extraction into memory2 **not** done. |
+| P9 KV prime on wake | **measured, reverted** | - | time-to-first-token 101 ms -> 95 ms (n=12 each, alternating order); prefill of the whole 983-token prompt is only 41 ms cold vs 27 ms cached | the ceiling is about 14 ms, so the feature was removed (the rules say to revert what does not help). |
+| P10 wake-word verifier | **not done** | - | - | needs your recordings of the wake word and negatives. |
+| P11 AEC / front-end | **not done** | - | - | needs a recorded noisy/echo test set. |
+| P12 personal lexicon | **not done** | - | - | RapidFuzz is not installed; app names are already fuzzy-resolved by the app index (difflib); contacts/songs need a held-out misrecognition set that does not exist. |
+| P13 ASR correction | **not done** | - | - | needs recorded audio + transcripts. |
+| P14 distilled intent model | **not done** | - | - | needs a training run (Colab) and labelled data. |
+| P15 Gemini gate | done, tested (**not exercised live**: the backend on this PC is Ollama) | `test_gemini_gate.py` | simulated 429 storm: 203 turns -> **3** Gemini calls (breaker), the rest go to the local model with no backoff | per-model RPM/RPD buckets (`GEMINI_RPM/RPD`, 0 = no local cap), breaker with Retry-After, failover chain, full-jitter backoff, **cancel/barge-in interrupts the retry sleep**, in-flight coalescing (class + tests; not yet used by the engine), usage meter (not shown in the GUI yet). |
+| P16 process tuning | partly done | `test_proc_tuning.py` | `SetProcessInformation(ProcessPowerThrottling)` accepted by Windows here (True); idle/minimised latency effect **unverified** | EcoQoS opt-out on by default (`POWER_THROTTLING_OPT_OUT`), ABOVE_NORMAL opt-in, Ollama keep-warm (`KEEP_WARM_INTERVAL_S`, off by default, skipped on battery). Whisper/Kokoro keep-warm, the audio-device power request and the tray note are not done. |
+| P17 GC | done, measured live | `test_gc_tuning.py` (4) | GC pauses over about 100 collections: off n=109 p99 5.9 ms, max 124 ms; on n=81 p50 0.16 ms, one deliberate 188 ms collect at idle | `gc.freeze` + higher thresholds after warm-up, histogram logged every 60 s as `[GC]`. The capture-loop buffers were not changed (no jitter measured). |
+| P18 watchdogs | partly done, **verified live** (round 2) | `test_ollama_watchdog.py` (5) | Ollama killed mid-session: before = stays dead until SARA restarts; after = back up in **27 s** (log: `Ollama stopped answering; restarting it (1/3)`) | checks every `OLLAMA_WATCHDOG_INTERVAL_S` (15 s), restarts after 2 failed checks, max 3 per run, never before it was first seen up. Not done: microphone hot-plug, hung STT/TTS worker detection. |
+| P19 replay gates | **not done** | - | - | needs a consented audio corpus. |
+| P20 installer / clean-VM | **not done** | - | - | needs a VM. |
+
+### Housekeeping done during the live checks
+- The live tests wrote 28 conversation rows and 6 memory rows into your database; they were removed after a full backup (`sara_data.before_cleanup_20261031_225027.bak` next to the database). Three short mic-noise rows ("Thik hai", "Haan haan") and the derived `consolidation` memories were left because they cannot be told apart from real use.
+- The Ollama server is stopped; no test app is running.
+
+### Lines for the owner (not applied by me)
+```
+GEMINI_MAX_OUTPUT_TOKENS=400     # .env still has 200; replies can be cut short
+GEMINI_RPM=10                    # optional: your plan's per-minute limit, so SARA falls back before Google answers 429
+GEMINI_RPD=250                   # optional: your plan's per-day limit
+SARA_PROFILE=dev                 # only if you want DEBUG_MODE=true in .env to take effect
+```
+Key rotation / Google OAuth revocation stay yours.
+
+### Part 3 - leftovers round (2026-11-01)
+| ID | Status | Evidence |
+|---|---|---|
+| P7 "Forget cache" | done | Settings > Memory: button "Forget cached answers" (new bridge method `clear_response_cache`, API list now 95). Verified live: click -> toast "No cached answers to forget"; unit test seeds one answer and checks it is cleared. |
+| P8 entities into memory2 | **not new code, existing pipeline** | Memory 2.0 (enabled in your `.env`) already extracts facts, events and entities from your messages with relative-time resolution ("kal", "parso"). I did not re-test the exact phrase "Rahul ko kal call karna" through it. |
+| P15 usage meter | done | `get_perf_summary` now carries `gemini_usage` ({model: [requests today, daily cap]}) once Gemini was used; Settings > System shows "Gemini requests - ... today". Unit-tested; the live UI line stays hidden on Ollama. Request coalescing stays a tested helper in `gemini_gate.py`, **not used by the engine**: it fits one-shot calls, not a streamed chat reply. |
+| P16 keep-warm | measured, **left off** | After a 5 min gap the first token took 0.351 s vs 0.114 s warm (one sample); with the keep-warm ping every 60 s it was 0.282 s (one sample). About 70 ms is inside the noise of single samples, so `KEEP_WARM_INTERVAL_S` stays 0 by default. Whisper/Kokoro keep-warm, the battery "degrade" mode and the tray note were not built (no evidence they help). |
+| P18 mic stall | done in part | `_stream_is_healthy` now also treats a stream that says "active" but delivered no callback for 6 s as dead (the watchdog then reopens it); the capture callback runs ~31x/s even in silence, so a quiet room is not a stall. 5 unit tests; live run: no false alarms. **Not done:** following a newly plugged-in default microphone (PortAudio does not refresh its device list without re-initialising, which I could not test without plugging hardware) and detection of a hung TTS worker. |
+| P12 personal lexicon | **not done, reason** | The backend has no contacts and no played-song history to build a lexicon from; installed-app names are already fuzzy-matched by the app index. |
+| P5 | **not done** | the part-3 prompt file is no longer on disk, so I could not re-read what P5 asked for; nothing was changed. |
