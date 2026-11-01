@@ -1373,6 +1373,21 @@
     body.addEventListener('scroll', function () { head.classList.toggle('scrolled', body.scrollTop > 8); }, { passive: true });
   });
 
+  /* ---- Home header: "Good evening, <name>" (the name is written into #greetName by js/home/home.js) ---- */
+  const gw = $('homeGreetWord'), gc = $('homeGreetComma'), gn = $('greetName');
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night';
+  }
+  function paintGreeting() {
+    if (gw) gw.textContent = greeting();
+    if (gc && gn) gc.hidden = !gn.textContent.trim();
+  }
+  if (gw) {
+    paintGreeting(); setInterval(function () { if (!document.hidden) paintGreeting(); }, 60000);
+    if (gn && window.MutationObserver) new MutationObserver(paintGreeting).observe(gn, { childList: true, characterData: true, subtree: true });
+  }
+
   /* ---- skip link: first stop of the Tab order, lands on the visible page ---- */
   const skip = $('skipLink');
   if (skip) skip.addEventListener('click', function (e) {
@@ -6194,10 +6209,10 @@ var LABELS = {
     window.addEventListener('resize', function () { if (rz) return; rz = requestAnimationFrame(function () { rz = 0; place(); }); });
 
     /* ---- quick controls (mirror the real toggles) ---- */
-    const proxies = Array.prototype.slice.call(page.querySelectorAll('[data-proxy]'));
+    const proxies = Array.prototype.slice.call(document.querySelectorAll('[data-proxy]'));      // the five quick tiles now sit in the Home dock
     function realOf(p) {
       const k = p.dataset.proxy;
-      return k.indexOf('setting:') === 0 ? page.querySelector('[data-setting="' + k.slice(8) + '"]') : $(k);
+      return k.indexOf('setting:') === 0 ? page.querySelector('[data-setting="' + k.slice(8) + '"]') : $(k);   // the real toggle stays in Settings
     }
     function sync() {
       proxies.forEach(function (p) {
@@ -6209,12 +6224,12 @@ var LABELS = {
       const mo = new MutationObserver(sync);
       proxies.forEach(function (p) { const r = realOf(p); if (r) mo.observe(r, { attributes: true, attributeFilter: ['class', 'aria-checked'] }); });
     }
-    page.addEventListener('click', function (e) {
+    document.addEventListener('click', function (e) {
       const p = e.target.closest('[data-proxy]'); if (!p) return;
       const r = realOf(p); if (!r) return;
       once(p.querySelector('.qc-sw'), 'fx-halo', 600); r.click();
     });
-    sync(); SARA.onBoot(function () { setTimeout(sync, 400); });
+    sync(); SARA.onBoot(function () { setTimeout(sync, 400); }); SARA.on('page', function (p) { if (p === 'home') sync(); });
 
     /* ---- one-shot feedback: toggle halo + card flash ---- */
     function toggleFx(t) { once(t, 'fx-halo', 600); once(t.closest('.set-card'), 'set-flash', 900); }
@@ -6268,6 +6283,8 @@ var LABELS = {
     SARA.on('page', function (p) {
       if (p !== 'settings') return;
       sliders.forEach(fill); sync(); once(page, 'set-enter', 1100);
+      const pb = page.querySelector('.page-body');
+      if (links.length && pb && pb.scrollTop < 8) { pinned = true; setActive(links[0].dataset.target); }   // opened at the top: highlight the first section
       requestAnimationFrame(place);
     });
   })();
@@ -8378,7 +8395,7 @@ var LABELS = {
   doc.addEventListener('keydown', function (e) { if (['Tab', 'Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Alt'].indexOf(e.key) >= 0) kb = true; }, true);
   doc.addEventListener('pointerdown', function () { kb = false; }, true);
   const nav = $('navBar');
-  const pageTitle = function (name) { const p = $('page-' + name), t = p && p.querySelector('.page-title'); return t ? t.textContent.trim() : (name.charAt(0).toUpperCase() + name.slice(1)); };
+  const pageTitle = function (name) { const p = $('page-' + name), t = p && p.querySelector('.page-title'); return t ? (t.dataset.name || t.textContent.trim()) : (name.charAt(0).toUpperCase() + name.slice(1)); };
   SARA.on('page', function (name) {
     if (nav) nav.querySelectorAll('button[data-page]').forEach(function (b) { if (b.dataset.page === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     announce(pageTitle(name) + ' page');

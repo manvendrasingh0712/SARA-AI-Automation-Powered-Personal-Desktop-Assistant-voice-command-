@@ -167,10 +167,10 @@
     window.addEventListener('resize', function () { if (rz) return; rz = requestAnimationFrame(function () { rz = 0; place(); }); });
 
     /* ---- quick controls (mirror the real toggles) ---- */
-    const proxies = Array.prototype.slice.call(page.querySelectorAll('[data-proxy]'));
+    const proxies = Array.prototype.slice.call(document.querySelectorAll('[data-proxy]'));      // the five quick tiles now sit in the Home dock
     function realOf(p) {
       const k = p.dataset.proxy;
-      return k.indexOf('setting:') === 0 ? page.querySelector('[data-setting="' + k.slice(8) + '"]') : $(k);
+      return k.indexOf('setting:') === 0 ? page.querySelector('[data-setting="' + k.slice(8) + '"]') : $(k);   // the real toggle stays in Settings
     }
     function sync() {
       proxies.forEach(function (p) {
@@ -182,12 +182,12 @@
       const mo = new MutationObserver(sync);
       proxies.forEach(function (p) { const r = realOf(p); if (r) mo.observe(r, { attributes: true, attributeFilter: ['class', 'aria-checked'] }); });
     }
-    page.addEventListener('click', function (e) {
+    document.addEventListener('click', function (e) {
       const p = e.target.closest('[data-proxy]'); if (!p) return;
       const r = realOf(p); if (!r) return;
       once(p.querySelector('.qc-sw'), 'fx-halo', 600); r.click();
     });
-    sync(); SARA.onBoot(function () { setTimeout(sync, 400); });
+    sync(); SARA.onBoot(function () { setTimeout(sync, 400); }); SARA.on('page', function (p) { if (p === 'home') sync(); });
 
     /* ---- one-shot feedback: toggle halo + card flash ---- */
     function toggleFx(t) { once(t, 'fx-halo', 600); once(t.closest('.set-card'), 'set-flash', 900); }
@@ -241,6 +241,8 @@
     SARA.on('page', function (p) {
       if (p !== 'settings') return;
       sliders.forEach(fill); sync(); once(page, 'set-enter', 1100);
+      const pb = page.querySelector('.page-body');
+      if (links.length && pb && pb.scrollTop < 8) { pinned = true; setActive(links[0].dataset.target); }   // opened at the top: highlight the first section
       requestAnimationFrame(place);
     });
   })();

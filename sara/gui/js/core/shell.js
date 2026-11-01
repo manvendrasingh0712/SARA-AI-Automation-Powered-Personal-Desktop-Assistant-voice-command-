@@ -84,6 +84,21 @@
     body.addEventListener('scroll', function () { head.classList.toggle('scrolled', body.scrollTop > 8); }, { passive: true });
   });
 
+  /* ---- Home header: "Good evening, <name>" (the name is written into #greetName by js/home/home.js) ---- */
+  const gw = $('homeGreetWord'), gc = $('homeGreetComma'), gn = $('greetName');
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 5 ? 'Good night' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 21 ? 'Good evening' : 'Good night';
+  }
+  function paintGreeting() {
+    if (gw) gw.textContent = greeting();
+    if (gc && gn) gc.hidden = !gn.textContent.trim();
+  }
+  if (gw) {
+    paintGreeting(); setInterval(function () { if (!document.hidden) paintGreeting(); }, 60000);
+    if (gn && window.MutationObserver) new MutationObserver(paintGreeting).observe(gn, { childList: true, characterData: true, subtree: true });
+  }
+
   /* ---- skip link: first stop of the Tab order, lands on the visible page ---- */
   const skip = $('skipLink');
   if (skip) skip.addEventListener('click', function (e) {

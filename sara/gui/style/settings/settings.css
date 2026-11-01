@@ -238,3 +238,5 @@
   #page-settings .fx-halo::before,#page-settings .set-flash::after,#page-settings .set-bloom::after{animation:none;}
   #page-settings .set-rail-ind,#page-settings .mr-fg,#page-settings .info-row.meter::before,#page-settings .info-row.meter::after{transition:none;}
 }
+/* Phase 3: the five quick switches moved to the Home dock (#quickDock); the card stays in the DOM (settings-fx.js still looks it up) but is not shown */
+#page-settings #grp-quick{display:none !important;}

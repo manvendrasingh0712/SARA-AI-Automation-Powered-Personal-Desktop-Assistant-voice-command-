@@ -86,7 +86,7 @@
   doc.addEventListener('keydown', function (e) { if (['Tab', 'Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Alt'].indexOf(e.key) >= 0) kb = true; }, true);
   doc.addEventListener('pointerdown', function () { kb = false; }, true);
   const nav = $('navBar');
-  const pageTitle = function (name) { const p = $('page-' + name), t = p && p.querySelector('.page-title'); return t ? t.textContent.trim() : (name.charAt(0).toUpperCase() + name.slice(1)); };
+  const pageTitle = function (name) { const p = $('page-' + name), t = p && p.querySelector('.page-title'); return t ? (t.dataset.name || t.textContent.trim()) : (name.charAt(0).toUpperCase() + name.slice(1)); };
   SARA.on('page', function (name) {
     if (nav) nav.querySelectorAll('button[data-page]').forEach(function (b) { if (b.dataset.page === name) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     announce(pageTitle(name) + ' page');

@@ -826,9 +826,9 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
    home.css  --  Home page: orb stage, caption, hint, Today card + Today sheet.
    Markup: index.html #page-home, #todaySheet.  JS: js/home.js (orb), js/today.js (card + sheet).
    ========================================================================== */
-#page-home{align-items:center;justify-content:center;position:relative;}
-.home-greet{position:absolute;top:28px;right:32px;font-size:13px;color:var(--muted);}
-.stage{width:min(400px,72vw);aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;transition:transform 1.4s ease,opacity 1.4s ease;}
+#page-home{align-items:stretch;justify-content:flex-start;position:relative;}
+.home-greet{font-size:13px;color:var(--muted);}   /* the name inside the header title (phase 3); see the Home grid section at the end */
+.stage{width:var(--orb,min(400px,72vw));aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;transition:transform 1.4s ease,opacity 1.4s ease;}
 canvas#org{width:100%;height:100%;display:block;}
 /* ---- wake flash: quick radial burst the instant the orb is tapped/woken (js/home.js SARA.wake) ---- */
 .stage.wake-flash::after{
@@ -849,7 +849,8 @@ canvas#org{width:100%;height:100%;display:block;}
 #page-home.ambient-t2 .clock-card,
 #page-home.ambient-t2 .home-greet,
 #page-home.ambient-t2 .home-caption,
-#page-home.ambient-t2 .home-hint{opacity:.2;transition:opacity 1s ease;}
+#page-home.ambient-t2 .home-hint,
+#page-home.ambient-t2 .quick-dock{opacity:.2;transition:opacity 1s ease;}
 .ambient-panel{
   position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
   pointer-events:none;opacity:0;transition:opacity 1.2s ease;
@@ -935,21 +936,6 @@ canvas#org{width:100%;height:100%;display:block;}
 .nx-title{font-size:14px;line-height:1.35;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
 .nx-rel{margin-top:6px;font-size:12px;color:var(--core);}
 #page-home.ambient-t2 .next-card{opacity:.2;transition:opacity 1s ease;}
-
-/* small window: both cards collapse into one-line pills (not removed) */
-@media (max-width:900px){
-  .today-card,.next-card{bottom:84px;width:auto;max-width:calc(50% - 32px);padding:8px 14px;border-radius:999px;}
-  .today-card{left:20px;}
-  .today-card .tc-top{gap:8px;}
-  .today-card .tc-top > div:last-child{min-width:0;}
-  .tc-temp{font-size:16px;}
-  .tc-cond{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .tc-sub,.tc-next{display:none;}
-  .next-card{right:20px;display:flex;align-items:center;gap:8px;}
-  .nx-label{display:none;}
-  .nx-title{display:block;white-space:nowrap;text-overflow:ellipsis;font-size:12px;flex:1;min-width:0;}
-  .nx-rel{margin:0;flex:none;font-size:11px;}
-}
 
 /* ---- Today sheet (expanded card) ---- */
 .sheet{width:min(560px,100%);max-height:88vh;overflow-y:auto;background:var(--panel);border:1px solid var(--line);border-radius:24px;padding:24px 28px 26px;transform:translateY(8px) scale(.98);transition:transform .28s cubic-bezier(.22,1,.36,1);}
@@ -1135,6 +1121,93 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 .uc-days span{flex:1;text-align:center;font-size:10px;color:var(--muted);}
 #page-home.ambient-t2 .usage-card{opacity:.2;transition:opacity 1s ease;}
 @media (max-width:900px){.usage-card{display:none;}}
+
+
+/* ######################################################################
+   Redesign phase 3 -- Home grid: header, three columns, quick dock (spec section 6).
+   Nothing on Home is absolutely positioned any more, except the things js/home/home.js layers over the whole page
+   (sky, ambient clock, customize panel) and the activity chip inside the orb stage.
+   ###################################################################### */
+.home-header{width:100%;max-width:var(--content-b);margin:0 auto;padding:0 var(--pad-x);}
+.page-title .home-greet{font:inherit;color:inherit;}
+#homeGreetComma[hidden]{display:none;}
+#page-home .home-grid{
+  flex:1;min-height:0;width:100%;max-width:var(--content-b);margin:0 auto;box-sizing:border-box;padding:var(--pad-top) var(--pad-x) var(--pad-bottom);
+  display:grid;grid-template-columns:288px minmax(0,1fr) 288px;grid-template-rows:auto 1fr auto;gap:var(--gutter-section);
+  grid-template-areas:"clock center usage" ". center ." "today center next";
+}
+#page-home .home-grid > .clock-card{grid-area:clock;}
+#page-home .home-grid > .today-card{grid-area:today;}
+#page-home .home-grid > .usage-card{grid-area:usage;}
+#page-home .home-grid > .next-card{grid-area:next;}
+#page-home .home-grid > .home-center{grid-area:center;}
+#page-home .home-center{--orb:min(400px,36vw,calc(100vh - 360px));display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0;}
+
+/* the four cards: same surface as every card (spec 4.2), pinned by the grid instead of left/right/bottom offsets */
+#page-home .home-grid > :is(.clock-card,.today-card,.usage-card,.next-card){
+  position:relative;left:auto;right:auto;top:auto;bottom:auto;width:auto;box-sizing:border-box;border-radius:var(--r-card);
+  background:var(--panel);border:1px solid rgb(var(--fg-rgb) / .09);box-shadow:var(--shadow-rest);align-self:start;
+}
+#page-home .home-grid > .today-card,#page-home .home-grid > .next-card{align-self:end;}
+#page-home .home-grid > :is(.clock-card,.today-card,.usage-card,.next-card)::before{
+  content:'';position:absolute;top:0;left:var(--r-card);right:var(--r-card);height:1px;border-radius:0;background:var(--card-hairline);opacity:.6;pointer-events:none;
+}
+#page-home .home-grid > :is(.clock-card,.today-card,.usage-card,.next-card):hover{border-color:rgb(var(--core-rgb) / .28);box-shadow:var(--shadow-hover);}
+
+/* clock card 288 x 168: big time, thin progress bar on the bottom edge */
+#page-home .clock-card{height:168px;padding:var(--sp-5) var(--sp-6) var(--sp-4);display:flex;flex-direction:column;justify-content:center;}
+#page-home .clock-card .cc-greet{display:none;}              /* the greeting is the page title now */
+#page-home .clock-card .cc-time{font:var(--t-display);font-variant-numeric:tabular-nums;}
+#page-home .clock-card .cc-ampm,#page-home .clock-card .cc-sec{font-size:14px;}
+#page-home .clock-card .cc-sec{color:var(--muted);}
+#page-home .clock-card .cc-date{font-size:13px;}
+#page-home .clock-card .cc-bar{position:absolute;left:0;right:0;bottom:0;height:4px;margin:0;border-radius:0;}
+#page-home .today-card{min-height:176px;padding:var(--sp-5) var(--sp-6);}
+#page-home .today-card .tc-temp{font-size:32px;}
+#page-home .usage-card{min-height:156px;padding:var(--sp-4) var(--sp-5);}
+#page-home .usage-card .uc-total{font:var(--t-stat);}
+#page-home .usage-card .uc-bars{height:56px;}
+#page-home .usage-card .uc-bar{border-radius:var(--sp-1);}
+#page-home .usage-card .uc-days span{font-size:10px;}
+#page-home .next-card{min-height:112px;padding:var(--sp-4) var(--sp-5);}
+#page-home .next-card .nx-title{font:var(--t-section);font-weight:500;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* orb halo ring and the small stuff under it */
+#page-home .stage{margin-bottom:var(--sp-5);}
+#page-home .stage::before{content:'';position:absolute;inset:-5%;border-radius:50%;border:1px solid rgb(var(--core-rgb) / .25);pointer-events:none;}
+#page-home .plan-card{position:relative;left:auto;bottom:auto;transform:none;width:360px;max-width:100%;margin-top:var(--sp-2);box-sizing:border-box;border-radius:var(--r-sm);}
+#page-home .home-caption{margin-top:var(--sp-3);font-size:15px;font-weight:500;}
+#page-home .home-hint{font-size:13px;max-width:100%;}
+#page-home .home-actions{margin-top:var(--sp-3);gap:var(--sp-2);}
+#page-home .home-actions .link-btn{height:32px;padding:0 var(--sp-3);border-radius:var(--r-ctl);background:var(--panel-2);border:1px solid var(--line);color:var(--text-soft);font-size:12px;letter-spacing:0;}
+#page-home .home-actions .link-btn:hover{border-color:var(--core);color:var(--text);}
+
+/* quick dock: the five switches that used to be the first Settings card. Same buttons, same data-proxy, same real toggles behind them. */
+.quick-dock{display:flex;gap:var(--sp-2);padding:10px;margin-top:var(--sp-5);border-radius:var(--r-hero);background:var(--panel);border:1px solid rgb(var(--fg-rgb) / .09);box-shadow:var(--shadow-rest);}
+.quick-dock .qc-tile{position:relative;width:72px;height:52px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;
+  border:1px solid transparent;border-radius:var(--r-sm);background:none;color:var(--muted);cursor:pointer;
+  transition:color var(--dur-fast),background var(--dur-fast),border-color var(--dur-fast),transform var(--dur-fast) var(--ease-spring);}
+.quick-dock .qc-tile:hover{color:var(--text);background:rgb(var(--fg-rgb) / .05);}
+.quick-dock .qc-tile:active{transform:scale(.97);}
+.quick-dock .qc-tile.on{color:var(--text);background:rgb(var(--core-rgb) / .14);border-color:rgb(var(--core-rgb) / .35);}
+.quick-dock .qc-name{font:var(--t-caption);letter-spacing:0;color:inherit;}
+.quick-dock .qc-sw{position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--core);opacity:0;transform:scale(.4);transition:opacity var(--dur-fast),transform var(--dur-med) var(--ease-spring);}
+.quick-dock .qc-tile.on .qc-sw{opacity:1;transform:none;}
+
+/* 1000-1179 px: narrower side columns, smaller orb, no second line on the Today card */
+@media (max-width:1179.98px){
+  #page-home .home-grid{grid-template-columns:232px minmax(0,1fr) 232px;gap:var(--gutter);}
+  #page-home .home-center{--orb:min(320px,36vw,calc(100vh - 360px));}
+  #page-home .today-card .tc-sub{display:none;}
+  #page-home .clock-card .cc-time{font-size:44px;}
+}
+/* under 1100 px: the Usage card goes, the Next card joins the Today card on the left */
+@media (max-width:1099.98px){
+  #page-home .home-grid{grid-template-columns:232px minmax(0,1fr);grid-template-areas:"clock center" ". center" "today center" "next center";grid-template-rows:auto 1fr auto auto;}
+  #page-home .home-grid > .usage-card{display:none;}
+  #page-home .home-grid > .next-card{align-self:end;}
+}
+@media (prefers-reduced-motion:reduce){.quick-dock .qc-tile,.quick-dock .qc-sw{transition:none;}}
 
 /* ==== style/home/clock-card.css ==== */
 /* ==========================================================================
@@ -2664,6 +2737,8 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
   #page-settings .fx-halo::before,#page-settings .set-flash::after,#page-settings .set-bloom::after{animation:none;}
   #page-settings .set-rail-ind,#page-settings .mr-fg,#page-settings .info-row.meter::before,#page-settings .info-row.meter::after{transition:none;}
 }
+/* Phase 3: the five quick switches moved to the Home dock (#quickDock); the card stays in the DOM (settings-fx.js still looks it up) but is not shown */
+#page-settings #grp-quick{display:none !important;}
 
 /* ==== style/settings/perf.css ==== */
 /* ==========================================================================
