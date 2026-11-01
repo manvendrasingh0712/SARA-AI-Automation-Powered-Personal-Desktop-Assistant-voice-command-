@@ -144,6 +144,7 @@ def _connect(target: str) -> sqlite3.Connection:
     try:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")      # the default FULL fsyncs on every commit; WAL + NORMAL is safe
         conn.execute("PRAGMA foreign_keys=OFF")
         conn.execute("PRAGMA busy_timeout=3000")
         conn.executescript(DDL)

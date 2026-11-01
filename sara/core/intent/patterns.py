@@ -320,7 +320,7 @@ _INTENT_PATTERNS = [
     ("play_youtube", [
         r"play (.+?) on youtube",
         r"(.+?)\s+(?:(?:song|gana|gaana|gaane|video)\s+)?(?:chalao|chala\s+do|bajao|baja\s+do|laga\s+do|lagao|play\s+(?:kro|karo|kar\s+do))\s+(?:on\s+|par\s+|per\s+|pe\s+|me\s+|mein\s+)?youtube(?:\s+(?:par|per|pe|me|mein))?\W*$",
-        r"youtube (.+)",
+        r"youtube\s+(?:(?:pe|par|per|mein|me)\s+)?(?:for\s+)?(.+?)(?:\s+(?:chalao|chala\s+do|bajao|baja\s+do|laga\s+do|lagao))?\W*$",   # "youtube pe X chalao" -> X
         r"search youtube (?:for )?(.+)",
         r"play (?:the )?(?:song|video|music) (?:called |named )?(.+?) on youtube",
         r"open youtube and play (.+)",
@@ -355,6 +355,9 @@ _INTENT_PATTERNS = [
         r"band|bandh|close|closed|quit|exit|kill|stop|pause|off"
         r"|khol|kholo|kholdo|open|launch|start|run|chalu|shuru"
         r"|minimize|maximize|restart"
+        # live test: "spotify volume 100" played a track called "volume 100"; controls and Hinglish "pe/par" are not track names
+        r"|volume|vol|louder|quieter|next|previous|prev|skip|mute|unmute|resume|shuffle|repeat"
+        r"|pe|par|per|me|mein|ka|ke|ki"
         r"|बंद|बन्द|क्लोज|खोल|खोलो|ऑफ|रोको|रुको|बदं"
         r")\b)(.+)$",
         r"play (.+?) (?:on |using )?spotify",

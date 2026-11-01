@@ -809,7 +809,9 @@ def handle_summary(match, ctx: SkillContext):
 
 
 _quiz_state: dict = {"at": 0.0, "topic": "", "qa": []}
-_QA_RE = re.compile(r"Q\d*[:.)]\s*(.+?)\s*\n\s*A\d*[:.)]\s*(.+?)(?=\n\s*Q\d*[:.)]|\Z)", re.S | re.I)
+# Live test: the voice-tuned model answers "Q1: ... A1: ... Q2: ..." on ONE line (no line breaks), so the Q / A markers, not the
+# line breaks, separate the pairs.
+_QA_RE = re.compile(r"\bQ\s*\d*\s*[:.)]\s*(.+?)\s*\bA\s*\d*\s*[:.)]\s*(.+?)(?=\s*\bQ\s*\d*\s*[:.)]|\Z)", re.S | re.I)
 
 
 def parse_quiz(raw: str) -> list:

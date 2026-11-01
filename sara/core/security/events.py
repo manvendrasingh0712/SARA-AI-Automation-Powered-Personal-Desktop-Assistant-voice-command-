@@ -67,8 +67,9 @@ def open_db(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), timeout=5.0)
     try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
+        from sara.core.db_common import apply_pragmas
+
+        apply_pragmas(conn)
         for statement in _SCHEMA:
             conn.execute(statement)
         conn.commit()

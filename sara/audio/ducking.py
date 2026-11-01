@@ -73,6 +73,17 @@ def _sessions():
     return out
 
 
+def _on_com_thread(fn):
+    """Core Audio session pointers are created, used and dropped on ONE COM thread (sara/core/com_thread.py): dropping them from
+    another thread (garbage collector) crashed the whole process with an access violation in the live test."""
+    try:
+        from sara.core.com_thread import run_on_com_thread
+
+        return run_on_com_thread(fn)
+    except RuntimeError:                 # interpreter shutting down: the executor refuses new work, run it inline
+        return fn()
+
+
 class AudioDucker:
     def __init__(self, level: float = 0.15, only_active: bool = True) -> None:
         self.level = max(0.0, min(1.0, float(level)))
@@ -87,6 +98,9 @@ class AudioDucker:
 
     def duck(self) -> int:
         """Turn other applications down. Returns how many sessions were lowered (0 when nothing to do)."""
+        return _on_com_thread(self._duck_impl)
+
+    def _duck_impl(self) -> int:
         with _LOCK:
             if self._saved:
                 return 0
@@ -133,6 +147,9 @@ class AudioDucker:
 
     def restore(self) -> int:
         """Put the volumes back (only where the user did not change them meanwhile)."""
+        return _on_com_thread(self._restore_impl)
+
+    def _restore_impl(self) -> int:
         with _LOCK:
             n = 0
             if not self._saved:

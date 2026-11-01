@@ -46,34 +46,22 @@ def setup_logging(level: int = logging.INFO) -> None:
         # fall back to console-only logging rather than crashing startup.
         print(f"[logging_config] Could not create log directory '{_LOG_DIR}': {e}")
 
-    root = logging.getLogger()
-    root.setLevel(level)
-
-    formatter = logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT)
-
-    # Console handler — so you see everything live in the terminal too.
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    console_handler.setFormatter(formatter)
-    root.addHandler(console_handler)
-
-    # Rotating file handler — persists across runs, capped size.
+    # Non-blocking, redacted pipeline (sara/core/log.py): queue -> one writer thread -> console + sara.log + sara.jsonl.
     try:
-        file_handler = RotatingFileHandler(
-            _LOG_FILE,
-            maxBytes=_MAX_BYTES,
-            backupCount=_BACKUP_COUNT,
-            encoding="utf-8",
-        )
-        file_handler.setLevel(level)
-        file_handler.setFormatter(formatter)
-        root.addHandler(file_handler)
-    except Exception as e:
-        print(f"[logging_config] Could not open log file '{_LOG_FILE}': {e}")
+        from sara.core import log as _log
+
+        _log.setup(level, _LOG_DIR, _LOG_FORMAT, _DATE_FORMAT)
+    except Exception as e:  # noqa: BLE001 -- fall back to plain handlers rather than losing logs
+        print(f"[logging_config] queue logging unavailable ({e}); using plain handlers")
+        root = logging.getLogger()
+        root.setLevel(level)
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_DATE_FORMAT))
+        root.addHandler(console_handler)
 
     # Quiet down noisy third-party loggers so sara.log stays readable.
     for noisy in ("urllib3", "asyncio", "PIL", "comtypes"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     _configured = True
-    root.info("Logging initialized. Writing to console and %s", _LOG_FILE)
+    logging.getLogger().info("Logging initialized. Writing to console and %s", _LOG_FILE)

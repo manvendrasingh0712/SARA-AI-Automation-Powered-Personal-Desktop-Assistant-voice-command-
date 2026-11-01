@@ -149,6 +149,9 @@ class ReminderManager:
         try:
             self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.execute("PRAGMA journal_mode=WAL;")
+            from sara.core.db_common import apply_pragmas
+
+            apply_pragmas(self._conn)
             self._create_table()
             self._ensure_done_column()
             self._ensure_intelligence_table()
@@ -345,9 +348,15 @@ class ReminderManager:
             return -1
         try:
             time_part = (time_str or "").strip() or "00:00"
-            if len(time_part) == 5:
+            if time_part.count(":") == 1:          # "HH:MM" / "H:MM" -> add seconds
                 time_part += ":00"
-            due_at = f"{date_str.strip()}T{time_part}"
+            # live test: the bridge accepted "SWEEP TEMP REMINDERT2030-01-01" as a date and stored it. A malformed date or time can
+            # never be due (and sorts wrongly), so refuse it here instead of saving a reminder that will never ring.
+            try:
+                due_at = datetime.strptime(f"{(date_str or '').strip()}T{time_part}", "%Y-%m-%dT%H:%M:%S").isoformat()
+            except ValueError:
+                print(f"[Error] ReminderManager.add: invalid date/time {date_str!r} {time_str!r}")
+                return -1
             with self._lock:
                 cur = self._conn.execute(
                     "INSERT INTO reminders (message, due_at, created_at, triggered, done) "

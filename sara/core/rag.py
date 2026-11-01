@@ -323,6 +323,7 @@ class LongTermMemory:
                 timestamp TEXT    NOT NULL
             )
             """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_ltm_source ON long_term_memory(source, id)")
         self._conn.commit()
 
     def _load_into_memory(self) -> None:

@@ -55,25 +55,50 @@ def _h_set_timer(match, ctx):
     return _quick(ctx, system_tools.set_timer(seconds, duration_text, _timer_done))
 
 
+# "साढ़े छह" = 6:30, "सवा छह" = 6:15, "पौने सात" = 6:45 (a quarter / half before the next hour)
+_CLOCK_FRACTIONS = {
+    "साढ़े": 30, "साढे": 30, "sadhe": 30, "saadhe": 30, "sade": 30,
+    "सवा": 15, "sawa": 15, "sava": 15,
+    "पौने": -15, "paune": -15, "pone": -15, "poune": -15,
+}
+_CLOCK_HALVES = {"डेढ़": "1:30", "डेढ": "1:30", "dedh": "1:30", "ढाई": "2:30", "dhai": "2:30", "dhaai": "2:30"}
+_DAY_TOMORROW = ("kal", "कल")
+_DAY_TODAY = ("aaj", "आज")
+_AM_WORDS = ("subah", "savere", "सुबह", "सवेरे")
+_PM_WORDS = ("shaam", "sham", "raat", "dopahar", "dophar", "शाम", "रात", "दोपहर")
+_SKIP_WORDS = ("baje", "baj", "बजे", "के", "ka", "ke", "ko")
+
+
 def _spoken_clock_time(text: str) -> str:
-    """"kal subah 7 baje" / "सुबह छह बजे" -> "tomorrow 7 am" (dateparser cannot read these)."""
+    """"kal subah 7 baje" / "सुबह छह बजे" / "सुबह साढ़े छह बजे" -> "tomorrow 7 am" / "6:30 am" (dateparser cannot read these)."""
+    from sara.core.text.spoken_numbers import words_to_digits
+
     from ..calc_utils import _hindi_words_to_english
 
-    words = _hindi_words_to_english(text).replace("\u0901", "").split()
+    # number WORDS first ("छह" / "chhe" / "saat" -> 6 / 7), then the clock words
+    words = words_to_digits(_hindi_words_to_english(text), unit_aware=False).replace("\u0901", "").split()
     day = meridiem = ""
     keep = []
+    frac = None
     for w in words:
         lw = w.lower()
-        if lw in ("kal", "\u0915\u0932"):
+        if lw in _CLOCK_FRACTIONS:
+            frac = _CLOCK_FRACTIONS[lw]
+        elif lw in _CLOCK_HALVES:
+            keep.append(_CLOCK_HALVES[lw])
+        elif frac is not None and w.isdigit():
+            h = int(w)
+            keep.append(f"{h}:{frac}" if frac > 0 else f"{(h - 2) % 12 + 1}:45")
+            frac = None
+        elif lw in _DAY_TOMORROW:
             day = "tomorrow"
-        elif lw in ("aaj", "\u0906\u091c"):
+        elif lw in _DAY_TODAY:
             day = "today"
-        elif lw in ("subah", "savere", "\u0938\u0941\u092c\u0939", "\u0938\u0935\u0947\u0930\u0947"):
+        elif lw in _AM_WORDS:
             meridiem = "am"
-        elif lw in ("shaam", "sham", "raat", "dopahar", "dophar", "\u0936\u093e\u092e", "\u0930\u093e\u0924",
-                    "\u0926\u094b\u092a\u0939\u0930"):
+        elif lw in _PM_WORDS:
             meridiem = "pm"
-        elif lw in ("baje", "baj", "\u092c\u091c\u0947", "\u0915\u0947", "ka", "ke", "ko"):
+        elif lw in _SKIP_WORDS:
             continue
         else:
             keep.append(w)
