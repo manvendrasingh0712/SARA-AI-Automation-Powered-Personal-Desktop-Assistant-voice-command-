@@ -643,8 +643,10 @@ class Config:
 
     # ── Voice pipeline flags (live; registry in sara/audio/voice_flags.py) ──
     VOICE_ACK_CACHE: bool = _bool(os.getenv("VOICE_ACK_CACHE", "True"), default=True)
+    # On by default: the ~51 fixed phrases are synthesised once (39 s of CPU, measured) and every later start loads them from
+    # disk (2.2 s). 2.2 MB, bounded to 100 MB; the key includes model, voice and speed, so a change never serves stale audio.
     VOICE_ACK_CACHE_DISK: bool = _bool(
-        os.getenv("VOICE_ACK_CACHE_DISK", "False"), default=False
+        os.getenv("VOICE_ACK_CACHE_DISK", "True"), default=True
     )
     # Seconds of silence after a spoken command (tool / planner / LLM turn) before one short cached acknowledgement
     # is spoken. 0 turns it off. See sara.orchestrator.command_helpers.start_filler.

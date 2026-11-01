@@ -57,7 +57,7 @@ VOICE_FLAGS: tuple[VoiceFlag, ...] = (
     ),
     VoiceFlag(
         key="VOICE_ACK_CACHE_DISK",
-        default=False,
+        default=True,
         label="Remember acknowledgements between runs",
         description=(
             "Saves the prepared short replies on disk so the next start-up "

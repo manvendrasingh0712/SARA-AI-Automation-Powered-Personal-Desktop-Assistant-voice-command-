@@ -19,6 +19,7 @@ except ImportError:  # tests/ is not a package here
 @pytest.fixture(autouse=True)
 def _clean_state(monkeypatch):
     reset_flags()
+    set_flag("VOICE_ACK_CACHE_DISK", False)      # these tests count syntheses; the disk cache has its own tests
     with cache_mod._phrase_cache_lock:
         cache_mod._phrase_cache.clear()
     cache_mod.unpin_all()

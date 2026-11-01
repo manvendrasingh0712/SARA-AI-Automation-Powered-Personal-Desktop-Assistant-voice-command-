@@ -10,7 +10,7 @@ from sara.audio.tts import cache as cache_mod
 from sara.audio.tts import engine, prewarm
 from sara.audio.tts.text_prep import clean_for_tts
 from sara.audio.tts.voice_params import _detect_lang
-from sara.audio.voice_flags import reset_flags
+from sara.audio.voice_flags import reset_flags, set_flag
 
 try:
     from tests.tts_fakes import Synth, cfg, make_tts, run
@@ -21,6 +21,7 @@ except ImportError:  # tests/ is not a package here
 @pytest.fixture(autouse=True)
 def _clean_state(monkeypatch):
     reset_flags()
+    set_flag("VOICE_ACK_CACHE_DISK", False)      # count real syntheses; never read the user's on-disk phrase cache
     with cache_mod._phrase_cache_lock:
         cache_mod._phrase_cache.clear()
     cache_mod.unpin_all()
