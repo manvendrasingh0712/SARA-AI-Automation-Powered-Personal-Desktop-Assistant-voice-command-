@@ -1056,6 +1056,11 @@ _INTENT_PATTERNS = [
         r"what day is (?:it|today)",
         r"tell me (?:today'?s )?date",
         r"what(?:'?s| is) (?:the )?day today",
+        # "what is the date today" / "tell me the date" fell through to the language model. The end anchor keeps
+        # "what is the date of independence day" a question for the model.
+        r"what(?:'?s| is) (?:the |today'?s )?date(?:\s+(?:today|now))?\s*\??$",
+        r"tell me (?:the )?date(?:\s+today)?\s*\??$",
+        r"^(?:today'?s|the current|current) date\s*\??$",
     ]),
 
     ("calendar_today", [

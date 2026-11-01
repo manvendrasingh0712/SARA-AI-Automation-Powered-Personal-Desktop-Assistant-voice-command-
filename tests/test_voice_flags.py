@@ -16,7 +16,7 @@ from sara.audio.voice_flags import (
 
 _EXPECTED_DEFAULTS = {
     "VOICE_ACK_CACHE": True,
-    "VOICE_ACK_CACHE_DISK": False,
+    "VOICE_ACK_CACHE_DISK": True,
     # D31 (audit batch D22-c): flipped False -> True. The streaming
     # first-chunk path was measured against the legacy one on 11
     # representative replies: legacy produced NO early audio at all for 4
