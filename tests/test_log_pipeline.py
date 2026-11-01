@@ -34,7 +34,7 @@ def _logger(tmp_path):
 def test_secrets_never_reach_the_log_or_the_jsonl(tmp_path):
     lg, lis, stream, jpath = _logger(tmp_path)
     fake = "AIza" + "x" * 35
-    lg.info("calling with key %s and refresh_token: 1//0abcdefghijklmnop and GOCSPX-abcdefghijk1234", fake)
+    lg.info("calling with key %s and refresh_token: 1//0abcdefghijklmnop and GOCSPX-abcdefghijk1234", fake)  # secret-scan: allow (made-up test value)
     time.sleep(0.2)
     lis.stop()
     text = stream.getvalue() + jpath.read_text(encoding="utf-8")
