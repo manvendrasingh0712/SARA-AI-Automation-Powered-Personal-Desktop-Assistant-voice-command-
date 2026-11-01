@@ -1229,10 +1229,11 @@ def run_sara_logic(
                     from sara.core.telemetry import current_turn_id
                     _reply_turn = current_turn_id()
                     if _reply_turn:
-                        ui_update("reply_meta", str(_reply_turn)[:40])
+                        ui_update("reply_meta", str(_reply_turn)[:40], str(context_state.get("last_route", "command")))
                 except Exception as e:
                     logger.info("[Logic] reply_meta skipped (%s)", type(e).__name__)
-                ui_update("transcript", "sara", reply_text or "(no response)")
+                if reply_text:        # an empty reply (e.g. a stray "Good." from the microphone) shows nothing; it used to show "(no response)"
+                    ui_update("transcript", "sara", reply_text)
                 db_writer.log_message("user", user_input)
                 db_writer.log_message("assistant", reply_text or "")
 

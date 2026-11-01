@@ -52,6 +52,17 @@
     const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
     return h + ':' + m + ' ' + ap;
   };
+  SARA.dayKey = function (d) {               // Date -> "2026-11-02" (local day)
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  };
+  SARA.dayLabel = function (key, now) {      // "2026-11-02" -> "Today" / "Yesterday" / "Sat, Oct 31"
+    now = now || new Date();
+    if (key === SARA.dayKey(now)) return 'Today';
+    const y = new Date(now.getTime()); y.setDate(y.getDate() - 1);
+    if (key === SARA.dayKey(y)) return 'Yesterday';
+    const p = String(key).split('-').map(Number);
+    return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  };
   SARA.fmtDuration = function (sec) {        // 125 -> "2:05"
     sec = Math.max(0, Math.round(sec || 0));
     return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');

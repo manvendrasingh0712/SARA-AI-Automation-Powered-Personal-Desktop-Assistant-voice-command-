@@ -958,6 +958,8 @@ def _handle_command(
     # Conversation state for follow-ups ("uska", "wahi dobara", "pehle wala"): what was asked and which route took it.
     # last_reply is filled in by _quick() / the chat path; last_entities is the existing recent_entities store.
     context_state["prev_intent"] = context_state.get("last_intent")
+    context_state["prev_user_input"] = context_state.get("last_user_input")      # the same question twice in a row = "try again"
+    context_state["last_route"] = "command"                                       # becomes "llm" below when the language model answers
     context_state["last_intent"] = intent
     context_state["last_user_input"] = user_input
     context_state["last_turn_at"] = time.time()
@@ -1333,6 +1335,7 @@ def _handle_command(
     _t_mark("route_done")
     ui_update("status", "thinking")
     _match_reply_language(brain, user_input, context_state)
+    context_state["last_route"] = "llm"
     # Part 3 / P7: a stable knowledge question that was answered before is answered from the cache (still spoken through the TTS).
     # Only a plain chat turn with no memory / grounding / reference hint is eligible; see sara/core/response_cache.py for the rules.
     _rc = _rc_scope = None
@@ -1346,7 +1349,7 @@ def _handle_command(
                     int(getattr(Config, "RESPONSE_CACHE_MAX_ENTRIES", 500)),
                 )
                 _rc_scope = _rcm.scope_of(brain)
-                _cached = _rc.get(user_input, *_rc_scope)
+                _cached = None if context_state.get("prev_user_input") == user_input else _rc.get(user_input, *_rc_scope)   # asked again -> a fresh answer
                 if _cached:
                     logger.info("[Cache] answered from the response cache")
                     ui_update("status", "speaking")

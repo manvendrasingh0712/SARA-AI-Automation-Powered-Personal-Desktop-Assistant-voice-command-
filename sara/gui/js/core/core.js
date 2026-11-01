@@ -132,10 +132,21 @@
     if (connected !== lastConnected) { lastConnected = connected; SARA.emit('connection', connected); }
   };
 
+  SARA.normSent = function (t) { return String(t || '').trim().toLowerCase().replace(/[\s.,;!]+$/, ''); };
+  SARA.takeGuiSent = function (text) {       // true once per GUI-sent text: the chat uses it to tell typed / clicked messages from spoken ones
+    const k = SARA.normSent(text), now = Date.now();
+    SARA._guiSent = (SARA._guiSent || []).filter(function (e) { return now - e.t < 20000; });
+    const i = SARA._guiSent.findIndex(function (e) { return e.k === k; });
+    if (i < 0) return false;
+    SARA._guiSent.splice(i, 1);
+    return true;
+  };
   /* Send a typed command exactly like the old GUI: dispatch + usage-analytics counter. */
   SARA.sendCommand = function (text) {
     text = (text || '').trim();
     if (!text) return Promise.resolve({ ok: false });
+    SARA._guiSent = (SARA._guiSent || []).filter(function (e) { return Date.now() - e.t < 20000; });
+    SARA._guiSent.push({ k: SARA.normSent(text), t: Date.now() });      // the echo of this text is NOT a voice message
     SARA.callApi('record_command_usage', text);
     return SARA.callApi('send_text_command', text);
   };

@@ -87,6 +87,12 @@ section('ui.js helpers');
   ok(S.iconSvg('ti-alert-triangle').length > 20 && S.iconSvg('alert-triangle') === S.iconSvg('ti-alert-triangle'), 'prefix optional');
   eq(S.iconSvg('ti-does-not-exist'), '', 'unknown icon -> empty (falls back to dot)');
   eq(S.iconSvg(undefined), '', 'undefined icon -> empty');
+  const noon = new Date(2026, 10, 2, 12, 0, 0);
+  eq(S.dayKey(noon), '2026-11-02', 'dayKey pads month/day');
+  eq(S.dayLabel('2026-11-02', noon), 'Today', 'dayLabel today');
+  eq(S.dayLabel('2026-11-01', noon), 'Yesterday', 'dayLabel yesterday');
+  eq(S.dayLabel('2026-10-31', new Date(2026, 10, 1, 9, 0, 0)), 'Yesterday', 'dayLabel yesterday across a month edge');
+  ok(!/Today|Yesterday/.test(S.dayLabel('2026-10-20', noon)), 'dayLabel older -> a date');
 })();
 
 section('core.js: SARA.every page gating');

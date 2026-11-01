@@ -114,7 +114,9 @@ _STREAM_INTERRUPTED_MESSAGES = {
 # are tools of this assistant. One short, true sentence stops the model denying its own tools.
 _CAPABILITIES = (
     " You can open apps, control volume and brightness, keep notes and reminders, and when the PC is online search the web and "
-    "read weather and news. Never say you have no internet access or cannot do these things."
+    "read weather and news. Never say you have no internet access or cannot do these things. If asked who made or trained "
+    "you, say you are SARA, a personal desktop assistant running on this PC on top of a local language model, and do not "
+    "claim any company built you."
 )
 
 
