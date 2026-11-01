@@ -1,6 +1,6 @@
 /* ==========================================================================
    fx.js -- small cross-page motion helpers. NO backend calls.
-   1) Sliding active-page underline in the bottom nav.  2) Direction-aware page slide (left/right by nav order).
+   1) Sliding active-page indicator in the sidebar (bottom pill when the window is under 1000 px wide).  2) Direction-aware page slide (left/right by nav order).
    3) Safety net for skeleton placeholders: if data never arrives, swap the shimmer for a quiet "—"/message.
    4) Cursor parallax: nudges the ambient nebula (style/ambient.css) a few px toward the pointer, rAF-throttled.
    5) Ripple: delegated pointerdown -> small expanding-circle press effect on pill/chip/dock/quick-action buttons.
@@ -16,6 +16,12 @@
   /* ---- 1) nav indicator ---- */
   function moveInd() {
     const b = nav.querySelector('button.active'); if (!b || !ind) return;
+    if (window.matchMedia && window.matchMedia('(min-width:1000px)').matches) {      // sidebar: the pill follows the button vertically, width comes from CSS
+      ind.style.width = ''; ind.style.height = b.offsetHeight + 'px';
+      ind.style.transform = 'translateY(' + b.offsetTop + 'px)';
+      return;
+    }
+    ind.style.height = '';                                                          // narrow window: the old bottom pill
     ind.style.width = b.offsetWidth + 'px';
     ind.style.transform = 'translateX(' + b.offsetLeft + 'px)';
   }

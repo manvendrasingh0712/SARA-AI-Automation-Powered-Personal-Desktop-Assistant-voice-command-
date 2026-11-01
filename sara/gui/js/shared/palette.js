@@ -62,6 +62,7 @@
     setTimeout(() => input.focus(), 30); loadDynamic();
   }
   function close() { overlay.classList.remove('open'); overlay.setAttribute('aria-hidden', 'true'); input.blur(); }
+  SARA.openPalette = function () { if (!overlay.classList.contains('open')) open(); };   // header search button
   function runSel() { const it = shown[sel]; if (!it) return; close(); SARA.sound.tap(); try { it.run(); } catch (e) { console.error('[palette]', e); } }
 
   document.addEventListener('keydown', function (e) {

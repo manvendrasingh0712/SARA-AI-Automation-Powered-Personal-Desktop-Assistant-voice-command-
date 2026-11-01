@@ -264,7 +264,8 @@
       }
     }
     const queue = function () { if (!frame) frame = raf(paint); };
-    nav.addEventListener('pointerenter', function (e) { if (e.pointerType === 'touch') return; inside = true; measure(); mx = e.clientX; queue(); });
+    const railNow = function () { return window.matchMedia && window.matchMedia('(min-width:1000px)').matches; };   // the vertical sidebar has no x-proximity effect
+    nav.addEventListener('pointerenter', function (e) { if (e.pointerType === 'touch' || railNow()) return; inside = true; measure(); mx = e.clientX; queue(); });
     nav.addEventListener('pointermove', function (e) { if (e.pointerType === 'touch' || !inside) return; mx = e.clientX; queue(); }, { passive: true });
     nav.addEventListener('pointerleave', function () { inside = false; queue(); });
     nav.addEventListener('scroll', function () { if (inside) { measure(); queue(); } }, { passive: true });
@@ -285,8 +286,11 @@
       tip.textContent = text;
       const sc = btn.dataset.shortcut;
       if (sc) { const k = document.createElement('kbd'); k.textContent = sc; tip.appendChild(k); btn.setAttribute('aria-keyshortcuts', sc); }
-      const r = btn.getBoundingClientRect();
-      tip.style.left = Math.round(r.left + r.width / 2) + 'px'; tip.style.top = Math.round(r.top) + 'px';
+      const r = btn.getBoundingClientRect(), rail = window.matchMedia && window.matchMedia('(min-width:1000px)').matches;
+      if (rail && nav.classList.contains('open')) return;                      // labels are visible, no tooltip needed
+      tip.classList.toggle('side', !!rail);
+      if (rail) { tip.style.left = Math.round(r.right + 10) + 'px'; tip.style.top = Math.round(r.top + r.height / 2) + 'px'; }
+      else { tip.style.left = Math.round(r.left + r.width / 2) + 'px'; tip.style.top = Math.round(r.top) + 'px'; }
       tip.classList.add('show');
     }
     function arm(btn, delay) { if (btn === current) return; hide(); current = btn; timer = setTimeout(function () { show(btn); }, delay); }
