@@ -41,6 +41,7 @@
     "js/core/theme.js",
     "js/shared/skill_cards.js",
     "js/fx/fx.js",
+    "js/core/shell.js",
     "js/fx/motion.js",
     "js/home/home.js",
     "js/home/hints.js",

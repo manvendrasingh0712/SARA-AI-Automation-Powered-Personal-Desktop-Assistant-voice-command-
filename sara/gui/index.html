@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=9225fc2ee1">
+<link rel="stylesheet" href="bundle/app.css?v=7ae0cd6e96">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -48,6 +48,23 @@
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
 
 <div class="app">
+
+  <a class="skip-link" href="#" id="skipLink">Skip to content</a>
+  <nav class="nav" id="navBar">
+    <span class="nav-ind" id="navInd"></span>
+    <button type="button" class="nav-logo" id="navLogo" data-goto="home" aria-label="SARA home"><span class="nav-mark" aria-hidden="true"></span><span class="nav-brand nav-label">SARA</span></button>
+    <button type="button" class="nav-pin" id="navPin" aria-pressed="false" aria-label="Keep the sidebar open" title="Keep the sidebar open"><svg class="ic sm" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    <button class="active" data-page="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span class="nav-label">home</span></button>
+    <button data-page="chat"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span class="nav-label">chat</span></button>
+    <button data-page="notes"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg><span class="nav-label">notes</span></button>
+    <button data-page="apps"><svg class="ic" aria-hidden="true"><use href="#i-apps"/></svg><span class="nav-label">apps</span></button>
+    <button data-page="automation"><svg class="ic" aria-hidden="true"><use href="#i-automation"/></svg><span class="nav-label">automation</span></button>
+    <div class="nav-bottom">
+      <button type="button" class="nav-foot" id="navTheme" aria-label="Switch light / dark theme" title="Switch light / dark theme"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg><span class="nav-label">theme</span></button>
+      <button data-page="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span class="nav-label">settings</span></button>
+    </div>
+  </nav>
+
 
   <!-- ================= HOME ================= -->
   <section class="page active" id="page-home">
@@ -90,8 +107,8 @@
   <!-- ================= CHAT ================= -->
   <section class="page" id="page-chat">
     <div class="page-header">
-      <div class="page-title">Chat</div>
-      <div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div>
+      <div class="page-heading"><div class="page-title">Chat</div><div class="page-sub">Talk or type to Sara</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
     <div class="page-body">
       <div class="chat-log" id="chatLog"></div>
@@ -113,8 +130,8 @@
   <!-- ================= NOTES + REMINDERS ================= -->
   <section class="page" id="page-notes">
     <div class="page-header">
-      <div class="page-title">Notes &amp; Reminders</div>
-      <div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div>
+      <div class="page-heading"><div class="page-title">Notes &amp; Reminders</div><div class="page-sub">Your notes, tasks and reminders</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
     <div class="page-body">
       <div class="tabs">
@@ -147,8 +164,8 @@
   <!-- ================= APPS (Music card + tools) ================= -->
   <section class="page" id="page-apps">
     <div class="page-header">
-      <div class="page-title">Apps</div>
-      <div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div>
+      <div class="page-heading"><div class="page-title">Apps</div><div class="page-sub">Music, apps and quick tools</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
     <div class="page-body">
       <div class="music-card" id="musicCard">
@@ -215,8 +232,8 @@
   <!-- ================= AUTOMATION ================= -->
   <section class="page" id="page-automation">
     <div class="page-header">
-      <div class="page-title">Automation</div>
-      <div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div>
+      <div class="page-heading"><div class="page-title">Automation</div><div class="page-sub">Modes and routines</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
     <div class="page-body">
       <div class="section-label">Modes</div>
@@ -231,8 +248,8 @@
   <!-- ================= SETTINGS ================= -->
   <section class="page" id="page-settings">
     <div class="page-header">
-      <div class="page-title">Settings</div>
-      <div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div>
+      <div class="page-heading"><div class="page-title">Settings</div><div class="page-sub">Tune Sara to your liking</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
     <div class="page-body">
       <div class="set-layout">
@@ -570,15 +587,6 @@
       </div>
     </div>
   </div>
-  <nav class="nav" id="navBar">
-    <span class="nav-ind" id="navInd"></span>
-    <button class="active" data-page="home">home</button>
-    <button data-page="chat">chat</button>
-    <button data-page="notes">notes</button>
-    <button data-page="apps">apps</button>
-    <button data-page="automation">automation</button>
-    <button data-page="settings">settings</button>
-  </nav>
 </div>
 
 <div class="toast-stack" id="toastStack"></div>
@@ -724,6 +732,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=78c5b86038"></script>
+<script src="bundle/app.js?v=b6e76d2128"></script>
 </body>
 </html>
