@@ -21,6 +21,18 @@
   --ease-spring: cubic-bezier(.34,1.56,.64,1);
   --dur-fast: .16s;
   --dur-med: .28s;
+  --dur-slow: .45s;
+  /* Redesign spec section 4.2 / 4.4: spacing scale, radii and type roles (font shorthands: use as  font: var(--t-title)) */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-7:32px; --sp-8:40px;
+  --r-ctl:12px; --r-sm:16px; --r-card:20px; --r-hero:24px; --r-pill:999px;
+  --t-display:500 56px/1 var(--font);
+  --t-title:600 24px/1.2 var(--font);
+  --t-section:600 15px/1.3 var(--font);
+  --t-body:400 14px/1.55 var(--font);
+  --t-label:500 14px/1.3 var(--font);
+  --t-helper:400 12px/1.4 var(--font);
+  --t-caption:500 11px/1.3 var(--font);
+  --t-stat:600 22px/1.1 var(--font);
   --glass-blur: 24px;                            /* iOS-style frosted glass (components.css adds saturate) */
 }
 
@@ -38,6 +50,8 @@
   --glass-bg:rgb(var(--panel-rgb) / .72);
   --glass-border:rgb(var(--fg-rgb) / .08);
   --glow:rgb(var(--core-rgb) / .22);
+  --focus-ring:rgb(var(--core-rgb) / .55);                                  /* one focus ring for every control (components.css) */
+  --card-hairline:linear-gradient(90deg,transparent,rgb(var(--core-rgb) / .45),transparent);   /* the 1px accent line on top of cards */
   --scrim:rgb(var(--void-rgb,4 8 8) / .72);
   /* skill cards (js/skill_cards.js reads these) follow the theme */
   --sara-card-bg:var(--panel-2); --sara-text:var(--text); --sara-accent:var(--core);

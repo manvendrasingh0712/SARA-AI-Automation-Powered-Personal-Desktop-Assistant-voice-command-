@@ -5,6 +5,7 @@
     "style/core/palette.css",
     "style/core/ambient.css",
     "style/core/layout.css",
+    "style/core/shell.css",
     "style/core/components.css",
     "style/home/home.css",
     "style/home/clock-card.css",

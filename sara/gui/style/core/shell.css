@@ -1,0 +1,18 @@
+/* ==========================================================================
+   shell.css  --  app-shell tokens and helpers from the redesign spec (sections 4.3, 4.6, 5).
+   Phase 1 only DEFINES them: nothing here moves an existing element. Phase 2 (sidebar + header) uses them.
+   ========================================================================== */
+:root{
+  --sidebar-w:72px; --sidebar-w-open:232px; --header-h:64px;
+  --pad-x:32px; --pad-top:24px; --pad-bottom:40px;
+  --content-a:720px;           /* reading pages: Chat, Notes, Apps, Automation */
+  --content-b:1144px;          /* workspace pages: Home, Settings */
+  --gutter:16px; --gutter-section:24px;
+  /* z-index scale (spec 5) */
+  --z-content:1; --z-header:5; --z-sidebar:10; --z-mini-player:20; --z-sheet:40; --z-modal:50; --z-palette:60; --z-toast:70; --z-offline:80;
+}
+
+/* icon sprite (index.html: <svg><use href="#i-home"/></svg>); size by class, colour follows the text */
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;}
+.ic.sm{width:16px;height:16px;}
+.ic.lg{width:24px;height:24px;}

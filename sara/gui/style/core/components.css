@@ -77,6 +77,10 @@ input::placeholder{color:var(--muted);}
 .toggle:focus-visible{box-shadow:0 0 0 2px rgb(var(--core-rgb) / .35);}
 @media (prefers-reduced-motion:reduce){.toggle.liquid::after{animation:none;}}
 
+/* Redesign phase 1: same focus ring as every other control. (The >= 44 px hit area comes from making the whole setting row the click target, phase 4c:
+   .toggle::before is already the halo ring of the one-shot feedback in settings.css.) */
+.toggle:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+
 /* ---- slider ---- */
 input[type=range]{-webkit-appearance:none;appearance:none;flex:1;height:3px;background:var(--line);border-radius:2px;outline:none;}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--core);box-shadow:0 0 6px rgb(var(--core-rgb) / .6);cursor:pointer;}
@@ -201,3 +205,40 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 .accent-pv .ap-status span{display:inline-flex;align-items:center;gap:4px;}
 .accent-pv .ap-status i{width:7px;height:7px;border-radius:50%;display:block;}
 .ap-status .ok i{background:var(--success);} .ap-status .wn i{background:var(--warning);} .ap-status .er i{background:var(--danger);} .ap-status .in i{background:var(--info);}
+
+/* ==========================================================================
+   Redesign phase 1 -- shared building blocks (nothing below changes an existing page by itself)
+   ========================================================================== */
+
+/* one focus ring everywhere; :where() keeps specificity at 0 so every existing, more specific focus rule still wins */
+:where(a,button,input,select,textarea,summary,[role="button"],[role="switch"],[role="radio"],[role="tab"],[tabindex]):focus-visible{
+  outline:2px solid var(--focus-ring);outline-offset:2px;
+}
+
+/* card = the generic surface; .set-card gets the same accent hairline on its top edge (no animation, so no cost) */
+.card{position:relative;background:var(--panel);border:1px solid rgb(var(--fg-rgb) / .09);border-radius:var(--r-card);padding:var(--sp-5) var(--sp-6);box-shadow:var(--shadow-rest);}
+.card:hover{border-color:rgb(var(--core-rgb) / .28);box-shadow:var(--shadow-hover);}
+.card::before,#page-settings .set-card::before{
+  content:'';position:absolute;top:0;left:var(--r-card);right:var(--r-card);height:1px;background:var(--card-hairline);opacity:.6;pointer-events:none;
+}
+
+/* segmented control (spec 4.7): replaces .tabs / .rt-seg / .sec-seg page by page. Markup:
+   <div class="seg" role="radiogroup"><button role="radio" aria-checked="true">One</button><button role="radio" aria-checked="false">Two</button></div>
+   The selected segment can be marked either with aria-checked="true" or with .on */
+.seg{display:inline-flex;align-items:stretch;gap:2px;padding:2px;min-height:40px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-ctl);}
+.seg>button{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);padding:0 var(--sp-4);border:none;background:none;border-radius:calc(var(--r-ctl) - 3px);
+  font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
+  transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
+.seg>button:hover{color:var(--text);}
+.seg>button[aria-checked="true"],.seg>button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
+.seg>button:disabled{opacity:.45;cursor:default;}
+
+/* badge / status dot (spec 4.7): tinted with the status colour, never decoration */
+.badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 var(--sp-2);border-radius:var(--r-pill);font:var(--t-caption);letter-spacing:.02em;
+  color:var(--text-soft);background:rgb(var(--fg-rgb) / .08);white-space:nowrap;}
+.badge.ok{color:var(--success);background:rgb(var(--success-rgb) / .14);}
+.badge.warn{color:var(--warning);background:rgb(var(--warning-rgb) / .14);}
+.badge.info{color:var(--info);background:rgb(var(--info-rgb) / .14);}
+.badge.danger{color:var(--danger);background:rgb(var(--danger-rgb) / .14);}
+.badge.dot::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;}
+
