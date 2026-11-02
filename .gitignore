@@ -137,3 +137,12 @@ tts_samples/
 *.swp
 *.swo
 *~
+
+# ---------- Internal working docs / run outputs (never publish) ----------
+docs/audit/
+docs/PROJECT_MEMORY.md
+docs/NEXT_STEPS.md
+sara/gui/CHANGELOG_GUI.md
+tests/PROVIDER_FEATURE_MATRIX.md
+bench/results/*
+!bench/results/RESULTS.md
