@@ -5327,11 +5327,11 @@
     SARA.gotoPage('chat'); SARA.sendCommand(item.cmd);
   }
   function tile(item) {
-    const d = document.createElement('div'); d.className = 'app-tile'; d.tabIndex = 0;
+    const d = document.createElement('div'); d.className = 'app-tile'; d.tabIndex = 0; d.title = item.title || item.label; d.setAttribute('role', 'button');
     d.innerHTML = '<svg viewBox="0 0 24 24">' + ICON[item.icon] + '</svg><span>' + SARA.escapeHtml(item.label) + '</span>';
     const go = () => (item.tpl ? openAsk(item) : runItem(item));
     d.addEventListener('click', go);
-    d.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    d.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
     return d;
   }
   SARA.apps = { open: OPEN, tools: TOOLS, run: runItem, icon: ICON };      // read by js/home/radial.js (quick-action ring)

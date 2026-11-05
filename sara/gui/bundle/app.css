@@ -1887,7 +1887,7 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 .app-tile:active{transform:scale(.97);}
 .apps-search{max-width:720px;margin:0 0 4px;}
 .sys-chips{max-width:720px;}
-#page-apps .page-body{padding-bottom:130px;}
+#page-apps .page-body{padding-bottom:var(--pad-bottom);}
 
 /* F8: reorder hint + drag feedback (js/apps/apps-order.js) */
 .apps-hint{font-size:11.5px;color:var(--muted);margin:-4px 0 8px;}
@@ -1895,6 +1895,25 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 .app-tile.dragging{opacity:.4;}
 .app-tile[draggable=true]{cursor:grab;}
 .app-tile[draggable=true]:active{cursor:grabbing;}
+
+/* ######################################################################
+   Redesign phase 5 -- Apps (spec section 8.2): a 720 px column, search bar, tiles with an icon plate.
+   ###################################################################### */
+#page-apps .page-body > *{width:100%;max-width:var(--content-a);margin-inline:auto;box-sizing:border-box;}
+#page-apps .section-label{font:var(--t-caption);letter-spacing:.06em;margin-top:var(--sp-6);margin-bottom:var(--sp-3);}
+#page-apps .apps-search{min-height:52px;margin-top:var(--sp-6);margin-bottom:0;padding:5px;flex-wrap:nowrap;gap:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);box-shadow:var(--shadow-rest);transition:border-color var(--dur-fast);}
+#page-apps .apps-search:focus-within{border-color:rgb(var(--core-rgb) / .5);}
+#page-apps .apps-search input[type=text]{min-width:0;height:40px;box-sizing:border-box;padding:0 var(--sp-3);border:none;background:none;font-size:15px;}
+#page-apps .apps-search .pill-btn{flex:none;height:40px;padding:0 18px;border-radius:var(--r-ctl);}
+#page-apps .apps-grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:var(--sp-3);margin-top:0;}
+#page-apps .app-tile{min-height:104px;box-sizing:border-box;justify-content:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-2);border-radius:var(--r-sm);}
+#page-apps .app-tile:hover{border-color:rgb(var(--core-rgb) / .45);box-shadow:var(--shadow-hover);}
+#page-apps .app-tile svg{width:44px;height:44px;box-sizing:border-box;padding:var(--sp-2);border-radius:var(--r-ctl);background:rgb(var(--core-rgb) / .12);stroke-width:1.5;}
+#page-apps .app-tile:hover svg{transform:none;filter:none;background:rgb(var(--core-rgb) / .2);}
+#page-apps .app-tile span{font:var(--t-label);font-size:13px;color:var(--text);}
+#page-apps .sys-chips{gap:var(--sp-2);}
+#page-apps .sys-chips .chip{display:inline-flex;align-items:center;height:34px;box-sizing:border-box;padding:0 15px;}
+html[data-quality="low"] #page-apps .app-tile:hover{transform:none;box-shadow:none;}
 
 /* ==== style/apps/music.css ==== */
 /* ==========================================================================
@@ -2483,6 +2502,27 @@ body.mp-morphing #musicCard{pointer-events:none;}
 
 html[data-quality="low"] .ly-line{transition:none;}
 @media (prefers-reduced-motion:reduce){.ly-line{transition:none;}.ly-line.active{scale:1;}}
+
+/* ######################################################################
+   Redesign phase 5 -- Music card (spec 8.2): 720 x 96 closed, about 720 x 360 open. The seek thumb keeps its size (js/apps/music.js measures it).
+   ###################################################################### */
+#page-apps .music-card{border-radius:var(--r-hero);box-shadow:var(--shadow-rest);margin:0 auto;}
+#page-apps .mc-head{min-height:94px;box-sizing:border-box;padding:var(--sp-4) var(--sp-5);}
+#page-apps .art-block{width:64px;height:64px;border-radius:14px;}
+#page-apps .t-title{font:600 16px/1.25 var(--font);}
+#page-apps .t-artist{font-size:13px;}
+#page-apps .mc-play{width:48px;height:48px;}
+#page-apps .mc-play svg{width:18px;height:18px;}
+#page-apps .mc-chev{width:36px;height:36px;box-sizing:border-box;margin:0;padding:0;align-items:center;justify-content:center;border-radius:var(--r-ctl);}
+#page-apps .mc-chev:hover{background:rgb(var(--fg-rgb) / .06);}
+#page-apps .mc-chev svg{width:16px;height:16px;}
+#page-apps .mc-body-inner{padding:0 var(--sp-6) var(--sp-5);}
+#page-apps .seek-rail{height:6px;margin-top:-3px;}
+#page-apps .transport{gap:var(--sp-2);}
+#page-apps .transport button{width:44px;height:44px;}
+#page-apps .transport .t-play{width:56px;height:56px;}
+#page-apps .transport .t-play svg{width:20px;height:20px;}
+#page-apps .spectrum{height:48px;}
 
 /* ==== style/automation/automation.css ==== */
 /* ==========================================================================

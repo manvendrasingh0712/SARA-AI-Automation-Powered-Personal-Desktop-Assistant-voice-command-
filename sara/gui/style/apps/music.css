@@ -584,3 +584,24 @@ body.mp-morphing #musicCard{pointer-events:none;}
 
 html[data-quality="low"] .ly-line{transition:none;}
 @media (prefers-reduced-motion:reduce){.ly-line{transition:none;}.ly-line.active{scale:1;}}
+
+/* ######################################################################
+   Redesign phase 5 -- Music card (spec 8.2): 720 x 96 closed, about 720 x 360 open. The seek thumb keeps its size (js/apps/music.js measures it).
+   ###################################################################### */
+#page-apps .music-card{border-radius:var(--r-hero);box-shadow:var(--shadow-rest);margin:0 auto;}
+#page-apps .mc-head{min-height:94px;box-sizing:border-box;padding:var(--sp-4) var(--sp-5);}
+#page-apps .art-block{width:64px;height:64px;border-radius:14px;}
+#page-apps .t-title{font:600 16px/1.25 var(--font);}
+#page-apps .t-artist{font-size:13px;}
+#page-apps .mc-play{width:48px;height:48px;}
+#page-apps .mc-play svg{width:18px;height:18px;}
+#page-apps .mc-chev{width:36px;height:36px;box-sizing:border-box;margin:0;padding:0;align-items:center;justify-content:center;border-radius:var(--r-ctl);}
+#page-apps .mc-chev:hover{background:rgb(var(--fg-rgb) / .06);}
+#page-apps .mc-chev svg{width:16px;height:16px;}
+#page-apps .mc-body-inner{padding:0 var(--sp-6) var(--sp-5);}
+#page-apps .seek-rail{height:6px;margin-top:-3px;}
+#page-apps .transport{gap:var(--sp-2);}
+#page-apps .transport button{width:44px;height:44px;}
+#page-apps .transport .t-play{width:56px;height:56px;}
+#page-apps .transport .t-play svg{width:20px;height:20px;}
+#page-apps .spectrum{height:48px;}
