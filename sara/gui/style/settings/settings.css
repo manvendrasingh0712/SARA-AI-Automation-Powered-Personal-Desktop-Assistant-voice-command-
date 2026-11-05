@@ -256,3 +256,31 @@
 #page-settings #grp-quick{display:none !important;}
 @media (prefers-reduced-motion:reduce){#page-settings .set-group.on{animation:none;}}
 html[data-quality="low"] #page-settings .set-group.on{animation:none;}
+
+/* ---- search (phase 4c): results from all groups in the pane, hit counts in the group list ---- */
+#page-settings .set-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:var(--sp-1);color:var(--muted);}
+#page-settings .set-search-wrap .ic{position:absolute;left:var(--sp-3);pointer-events:none;}
+#page-settings #setRail .set-search{width:100%;margin:0;padding:0 34px 0 36px;box-sizing:border-box;background:var(--panel-2);}
+#page-settings .set-search::-webkit-search-cancel-button{display:none;}
+#page-settings #setRail .set-search-x{position:absolute;right:var(--sp-1);width:32px;height:32px;padding:0;justify-content:center;font-size:17px;line-height:1;color:var(--muted);background:none;border-radius:var(--r-ctl);}
+#page-settings #setRail .set-search-x[hidden]{display:none;}
+#page-settings #setRail .set-search-x:hover{color:var(--text);background:rgb(var(--fg-rgb) / .06);}
+#page-settings .set-search-status{min-height:16px;margin:0 0 var(--sp-2);padding-left:var(--sp-1);font:var(--t-helper);color:var(--muted);}
+#page-settings #setRail .set-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;box-sizing:border-box;border-radius:var(--r-pill);background:rgb(var(--core-rgb) / .14);color:var(--text);font:var(--t-caption);line-height:20px;text-align:center;font-variant-numeric:tabular-nums;}
+#page-settings #setRail .set-count[hidden]{display:none;}
+#page-settings.set-searching #setRail button.on{background:none;box-shadow:none;color:var(--muted);}
+#page-settings.set-searching #setRail button.on::after{display:none;}
+#page-settings #setRail button.none{opacity:.5;}
+#page-settings #setRail button.none .set-count{background:rgb(var(--fg-rgb) / .08);color:var(--muted);}
+#page-settings.set-searching .set-group{display:none;}
+#page-settings.set-searching .set-group.s-match{display:block;margin-bottom:var(--sp-6);animation:none;}
+#page-settings.set-searching .set-card.dim{display:none;opacity:1;}
+#page-settings .s-hide{display:none !important;}
+#page-settings .set-search-empty{padding:var(--sp-8) var(--sp-4);text-align:center;color:var(--muted);font-size:14px;}
+#page-settings .set-search-empty[hidden]{display:none;}
+#page-settings .row-flash{animation:rowFlash 1.3s var(--ease-premium);border-radius:var(--sp-2);}
+@keyframes rowFlash{0%,35%{background:rgb(var(--core-rgb) / .22);box-shadow:0 0 0 6px rgb(var(--core-rgb) / .22);}100%{background:transparent;box-shadow:0 0 0 6px transparent;}}
+
+/* the whole row toggles its switch (spec 4.7: hit area at least 44 px tall) */
+#page-settings .set-row:has(> .toggle),#page-settings .info-row.tog,#page-settings .skill-row:has(.toggle){cursor:pointer;min-height:44px;box-sizing:border-box;border-radius:var(--sp-2);transition:background var(--dur-fast);}
+#page-settings .set-row:has(> .toggle):hover,#page-settings .info-row.tog:hover,#page-settings .skill-row:has(.toggle):hover{background:rgb(var(--fg-rgb) / .03);}

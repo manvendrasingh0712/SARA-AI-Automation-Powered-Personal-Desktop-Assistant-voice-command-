@@ -26,6 +26,8 @@
   function build() {
     const out = [];
     PAGES.forEach((p) => out.push({ g: 'Go to', label: p[1], run: () => SARA.gotoPage(p[0]) }));
+    [['general', 'General'], ['voice', 'Voice & Sound'], ['appearance', 'Appearance'], ['intelligence', 'Intelligence'], ['security', 'Security'], ['system', 'System']].forEach((g) =>
+      out.push({ g: 'Go to', label: 'Settings: ' + g[1], run: () => { SARA.gotoPage('settings'); if (SARA.settings) SARA.settings.open(g[0]); } }));
     out.push({ g: 'Sara', label: 'Quick actions', hint: 'orb ring', run: () => { SARA.gotoPage('home'); setTimeout(() => SARA.radial && SARA.radial.open(), 260); } });
     out.push({ g: 'Sara', label: 'Take the quick tour', run: () => SARA.tour && SARA.tour.start() });
     out.push({ g: 'Sara', label: 'Wake Sara', run: () => SARA.wake && SARA.wake() });

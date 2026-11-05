@@ -149,38 +149,4 @@
     const t = e.target; if (sp || !rail || !t || t.nodeType !== 1 || !t.contains(rail)) return;
     sp = requestAnimationFrame(function () { sp = 0; const m = t.scrollHeight - t.clientHeight; if (m > 0) rail.style.setProperty('--prog', (t.scrollTop / m).toFixed(3)); });
   }, { capture: true, passive: true });
-
-  /* ---- settings search ( "/" to focus, Enter = jump, Esc = clear ) ---- */
-  if (rail) {
-    const inp = document.createElement('input');
-    inp.type = 'search'; inp.className = 'set-search'; inp.placeholder = 'Search settings  /'; inp.autocomplete = 'off'; inp.setAttribute('aria-label', 'Search settings');
-    rail.insertBefore(inp, rail.querySelector('button'));
-    const ROWS = '.set-row,.info-row,.skill-row,.qc-tile,.stat';
-    let st = 0;
-    function run() {
-      const q = inp.value.trim().toLowerCase();
-      all.forEach(function (c) {
-        let hits = 0;
-        c.querySelectorAll(ROWS).forEach(function (r) { const h = !!q && r.textContent.toLowerCase().indexOf(q) >= 0; r.classList.toggle('hit', h); if (h) hits++; });
-        const hd = c.querySelector('.set-card-head'), hm = !!q && !!hd && hd.textContent.toLowerCase().indexOf(q) >= 0;
-        c.classList.toggle('dim', !!q && !hits && !hm);
-      });
-    }
-    inp.addEventListener('input', function () { clearTimeout(st); st = setTimeout(run, 90); });
-    inp.addEventListener('keydown', function (e) {
-      e.stopPropagation();
-      if (e.key === 'Escape') { inp.value = ''; run(); inp.blur(); }
-      if (e.key === 'Enter') {
-        let best = null, bt = 1e9;
-        if (inp.value.trim()) best = all.filter(function (c) { return !c.classList.contains('dim'); })[0] || null;      // first matching card in group order
-        if (best) { if (SARA.settings) SARA.settings.open(null, best.id); else best.scrollIntoView({ behavior: rm() ? 'auto' : 'smooth', block: 'start' }); }
-      }
-    });
-    document.addEventListener('keydown', function (e) {
-      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || SARA.current !== 'settings') return;
-      const tg = e.target; if (tg && (/^(input|textarea|select)$/i.test(tg.tagName) || tg.isContentEditable)) return;
-      if (!inp.offsetParent) return;
-      e.preventDefault(); inp.focus(); inp.select();
-    });
-  }
 })();
