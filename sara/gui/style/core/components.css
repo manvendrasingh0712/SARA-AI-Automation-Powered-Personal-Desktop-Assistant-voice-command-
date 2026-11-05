@@ -235,7 +235,7 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
   font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
   transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
 .seg>button:hover{color:var(--text);}
-.seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
+.seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on,.seg>button.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
 .seg>button:disabled{opacity:.45;cursor:default;}
 
 /* badge / status dot (spec 4.7): tinted with the status colour, never decoration */

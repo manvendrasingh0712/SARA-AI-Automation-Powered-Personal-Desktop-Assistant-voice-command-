@@ -14,7 +14,7 @@
   document.querySelectorAll('.tab').forEach(function (tab) {
     tab.addEventListener('click', function () {
       SARA.sound.tap();
-      document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.tab').forEach((t) => { t.classList.toggle('active', t === tab); t.setAttribute('aria-selected', t === tab ? 'true' : 'false'); });
       document.querySelectorAll('.pane').forEach((p) => p.classList.toggle('active', p.id === 'pane-' + tab.dataset.tab));
     });
   });
@@ -25,13 +25,18 @@
     const d = new Date(ts);
     return isNaN(d.getTime()) ? String(ts) : SARA.relTime(d.toISOString());
   }
+  let notesRetries = 10;
   async function loadNotes() {
     const res = await SARA.callApi('get_notes');
     const list = (res && res.data) || [];
+    /* The window opens before the backend has finished starting, and until then get_notes answers ok:false. That used to leave
+       "Couldn't load your notes" on the page for up to a minute: try again shortly, a limited number of times. */
+    if (!res || res.ok === false) { if (notesRetries-- > 0) setTimeout(loadNotes, 3000); }
+    else notesRetries = 10;
     $('notesList').innerHTML = list.length ? list.map(function (n) {
       const lines = String(n.text || '').split('\n');
-      const title = lines[0].slice(0, 80);
-      const snip = lines.slice(1).join('\n').trim() || (lines[0].length > 80 ? lines[0].slice(80) : '');
+      const title = lines[0];                                       // long titles are clamped by CSS, never cut in the middle of a word
+      const snip = lines.slice(1).join('\n').trim();
       return '<div class="note-row2"><div class="n-head"><span class="n-title">' + SARA.escapeHtml(title) + '</span><span class="n-time">' +
         SARA.escapeHtml(noteWhen(n.timestamp)) + '</span></div>' + (snip ? '<div class="n-snip">' + SARA.escapeHtml(snip) + '</div>' : '') + '</div>';
     }).join('') : '<div class="empty">No notes yet. Write one above, or say “take a note…”.</div>';
@@ -39,6 +44,7 @@
   async function loadNotesStatus() {
     const el = $('notesIndexStatus');
     const s = await SARA.callApi('get_notes_status');
+    el.classList.toggle('ok', !!(s && s.ok && s.enabled && s.count));
     if (!s || !s.ok || !s.enabled) { el.textContent = "Notes search isn't enabled right now."; return; }
     if (!s.count) { el.textContent = 'No notes indexed yet.'; return; }
     el.textContent = s.count + ' note' + (s.count === 1 ? '' : 's') + ' indexed · last synced: ' + (s.last_synced ? SARA.relTime(s.last_synced) : 'never');
@@ -60,7 +66,7 @@
   $('newNoteText').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveNote(); });
 
   /* ---- reminders ---- */
-  const GROUPS = [['overdue', 'Overdue'], ['today', 'Today'], ['tomorrow', 'Tomorrow'], ['upcoming', 'Upcoming'], ['done', 'Done']];
+  const GROUPS = [['overdue', 'Overdue'], ['today', 'Today'], ['tomorrow', 'Tomorrow'], ['upcoming', 'Later'], ['done', 'Done']];
   function groupOf(r, today, tomorrow) {
     if (r.done) return 'done';
     if (r.date < today) return 'overdue';
@@ -147,6 +153,7 @@
   resetReminderForm();
   SARA.onBoot(function () { loadReminders(); loadNotes(); loadNotesStatus(); });
   SARA.on('visible', function () { loadReminders(); loadNotes(); loadNotesStatus(); });
+  SARA.on('backend_ready', function () { loadReminders(); loadNotes(); loadNotesStatus(); });
   SARA.every(60 * 1000, function () { loadReminders(); loadNotes(); loadNotesStatus(); });
 })();
 ;
