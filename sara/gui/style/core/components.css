@@ -211,9 +211,11 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
    ========================================================================== */
 
 /* one focus ring everywhere; :where() keeps specificity at 0 so every existing, more specific focus rule still wins */
-:where(a,button,input,select,textarea,summary,[role="button"],[role="switch"],[role="radio"],[role="tab"],[tabindex]):focus-visible{
+:where(a,button,input,select,textarea,summary,[role="button"],[role="switch"],[role="radio"],[role="tab"],[tabindex]:not([tabindex="-1"])):focus-visible{
   outline:2px solid var(--focus-ring);outline-offset:2px;
 }
+/* tabindex="-1" = focus moved there by code for screen readers (page title, skip-link target), never a control: no ring */
+:where([tabindex="-1"]):focus{outline:none;}
 
 /* card = the generic surface; .set-card gets the same accent hairline on its top edge (no animation, so no cost) */
 .card{position:relative;background:var(--panel);border:1px solid rgb(var(--fg-rgb) / .09);border-radius:var(--r-card);padding:var(--sp-5) var(--sp-6);box-shadow:var(--shadow-rest);}

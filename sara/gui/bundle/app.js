@@ -1357,8 +1357,10 @@
   if (themeBtn) themeBtn.addEventListener('click', function () {
     if (!SARA.theme) return;
     const cur = SARA.theme.current();
-    if (isLight(cur)) SARA.theme.apply(store.get(K_DARK) || 'sara');
-    else { if (cur !== 'custom') store.set(K_DARK, cur); SARA.theme.apply('paper'); }
+    if (isLight(cur)) {
+      const dark = store.get(K_DARK);                         // Auto day / night can have remembered a light theme here: that would change nothing
+      SARA.theme.apply(dark && !isLight(dark) ? dark : 'sara');
+    } else { if (cur !== 'custom') store.set(K_DARK, cur); SARA.theme.apply('paper'); }
     SARA.sound.tap();
   });
 
@@ -2579,7 +2581,10 @@
 
   function open() {
     SARA.sound && SARA.sound.tap(); SARA.gotoPage('settings');
-    setTimeout(function () { const t = $('anTrend') || $('anChart'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: SARA.reduceMotion ? 'auto' : 'smooth' }); }, 220);
+    setTimeout(function () {
+      if (SARA.settings) SARA.settings.open('system', 'grp-analytics');
+      else { const t = $('anTrend') || $('anChart'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: SARA.reduceMotion ? 'auto' : 'smooth' }); }
+    }, 220);
   }
   card.addEventListener('click', open);
   card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -6166,47 +6171,57 @@ var LABELS = {
       c.insertBefore(g, c.firstChild); c._g = g;
     });
 
-    /* ---- section rail ---- */
-    const links = rail ? Array.prototype.slice.call(rail.querySelectorAll('[data-target]')) : [];
-    const ind = rail && rail.querySelector('.set-rail-ind');
-    links.forEach(function (l, i) { const c = $(l.dataset.target); if (c) c.style.setProperty('--i', i); });
-    let active = links.length ? links[0].dataset.target : '', pinned = false;
-    function place() {
-      const a = rail && rail.querySelector('.on');
-      if (!a || !ind || !a.offsetWidth) return;
-      ind.style.setProperty('--x', a.offsetLeft + 'px'); ind.style.setProperty('--y', a.offsetTop + 'px');
-      ind.style.setProperty('--w', a.offsetWidth + 'px'); ind.style.setProperty('--h', a.offsetHeight + 'px');
-      if (rail.scrollWidth > rail.clientWidth + 2) rail.scrollTo({ left: a.offsetLeft - (rail.clientWidth - a.offsetWidth) / 2, behavior: reduce() ? 'auto' : 'smooth' });
-    }
-    function setActive(id) {
-      if (id === active && rail.querySelector('.on')) return;
-      active = id;
+    /* ---- group list (redesign spec 9.1): exactly one .set-group is visible; the rail buttons choose it ----
+       The old scroll-spy is gone: with hidden groups it could only mis-highlight. Cards keep their ids, so everything that finds a
+       card or a control by id keeps working, whether or not its group is on screen (a hidden group is display:none, nothing is removed). */
+    const groups = Array.prototype.slice.call(page.querySelectorAll('.set-group'));
+    const links = rail ? Array.prototype.slice.call(rail.querySelectorAll('button[data-group]')) : [];
+    const K_GROUP = 'sara.settings.group', body = page.querySelector('.page-body');
+    groups.forEach(function (g) { Array.prototype.forEach.call(g.querySelectorAll('.set-card'), function (c, i) { c.style.setProperty('--i', i); }); });
+    const keyOf = function (el) { const g = el && el.closest && el.closest('.set-group'); return g ? g.dataset.group : ''; };
+    let current = '';
+    function showGroup(key) {
+      if (!key || key === current || !groups.some(function (g) { return g.dataset.group === key; })) return false;
+      current = key;
+      groups.forEach(function (g) { g.classList.toggle('on', g.dataset.group === key); });
       links.forEach(function (l) {
-        const on = l.dataset.target === id; l.classList.toggle('on', on);
+        const on = l.dataset.group === key; l.classList.toggle('on', on);
         if (on) l.setAttribute('aria-current', 'true'); else l.removeAttribute('aria-current');
       });
-      place();
+      if (body) body.scrollTop = 0;
+      try { localStorage.setItem(K_GROUP, key); } catch (e) {}
+      return true;
     }
-    links.forEach(function (l) {
-      l.addEventListener('click', function () {
-        const t = $(l.dataset.target); if (!t) return;
-        SARA.sound.tap(); pinned = true; setActive(l.dataset.target);
-        t.scrollIntoView({ behavior: reduce() ? 'auto' : 'smooth', block: 'start' });
-        once(t, 'set-flash', 1000);
+    links.forEach(function (l, n) {
+      l.addEventListener('click', function () { SARA.sound.tap(); showGroup(l.dataset.group); });
+      l.addEventListener('keydown', function (e) {               // arrow keys, Home / End move through the list
+        const k = e.key === 'ArrowDown' ? n + 1 : e.key === 'ArrowUp' ? n - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? links.length - 1 : -1;
+        if (k < 0) return; e.preventDefault();
+        const t = links[(k + links.length) % links.length]; t.focus(); showGroup(t.dataset.group);
       });
     });
-    ['wheel', 'touchstart', 'keydown'].forEach(function (n) { page.addEventListener(n, function () { pinned = false; }, { passive: true }); });
-    if (links.length && 'IntersectionObserver' in window) {
-      const seen = new Set();
-      const io = new IntersectionObserver(function (es) {
-        es.forEach(function (e) { if (e.isIntersecting) seen.add(e.target.id); else seen.delete(e.target.id); });
-        if (pinned) return;
-        for (let i = 0; i < links.length; i++) if (seen.has(links[i].dataset.target)) { setActive(links[i].dataset.target); break; }
-      }, { rootMargin: '-12% 0px -62% 0px' });
-      links.forEach(function (l) { const t = $(l.dataset.target); if (t) io.observe(t); });
-    }
-    let rz = 0;
-    window.addEventListener('resize', function () { if (rz) return; rz = requestAnimationFrame(function () { rz = 0; place(); }); });
+    /* public: SARA.settings.open('system', 'grp-analytics') -- palette, tour and the Home Usage card use it */
+    SARA.settings = {
+      open: function (key, cardId) {
+        const card = cardId ? $(cardId) : null;
+        showGroup(key || keyOf(card));
+        if (!card || !body) return;
+        let touched = false;
+        const stop = function () { touched = true; };
+        ['wheel', 'pointerdown', 'keydown'].forEach(function (n) { body.addEventListener(n, stop, { once: true, passive: true }); });
+        requestAnimationFrame(function () { card.scrollIntoView({ block: 'start', behavior: reduce() ? 'auto' : 'smooth' }); once(card, 'set-flash', 1000); });
+        // cards above it can shrink while the smooth scroll runs (their data arrives), which leaves the target off by a few px: align once more unless the user took over
+        setTimeout(function () {
+          ['wheel', 'pointerdown', 'keydown'].forEach(function (n) { body.removeEventListener(n, stop); });
+          if (!touched && current === keyOf(card)) card.scrollIntoView({ block: 'start', behavior: 'auto' });
+        }, 650);
+      },
+      showGroupOf: function (el) { return showGroup(keyOf(el)); },
+      current: function () { return current; }
+    };
+    let saved = ''; try { saved = localStorage.getItem(K_GROUP) || ''; } catch (e) {}
+    current = ''; showGroup(saved || 'general');
+    if (!current) showGroup('general');
 
     /* ---- quick controls (mirror the real toggles) ---- */
     const proxies = Array.prototype.slice.call(document.querySelectorAll('[data-proxy]'));      // the five quick tiles now sit in the Home dock
@@ -6283,9 +6298,6 @@ var LABELS = {
     SARA.on('page', function (p) {
       if (p !== 'settings') return;
       sliders.forEach(fill); sync(); once(page, 'set-enter', 1100);
-      const pb = page.querySelector('.page-body');
-      if (links.length && pb && pb.scrollTop < 8) { pinned = true; setActive(links[0].dataset.target); }   // opened at the top: highlight the first section
-      requestAnimationFrame(place);
     });
   })();
 })();
@@ -7508,8 +7520,8 @@ var LABELS = {
       if (e.key === 'Escape') { inp.value = ''; run(); inp.blur(); }
       if (e.key === 'Enter') {
         let best = null, bt = 1e9;
-        all.forEach(function (c) { if (c.classList.contains('dim') || !inp.value.trim()) return; const r = c.getBoundingClientRect(), k = r.top * 10 + r.left / 1000; if (k < bt) { bt = k; best = c; } });
-        if (best) best.scrollIntoView({ behavior: rm() ? 'auto' : 'smooth', block: 'start' });
+        if (inp.value.trim()) best = all.filter(function (c) { return !c.classList.contains('dim'); })[0] || null;      // first matching card in group order
+        if (best) { if (SARA.settings) SARA.settings.open(null, best.id); else best.scrollIntoView({ behavior: rm() ? 'auto' : 'smooth', block: 'start' }); }
       }
     });
     document.addEventListener('keydown', function (e) {

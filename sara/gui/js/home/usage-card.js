@@ -47,7 +47,10 @@
 
   function open() {
     SARA.sound && SARA.sound.tap(); SARA.gotoPage('settings');
-    setTimeout(function () { const t = $('anTrend') || $('anChart'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: SARA.reduceMotion ? 'auto' : 'smooth' }); }, 220);
+    setTimeout(function () {
+      if (SARA.settings) SARA.settings.open('system', 'grp-analytics');
+      else { const t = $('anTrend') || $('anChart'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: SARA.reduceMotion ? 'auto' : 'smooth' }); }
+    }, 220);
   }
   card.addEventListener('click', open);
   card.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
