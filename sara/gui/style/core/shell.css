@@ -87,3 +87,9 @@
   .nav-pin[aria-pressed="true"] .ic{transform:rotate(180deg);}
 }
 @media (prefers-reduced-motion:reduce){.nav,.app{transition:none;}.nav-label{transition:none;}.skip-link{transition:none;}}
+
+/* the offline strip (28 px) pushes the shell down instead of lying over the header and the sidebar */
+.offline-strip{display:flex;align-items:center;justify-content:center;gap:var(--sp-2);height:28px;box-sizing:border-box;padding:0 var(--sp-3);}
+.offline-strip button{padding-top:0;padding-bottom:0;line-height:1.2;}
+.offline-strip:not([hidden]) ~ .app{padding-top:28px;box-sizing:border-box;}
+.offline-strip:not([hidden]) ~ .app .nav{top:28px;}

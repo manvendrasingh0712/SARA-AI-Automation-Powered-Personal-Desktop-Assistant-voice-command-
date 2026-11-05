@@ -565,10 +565,14 @@
   const NEAR = 120; let stuck = true, force = 0, unread = 0, sraf = 0;
   const nearBottom = function () { return log.scrollHeight - log.scrollTop - log.clientHeight < NEAR; };
   const jump = el('button', 'chat-jump'); jump.type = 'button'; jump.setAttribute('aria-label', 'Jump to latest message');
-  jump.appendChild(icon('down')); const badge = el('span', 'chat-jump-n'); jump.appendChild(badge); pbody.appendChild(jump);
-  function paintJump() { const far = !nearBottom(); jump.classList.toggle('show', far); if (!far) { unread = 0; badge.textContent = ''; badge.classList.remove('on'); } }
+  jump.appendChild(icon('down')); const jumpLabel = el('span', 'chat-jump-l', 'Latest'); jump.appendChild(jumpLabel); const badge = el('span', 'chat-jump-n'); jump.appendChild(badge); pbody.appendChild(jump);
+  function paintJump() {
+    const far = !nearBottom(); jump.classList.toggle('show', far);
+    if (!far) { unread = 0; badge.textContent = ''; badge.classList.remove('on'); }
+    jumpLabel.textContent = unread ? (unread === 1 ? 'New message' : 'New messages') : 'Latest';
+  }
   function toBottom(smooth) {
-    stuck = true; unread = 0; badge.textContent = ''; badge.classList.remove('on');
+    stuck = true; unread = 0; badge.textContent = ''; badge.classList.remove('on'); jumpLabel.textContent = 'Latest';
     if (smooth && !SARA.reduceMotion) log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' }); else log.scrollTop = log.scrollHeight;
   }
   log.addEventListener('scroll', function () {
@@ -625,8 +629,9 @@
   SARA.on('page', function (p) { if (p !== 'chat' && !bar.hidden) closeFind(); });
 
   /* ------------------------------------------------------------------ starters (empty chat) */
-  const STARTERS = ['What can you do?', "What's the weather?", 'Play some music', 'Remind me in 10 minutes', "What's on my schedule?", 'Take a note'];
+  const STARTERS = ["What's on my schedule?", 'Play some music', 'Take a note', 'Open Chrome'];
   const empty = el('div', 'chat-empty'); empty.setAttribute('role', 'group'); empty.setAttribute('aria-label', 'Suggestions');
+  empty.appendChild(el('span', 'chat-empty-orb')); empty.appendChild(el('div', 'chat-empty-title', 'Start a conversation'));
   STARTERS.forEach(function (t, i) {
     const b = el('button', 'chat-starter', t); b.type = 'button'; b.style.setProperty('--i', i);
     b.addEventListener('click', function () { SARA.sendCommand(t).then(function (res) { if (res && res.ok === false && res.reason && res.reason !== 'duplicate') SARA.fail(res.reason === 'busy' ? 'Sara is still working on your last request.' : 'Could not send that message.'); }); });

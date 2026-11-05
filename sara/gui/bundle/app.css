@@ -576,6 +576,12 @@ html[data-quality="low"] body::before{animation-play-state:paused;}
 }
 @media (prefers-reduced-motion:reduce){.nav,.app{transition:none;}.nav-label{transition:none;}.skip-link{transition:none;}}
 
+/* the offline strip (28 px) pushes the shell down instead of lying over the header and the sidebar */
+.offline-strip{display:flex;align-items:center;justify-content:center;gap:var(--sp-2);height:28px;box-sizing:border-box;padding:0 var(--sp-3);}
+.offline-strip button{padding-top:0;padding-bottom:0;line-height:1.2;}
+.offline-strip:not([hidden]) ~ .app{padding-top:28px;box-sizing:border-box;}
+.offline-strip:not([hidden]) ~ .app .nav{top:28px;}
+
 /* ==== style/core/components.css ==== */
 /* ==========================================================================
    components.css  --  shared building blocks reused by several pages:
@@ -1639,6 +1645,46 @@ html[data-quality="low"] .msg.thinking::before{display:none;}
   -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E") center/contain no-repeat;
   mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='11' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0M12 18v3'/%3E%3C/svg%3E") center/contain no-repeat;
 }
+
+/* ######################################################################
+   Redesign phase 5 -- Chat (spec section 7): a 720 px column and a composer that floats 24 px above the bottom edge.
+   The log keeps scrolling behind the composer, so it needs room at the end (padding-bottom) for the last message to clear it.
+   ###################################################################### */
+#page-chat .page-body{padding-bottom:0;}
+#page-chat .chat-log{padding:0 max(var(--pad-x),calc((100% - var(--content-a)) / 2 + var(--pad-x))) 120px;}
+#page-chat .chat-log:empty::before{content:none;}
+
+/* messages */
+#chatLog .msg.user{border-radius:18px 18px 6px 18px;padding:10px 15px;}
+/* the time of your own message is on demand: beside the bubble, on hover or keyboard focus */
+#chatLog .msg.user .ts,#chatLog .msg.user .ts.dup{display:block;position:absolute;right:100%;bottom:4px;margin:0 var(--sp-2) 0 0;font-size:11px;color:var(--muted);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity var(--dur-fast);}
+#chatLog .msg.user:hover .ts,#chatLog .msg.user:focus-within .ts{opacity:1;}
+#chatLog .msg.user .msg-tools{right:6px;}
+/* a small Sara mark on the first message of a group; the rail stays the only thing beside the following ones */
+#chatLog .msg.sara:not(.grp):not(.thinking):not(.preview)::before{content:'';position:absolute;left:-28px;top:3px;width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 32% 28%,var(--think),var(--core) 62%);}
+
+/* new messages pill */
+#page-chat .chat-jump{bottom:96px;display:inline-flex;align-items:center;gap:6px;width:auto;height:32px;padding:0 var(--sp-3);border-radius:var(--r-pill);color:var(--text-soft);font-size:12px;white-space:nowrap;}
+#page-chat .chat-jump:hover{color:var(--text);}
+#page-chat .chat-jump-n{position:static;display:none;min-width:18px;background:var(--core);color:var(--on-core);}
+#page-chat .chat-jump-n.on{display:inline-block;}
+
+/* empty state */
+#page-chat .chat-empty{top:44%;left:50%;right:auto;transform:translate(-50%,-50%);width:360px;max-width:100%;padding:0;flex-direction:row;}
+#page-chat .chat-empty-orb{flex:0 0 100%;display:block;width:56px;height:56px;max-width:56px;margin:0 auto var(--sp-3);border-radius:50%;background:radial-gradient(circle at 32% 28%,var(--think),var(--core) 62%);box-shadow:0 0 28px -6px var(--glow);}
+#page-chat .chat-empty-title{flex:0 0 100%;margin-bottom:var(--sp-4);text-align:center;font:600 18px/1.3 var(--font);color:var(--text);}
+#page-chat .chat-starter{height:34px;box-sizing:border-box;padding:0 15px;}
+
+/* composer: 720 x 64, floating */
+#page-chat .chat-dock{position:absolute;left:var(--pad-x);right:var(--pad-x);bottom:var(--sp-6);width:auto;max-width:var(--content-a);height:64px;box-sizing:border-box;margin:0 auto;padding:10px;gap:var(--sp-3);border-radius:var(--r-hero);background:var(--panel);box-shadow:var(--shadow-hover);z-index:5;}
+#page-chat .chat-dock:focus-within{border-color:rgb(var(--core-rgb) / .5);box-shadow:0 0 0 3px rgb(var(--core-rgb) / .12),var(--shadow-hover);}
+#page-chat .chat-dock input{height:44px;font-size:15px;min-width:0;}
+#page-chat .dock-btn{width:44px;height:44px;}
+#page-chat .dock-btn svg{width:18px;height:18px;}
+#page-chat .dock-btn.mic{color:var(--text-soft);}
+#page-chat .dock-btn.mic.on{color:var(--on-core);}
+/* send looks switched off until there is something to send */
+#page-chat .chat-dock:has(#chatInputField:placeholder-shown) .dock-btn.send{background:var(--panel-2);color:var(--muted);box-shadow:none;}
 
 /* ==== style/notes/notes-reminders.css ==== */
 /* ==========================================================================
