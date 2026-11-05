@@ -24,7 +24,7 @@
     $('sysDisk').textContent = s.disk_total_gb ? s.disk_used_gb + ' / ' + s.disk_total_gb + ' GB (' + Math.round(s.disk) + '%)' : Math.round(s.disk) + '%';
     $('sysNet').textContent = '↓ ' + s.net_down_mbps + ' Mb/s · ↑ ' + s.net_up_mbps + ' Mb/s';
     [['sysCpuRam', s.cpu, s.ram], ['sysDisk', s.disk]].forEach(function (m) {
-      const r = $(m[0]).closest('.info-row'); if (!r) return;
+      const r = $(m[0]).closest('.sys-tile'); if (!r) return;
       r.classList.add('meter');
       r.style.setProperty('--m', Math.max(0, Math.min(100, +m[1] || 0)));
       if (m.length > 2) r.style.setProperty('--m2', Math.max(0, Math.min(100, +m[2] || 0)));
@@ -37,7 +37,19 @@
 
   $('btnMin').addEventListener('click', () => SARA.callApi('minimize_window'));
   $('btnMax').addEventListener('click', () => SARA.callApi('toggle_maximize'));
-  $('btnClose').addEventListener('click', function () { if (confirm('Close SARA?')) SARA.callApi('close_window'); });
+  /* Close SARA: never one click. An inline question that cancels itself after 3 s (spec 9.6). */
+  const closeBtn = $('btnClose'), closeBox = $('closeConfirm');
+  let closeTimer = 0;
+  function armClose(on) {
+    clearTimeout(closeTimer);
+    const hadFocus = closeBox.contains(document.activeElement);
+    closeBox.hidden = !on; closeBtn.hidden = !!on;
+    if (on) { $('btnCloseNo').focus(); closeTimer = setTimeout(function () { armClose(false); }, 3000); }
+    else if (hadFocus) closeBtn.focus();
+  }
+  closeBtn.addEventListener('click', function () { armClose(true); });
+  $('btnCloseNo').addEventListener('click', function () { armClose(false); });
+  $('btnCloseYes').addEventListener('click', function () { clearTimeout(closeTimer); SARA.callApi('close_window'); });
   $('btnOpenDataFolder').addEventListener('click', () => SARA.callApi('open_data_folder'));
   $('btnWizard').addEventListener('click', () => SARA.showSetupWizard && SARA.showSetupWizard());
   const tourBtn = $('btnTour'); if (tourBtn) tourBtn.addEventListener('click', () => SARA.tour && SARA.tour.start());

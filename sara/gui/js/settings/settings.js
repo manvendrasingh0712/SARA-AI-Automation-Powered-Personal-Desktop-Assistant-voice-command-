@@ -182,7 +182,7 @@
        While a query is on, the pane lists the matching cards of ALL groups, each card trimmed to its matching rows, and the
        group list shows how many hits each group has. Nothing is removed: hiding is a class, and clearing it restores the page. */
     if (rail) {
-      const ROWS = '.set-row,.info-row,.skill-row,.stat,.theme-card,.pill-btn,.chip,.section-label,.acc-note';
+      const ROWS = '.set-row,.info-row,.skill-row,.stat,.rt-stat,.sec-num,.perf-num,.theme-card,.pill-btn,.chip,.section-label,.acc-note';
       const wrap = document.createElement('div'); wrap.className = 'set-search-wrap';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'ic sm'); svg.setAttribute('aria-hidden', 'true');
       const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', '#i-search'); svg.appendChild(use);
@@ -280,6 +280,14 @@
       });
     }
 
+    /* ---- master switches: while the master is off its children are dimmed and out of reach, their stored values stay as they are ---- */
+    page.querySelectorAll('[data-dim-with]').forEach(function (box) {
+      const master = page.querySelector(box.dataset.dimWith); if (!master) return;
+      const paint = function () { const off = !master.classList.contains('on'); box.classList.toggle('is-dim', off); box.inert = off; };
+      paint();
+      if (window.MutationObserver) new MutationObserver(paint).observe(master, { attributes: true, attributeFilter: ['class'] });
+    });
+
     /* ---- quick controls (mirror the real toggles) ---- */
     const proxies = Array.prototype.slice.call(document.querySelectorAll('[data-proxy]'));      // the five quick tiles now sit in the Home dock
     function realOf(p) {
@@ -344,7 +352,7 @@
       fill(s); s.addEventListener('input', function () { fill(s); });
       s.addEventListener('change', function () { once(s.closest('.set-card'), 'set-flash', 900); });
     });
-    const hs = $('hueSlider'); if (hs) hs.addEventListener('change', function () { once($('grp-appearance'), 'set-flash', 900); });
+    const hs = $('hueSlider'); if (hs) hs.addEventListener('change', function () { once($('grp-display'), 'set-flash', 900); });
 
     /* ---- theme bloom ---- */
     const tg = $('themeGrid'), ap = $('grp-appearance');

@@ -6229,7 +6229,7 @@ var LABELS = {
        While a query is on, the pane lists the matching cards of ALL groups, each card trimmed to its matching rows, and the
        group list shows how many hits each group has. Nothing is removed: hiding is a class, and clearing it restores the page. */
     if (rail) {
-      const ROWS = '.set-row,.info-row,.skill-row,.stat,.theme-card,.pill-btn,.chip,.section-label,.acc-note';
+      const ROWS = '.set-row,.info-row,.skill-row,.stat,.rt-stat,.sec-num,.perf-num,.theme-card,.pill-btn,.chip,.section-label,.acc-note';
       const wrap = document.createElement('div'); wrap.className = 'set-search-wrap';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'ic sm'); svg.setAttribute('aria-hidden', 'true');
       const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', '#i-search'); svg.appendChild(use);
@@ -6327,6 +6327,14 @@ var LABELS = {
       });
     }
 
+    /* ---- master switches: while the master is off its children are dimmed and out of reach, their stored values stay as they are ---- */
+    page.querySelectorAll('[data-dim-with]').forEach(function (box) {
+      const master = page.querySelector(box.dataset.dimWith); if (!master) return;
+      const paint = function () { const off = !master.classList.contains('on'); box.classList.toggle('is-dim', off); box.inert = off; };
+      paint();
+      if (window.MutationObserver) new MutationObserver(paint).observe(master, { attributes: true, attributeFilter: ['class'] });
+    });
+
     /* ---- quick controls (mirror the real toggles) ---- */
     const proxies = Array.prototype.slice.call(document.querySelectorAll('[data-proxy]'));      // the five quick tiles now sit in the Home dock
     function realOf(p) {
@@ -6391,7 +6399,7 @@ var LABELS = {
       fill(s); s.addEventListener('input', function () { fill(s); });
       s.addEventListener('change', function () { once(s.closest('.set-card'), 'set-flash', 900); });
     });
-    const hs = $('hueSlider'); if (hs) hs.addEventListener('change', function () { once($('grp-appearance'), 'set-flash', 900); });
+    const hs = $('hueSlider'); if (hs) hs.addEventListener('change', function () { once($('grp-display'), 'set-flash', 900); });
 
     /* ---- theme bloom ---- */
     const tg = $('themeGrid'), ap = $('grp-appearance');
@@ -6439,7 +6447,7 @@ var LABELS = {
     $('sysDisk').textContent = s.disk_total_gb ? s.disk_used_gb + ' / ' + s.disk_total_gb + ' GB (' + Math.round(s.disk) + '%)' : Math.round(s.disk) + '%';
     $('sysNet').textContent = '↓ ' + s.net_down_mbps + ' Mb/s · ↑ ' + s.net_up_mbps + ' Mb/s';
     [['sysCpuRam', s.cpu, s.ram], ['sysDisk', s.disk]].forEach(function (m) {
-      const r = $(m[0]).closest('.info-row'); if (!r) return;
+      const r = $(m[0]).closest('.sys-tile'); if (!r) return;
       r.classList.add('meter');
       r.style.setProperty('--m', Math.max(0, Math.min(100, +m[1] || 0)));
       if (m.length > 2) r.style.setProperty('--m2', Math.max(0, Math.min(100, +m[2] || 0)));
@@ -6452,7 +6460,19 @@ var LABELS = {
 
   $('btnMin').addEventListener('click', () => SARA.callApi('minimize_window'));
   $('btnMax').addEventListener('click', () => SARA.callApi('toggle_maximize'));
-  $('btnClose').addEventListener('click', function () { if (confirm('Close SARA?')) SARA.callApi('close_window'); });
+  /* Close SARA: never one click. An inline question that cancels itself after 3 s (spec 9.6). */
+  const closeBtn = $('btnClose'), closeBox = $('closeConfirm');
+  let closeTimer = 0;
+  function armClose(on) {
+    clearTimeout(closeTimer);
+    const hadFocus = closeBox.contains(document.activeElement);
+    closeBox.hidden = !on; closeBtn.hidden = !!on;
+    if (on) { $('btnCloseNo').focus(); closeTimer = setTimeout(function () { armClose(false); }, 3000); }
+    else if (hadFocus) closeBtn.focus();
+  }
+  closeBtn.addEventListener('click', function () { armClose(true); });
+  $('btnCloseNo').addEventListener('click', function () { armClose(false); });
+  $('btnCloseYes').addEventListener('click', function () { clearTimeout(closeTimer); SARA.callApi('close_window'); });
   $('btnOpenDataFolder').addEventListener('click', () => SARA.callApi('open_data_folder'));
   $('btnWizard').addEventListener('click', () => SARA.showSetupWizard && SARA.showSetupWizard());
   const tourBtn = $('btnTour'); if (tourBtn) tourBtn.addEventListener('click', () => SARA.tour && SARA.tour.start());
@@ -7416,6 +7436,13 @@ var LABELS = {
   'use strict';
   const SARA = window.SARA, $ = SARA.$, esc = SARA.escapeHtml;
 
+  const skillFilter = $('skillsFilter');
+  function filterSkills() {
+    const q = skillFilter ? skillFilter.value.trim().toLowerCase() : '';
+    document.querySelectorAll('#skillsList .skill-row').forEach(function (r) { r.classList.toggle('sk-hide', !!q && r.textContent.toLowerCase().indexOf(q) < 0); });
+  }
+  if (skillFilter) skillFilter.addEventListener('input', filterSkills);
+
   async function loadSkills() {
     const wrap = $('skillsList');
     const res = await SARA.callApi('get_skills_list');
@@ -7429,6 +7456,7 @@ var LABELS = {
         (s.status === 'error' ? ' <small style="color:var(--danger)">error</small>' : '') + '<span class="s-desc">' + esc(desc) + '</span></span>' +
         '<div class="toggle' + (s.enabled ? ' on' : '') + '" data-skill="' + esc(s.name) + '" role="switch" tabindex="0" aria-checked="' + (s.enabled ? 'true' : 'false') + '"></div></div>';
     }).join('');
+    filterSkills();
     wrap.querySelectorAll('[data-skill]').forEach(function (el) {
       SARA.bindToggle(el, async function (on) {
         el.closest('.skill-row').classList.toggle('off', !on);
