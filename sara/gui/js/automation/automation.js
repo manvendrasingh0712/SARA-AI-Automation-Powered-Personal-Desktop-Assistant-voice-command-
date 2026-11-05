@@ -10,9 +10,18 @@
   const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 
   /* ---- modes ---- */
+  /* what each bundle really does: sara/orchestrator/command_helpers.py _MODE_BUNDLES + _MODE_CONFIRMATIONS */
+  const MODE_INFO = {
+    normal: ['sparkle', 'Nudges and mic back to default'], study: ['focus', 'Focus on, nudges off'], work: ['notes', 'Normal nudges, no focus mode'],
+    gaming: ['mic-off', 'Nudges off, lower mic sensitivity'], home: ['home', 'All nudges on']
+  };
   function renderModes(active, modes) {
-    $('modeChips').innerHTML = (modes || []).map((m) =>
-      '<span class="chip' + (m === active ? ' on' : '') + '" data-mode="' + esc(m) + '">' + esc(cap(m)) + '</span>').join('') || '<div class="empty" style="padding:4px;">Modes unavailable.</div>';
+    $('modeChips').innerHTML = (modes || []).map(function (m) {
+      const info = MODE_INFO[m] || ['sparkle', 'A bundle of settings'], on = m === active;
+      return '<button type="button" class="chip mode-tile' + (on ? ' on' : '') + '" role="radio" aria-checked="' + (on ? 'true' : 'false') + '" data-mode="' + esc(m) + '">' +
+        '<svg class="ic" aria-hidden="true"><use href="#i-' + info[0] + '"/></svg><b>' + esc(cap(m)) + '</b><small>' + esc(info[1]) + '</small>' +
+        '<svg class="ic sm mode-check" aria-hidden="true"><use href="#i-check"/></svg></button>';
+    }).join('') || '<div class="empty" style="padding:4px;">Modes unavailable.</div>';
   }
   async function loadModes() {
     const res = await SARA.callApi('get_modes_status');
@@ -32,19 +41,47 @@
     $('routinesList').innerHTML = list.length ? list.map(function (r) {
       const n = (r.steps || []).length;
       const sub = n + ' step' + (n === 1 ? '' : 's') + ' · ' + (r.trigger_time ? 'runs at ' + SARA.fmt12h(r.trigger_time) : 'manual trigger');
-      return '<div class="auto-card" data-name="' + esc(r.name) + '"><div class="auto-info"><div class="a-name">' + esc(r.label || r.name) +
+      return '<div class="auto-card" data-name="' + esc(r.name) + '"><span class="auto-plate" aria-hidden="true"><svg class="ic"><use href="#i-automation"/></svg></span>' +
+        '<div class="auto-info"><div class="a-name">' + esc(r.label || r.name) +
         '</div><div class="a-sub" title="' + esc((r.steps || []).map(stepName).join(' → ')) + '">' + esc(sub) + '</div></div>' +
-        '<div class="auto-actions"><button class="pill-btn small" data-run>Run</button><button class="pill-btn small" data-edit>Edit</button>' +
-        '<button class="icon-x" data-del title="Delete">×</button></div></div>';
+        '<div class="auto-actions"><button type="button" class="auto-more" data-more aria-haspopup="menu" aria-expanded="false" aria-label="Actions for ' + esc(r.label || r.name) + '" title="Actions">' +
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>' +
+        '<div class="auto-menu" role="menu" hidden><button type="button" role="menuitem" data-run>Run now</button><button type="button" role="menuitem" data-edit>Edit</button>' +
+        '<button type="button" role="menuitem" class="danger" data-del>Delete</button></div></div></div>';
     }).join('') : '<div class="empty">No automations yet. Create one to chain several actions together.</div>';
   }
   async function loadRoutines() {
     const res = await SARA.callApi('list_routines');
     renderRoutines((res && res.data) || []);
   }
+  /* the actions of a routine sit in a small menu: one open at a time, Esc or a click elsewhere closes it, arrow keys move through it */
+  function closeMenus(except) {
+    document.querySelectorAll('#routinesList .auto-menu').forEach(function (m) {
+      if (m === except) return;
+      m.hidden = true; const b = m.parentNode.querySelector('[data-more]'); if (b) b.setAttribute('aria-expanded', 'false');
+    });
+  }
+  document.addEventListener('click', function (e) { if (!(e.target.closest && e.target.closest('.auto-actions'))) closeMenus(); });
+  $('routinesList').addEventListener('keydown', function (e) {
+    const menu = e.target.closest && e.target.closest('.auto-actions'); if (!menu) return;
+    const items = Array.prototype.slice.call(menu.querySelectorAll('[role="menuitem"]')), open = !menu.querySelector('.auto-menu').hidden;
+    if (e.key === 'Escape' && open) { e.preventDefault(); e.stopPropagation(); closeMenus(); menu.querySelector('[data-more]').focus(); return; }
+    if (!open || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp')) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement), d = e.key === 'ArrowDown' ? 1 : -1;
+    items[(i + d + items.length) % items.length].focus();
+  });
   $('routinesList').addEventListener('click', async function (e) {
     const card = e.target.closest('.auto-card'); if (!card) return;
     const name = card.dataset.name;
+    const more = e.target.closest('[data-more]');
+    if (more) {
+      const menu = more.parentNode.querySelector('.auto-menu'), open = menu.hidden;
+      closeMenus(menu); menu.hidden = !open; more.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) { SARA.sound.tap(); menu.querySelector('[role="menuitem"]').focus(); }
+      return;
+    }
+    if (e.target.closest('[role="menuitem"]')) closeMenus();
     if (e.target.closest('[data-run]')) {
       const btn = e.target.closest('[data-run]'); btn.disabled = true;
       const res = await SARA.callApi('run_routine_now', name);
@@ -54,7 +91,8 @@
       const res = await SARA.callApi('get_routine', name);
       if (res && res.ok && res.data) SARA.openRoutineBuilder(res.data); else SARA.fail((res && res.error) || 'Could not load routine');
     } else if (e.target.closest('[data-del]')) {
-      if (!confirm('Delete automation "' + name + '"?')) return;
+      const shown = (card.querySelector('.a-name') || {}).textContent || name;   // the name the user sees, not the internal id
+      if (!confirm('Delete automation "' + shown + '"?')) return;
       const res = await SARA.callApi('delete_routine', name);
       if (res && res.ok) { SARA.ok('Automation deleted'); loadRoutines(); } else SARA.fail((res && res.error) || 'Could not delete');
     }
@@ -180,8 +218,9 @@
       card.dataset.rtp = '1';
       const r = cache.find(function (x) { return x.name === card.dataset.name; }); if (!r) return;
       const actions = card.querySelector('.auto-actions'), info = card.querySelector('.auto-info');
-      const fb = el('button', 'pill-btn small', 'Flow'); fb.type = 'button'; fb.dataset.flow = ''; fb.setAttribute('aria-expanded', 'false');
-      if (actions) actions.insertBefore(fb, actions.firstChild);
+      const fb = el('button', '', 'Show flow'); fb.type = 'button'; fb.dataset.flow = ''; fb.setAttribute('role', 'menuitem'); fb.setAttribute('aria-expanded', 'false');
+      const menu = actions && actions.querySelector('.auto-menu');
+      if (menu) menu.insertBefore(fb, menu.querySelector('[data-edit]'));
       const detail = el('div', 'rt-detail'), inn = el('div', 'rt-detail-in'), pad = el('div', 'rt-detail-pad');
       pad.appendChild(flowOf(r.trigger_time, r.steps));
       const meta = el('div', 'rt-meta'), hist = el('span', 'rt-hist'), side = el('span', 'rt-pv'), cap = el('span', 'rt-pv-cap', 'Preview only \u2014 nothing is run'); cap.hidden = true;
@@ -208,7 +247,7 @@
     { id: 'away', name: 'Stepping away', desc: 'Mute and lock the PC', steps: ['min_volume', 'lock_pc'] }
   ].filter(function (t) { return t.steps.every(function (k) { return !!A.labels[k]; }); });   // only actions this backend really offers
   if (TEMPLATES.length) {
-    const lab = el('div', 'section-label', 'Templates'); lab.style.marginTop = '22px';
+    const lab = el('div', 'section-label', 'Templates');
     const row = el('div', 'rt-tpl-row');
     TEMPLATES.forEach(function (t) {
       const c = el('div', 'rt-tpl'), top = el('div', 'rt-tpl-top');
@@ -227,7 +266,7 @@
       });
       row.appendChild(c);
     });
-    newBtn.insertAdjacentElement('afterend', row); newBtn.insertAdjacentElement('afterend', lab);
+    list.insertAdjacentElement('afterend', row); list.insertAdjacentElement('afterend', lab);
   }
 
   /* ------------------------------------------------------------------ builder: mini flow, reorder, picker */
