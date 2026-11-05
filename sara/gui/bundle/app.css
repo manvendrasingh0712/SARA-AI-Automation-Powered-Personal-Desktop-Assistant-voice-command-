@@ -820,7 +820,7 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
   font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
   transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
 .seg>button:hover{color:var(--text);}
-.seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
+.seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on,.seg>button.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
 .seg>button:disabled{opacity:.45;cursor:default;}
 
 /* badge / status dot (spec 4.7): tinted with the status colour, never decoration */
@@ -1803,6 +1803,74 @@ html[data-quality="low"] .msg.thinking::before{display:none;}
 .note-row2.drop-after{box-shadow:0 2px 0 0 var(--core);}
 @media (hover:none){.n-acts{opacity:1;}}
 html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition:opacity .01s;}
+
+/* ######################################################################
+   Redesign phase 5 -- Notes & Reminders (spec section 8.1): a 720 px column, note cards, reminder rows, a composer that stays in reach.
+   ###################################################################### */
+#page-notes .page-body{padding-bottom:var(--sp-4);}
+#page-notes :is(.notes-top,.pane){width:100%;max-width:var(--content-a);margin-inline:auto;}
+#page-notes :is(.row,.add-row,.rm-quick,.rm-smart,.rem-add,.nt-tools,.note-row2,.empty){max-width:none;}
+
+/* tabs + index status */
+#page-notes .notes-top{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);margin-bottom:var(--sp-4);}
+#page-notes .tabs.seg{display:flex;width:280px;flex:none;margin:0;gap:2px;border:1px solid var(--line);}
+#page-notes .tabs.seg .tab::before,#page-notes .tabs.seg .tab::after{display:none;}
+#page-notes .notes-sub{display:flex;align-items:center;gap:var(--sp-2);margin:0;font:var(--t-helper);color:var(--muted);min-width:0;}
+#page-notes .notes-sub.ok::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:var(--success);}
+#page-notes .notes-top:has(~ #pane-reminders.active) .notes-sub{display:none;}
+
+/* note composer: 720 x 56 */
+#pane-notes .add-row{min-height:56px;box-sizing:border-box;margin:0;padding:7px var(--sp-2);flex-wrap:nowrap;gap:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);box-shadow:var(--shadow-rest);transition:border-color var(--dur-fast);}
+#pane-notes .add-row:focus-within{border-color:rgb(var(--core-rgb) / .5);}
+#pane-notes .add-row input[type=text]{min-width:0;height:40px;box-sizing:border-box;padding:0 var(--sp-2);border:none;background:none;font-size:15px;}
+#pane-notes .add-row .pill-btn{flex:none;height:40px;padding:0 var(--sp-4);border-radius:var(--r-ctl);}
+
+/* note cards: two to a row from 1100 px */
+#page-notes #notesList{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-3);margin-top:var(--sp-3) !important;}
+#page-notes #notesList > :not(.note-row2){grid-column:1/-1;}
+#page-notes .note-row2{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"title title" "snip snip" "tags tags" "time acts";align-content:start;padding:var(--sp-4) 18px var(--sp-2);border:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);transition:border-color var(--dur-fast),background var(--dur-fast);}
+#page-notes .note-row2:hover{border-color:rgb(var(--core-rgb) / .28);}
+#page-notes .note-row2::before{display:none;}
+#page-notes .note-row2.n-hide{display:none;}
+#page-notes .note-row2.pinned{background:linear-gradient(135deg,rgb(var(--core-rgb) / .08),transparent 70%),var(--panel);border-color:rgb(var(--core-rgb) / .3);}
+#page-notes .n-head{display:contents;}
+#page-notes .n-title{grid-area:title;font:var(--t-label);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+#page-notes .n-snip{grid-area:snip;margin-top:var(--sp-1);font-size:13px;line-height:1.45;color:var(--text-soft);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line;}
+#page-notes .n-tags{grid-area:tags;}
+#page-notes .n-time{grid-area:time;align-self:center;margin-top:var(--sp-2);font-size:11px;}
+#page-notes .n-acts{grid-area:acts;margin:var(--sp-2) -6px 0 0;}
+#page-notes .n-act,#page-notes .n-grip{width:28px;height:28px;}
+#page-notes .nt-tools{margin:var(--sp-3) 0 0;}
+#page-notes .nt-search{height:40px;box-sizing:border-box;border-radius:var(--r-ctl);}
+#page-notes .nt-tags .chip{height:28px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 var(--sp-3);}
+
+/* reminders: captions, 56 px rows, 22 px check circle */
+#pane-reminders .group-label{font:var(--t-caption);letter-spacing:.06em;margin:var(--sp-4) 0 var(--sp-2);}
+#pane-reminders .group-label:first-child{margin-top:0;}
+#pane-reminders .group-label.today{color:var(--core);}
+#pane-reminders .row{min-height:56px;box-sizing:border-box;margin:0 0 var(--sp-2);padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);border:1px solid var(--line);border-radius:14px;background:var(--panel);transition:border-color var(--dur-fast);}
+#pane-reminders .row:hover{border-color:rgb(var(--core-rgb) / .28);}
+#pane-reminders .row .dot{width:22px;height:22px;}
+#pane-reminders .row .dot svg{width:13px;height:13px;}
+#pane-reminders .r-time{width:68px;}
+#pane-reminders .r-del{width:28px;height:28px;padding:0;border-radius:var(--sp-2);}
+#pane-reminders .r-del:hover{background:rgb(var(--danger-rgb) / .12);}
+#reminderGroups{min-height:120px;}
+
+/* reminder composer: 720 x 64, stays above the bottom edge while the list scrolls */
+#page-notes .rem-dock{position:sticky;bottom:0;z-index:4;display:flex;flex-direction:column;gap:var(--sp-2);margin-top:var(--sp-4);}
+#page-notes .rm-quick,#page-notes .rm-smart{margin:0;}
+/* quick times only while you are writing a reminder, so they do not lie over the list the rest of the time */
+#page-notes .rm-quick{display:none;}
+#page-notes .rem-dock:focus-within .rm-quick{display:flex;}
+#page-notes .rm-quick .chip{height:34px;box-sizing:border-box;display:inline-flex;align-items:center;padding:0 var(--sp-3);background:var(--panel);}
+#page-notes .rem-add{grid-template-columns:minmax(0,1fr) 140px 126px auto;align-items:center;min-height:64px;box-sizing:border-box;margin:0;padding:11px var(--sp-3);gap:var(--sp-2);border:1px solid var(--line);border-radius:var(--r-card);background:var(--panel);box-shadow:var(--shadow-hover);transition:border-color var(--dur-fast);}
+#page-notes .rem-add:focus-within{border-color:rgb(var(--core-rgb) / .5);}
+#page-notes .rem-add input{height:40px;box-sizing:border-box;padding:0 var(--sp-3);border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--panel-2);color:var(--text);font:inherit;font-size:13px;outline:none;text-overflow:ellipsis;}
+#page-notes .rem-add input:focus{border-color:var(--core);}
+#page-notes .rem-add .pill-btn{height:40px;padding:0 18px;border-radius:var(--r-ctl);}
+
+@media (max-width:1099.98px){#page-notes #notesList{grid-template-columns:minmax(0,1fr);}}
 
 /* ==== style/apps/apps.css ==== */
 /* ==========================================================================

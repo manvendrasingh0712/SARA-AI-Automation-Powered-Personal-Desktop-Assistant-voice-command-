@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=9be4df9bb9">
+<link rel="stylesheet" href="bundle/app.css?v=a6be977b3f">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -148,13 +148,15 @@
       <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
     </div>
     <div class="page-body">
-      <div class="tabs">
-        <button class="tab active" data-tab="notes">Notes</button>
-        <button class="tab" data-tab="reminders">Reminders</button>
+      <div class="notes-top">
+        <div class="tabs seg" role="tablist" aria-label="Notes and reminders">
+          <button class="tab active" data-tab="notes" role="tab" aria-selected="true">Notes</button>
+          <button class="tab" data-tab="reminders" role="tab" aria-selected="false">Reminders</button>
+        </div>
+        <div class="notes-sub" id="notesIndexStatus" data-skel><span class="skel skel-line" style="width:190px"></span></div>
       </div>
 
       <div class="pane active" id="pane-notes">
-        <div class="notes-sub" id="notesIndexStatus" data-skel><span class="skel skel-line" style="width:190px"></span></div>
         <div class="add-row">
           <input type="text" id="newNoteText" placeholder="Write a note…" autocomplete="off">
           <button class="pill-btn primary" id="saveNoteBtn">Save</button>
@@ -165,11 +167,13 @@
 
       <div class="pane" id="pane-reminders">
         <div id="reminderGroups"></div>
-        <div class="rem-add">
-          <input type="text" id="newReminderText" placeholder="Add a reminder…" autocomplete="off">
-          <input type="date" id="newReminderDate">
-          <input type="time" id="newReminderTime">
-          <button class="pill-btn primary" id="addReminderBtn">Add</button>
+        <div class="rem-dock">
+          <div class="rem-add">
+            <input type="text" id="newReminderText" placeholder="Add a reminder…" autocomplete="off">
+            <input type="date" id="newReminderDate" aria-label="Reminder date">
+            <input type="time" id="newReminderTime" aria-label="Reminder time">
+            <button class="pill-btn primary" id="addReminderBtn">Add</button>
+          </div>
         </div>
       </div>
     </div>
@@ -757,6 +761,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=1f2d8ea0b9"></script>
+<script src="bundle/app.js?v=78cc1de9de"></script>
 </body>
 </html>
