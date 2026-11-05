@@ -2658,6 +2658,59 @@ html[data-quality="low"] .ly-line{transition:none;}
 html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{transition:none;}
 @media (prefers-reduced-motion:reduce){.rt-detail,.rt-detail-pad,.rt-picker,.rt-link::after{transition:none;}.auto-card.rt-ran,.rt-step.rt-flash{animation:none;}}
 
+/* ######################################################################
+   Redesign phase 5 -- Automation (spec section 8.3): a 720 px column, mode tiles, routine rows with an actions menu.
+   ###################################################################### */
+#page-automation .page-body{padding-bottom:var(--pad-bottom);}
+#page-automation .page-body > *{width:100%;max-width:var(--content-a);margin-inline:auto;box-sizing:border-box;}
+#page-automation .section-label{font:var(--t-caption);letter-spacing:.06em;margin:var(--sp-6) auto var(--sp-2);}
+#page-automation .page-body > .section-label:first-child{margin-top:0;}
+#page-automation .mode-note{max-width:var(--content-a);font:var(--t-helper);margin-bottom:var(--sp-3);}
+
+/* mode tiles: three to a row, 96 px tall */
+#page-automation #modeChips{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3);}
+#page-automation #modeChips .mode-tile{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;min-height:96px;box-sizing:border-box;min-width:0;padding:var(--sp-3) var(--sp-4);border-radius:18px;background:var(--panel);border:1px solid var(--line);color:var(--text-soft);text-align:left;white-space:normal;transition:border-color var(--dur-fast),background var(--dur-fast),transform var(--dur-fast) var(--ease-spring);}
+#page-automation #modeChips .mode-tile:hover{border-color:rgb(var(--core-rgb) / .4);transform:translateY(-1px);box-shadow:none;}
+#page-automation #modeChips .mode-tile:active{transform:scale(.985);}
+#page-automation .mode-tile > .ic:first-child{width:22px;height:22px;margin-bottom:var(--sp-1);color:var(--core);}
+#page-automation .mode-tile b{font:600 14px/1.25 var(--font);color:var(--text);}
+#page-automation .mode-tile small{max-width:100%;font:var(--t-helper);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#page-automation #modeChips .mode-tile.on{border-color:rgb(var(--core-rgb) / .55);background:rgb(var(--core-rgb) / .10);}
+#page-automation .mode-check{position:absolute;top:var(--sp-2);right:var(--sp-2);width:20px;height:20px;padding:var(--sp-1);box-sizing:border-box;border-radius:50%;background:var(--core);color:var(--on-core);stroke-width:2.4;opacity:0;transform:scale(.6);transition:opacity var(--dur-fast),transform var(--dur-med) var(--ease-spring);}
+#page-automation .mode-tile.on .mode-check{opacity:1;transform:none;}
+
+/* routines */
+#page-automation .auto-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);margin-top:var(--sp-6);margin-bottom:var(--sp-3);}
+#page-automation .auto-head .section-label{width:auto;margin:0;}
+#page-automation #newRoutineBtn{height:36px;box-sizing:border-box;padding:0 var(--sp-4);border-radius:var(--r-ctl);margin:0;flex:none;}
+#page-automation .auto-card{max-width:none;min-height:72px;box-sizing:border-box;margin-bottom:var(--sp-2);padding:var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4);justify-content:flex-start;gap:0 var(--sp-3);border-radius:var(--r-sm);}
+#page-automation .auto-card::before{display:none;}
+#page-automation .auto-plate{flex:none;display:grid;place-items:center;width:40px;height:40px;border-radius:var(--r-ctl);background:rgb(var(--core-rgb) / .12);color:var(--core);}
+#page-automation .auto-info{flex:1 1 0;}
+#page-automation .auto-info .a-name{font:600 14px/1.3 var(--font);margin-bottom:2px;}
+#page-automation .auto-info .a-sub{font:var(--t-helper);}
+#page-automation .auto-actions{position:relative;}
+/* the card with the open menu lies above the cards after it, otherwise they cover the menu */
+#page-automation .auto-card:has(.auto-menu:not([hidden])){z-index:20;}
+#page-automation .auto-more{display:grid;place-items:center;width:32px;height:32px;padding:0;border:none;border-radius:var(--r-ctl);background:none;color:var(--muted);cursor:pointer;transition:color var(--dur-fast),background var(--dur-fast);}
+#page-automation .auto-more:hover,#page-automation .auto-more[aria-expanded="true"]{color:var(--text);background:rgb(var(--fg-rgb) / .06);}
+#page-automation .auto-more svg{width:18px;height:18px;fill:currentColor;}
+#page-automation .auto-menu{position:absolute;top:calc(100% + var(--sp-1));right:0;z-index:12;display:flex;flex-direction:column;min-width:150px;padding:var(--sp-1);border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--panel);box-shadow:var(--shadow-hover);}
+#page-automation .auto-menu button{height:36px;padding:0 var(--sp-3);border:none;border-radius:var(--sp-2);background:none;color:var(--text-soft);font:var(--t-label);font-size:13px;text-align:left;cursor:pointer;white-space:nowrap;}
+#page-automation .auto-menu button:hover,#page-automation .auto-menu button:focus-visible{color:var(--text);background:rgb(var(--fg-rgb) / .06);}
+#page-automation .auto-menu button.danger{color:var(--danger);}
+#page-automation .auto-menu button.danger:hover{background:rgb(var(--danger-rgb) / .12);color:var(--danger);}
+#page-automation .auto-card .rt-detail{order:9;}
+
+/* templates and the builder */
+#page-automation .rt-tpl-row{max-width:var(--content-a);grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-3);margin-top:0;}
+#page-automation .rt-tpl{border-radius:var(--r-sm);}
+#page-automation #routinesList .empty{max-width:none;}
+#routineModal .modal{width:min(560px,100%);border-radius:var(--r-hero);}
+@media (max-width:1099.98px){#page-automation #modeChips{grid-template-columns:repeat(2,minmax(0,1fr));}}
+html[data-quality="low"] #page-automation .mode-tile:hover{transform:none;}
+@media (prefers-reduced-motion:reduce){#page-automation .mode-check,#page-automation #modeChips .mode-tile{transition:none;}}
+
 /* ==== style/settings/settings.css ==== */
 /* ==========================================================================
    settings.css  --  Settings page: setting rows, language chips, accordions,

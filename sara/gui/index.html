@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=8c328fd643">
+<link rel="stylesheet" href="bundle/app.css?v=591eed7b1d">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -255,10 +255,12 @@
     <div class="page-body">
       <div class="section-label">Modes</div>
       <div class="mode-note">One tap applies a bundle of settings — same as saying “switch to study mode”.</div>
-      <div class="chip-row" id="modeChips"></div>
-      <div class="section-label">Routines</div>
+      <div class="chip-row" id="modeChips" role="radiogroup" aria-label="Modes"></div>
+      <div class="auto-head">
+        <div class="section-label">Routines</div>
+        <button class="pill-btn primary" id="newRoutineBtn">+ New automation</button>
+      </div>
       <div id="routinesList"></div>
-      <button class="pill-btn" id="newRoutineBtn" style="margin-top:8px;">+ New automation</button>
     </div>
   </section>
 
@@ -760,6 +762,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=63e01caf44"></script>
+<script src="bundle/app.js?v=fbd257fcf7"></script>
 </body>
 </html>
