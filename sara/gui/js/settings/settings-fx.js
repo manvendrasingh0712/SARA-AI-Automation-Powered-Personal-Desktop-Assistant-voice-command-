@@ -172,8 +172,8 @@
       if (e.key === 'Escape') { inp.value = ''; run(); inp.blur(); }
       if (e.key === 'Enter') {
         let best = null, bt = 1e9;
-        all.forEach(function (c) { if (c.classList.contains('dim') || !inp.value.trim()) return; const r = c.getBoundingClientRect(), k = r.top * 10 + r.left / 1000; if (k < bt) { bt = k; best = c; } });
-        if (best) best.scrollIntoView({ behavior: rm() ? 'auto' : 'smooth', block: 'start' });
+        if (inp.value.trim()) best = all.filter(function (c) { return !c.classList.contains('dim'); })[0] || null;      // first matching card in group order
+        if (best) { if (SARA.settings) SARA.settings.open(null, best.id); else best.scrollIntoView({ behavior: rm() ? 'auto' : 'smooth', block: 'start' }); }
       }
     });
     document.addEventListener('keydown', function (e) {

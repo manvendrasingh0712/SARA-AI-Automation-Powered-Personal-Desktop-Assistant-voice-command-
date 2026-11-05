@@ -68,8 +68,10 @@
   if (themeBtn) themeBtn.addEventListener('click', function () {
     if (!SARA.theme) return;
     const cur = SARA.theme.current();
-    if (isLight(cur)) SARA.theme.apply(store.get(K_DARK) || 'sara');
-    else { if (cur !== 'custom') store.set(K_DARK, cur); SARA.theme.apply('paper'); }
+    if (isLight(cur)) {
+      const dark = store.get(K_DARK);                         // Auto day / night can have remembered a light theme here: that would change nothing
+      SARA.theme.apply(dark && !isLight(dark) ? dark : 'sara');
+    } else { if (cur !== 'custom') store.set(K_DARK, cur); SARA.theme.apply('paper'); }
     SARA.sound.tap();
   });
 

@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=7ede034cec">
+<link rel="stylesheet" href="bundle/app.css?v=9a9a1b0b6f">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -267,24 +267,17 @@
     </div>
     <div class="page-body">
       <div class="set-layout">
-      <nav class="set-rail" id="setRail" aria-label="Settings sections">
-        <span class="set-rail-ind" aria-hidden="true"></span>
-        <button type="button" class="on" aria-current="true" data-target="grp-assistant">Assistant</button>
-        <button type="button" data-target="grp-voice">Voice</button>
-        <button type="button" data-target="grp-appearance">Appearance</button>
-        <button type="button" data-target="grp-presets">Presets</button>
-        <button type="button" data-target="grp-access">Access</button>
-        <button type="button" data-target="grp-skills">Skills</button>
-        <button type="button" data-target="grp-calendar">Calendar</button>
-        <button type="button" data-target="grp-memory">Memory</button>
-        <button type="button" data-target="grp-system">Performance</button>
-        <button type="button" data-target="grp-security">Security</button>
-        <button type="button" data-target="grp-analytics">Analytics</button>
-        <button type="button" data-target="grp-advanced">Advanced</button>
+      <nav class="set-rail" id="setRail" aria-label="Settings groups">
+        <button type="button" class="on" aria-current="true" data-group="general" data-target="grp-assistant"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span>General</span></button>
+        <button type="button" data-group="voice" data-target="grp-voice"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><span>Voice &amp; Sound</span></button>
+        <button type="button" data-group="appearance" data-target="grp-appearance"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg><span>Appearance</span></button>
+        <button type="button" data-group="intelligence" data-target="grp-skills"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg><span>Intelligence</span></button>
+        <button type="button" data-group="security" data-target="grp-security"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span>Security</span></button>
+        <button type="button" data-group="system" data-target="grp-system"><svg class="ic" aria-hidden="true"><use href="#i-gauge"/></svg><span>System</span></button>
       </nav>
       <div class="set-cards">
         <!-- Settings groups (redesign spec 9.2). Each group wraps its existing cards; card ids, data-target values and every control id are unchanged. -->
-        <div class="set-group" id="sg-general" data-group="general" role="region" aria-labelledby="sg-general-title">
+        <div class="set-group on" id="sg-general" data-group="general" role="region" aria-labelledby="sg-general-title">
           <div class="set-group-head"><h2 class="set-group-title" id="sg-general-title">General</h2><p class="set-group-desc">Your name, listening, notifications and reminders</p></div>
           <div class="set-group-grid">
           <section class="set-card" id="grp-quick">
@@ -749,6 +742,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=dd34934a78"></script>
+<script src="bundle/app.js?v=e19786a76c"></script>
 </body>
 </html>
