@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=dba32f1651">
+<link rel="stylesheet" href="bundle/app.css?v=266986d69e">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -284,16 +284,17 @@
             <div class="set-card-head"><div class="set-card-title">Quick controls</div><div class="set-card-sub">the switches you reach for most</div></div>
           </section>
           <section class="set-card" id="grp-assistant">
-            <div class="set-card-head"><div class="set-card-title">Assistant</div><div class="set-card-sub">who Sara is to you</div></div>
+            <div class="set-card-head"><div class="set-card-title">Profile &amp; listening</div><div class="set-card-sub">who Sara is to you</div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Display name</div><div class="s-sub">what Sara calls you</div></div><input type="text" id="setName" placeholder="Your name" autocomplete="off"></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Wake-word listening</div><div class="s-sub">turn off to pause Sara completely</div></div><div class="toggle on" id="setActive" role="switch" tabindex="0" aria-checked="true"></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Focus mode</div><div class="s-sub">fewer interruptions</div></div><div class="toggle" id="setFocus" role="switch" tabindex="0" aria-checked="false"></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Notifications</div><div class="s-sub">on-screen alerts</div></div><div class="toggle on" data-setting="show_notifications" role="switch" tabindex="0" aria-checked="true"></div></div>
+          </section>
+          <section class="set-card" id="grp-proactive">
+            <div class="set-card-head"><div class="set-card-title">Proactive suggestions</div><div class="set-card-sub">nudges Sara gives on her own</div></div>
             <div class="set-card-body">
-              <div class="section-label">Proactive suggestions</div>
-              <div class="acc-note">nudges Sara gives on her own</div>
               <div class="info-row tog"><span>All proactive suggestions</span><div class="toggle on" data-setting="proactive_mode" role="switch" tabindex="0" aria-checked="true"></div></div>
-              <div class="tog-grid">
+              <div class="tog-grid" data-dim-with="[data-setting=&quot;proactive_mode&quot;]">
                 <div class="info-row tog"><span>Battery</span><div class="toggle on" data-setting="proactive_battery" role="switch" tabindex="0" aria-checked="true"></div></div>
                 <div class="info-row tog"><span>Reminders</span><div class="toggle on" data-setting="proactive_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
                 <div class="info-row tog"><span>Breaks</span><div class="toggle on" data-setting="proactive_idle" role="switch" tabindex="0" aria-checked="true"></div></div>
@@ -301,17 +302,24 @@
                 <div class="info-row tog"><span>Meetings</span><div class="toggle on" data-setting="proactive_meetings" role="switch" tabindex="0" aria-checked="true"></div></div>
                 <div class="info-row tog"><span>Routines</span><div class="toggle on" data-setting="proactive_routines" role="switch" tabindex="0" aria-checked="true"></div></div>
               </div>
-              <div class="section-label">Smart reminders</div>
-              <div class="acc-note">context-aware wording and gentle nudges</div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-reminders">
+            <div class="set-card-head"><div class="set-card-title">Smart reminders</div><div class="set-card-sub">context-aware wording and gentle nudges</div></div>
+            <div class="set-card-body">
               <div class="tog-grid">
                 <div class="info-row tog"><span>Contextual wording</span><div class="toggle on" data-setting="contextual_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
                 <div class="info-row tog"><span>Use my notes</span><div class="toggle on" data-setting="contextual_notes" role="switch" tabindex="0" aria-checked="true"></div></div>
                 <div class="info-row tog"><span>Awake awareness</span><div class="toggle on" data-setting="awake_awareness" role="switch" tabindex="0" aria-checked="true"></div></div>
                 <div class="info-row tog"><span>Late-night nudges</span><div class="toggle on" data-setting="late_night_nudges" role="switch" tabindex="0" aria-checked="true"></div></div>
               </div>
-              <div class="info-row"><span>Nudges so far</span><b id="pvTotal">0</b></div>
+              <div class="pv-stats">
+                <div class="stat"><b id="pvTotal">0</b><span>Nudges so far</span></div>
+                <div class="pv-notes">
               <div class="acc-note" id="pvBreakdown"></div>
               <div class="acc-note pv-recent" id="pvRecent" data-skel><span class="skel skel-line"></span></div>
+                </div>
+              </div>
             </div>
           </section>
           </div>
@@ -320,17 +328,22 @@
           <div class="set-group-head"><h2 class="set-group-title" id="sg-voice-title">Voice &amp; Sound</h2><p class="set-group-desc">How Sara sounds, listens and signals</p></div>
           <div class="set-group-grid">
           <section class="set-card" id="grp-voice">
-            <div class="set-card-head"><div class="set-card-title">Voice</div><div class="set-card-sub">hearing, speaking &amp; sounds</div></div>
+            <div class="set-card-head"><div class="set-card-title">Voice</div><div class="set-card-sub">hearing &amp; speaking</div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Mute Sara</div><div class="s-sub">stop voice replies right now</div></div><div class="toggle" id="setMute" role="switch" tabindex="0" aria-checked="false"></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Voice replies</div><div class="s-sub">Sara speaks her answers</div></div><div class="toggle on" data-setting="voice_replies" role="switch" tabindex="0" aria-checked="true"></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Language</div><div class="s-sub">what Sara listens for</div></div>
               <div class="chip-row" id="langChips"><span class="chip on" data-lang="auto">Auto</span><span class="chip" data-lang="en">English</span><span class="chip" data-lang="hi">हिन्दी</span></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Mic sensitivity</div><div class="s-sub">how easily Sara picks up your voice</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="micSlider"><span class="slider-val" id="micSliderVal">50</span></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Speech speed</div><div class="s-sub">how fast Sara talks back</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="speedSlider"><span class="slider-val" id="speedSliderVal">50</span></div></div>
+          </section>
+          <section class="set-card" id="grp-sounds">
+            <div class="set-card-head"><div class="set-card-title">Sound effects</div><div class="set-card-sub">the little sounds Sara makes</div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Sound effects</div><div class="s-sub">soft UI blips</div></div><div class="toggle on" id="setSounds" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="dim-group" data-dim-with="#setSounds">
             <div class="set-row"><div class="set-info"><div class="s-name">Sound volume</div><div class="s-sub">this device only</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="80" id="soundVolume" aria-label="Sound volume"><span class="slider-val" id="soundVolumeVal">80</span></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Sound pack</div><div class="s-sub">tap one to hear it</div></div><div class="chip-row" id="soundPacks"></div></div>
             <div class="set-row"><div class="set-info"><div class="s-name">Startup sound</div><div class="s-sub">a chime when Sara boots</div></div><div class="toggle" data-setting="startup_sound" role="switch" tabindex="0" aria-checked="false"></div></div>
+            </div>
           </section>
           </div>
         </div>
@@ -338,13 +351,18 @@
           <div class="set-group-head"><h2 class="set-group-title" id="sg-appearance-title">Appearance</h2><p class="set-group-desc">Themes, accent colour and accessibility</p></div>
           <div class="set-group-grid">
           <section class="set-card" id="grp-appearance">
-            <div class="set-card-head"><div class="set-card-title">Appearance</div><div class="set-card-sub">theme &amp; accent colour</div></div>
+            <div class="set-card-head"><div class="set-card-title">Theme</div><div class="set-card-sub">pick a look</div></div>
             <div class="set-card-body">
               <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
               <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
               <div class="set-row"><div class="set-info"><div class="s-name">Auto day / night</div><div class="s-sub">Paper from 06:00 to 18:00, your dark theme at night. This device only.</div></div><div class="toggle" id="autoTheme" role="switch" tabindex="0" aria-checked="false"></div></div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-display">
+            <div class="set-card-head"><div class="set-card-title">Display &amp; accent</div><div class="set-card-sub">quality and accent colour</div></div>
+            <div class="set-card-body">
               <div class="section-label" id="qualityLabel">Visual quality</div>
-              <div class="chip-row" id="qualityRow" role="radiogroup" aria-label="Visual quality">
+              <div class="chip-row seg" id="qualityRow" role="radiogroup" aria-label="Visual quality">
                 <button type="button" class="chip" role="radio" aria-checked="false" data-q="low">Low</button>
                 <button type="button" class="chip" role="radio" aria-checked="false" data-q="balanced">Balanced</button>
                 <button type="button" class="chip" role="radio" aria-checked="false" data-q="high">High</button>
@@ -371,8 +389,9 @@
           <div class="set-group-head"><h2 class="set-group-title" id="sg-intelligence-title">Intelligence</h2><p class="set-group-desc">Skills, smart routing, memory and calendar</p></div>
           <div class="set-group-grid">
           <section class="set-card" id="grp-skills">
-            <div class="set-card-head"><div class="set-card-title">Intelligence &amp; Skills</div><div class="set-card-sub">what Sara can currently do</div></div>
+            <div class="set-card-head"><div class="set-card-title">Skills</div><div class="set-card-sub">what Sara can currently do</div></div>
             <div class="set-card-body">
+              <input type="text" class="field skills-filter" id="skillsFilter" placeholder="Filter skills…" aria-label="Filter skills" autocomplete="off">
               <div class="skills-scroll"><div id="skillsList" class="acc-note" data-skel><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div></div>
               <div class="acc-note" id="skillRestartNote" hidden>Skill changes apply after you restart SARA.</div>
             </div>
@@ -381,7 +400,7 @@
             <div class="set-card-head"><div class="set-card-title">Smart routing</div><div class="set-card-sub">cheapest model that still answers well</div></div>
             <div class="set-card-body">
               <div class="rt-block">
-                <div class="rt-seg" role="group" aria-label="Smart routing mode">
+                <div class="rt-seg seg" role="group" aria-label="Smart routing mode">
                   <button type="button" class="rt-mode" data-mode="off" aria-pressed="false">Off</button>
                   <button type="button" class="rt-mode" data-mode="shadow" aria-pressed="false">Shadow</button>
                   <button type="button" class="rt-mode" data-mode="on" aria-pressed="false">On</button>
@@ -441,7 +460,7 @@
             <div class="set-card-body">
               <div class="section-label">Protection mode</div>
               <div class="sec-block" id="secBlock">
-                <div class="sec-seg" id="secModes" role="group" aria-label="Protection mode">
+                <div class="sec-seg seg" id="secModes" role="group" aria-label="Protection mode">
                   <button type="button" class="sec-mode" data-mode="standard" aria-pressed="false">Standard</button>
                   <button type="button" class="sec-mode" data-mode="strict" aria-pressed="false">Strict</button>
                   <button type="button" class="sec-mode sec-off" data-mode="off" aria-pressed="false">Off</button>
@@ -467,11 +486,12 @@
           <section class="set-card" id="grp-system">
             <div class="set-card-head"><div class="set-card-title">Performance</div><div class="set-card-sub">live system &amp; response speed</div></div>
             <div class="set-card-body">
-              <div class="section-label">Performance</div>
-              <div class="info-row"><span>Backend</span><b id="sysBackend">—</b></div>
-              <div class="info-row"><span>CPU · RAM</span><b id="sysCpuRam"><span class="skel skel-inline"></span></b></div>
-              <div class="info-row"><span>Disk</span><b id="sysDisk"><span class="skel skel-inline"></span></b></div>
-              <div class="info-row"><span>Network</span><b id="sysNet"><span class="skel skel-inline"></span></b></div>
+              <div class="sys-tiles">
+                <div class="stat sys-tile"><b id="sysBackend">—</b><span>Backend</span></div>
+                <div class="stat sys-tile"><b id="sysCpuRam"><span class="skel skel-inline"></span></b><span>CPU · RAM</span></div>
+                <div class="stat sys-tile"><b id="sysDisk"><span class="skel skel-inline"></span></b><span>Disk</span></div>
+                <div class="stat sys-tile"><b id="sysNet"><span class="skel skel-inline"></span></b><span>Network</span></div>
+              </div>
 
               <div class="section-label">Response speed</div>
               <div class="perf-block" id="perfBlock">
@@ -491,14 +511,14 @@
             </div>
           </section>
           <section class="set-card" id="grp-analytics">
-            <div class="set-card-head"><div class="set-card-title">Analytics</div><div class="set-card-sub">how you use Sara</div></div>
+            <div class="set-card-head"><div class="set-card-title">Insights</div><div class="set-card-sub">how you use Sara</div></div>
             <div class="set-card-body">
-              <div class="section-label">Analytics</div>
               <div id="anLoading" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
               <div class="an-empty" id="anEmpty" hidden>
                 <div class="an-empty-title">No activity yet</div>
                 <div class="an-empty-sub">Once SARA is used, your activity will appear here.</div>
               </div>
+              <div class="an-layout">
               <div class="an-body" id="anBody" hidden>
                 <div class="stat-grid an-kpis">
                   <div class="stat an-kpi" id="anKpiMessages" hidden><b id="anMessages">0</b><span>Messages</span></div>
@@ -506,6 +526,7 @@
                   <div class="stat an-kpi" id="anKpiNudges" hidden><b id="anNudges">0</b><span>Proactive nudges</span></div>
                   <div class="stat an-kpi" id="anKpiSuccess" hidden><b id="anSuccess">0</b><span id="anSuccessLbl">Action success</span></div>
                 </div>
+                <div class="an-left">
                 <div class="section-label sub">Peak usage</div>
                 <div class="an-peak"><span>Busiest day</span><b id="anBusiest">—</b></div>
                 <div class="section-label sub">Most used</div>
@@ -516,8 +537,9 @@
                   <div class="trend" id="anTrend" role="group" aria-label="Commands per day, last 14 days"></div>
                 </div>
                 <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+                </div>
               </div>
-
+              <div class="an-right">
               <div class="section-label sub">Recent activity</div>
               <div class="btn-row">
                 <button class="pill-btn small active" data-filter="all">All</button>
@@ -528,7 +550,8 @@
 
               <div class="section-label sub">Frequently missed commands</div>
               <div id="missedCommands" class="acc-note" data-skel></div>
-
+              </div>
+              </div>
             </div>
           </section>
           <section class="set-card" id="grp-presets">
@@ -537,24 +560,16 @@
           </section>
           <section class="set-card" id="grp-advanced">
             <div class="set-card-head"><div class="set-card-title">Advanced</div><div class="set-card-sub">data, window &amp; setup</div></div>
-            <div class="set-card-body">
-              <div class="section-label">Data</div>
-              <div class="btn-row">
-                <button class="pill-btn small" id="btnOpenDataFolder">Open data folder</button>
-              </div>
-
-              <div class="section-label">Window &amp; setup</div>
-              <div class="btn-row">
-                <button class="pill-btn small" id="btnWizard">Re-run setup check</button>
-                <button class="pill-btn small" id="btnTour">Replay tour</button>
-                <button class="pill-btn small" id="btnMin">Minimize</button>
-                <button class="pill-btn small" id="btnMax">Maximize</button>
-              </div>
-              <div class="danger-zone">
-                <div><div class="s-name">Danger zone</div><div class="s-sub">closes Sara completely</div></div>
-                <button class="pill-btn small danger" id="btnClose">Close SARA</button>
-              </div>
-            </div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Data folder</div><div class="s-sub">Where Sara keeps your settings and memory</div></div><button class="pill-btn small" id="btnOpenDataFolder">Open data folder</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Setup check</div><div class="s-sub">Checks that everything Sara needs is in place</div></div><button class="pill-btn small" id="btnWizard">Re-run setup check</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Quick tour</div><div class="s-sub">Show the guided tour again</div></div><button class="pill-btn small" id="btnTour">Replay tour</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Minimize</div><div class="s-sub">Hide the window, Sara keeps listening</div></div><button class="pill-btn small" id="btnMin">Minimize</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Maximize</div><div class="s-sub">Fill the screen, or go back</div></div><button class="pill-btn small" id="btnMax">Maximize</button></div>
+          </section>
+          <section class="set-card" id="grp-danger">
+            <div class="set-card-head"><div class="set-card-title">Danger zone</div><div class="set-card-sub">closes Sara completely</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Close SARA</div><div class="s-sub">Stops listening and closes the app</div></div><button class="pill-btn danger" id="btnClose">Close SARA</button></div>
+            <div class="close-confirm" id="closeConfirm" role="alert" hidden><span>Close SARA completely?</span><button class="pill-btn small danger" id="btnCloseYes">Close</button><button class="pill-btn small" id="btnCloseNo">Cancel</button></div>
           </section>
           </div>
         </div>
@@ -742,6 +757,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=71325a4ee8"></script>
+<script src="bundle/app.js?v=6ca22b310b"></script>
 </body>
 </html>

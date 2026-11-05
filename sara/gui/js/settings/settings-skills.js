@@ -9,6 +9,13 @@
   'use strict';
   const SARA = window.SARA, $ = SARA.$, esc = SARA.escapeHtml;
 
+  const skillFilter = $('skillsFilter');
+  function filterSkills() {
+    const q = skillFilter ? skillFilter.value.trim().toLowerCase() : '';
+    document.querySelectorAll('#skillsList .skill-row').forEach(function (r) { r.classList.toggle('sk-hide', !!q && r.textContent.toLowerCase().indexOf(q) < 0); });
+  }
+  if (skillFilter) skillFilter.addEventListener('input', filterSkills);
+
   async function loadSkills() {
     const wrap = $('skillsList');
     const res = await SARA.callApi('get_skills_list');
@@ -22,6 +29,7 @@
         (s.status === 'error' ? ' <small style="color:var(--danger)">error</small>' : '') + '<span class="s-desc">' + esc(desc) + '</span></span>' +
         '<div class="toggle' + (s.enabled ? ' on' : '') + '" data-skill="' + esc(s.name) + '" role="switch" tabindex="0" aria-checked="' + (s.enabled ? 'true' : 'false') + '"></div></div>';
     }).join('');
+    filterSkills();
     wrap.querySelectorAll('[data-skill]').forEach(function (el) {
       SARA.bindToggle(el, async function (on) {
         el.closest('.skill-row').classList.toggle('off', !on);

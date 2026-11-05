@@ -3,6 +3,9 @@
    section labels, rows, inputs, buttons, toggle, tabs, chips, overlay/modal, empty state, range.
    Page-specific styling lives in the per-page files (home.css, chat.css, ...).
    ========================================================================== */
+/* hidden means hidden. Any rule that sets display (flex, grid ...) used to beat the attribute, which showed things meant to be
+   out of sight, such as the "Yes, reset" confirmation of Smart routing, all the time. */
+[hidden]{display:none !important;}
 .section-label{font-size:11.5px;letter-spacing:.06em;color:var(--muted);margin:22px 0 10px;text-transform:uppercase;}
 .section-label:first-child{margin-top:2px;}
 
@@ -232,7 +235,7 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
   font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
   transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
 .seg>button:hover{color:var(--text);}
-.seg>button[aria-checked="true"],.seg>button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
+.seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
 .seg>button:disabled{opacity:.45;cursor:default;}
 
 /* badge / status dot (spec 4.7): tinted with the status colour, never decoration */
@@ -244,3 +247,5 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 .badge.danger{color:var(--danger);background:rgb(var(--danger-rgb) / .14);}
 .badge.dot::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;}
 
+/* banner: a short message inside a card */
+.banner{display:block;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-ctl);font-size:12.5px;line-height:1.45;color:var(--text-soft);background:rgb(var(--info-rgb) / .12);overflow-wrap:anywhere;}
