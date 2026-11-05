@@ -132,7 +132,7 @@
     const K_GROUP = 'sara.settings.group', body = page.querySelector('.page-body');
     groups.forEach(function (g) { Array.prototype.forEach.call(g.querySelectorAll('.set-card'), function (c, i) { c.style.setProperty('--i', i); }); });
     const keyOf = function (el) { const g = el && el.closest && el.closest('.set-group'); return g ? g.dataset.group : ''; };
-    let current = '';
+    let current = '', searchPick = null, clearSearch = null;
     function showGroup(key) {
       if (!key || key === current || !groups.some(function (g) { return g.dataset.group === key; })) return false;
       current = key;
@@ -145,18 +145,20 @@
       try { localStorage.setItem(K_GROUP, key); } catch (e) {}
       return true;
     }
+    function pick(key) { if (!(searchPick && searchPick(key))) showGroup(key); }     // while a search is on, the list moves through the results instead
     links.forEach(function (l, n) {
-      l.addEventListener('click', function () { SARA.sound.tap(); showGroup(l.dataset.group); });
+      l.addEventListener('click', function () { SARA.sound.tap(); pick(l.dataset.group); });
       l.addEventListener('keydown', function (e) {               // arrow keys, Home / End move through the list
         const k = e.key === 'ArrowDown' ? n + 1 : e.key === 'ArrowUp' ? n - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? links.length - 1 : -1;
         if (k < 0) return; e.preventDefault();
-        const t = links[(k + links.length) % links.length]; t.focus(); showGroup(t.dataset.group);
+        const t = links[(k + links.length) % links.length]; t.focus(); pick(t.dataset.group);
       });
     });
     /* public: SARA.settings.open('system', 'grp-analytics') -- palette, tour and the Home Usage card use it */
     SARA.settings = {
       open: function (key, cardId) {
         const card = cardId ? $(cardId) : null;
+        if (clearSearch) clearSearch();
         showGroup(key || keyOf(card));
         if (!card || !body) return;
         let touched = false;
@@ -175,6 +177,108 @@
     let saved = ''; try { saved = localStorage.getItem(K_GROUP) || ''; } catch (e) {}
     current = ''; showGroup(saved || 'general');
     if (!current) showGroup('general');
+
+    /* ---- search across every group ( "/" to focus, Enter = jump to the first hit, Esc = clear ) ----
+       While a query is on, the pane lists the matching cards of ALL groups, each card trimmed to its matching rows, and the
+       group list shows how many hits each group has. Nothing is removed: hiding is a class, and clearing it restores the page. */
+    if (rail) {
+      const ROWS = '.set-row,.info-row,.skill-row,.stat,.theme-card,.pill-btn,.chip,.section-label,.acc-note';
+      const wrap = document.createElement('div'); wrap.className = 'set-search-wrap';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'ic sm'); svg.setAttribute('aria-hidden', 'true');
+      const use = document.createElementNS('http://www.w3.org/2000/svg', 'use'); use.setAttribute('href', '#i-search'); svg.appendChild(use);
+      const inp = document.createElement('input');
+      inp.type = 'search'; inp.className = 'set-search'; inp.placeholder = 'Search settings\u2026'; inp.autocomplete = 'off'; inp.title = 'Press / to search';
+      inp.setAttribute('aria-label', 'Search settings');
+      const x = document.createElement('button'); x.type = 'button'; x.className = 'set-search-x'; x.textContent = '\u00d7'; x.hidden = true; x.setAttribute('aria-label', 'Clear search');
+      const status = document.createElement('div'); status.className = 'set-search-status'; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+      wrap.appendChild(svg); wrap.appendChild(inp); wrap.appendChild(x);
+      rail.insertBefore(status, rail.firstChild); rail.insertBefore(wrap, status);
+      const empty = document.createElement('div'); empty.className = 'set-search-empty'; empty.hidden = true; cards.appendChild(empty);
+      const badges = {};
+      links.forEach(function (l) { const b = document.createElement('span'); b.className = 'set-count'; b.hidden = true; l.appendChild(b); badges[l.dataset.group] = b; });
+
+      /* hide what has no hit inside it; a hit keeps everything below it (a label keeps what follows it, see below) */
+      function prune(box) {
+        Array.prototype.forEach.call(box.children, function (el) {
+          if (el.classList.contains('set-card-head') || el.classList.contains('set-glow') || el.classList.contains('hit') || el.classList.contains('s-keep')) return;
+          if (el.querySelector('.hit,.s-keep')) prune(el); else el.classList.add('s-hide');
+        });
+      }
+      function reset() {
+        page.querySelectorAll('.hit').forEach(function (n) { n.classList.remove('hit'); });
+        page.querySelectorAll('.s-hide').forEach(function (n) { n.classList.remove('s-hide'); });
+        page.querySelectorAll('.s-keep').forEach(function (n) { n.classList.remove('s-keep'); });
+        groups.forEach(function (g) { g.classList.remove('s-match'); });
+        all.forEach(function (c) { c.classList.remove('dim'); });
+      }
+      function run() {
+        const q = inp.value.trim().toLowerCase();
+        reset();
+        page.classList.toggle('set-searching', !!q);
+        x.hidden = !inp.value;
+        links.forEach(function (l) { badges[l.dataset.group].hidden = !q; l.classList.remove('none'); });
+        empty.hidden = true;
+        if (!q) { status.textContent = ''; return; }
+        let total = 0, inGroups = 0;
+        groups.forEach(function (g) {
+          let n = 0;
+          g.querySelectorAll('.set-card').forEach(function (c) {
+            if (c.id === 'grp-quick') return;
+            const hd = c.querySelector('.set-card-head'), headHit = !!hd && hd.textContent.toLowerCase().indexOf(q) >= 0;
+            let hits = 0;
+            c.querySelectorAll(ROWS).forEach(function (r) {
+              if (r.closest('[hidden]') || r.parentElement.closest('.hit')) return;
+              const meta = r.classList.contains('theme-card') ? r.querySelector('.tc-meta') : null;     // not the "SARA / ACTIVE" text of the mini preview
+              if ((meta || r).textContent.toLowerCase().indexOf(q) < 0) return;
+              r.classList.add('hit'); hits++;
+              if (r.classList.contains('section-label')) { let k = r.nextElementSibling; while (k && !k.classList.contains('section-label')) { k.classList.add('s-keep'); k = k.nextElementSibling; } }
+            });
+            if (headHit && !hits) hits = 1;
+            c.classList.toggle('dim', !hits);
+            if (hits && !headHit) prune(c);
+            n += hits;
+          });
+          g.classList.toggle('s-match', n > 0);
+          const b = badges[g.dataset.group]; if (b) { b.textContent = String(n); const l = b.parentElement; l.classList.toggle('none', !n); }
+          total += n; if (n) inGroups++;
+        });
+        status.textContent = total ? total + (total === 1 ? ' result' : ' results') + ' in ' + inGroups + (inGroups === 1 ? ' group' : ' groups') : 'No results';
+        if (!total) { empty.textContent = 'No setting matches \u201c' + inp.value.trim() + '\u201d.'; empty.hidden = false; }
+        if (body) body.scrollTop = 0;
+      }
+      clearSearch = function () { if (inp.value) { inp.value = ''; run(); } };
+      searchPick = function (key) {
+        if (!inp.value.trim()) return false;
+        const g = groups.filter(function (n) { return n.dataset.group === key; })[0];
+        if (g && g.classList.contains('s-match')) { g.scrollIntoView({ block: 'start', behavior: reduce() ? 'auto' : 'smooth' }); return true; }
+        clearSearch(); return false;                                                        // a group without hits: leave the search and open it
+      };
+      function jump() {
+        run();
+        const q = inp.value.trim(); if (!q) return;
+        const firstCard = all.filter(function (c) { return c.id !== 'grp-quick' && !c.classList.contains('dim'); })[0]; if (!firstCard) return;
+        const hit = firstCard.querySelector('.hit');
+        clearSearch(); showGroup(keyOf(firstCard));
+        requestAnimationFrame(function () {
+          (hit || firstCard).scrollIntoView({ block: hit ? 'center' : 'start', behavior: reduce() ? 'auto' : 'smooth' });
+          if (hit) once(hit, 'row-flash', 1300); else once(firstCard, 'set-flash', 1000);
+        });
+      }
+      let st = 0;
+      inp.addEventListener('input', function () { clearTimeout(st); st = setTimeout(run, 90); });
+      inp.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Escape') { clearTimeout(st); clearSearch(); inp.blur(); }
+        if (e.key === 'Enter') { clearTimeout(st); jump(); }
+      });
+      x.addEventListener('click', function () { clearTimeout(st); clearSearch(); inp.focus(); });
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey || SARA.current !== 'settings') return;
+        const tg = e.target; if (tg && (/^(input|textarea|select)$/i.test(tg.tagName) || tg.isContentEditable)) return;
+        if (!inp.offsetParent) return;
+        e.preventDefault(); inp.focus(); inp.select();
+      });
+    }
 
     /* ---- quick controls (mirror the real toggles) ---- */
     const proxies = Array.prototype.slice.call(document.querySelectorAll('[data-proxy]'));      // the five quick tiles now sit in the Home dock
@@ -204,6 +308,11 @@
     cards.addEventListener('click', function (e) {
       const t = e.target.closest('.toggle'); if (t) toggleFx(t);
       const ch = e.target.closest('#langChips .chip'); if (ch) once(ch.closest('.set-card'), 'set-flash', 900);
+    });
+    cards.addEventListener('click', function (e) {
+      const row = e.target.closest('.set-row,.info-row.tog,.skill-row'); if (!row) return;
+      if (e.target.closest('.toggle,button,input,select,textarea,a,label,[role="slider"]')) return;
+      const sw = row.querySelectorAll('.toggle'); if (sw.length === 1) sw[0].click();
     });
     cards.addEventListener('keydown', function (e) {
       if (e.key !== 'Enter' && e.key !== ' ') return;

@@ -65,7 +65,7 @@
     set(KEY, '1'); doc.removeEventListener('keydown', onKey, true); window.removeEventListener('resize', onResize);
     const r = root; root = null; r.classList.remove('open'); setTimeout(function () { r.remove(); }, SARA.reduceMotion ? 0 : 220);
     if (prevFocus && prevFocus.focus) prevFocus.focus({ preventScroll: true });
-    if (finished && SARA.toast) SARA.toast('ti-check', 'var(--core)', 'You are set. Settings › Setup has "Replay tour".', { variant: 'info' });
+    if (finished && SARA.toast) SARA.toast('ti-check', 'var(--core)', 'You are set. Settings › System has "Replay tour".', { variant: 'info' });
   }
   function go(d) {
     if (busy && !SARA.reduceMotion) return;
