@@ -29,12 +29,15 @@ sara/tools/web.py. On any failure, create_event() returns a safe
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List
 
 from config import Config
+from sara.core import secret_store
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,13 @@ def _token_path() -> str:
     return getattr(Config, "GOOGLE_CALENDAR_TOKEN_PATH", "") or ""
 
 
+def _enc_token_path() -> str:
+    """P2.2: the DPAPI-encrypted sibling of the plaintext token path (same
+    directory, .enc extension) -- preferred over plaintext when available."""
+    plain = _token_path()
+    return str(Path(plain).with_suffix(".enc")) if plain else ""
+
+
 def get_calendar_service():
     """
     Returns an authorized Google Calendar API service object, or None if
@@ -85,10 +95,27 @@ def get_calendar_service():
         return None
 
     token_path = _token_path()
+    enc_token_path = _enc_token_path()
 
     try:
         creds = None
-        if token_path and os.path.exists(token_path):
+        # P2.2: the encrypted store is preferred. A plaintext token.json still sitting
+        # next to it (e.g. from before this feature existed) is migrated into the
+        # encrypted store once, WITHOUT deleting the plaintext original -- that stays
+        # until a human decides to remove it.
+        if enc_token_path:
+            if token_path:
+                secret_store.migrate_plaintext_file(Path(token_path), Path(enc_token_path), "SARA-AI Google Calendar token")
+            token_json = secret_store.load_encrypted(Path(enc_token_path))
+            if token_json:
+                try:
+                    creds = Credentials.from_authorized_user_info(json.loads(token_json), _SCOPES)
+                except Exception as e:
+                    if Config.DEBUG_MODE:
+                        print(f"[Calendar] Couldn't load encrypted token, will try plaintext/re-auth: {e}")
+                    creds = None
+
+        if creds is None and token_path and os.path.exists(token_path):
             try:
                 creds = Credentials.from_authorized_user_file(token_path, _SCOPES)
             except Exception as e:
@@ -109,7 +136,12 @@ def get_calendar_service():
                 # Opens the user's default browser for one-time consent.
                 creds = flow.run_local_server(port=0)
 
-            if token_path:
+            # P2.2: save encrypted when a crypto backend is available; plaintext only as
+            # the fallback (keeps calendar working on a non-Windows/DPAPI-less setup).
+            saved_encrypted = False
+            if enc_token_path:
+                saved_encrypted = secret_store.save_encrypted(Path(enc_token_path), creds.to_json(), "SARA-AI Google Calendar token")
+            if not saved_encrypted and token_path:
                 try:
                     with open(token_path, "w", encoding="utf-8") as f:
                         f.write(creds.to_json())

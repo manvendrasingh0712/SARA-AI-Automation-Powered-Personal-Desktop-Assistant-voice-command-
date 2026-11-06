@@ -157,6 +157,19 @@ def _migrate_legacy_file(app_data_path: Path, legacy_path: Path) -> Path:
     return app_data_path
 
 
+# P2.2: no GEMINI_API_KEY in the environment -- check the DPAPI-encrypted store (written by
+# the Settings GUI's masked API-key field, P4.1; nothing writes here yet). .env is always
+# checked FIRST (see GEMINI_API_KEY below) and always wins if set. Never raises; "" if the
+# encrypted store is empty, missing, or DPAPI is unavailable.
+def _load_gemini_key_fallback() -> str:
+    try:
+        from sara.core import secret_store
+
+        return secret_store.load_encrypted(app_data_subdir("data") / "gemini_api_key.enc") or ""
+    except Exception:
+        return ""
+
+
 class ConfigError(Exception):
     """
     Raised when configuration validation finds a fatal, unrecoverable
@@ -532,7 +545,7 @@ class Config:
     )
 
     # ── Gemini ────────────────────────────────────────────────────────────
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "") or _load_gemini_key_fallback()
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     GEMINI_FAST_MODEL: str = os.getenv("GEMINI_FAST_MODEL", "")
     # Optional top tier for the learned router (empty = tier absent).
