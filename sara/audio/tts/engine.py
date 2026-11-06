@@ -579,6 +579,7 @@ class TextToSpeech:
                print(f"[TTS] disabled speak(): {text[:50]}")
             return
 
+        _echo_start = time.monotonic()
         with self._lock:
             self._stop.clear()
             self._speaking.set()
@@ -625,6 +626,20 @@ class TextToSpeech:
                if pcm is not None and len(pcm) > 0:
                    _t_mark("tts_first_audio")
                    self._player.play_and_wait(pcm, self._stop, self._volume)
+                   # Self-Echo Guard: record what was actually just played (real
+                   # text, real start/end), so the command loop can recognize its
+                   # own delayed tail/echo in the next transcript. See
+                   # sara/audio/echo_guard.py; this is a fallback on top of AEC's
+                   # real-time cancellation (player.py already feeds it the live
+                   # reference), not a replacement for it.
+                   # If this call came from tts_worker.py's speak(), an entry is
+                   # already open (opened before the job was even queued, to cover
+                   # block=False) -- close that one instead of adding a duplicate.
+                   # Only a direct (non-worker) caller falls back to record().
+                   from sara.audio.echo_guard import get_default_guard
+                   _guard = get_default_guard()
+                   if not _guard.record_end(text, time.monotonic()):
+                       _guard.record(text, _echo_start, time.monotonic())
                elif getattr(Config, "DEBUG_MODE", False):
                    print(
                        f'[TTS] speak(): empty audio — lang={lang} text="{text[:50]}"'
@@ -649,6 +664,7 @@ class TextToSpeech:
                pass
             return False
 
+        _echo_start = time.monotonic()
         with self._lock:
             self._stop.clear()
             self._speaking.set()
@@ -679,7 +695,13 @@ class TextToSpeech:
                self._speaking.clear()
 
         if failed or recorder.error:
+            # Fallback path re-enters through self.speak(), which already
+            # records for the guard — don't double-record the same text here.
             return self._speak_whole_reply(recorder, chunker_future, fast, interrupted)
+        spoken_text = recorder.whole_reply(drain=True)
+        if spoken_text:
+            from sara.audio.echo_guard import get_default_guard
+            get_default_guard().record(spoken_text, _echo_start, time.monotonic())
         return interrupted
 
     def _speak_whole_reply(

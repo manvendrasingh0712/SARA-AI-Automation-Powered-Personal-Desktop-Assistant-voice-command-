@@ -1064,6 +1064,30 @@ def run_sara_logic(
                     print(f"[Logic] Ignored wake-ack echo: {str(user_input)!r}")
                     user_input = ""
 
+                # Self-Echo Guard (general case, see sara/audio/echo_guard.py):
+                # transcript-level fallback for TTS self-hearing that AEC's
+                # real-time cancellation missed (delayed final words / an
+                # acoustic echo tail). A pending confirmation is excluded for
+                # the same reason _is_ack_echo() excludes it above -- a real
+                # "yes"/"no" answer must never be discarded just because it
+                # resembles something SARA recently said.
+                if (
+                    user_input
+                    and not confirm_state.get("pending")
+                    and bool(getattr(Config, "ECHO_GUARD_ENABLED", True))
+                ):
+                    from sara.audio.echo_guard import get_default_guard
+
+                    _guard = get_default_guard()
+                    if _guard.is_echo(str(user_input), aec_enabled=aec_active, confidence=stt_confidence):
+                        _score = _guard.best_match(str(user_input), aec_enabled=aec_active)
+                        print(
+                            f"[Logic] Ignored self-echo: {str(user_input)!r} "
+                            f"(score={_score if _score is None else round(_score, 2)}, "
+                            f"confidence={stt_confidence:.2f}, aec={aec_active})"
+                        )
+                        user_input = ""
+
                 if not user_input:
                     ui_update("transcript_partial", "user", "")
                     empty_retries += 1
