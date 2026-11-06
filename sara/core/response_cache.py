@@ -84,7 +84,7 @@ def shared_cache(db_path: str, ttl_days: float = 7.0, max_entries: int = 500) ->
 
 def scope_of(brain) -> tuple:
     """(language, persona version, model id) of the brain: a persona / model / language change starts a fresh cache."""
-    persona = hashlib.sha1((getattr(brain, "system_instruction", "") or "").encode("utf-8")).hexdigest()[:10]
+    persona = hashlib.sha1((getattr(brain, "system_instruction", "") or "").encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
     return str(getattr(brain, "_lang", "")), persona, str(getattr(brain, "model_name", ""))
 
 
