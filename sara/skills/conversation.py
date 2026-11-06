@@ -15,7 +15,7 @@ The skills sit at the FRONT of the intent table, so "alarm band karo" is read he
 """
 from __future__ import annotations
 
-from ._framework import SkillContext, SkillResult, skill
+from ._framework import SkillContext, skill
 
 _DONE = r"(?:\s+(?:karo|kro|kar|do|de|dena|kardo|kar\s+do))*"
 

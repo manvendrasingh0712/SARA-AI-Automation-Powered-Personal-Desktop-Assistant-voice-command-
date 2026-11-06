@@ -157,11 +157,6 @@ _HINGLISH_EXAMPLES = (
 
 
 def _build_base_prompt(name: str, tod: str, lang: str, user_name: Optional[str]) -> str:
-    no_markdown = (
-        "Never use markdown — no asterisks, hashtags, bullet points, "
-        "or backticks. Your text is spoken aloud by a voice engine. "
-    )
-
     if lang == "english":
         base = (
             f"You are {name}, a smart, accurate voice assistant on the user's PC. {tod} "
