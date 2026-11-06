@@ -70,6 +70,8 @@ PRODUCTION-AUDIT CHANGES (this revision)
 import os
 import re
 import logging
+import shutil
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -120,6 +122,39 @@ def app_data_subdir(name: str) -> Path:
     if root == _PROJECT_ROOT:
         return root
     return root / name
+
+
+# P2.1: read-only bundled resources (wake-word model, Kokoro voice files, ...) live next to
+# the packaged exe when frozen, not in app_data_dir() (which is only ever for WRITABLE data)
+# and not at _PROJECT_ROOT (there is no project checkout once packaged). PyInstaller --onefile
+# unpacks these into sys._MEIPASS at runtime; --onedir keeps them beside sys.executable. In a
+# normal `python main.py` dev run, sys.frozen is unset and this is just _PROJECT_ROOT, same as
+# before -- no behavior change there. Not exercised against a real frozen build yet (P8).
+def resource_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", None) or Path(sys.executable).parent)
+    return _PROJECT_ROOT
+
+
+# P2.1: for a WRITABLE file that used to default to _PROJECT_ROOT (credentials.json, token.json,
+# ...). First call copies the legacy project-root copy into app-data (if app-data doesn't already
+# have one and the legacy one exists) and returns the app-data path from then on -- the legacy
+# file is NEVER deleted or modified, only read once to seed app-data. Safe to call every time
+# Config is imported; the actual copy only happens once (app-data path existing short-circuits it).
+def _migrate_legacy_file(app_data_path: Path, legacy_path: Path) -> Path:
+    try:
+        if not app_data_path.exists() and legacy_path.is_file():
+            app_data_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(legacy_path, app_data_path)
+            logging.getLogger(__name__).info(
+                "[config] migrated %s -> %s (original left untouched)", legacy_path, app_data_path
+            )
+    except Exception as e:
+        logging.getLogger(__name__).warning(
+            "[config] could not migrate legacy file %s -> %s (%s); will use %s if/when it exists",
+            legacy_path, app_data_path, e, app_data_path,
+        )
+    return app_data_path
 
 
 class ConfigError(Exception):
@@ -587,6 +622,9 @@ class Config:
     )
 
     # ── Kokoro ONNX TTS — model / runtime ───────────────────────────────────
+    # P2.1: bare relative defaults used to resolve against the CWD (whatever directory the app
+    # happened to be launched from), not a fixed location -- validate() below now resolves a
+    # relative value against resource_root() (exe dir when frozen, project root in dev) instead.
     KOKORO_MODEL_PATH: str = os.getenv("KOKORO_MODEL_PATH", "models/kokoro-v1.0.onnx")
     KOKORO_VOICES_PATH: str = os.getenv("KOKORO_VOICES_PATH", "models/voices-v1.0.bin")
     KOKORO_USE_GPU: bool = _bool(os.getenv("KOKORO_USE_GPU", "True"), default=True)
@@ -826,12 +864,12 @@ class Config:
         os.getenv("WAKE_WORD_ALLOW_CUSTOM_ONLY", "True"), default=True
     )
 
-    # Default custom OpenWakeWord model.
+    # Default custom OpenWakeWord model (a read-only bundled resource, see resource_root()).
     # Expected location:
-    # <project-root>/models/wakewords/hey_sara.onnx
+    # <project-root>/models/wakewords/hey_sara.onnx  (<exe dir> when frozen -- P2.1)
     WAKE_WORD_MODEL_PATH: str = (
         os.getenv("WAKE_WORD_MODEL_PATH")
-        or str(_PROJECT_ROOT / "models" / "wakewords" / "hey_sara.onnx")
+        or str(resource_root() / "models" / "wakewords" / "hey_sara.onnx")
     )
 
     # Legacy Whisper wake settings kept for compatibility with old .env files.
@@ -1319,7 +1357,13 @@ class Config:
     # ── Skills (sara/skills/) ─────────────────────────────────────────────
     DAILY_BRIEFING_LOCATION: str = os.getenv("DAILY_BRIEFING_LOCATION", "Ajmer,IN")
 
-    NOTES_FOLDER: str = os.getenv("NOTES_FOLDER") or str(_PROJECT_ROOT / "sara_class_notes")
+    # P2.1: a packaged/frozen install has no project checkout to put this in, so it defaults to
+    # app-data there; a dev run keeps using the project-root folder as before (no silent move of
+    # whatever study notes are already sitting there during development).
+    NOTES_FOLDER: str = os.getenv("NOTES_FOLDER") or str(
+        app_data_subdir("data") / "sara_class_notes" if getattr(sys, "frozen", False)
+        else _PROJECT_ROOT / "sara_class_notes"
+    )
     NOTES_CHUNK_CHARS: int = _int(os.getenv("NOTES_CHUNK_CHARS"), default=800)
     NOTES_QA_TOP_K: int = _int(os.getenv("NOTES_QA_TOP_K"), default=4)
     NOTES_MAX_CHUNKS_PER_FILE: int = _int(
@@ -1564,9 +1608,11 @@ class Config:
     )
 
     # ── Google Calendar (sara/tools/calendar.py) ─────────────────────────
+    # P2.1: env override > app-data copy > migrate the legacy project-root copy into app-data
+    # (never deletes/edits the original) > app-data path anyway (file may not exist yet).
     GOOGLE_CALENDAR_CREDENTIALS_PATH: str = os.getenv(
         "GOOGLE_CALENDAR_CREDENTIALS_PATH"
-    ) or str(_PROJECT_ROOT / "credentials.json")
+    ) or str(_migrate_legacy_file(app_data_subdir("data") / "credentials.json", _PROJECT_ROOT / "credentials.json"))
     GOOGLE_CALENDAR_TOKEN_PATH: str = os.getenv("GOOGLE_CALENDAR_TOKEN_PATH") or str(
         app_data_subdir("data") / "token.json"
     )
@@ -1631,10 +1677,20 @@ class Config:
             min(_MAX_LLM_RETRY_DELAY_S, cls.LLM_RETRY_MAX_DELAY_S),
         )
 
-        # ── Kokoro model files ────────────────────────────────────────────
-        if not Path(cls.KOKORO_MODEL_PATH).exists():
+        # ── Kokoro model files (P2.1: CWD-independent -- resolve relative paths against
+        # resource_root() instead of leaving them relative to whatever the CWD happens to be) ──
+        _kokoro_model = Path(cls.KOKORO_MODEL_PATH)
+        if not _kokoro_model.is_absolute():
+            _kokoro_model = resource_root() / _kokoro_model
+        cls.KOKORO_MODEL_PATH = str(_kokoro_model)
+        if not _kokoro_model.exists():
             print(f"[Warning] Kokoro model not found at '{cls.KOKORO_MODEL_PATH}'.")
-        if not Path(cls.KOKORO_VOICES_PATH).exists():
+
+        _kokoro_voices = Path(cls.KOKORO_VOICES_PATH)
+        if not _kokoro_voices.is_absolute():
+            _kokoro_voices = resource_root() / _kokoro_voices
+        cls.KOKORO_VOICES_PATH = str(_kokoro_voices)
+        if not _kokoro_voices.exists():
             print(
                 f"[Warning] Kokoro voices file not found at '{cls.KOKORO_VOICES_PATH}'."
             )
@@ -1718,7 +1774,7 @@ class Config:
         wake_model_path = Path(cls.WAKE_WORD_MODEL_PATH)
 
         if not wake_model_path.is_absolute():
-            wake_model_path = _PROJECT_ROOT / wake_model_path
+            wake_model_path = resource_root() / wake_model_path  # P2.1: exe dir when frozen, project root in dev
 
         cls.WAKE_WORD_MODEL_PATH = str(wake_model_path.resolve())
 

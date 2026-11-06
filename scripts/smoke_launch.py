@@ -1,12 +1,14 @@
 """Smoke-launch main.py and confirm it survives N seconds without crashing.
 
-Starts `python main.py` as a subprocess (repo root as CWD, so the log path
-matches logging_config.py's CWD-relative `logs/sara.log` exactly as a real
-launch would use), waits N seconds (default 60), asserts the process is
-still alive, then checks the log file written DURING this run for
-"Traceback" or "CRITICAL". Terminates cleanly (graceful terminate, then a
-bounded kill if it doesn't exit) either way, so this never leaves a stray
-SARA process running or holding the single-instance mutex.
+Starts `python main.py` as a subprocess (repo root as CWD), waits N seconds
+(default 60), asserts the process is still alive, then checks the log file
+written DURING this run for "Traceback" or "CRITICAL". Terminates cleanly
+(graceful terminate, then a bounded kill if it doesn't exit) either way, so
+this never leaves a stray SARA process running or holding the single-instance
+mutex.
+
+Log path: same resolution as logging_config.py (P2.1) -- app_data_subdir("logs")
+when importable, else <repo root>/logs as a last-resort fallback.
 
 Refuses to run if another SARA instance is already up (tasklist check) --
 the single-instance mutex would just make this process exit immediately,
@@ -27,7 +29,13 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-LOG_FILE = ROOT / "logs" / "sara.log"
+sys.path.insert(0, str(ROOT))
+try:
+    from config import app_data_subdir
+
+    LOG_FILE = app_data_subdir("logs") / "sara.log"
+except Exception:
+    LOG_FILE = ROOT / "logs" / "sara.log"
 
 
 def _sara_already_running() -> bool:

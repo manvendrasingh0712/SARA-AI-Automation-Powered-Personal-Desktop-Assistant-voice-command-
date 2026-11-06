@@ -17,7 +17,18 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 
-_LOG_DIR = os.path.join(os.getcwd(), "logs")
+# P2.1: was os.getcwd()/logs -- CWD-dependent, contradicted config.py's own "all paths are
+# CWD-independent" rule (and scripts/smoke_launch.py relies on this exact file always being
+# at <launch CWD>/logs/sara.log, which only happened to work because main.py is always
+# launched from the project root today). Uses the same app-data root as every other writable
+# path in config.py (DB_PATH, NOTES_FILE_PATH, ...); falls back to the project root if app-data
+# truly isn't creatable, matching app_data_dir()'s own fallback behavior.
+try:
+    from config import app_data_subdir
+
+    _LOG_DIR = str(app_data_subdir("logs"))
+except Exception:
+    _LOG_DIR = os.path.join(os.getcwd(), "logs")
 _LOG_FILE = os.path.join(_LOG_DIR, "sara.log")
 
 _MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file

@@ -81,7 +81,9 @@ def test_async_stdout_does_not_block_and_redacts():
 
 def test_setup_logging_end_to_end_in_a_fresh_process(tmp_path):
     """The real entry point (logging_config.setup_logging) must start, write both log files and redact a key.
-    Regression: a live start-up crashed with UnboundLocalError after the queue pipeline replaced the handler block."""
+    Regression: a live start-up crashed with UnboundLocalError after the queue pipeline replaced the handler block.
+    P2.1: the log dir is app_data_subdir("logs") now (CWD-independent), not CWD-relative -- isolate it to
+    tmp_path the same way config.app_data_dir() is isolated everywhere else in this test suite: LOCALAPPDATA."""
     import os
     import subprocess
 
@@ -92,9 +94,10 @@ def test_setup_logging_end_to_end_in_a_fresh_process(tmp_path):
         "logging.getLogger('t').warning('key AIzaSy' + 'A' * 33 + ' leaked')\n"
         "from sara.core import log; log.shutdown()\n"
     )
-    env = dict(os.environ, PYTHONPATH=root)
+    env = dict(os.environ, PYTHONPATH=root, LOCALAPPDATA=str(tmp_path))
     r = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr[-800:]
-    text = (tmp_path / "logs" / "sara.log").read_text(encoding="utf-8")
+    log_dir = tmp_path / "SARA-AI" / "logs"
+    text = (log_dir / "sara.log").read_text(encoding="utf-8")
     assert "Logging initialized" in text and "leaked" in text and "AIzaSy" + "A" * 33 not in text
-    assert (tmp_path / "logs" / "sara.jsonl").read_text(encoding="utf-8").count("\n") >= 2
+    assert (log_dir / "sara.jsonl").read_text(encoding="utf-8").count("\n") >= 2
