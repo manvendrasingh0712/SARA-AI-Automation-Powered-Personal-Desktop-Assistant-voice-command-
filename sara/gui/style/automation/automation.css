@@ -182,5 +182,5 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 #page-automation #routinesList .empty{max-width:none;}
 #routineModal .modal{width:min(560px,100%);border-radius:var(--r-hero);}
 @media (max-width:1099.98px){#page-automation #modeChips{grid-template-columns:repeat(2,minmax(0,1fr));}}
-html[data-quality="low"] #page-automation .mode-tile:hover{transform:none;}
+html:is([data-quality="low"],[data-motion="reduce"]) #page-automation #modeChips .mode-tile:hover:not(:active){transform:none;}   /* same weight as the hover rule above, so it really wins */
 @media (prefers-reduced-motion:reduce){#page-automation .mode-check,#page-automation #modeChips .mode-tile{transition:none;}}

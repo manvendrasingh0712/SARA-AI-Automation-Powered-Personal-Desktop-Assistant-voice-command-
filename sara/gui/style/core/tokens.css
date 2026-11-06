@@ -69,6 +69,7 @@
   --void-rgb:8 12 13; --vignette:rgba(0,0,0,.5);
   --shadow-rest: 0 1px 2px rgba(0,0,0,.22), 0 8px 20px -12px rgba(0,0,0,.45);
   --shadow-hover: 0 2px 4px rgba(0,0,0,.24), 0 14px 32px -14px rgba(0,0,0,.55), 0 0 26px -6px var(--glow);
+  --shadow-hover-flat: 0 2px 4px rgba(0,0,0,.24), 0 14px 32px -14px rgba(0,0,0,.55);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
 }
 
 /* ---- EMBER (warm dark): charcoal-brown base, molten orange + hot pink + gold ---- */
@@ -155,6 +156,7 @@
   --glass-bg:rgb(var(--panel-rgb) / .82); --glass-border:rgb(var(--fg-rgb) / .10);
   --shadow-rest: 0 1px 2px rgba(70,55,25,.10), 0 8px 20px -12px rgba(70,55,25,.28);
   --shadow-hover: 0 2px 4px rgba(70,55,25,.12), 0 14px 32px -14px rgba(70,55,25,.34), 0 0 26px -8px var(--glow);
+  --shadow-hover-flat: 0 2px 4px rgba(70,55,25,.12), 0 14px 32px -14px rgba(70,55,25,.34);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
   --scrim:rgb(236 231 220 / .78);
   --success:#2E8F57; --success-rgb:46 143 87; --warning:#A8740E; --warning-rgb:168 116 14; --info:#2F72B8; --info-rgb:47 114 184;
 }
@@ -165,6 +167,7 @@
   --glass-bg:rgb(var(--panel-rgb) / .74); --glass-border:rgb(var(--fg-rgb) / .08);
   --shadow-rest: 0 1px 2px rgb(var(--fg-rgb) / .06), 0 10px 24px -14px rgb(var(--fg-rgb) / .24);
   --shadow-hover: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 34px -16px rgb(var(--fg-rgb) / .30), 0 0 26px -8px var(--glow);
+  --shadow-hover-flat: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 34px -16px rgb(var(--fg-rgb) / .30);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
   --scrim:rgb(var(--void-rgb) / .72);
   --success:#2E8F57; --success-rgb:46 143 87; --warning:#A8740E; --warning-rgb:168 116 14; --info:#2F72B8; --info-rgb:47 114 184;
 }
@@ -182,6 +185,7 @@
   --glow:rgb(var(--core-rgb) / .38);
   --shadow-rest: 0 1px 2px rgba(0,0,0,.7), 0 10px 26px -14px rgba(0,0,0,.9), 0 0 22px -12px rgb(var(--core-rgb) / .35);
   --shadow-hover: 0 2px 4px rgba(0,0,0,.7), 0 18px 36px -14px rgba(0,0,0,.9), 0 0 30px -6px rgb(var(--core-rgb) / .5);
+  --shadow-hover-flat: 0 2px 4px rgba(0,0,0,.7), 0 18px 36px -14px rgba(0,0,0,.9);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
   --scrim:rgb(2 3 5 / .82);
 }
 
@@ -197,6 +201,7 @@
   --glow:rgb(var(--core-rgb) / .10);
   --shadow-rest: 0 0 0 1px rgb(255 255 255 / .03);
   --shadow-hover: 0 14px 26px -18px rgba(0,0,0,.9), 0 0 0 1px rgb(var(--core-rgb) / .35);
+  --shadow-hover-flat: 0 14px 26px -18px rgba(0,0,0,.9), 0 0 0 1px rgb(var(--core-rgb) / .35);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
   --scrim:rgb(5 5 5 / .85);
 }
 
@@ -212,6 +217,7 @@
   --glow:rgb(var(--core-rgb) / .16);
   --shadow-rest: 0 1px 2px rgb(var(--fg-rgb) / .06), 0 10px 22px -14px rgb(var(--fg-rgb) / .22);
   --shadow-hover: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 30px -16px rgb(var(--fg-rgb) / .30);
+  --shadow-hover-flat: 0 2px 4px rgb(var(--fg-rgb) / .08), 0 16px 30px -16px rgb(var(--fg-rgb) / .30);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
   --scrim:rgb(var(--void-rgb) / .74);
   --success:#4A7C59; --success-rgb:74 124 89; --warning:#9A6B12; --warning-rgb:154 107 18; --info:#3F6F8F; --info-rgb:63 111 143;
 }
@@ -228,6 +234,7 @@
   --glow:rgb(var(--core-rgb) / .12);
   --shadow-rest: 0 1px 2px rgba(0,0,0,.4), 0 8px 18px -12px rgba(0,0,0,.6);
   --shadow-hover: 0 2px 4px rgba(0,0,0,.4), 0 14px 28px -14px rgba(0,0,0,.7), 0 0 0 1px rgb(var(--core-rgb) / .30);
+  --shadow-hover-flat: 0 2px 4px rgba(0,0,0,.4), 0 14px 28px -14px rgba(0,0,0,.7), 0 0 0 1px rgb(var(--core-rgb) / .30);   /* the same without the accent glow: used outside the High tier (style/fx/quality.css) */
   --scrim:rgb(15 16 17 / .82);
 }
 

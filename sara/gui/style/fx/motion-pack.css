@@ -225,7 +225,7 @@ to{clip-path:circle(var(--vt-r,150vmax) at var(--vt-x,50%) var(--vt-y,50%))}
 :where(html:not([data-fx-off~="lx"])) .dock-btn.send svg{transition:translate .3s var(--lx-spring)}
 :where(html:not([data-fx-off~="lx"])) .dock-btn.send:hover svg{translate:2px -1px}
 :where(html:not([data-fx-off~="lx"])) .dock-btn.mic{transition:box-shadow .35s ease,transform var(--dur-fast,.12s) var(--lx-spring),scale .25s var(--lx-spring),background .2s,color .2s}
-:where(html:not([data-fx-off~="lx"])) .dock-btn.mic:hover{box-shadow:0 0 0 6px rgb(var(--core-rgb)/.12),0 0 18px -2px rgb(var(--core-rgb)/.35)}
+:where(html:not([data-fx-off~="lx"])[data-quality="high"]:not([data-motion="reduce"])) .dock-btn.mic:hover{box-shadow:0 0 0 6px rgb(var(--core-rgb)/.12),0 0 18px -2px rgb(var(--core-rgb)/.35)}
 :where(html:not([data-fx-off~="lx"])) #chatInputField::placeholder{transition:opacity .35s ease}
 :where(html:not([data-fx-off~="lx"])) #chatInputField:focus::placeholder{opacity:.35}
 :where(html:not([data-fx-off~="lx"])) .msg.user{transition:box-shadow .3s ease,border-color .3s ease}
@@ -257,7 +257,8 @@ to{clip-path:circle(var(--vt-r,150vmax) at var(--vt-x,50%) var(--vt-y,50%))}
 :where(html:not([data-fx-off~="lx"])) .cs-mode-btn,:where(html:not([data-fx-off~="lx"])) .sec-seg button{transition:translate .25s var(--lx-ease),border-color .2s,color .2s,background .2s}
 :where(html:not([data-fx-off~="lx"])) .cs-mode-btn:hover,:where(html:not([data-fx-off~="lx"])) .sec-seg button:hover{translate:0-1px}
 :where(html:not([data-fx-off~="lx"])) .stat{transition:border-color .2s,transform .15s,box-shadow .35s ease}
-:where(html:not([data-fx-off~="lx"])) .stat:hover{box-shadow:inset 0-2px 0 rgb(var(--core-rgb)/.7),0 0 16px rgb(var(--core-rgb)/.12)}
+:where(html:not([data-fx-off~="lx"])) .stat:hover{box-shadow:inset 0-2px 0 rgb(var(--core-rgb)/.7)}
+:where(html:not([data-fx-off~="lx"])[data-quality="high"]:not([data-motion="reduce"])) .stat:hover{box-shadow:inset 0-2px 0 rgb(var(--core-rgb)/.7),0 0 16px rgb(var(--core-rgb)/.12)}
 :where(html:not([data-fx-off~="lx"])) .chip{background-image:linear-gradient(rgb(var(--core-rgb)/.12),rgb(var(--core-rgb)/.12));background-repeat:no-repeat;background-size:0% 100%;transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--lx-spring),scale .16s var(--lx-ease),box-shadow .2s,background-size .4s var(--lx-ease)}
 :where(html:not([data-fx-off~="lx"])) .chip:hover{background-size:100% 100%}
 :where(html:not([data-fx-off~="lx"])) .toggle{transition:background .25s,scale .3s var(--lx-spring)}

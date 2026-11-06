@@ -95,6 +95,8 @@ body.sara-speaking .nav::before{opacity:1;animation:navBreath 3.2s ease-in-out i
 
 /* ---- 21) glass sheen (js/fx.js section 7): a child .gl-sheen is added on first hover; the host gets .gl-on while the cursor is over it.
    --gx/--gy = cursor position inside the card (px), --gdx/--gdy = -1..1 for the tiny depth shift. Settles back by itself on leave. ---- */
+@property --gdx{syntax:'<number>';inherits:false;initial-value:0;}   /* written on the card at every pointer move: non-inherited so the card's children are not restyled */
+@property --gdy{syntax:'<number>';inherits:false;initial-value:0;}
 .gl-sheen{position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .35s ease;background:radial-gradient(240px circle at var(--gx,50%) var(--gy,0%),rgb(var(--shine-rgb) / .075),transparent 65%);}
 .gl-sheen::before{content:'';position:absolute;top:0;left:12px;right:12px;height:1px;border-radius:1px;background:linear-gradient(90deg,transparent calc(var(--gx,50%) - 102px),rgb(var(--shine-rgb) / .6) calc(var(--gx,50%) - 12px),transparent calc(var(--gx,50%) + 78px));}
 .gl-sheen::after{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:radial-gradient(170px circle at var(--gx,50%) var(--gy,0%),rgb(var(--core-rgb) / .7),transparent 70%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;}

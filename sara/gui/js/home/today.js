@@ -30,6 +30,7 @@
   async function loadWeather() {
     const res = await SARA.callApi('get_weather');
     if (res && res.data) { weather = res.data; renderWeather(); }
+    else if (!weather) { weather = { ok: false, error: '' }; renderWeather(); }   // a failed call says so instead of leaving "Weather"
   }
   SARA.on('ev:weather_update', function (data) { weather = data; renderWeather(); });
 

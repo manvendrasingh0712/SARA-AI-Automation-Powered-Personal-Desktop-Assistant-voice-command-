@@ -1268,7 +1268,10 @@
     const el = glEl; if (!el) return;
     const r = el.getBoundingClientRect(); if (!r.width || !r.height) return;
     const x = glX - r.left, y = glY - r.top;
-    el.style.setProperty('--gx', x.toFixed(0) + 'px'); el.style.setProperty('--gy', y.toFixed(0) + 'px');
+    /* --gx/--gy go on the sheen child (the only thing that reads them): written on the card they were inherited by every element inside it,
+       so each pointer move restyled the whole card (Settings with the pointer moving: style recalc ~33 % of a core, Phase 7 measure).
+       --gdx/--gdy stay on the card; they are registered as non-inherited in style/fx/motion.css. */
+    const sh = el._gl; if (sh) { sh.style.setProperty('--gx', x.toFixed(0) + 'px'); sh.style.setProperty('--gy', y.toFixed(0) + 'px'); }
     el.style.setProperty('--gdx', ((x / r.width - 0.5) * 2).toFixed(2)); el.style.setProperty('--gdy', ((y / r.height - 0.5) * 2).toFixed(2));
   }
   document.addEventListener('pointermove', function (e) {
@@ -2627,6 +2630,7 @@
   async function loadWeather() {
     const res = await SARA.callApi('get_weather');
     if (res && res.data) { weather = res.data; renderWeather(); }
+    else if (!weather) { weather = { ok: false, error: '' }; renderWeather(); }   // a failed call says so instead of leaving "Weather"
   }
   SARA.on('ev:weather_update', function (data) { weather = data; renderWeather(); });
 
@@ -2839,6 +2843,12 @@
     tick();
   }
 
+  /* the card's thin bar and the sheet's ring. The bar grows with transform (no layout every second, redesign Phase 7);
+     the ring is only touched while the sheet is open (openSheet() ticks at once, so it is never stale). */
+  function bar(frac) {
+    el.ccBarFill.style.transform = 'scaleX(' + frac.toFixed(4) + ')';
+    if (sheet.classList.contains('open')) el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+  }
   function renderClock(now) {
     let h = now.getHours(); const m = pad2(now.getMinutes()), s = now.getSeconds();
     const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
@@ -2852,8 +2862,7 @@
     const greet = greetingText(now);
     if (el.ccGreet.textContent !== greet) { el.ccGreet.textContent = greet; el.csGreet.textContent = greet; }
     const frac = s / 60;
-    el.ccBarFill.style.width = (frac * 100).toFixed(1) + '%';
-    el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+    bar(frac);
     el.ccStatus.hidden = true; el.csStatus.hidden = true;
   }
 
@@ -2867,8 +2876,7 @@
     const label = timer.completed ? 'Timer complete' : (timer.paused ? 'Timer paused' : 'Timer running');
     revealIfChanged(el.ccDate, label); el.csSub.textContent = label;
     const frac = timer.duration > 0 ? Math.max(0, Math.min(1, remaining / (timer.duration * 1000))) : 0;
-    el.ccBarFill.style.width = (frac * 100).toFixed(1) + '%';
-    el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+    bar(frac);
     // Urgency: last 15% of the countdown gets the danger-tinted ring (see style/clock-card.css).
     // Cleared as soon as it's no longer true -- never sticks around after a pause/resume/cancel.
     sheetInner.dataset.urgent = (!timer.completed && frac > 0 && frac <= 0.15) ? '1' : '0';
@@ -6493,7 +6501,7 @@ var LABELS = {
   }
   async function pollStats() {
     if (SARA.current !== 'settings') return;
-    const s = await SARA.callApi('get_system_stats'); if (!s) return;
+    const s = await SARA.callApi('get_system_stats'); if (!s || s.ok === false || typeof s.cpu !== 'number') return;   // a failed call keeps the "—" instead of printing NaN / undefined
     $('sysCpuRam').textContent = Math.round(s.cpu) + '% · ' + Math.round(s.ram) + '%';
     $('sysDisk').textContent = s.disk_total_gb ? s.disk_used_gb + ' / ' + s.disk_total_gb + ' GB (' + Math.round(s.disk) + '%)' : Math.round(s.disk) + '%';
     $('sysNet').textContent = '↓ ' + s.net_down_mbps + ' Mb/s · ↑ ' + s.net_up_mbps + ' Mb/s';
@@ -6543,11 +6551,12 @@ var LABELS = {
   const SARA = window.SARA, $ = SARA.$, esc = SARA.escapeHtml;
 
   /* ---- first-view count-up: runs once per number, the first time Settings is on screen; later refreshes only swap the text ---- */
+  const rollOK = () => !SARA.quality || SARA.quality.allows('numberroll');   // count-up is a High-tier effect (spec 4.5)
   const COUNT_IDS = ['memPct', 'memExchanges', 'memSize', 'shStreak', 'shMessages', 'shDays', 'shNudges'];
   function reveal(el) {
     if (el._cu === 'done') return; el._cu = 'done';
     const m = /^(-?\d+(?:\.(\d+))?)(.*)$/.exec(el.textContent);
-    if (!m || SARA.reduceMotion) return;
+    if (!m || SARA.reduceMotion || !rollOK()) return;
     const end = parseFloat(m[1]), dec = m[2] ? m[2].length : 0, tail = m[3], tok = el._tok = (el._tok || 0) + 1;
     if (!(end > 0)) return;
     const t0 = performance.now();
@@ -6638,7 +6647,7 @@ var LABELS = {
   function countTo(el, to, fmt) {
     const tok = el._ktok = (el._ktok || 0) + 1;
     const from = typeof el._kcur === 'number' ? el._kcur : 0;
-    if (SARA.reduceMotion || from === to || SARA.current !== 'settings' || document.hidden) { el._kcur = to; el.textContent = fmt(to); return; }
+    if (SARA.reduceMotion || !rollOK() || from === to || SARA.current !== 'settings' || document.hidden) { el._kcur = to; el.textContent = fmt(to); return; }
     const t0 = performance.now(), dur = 650;
     (function step(now) {
       if (el._ktok !== tok) return;
@@ -7995,13 +8004,13 @@ var LABELS = {
   const TIERS = ['low', 'balanced', 'high'];
   const FEATURES = {
     high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
-    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
-    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0, p6: 0, hoverpreview: 0, hints: 0, radial: 1 }
+    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 1, reveal: 1, numberroll: 0, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
+    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 0, progress: 1, edgepulse: 0, idle: 0, p6: 0, hoverpreview: 0, hints: 0, radial: 1 }
   };
   const NOTES = {
-    low: 'Fastest. No blur, aura, dust or tilt, and decorative loops are off. Best for older or busy PCs.',
-    balanced: 'Recommended. Smooth, with light effects (cursor aura). Magnetic buttons and click sparks are High only.',
-    high: 'Everything on: floating dust, 3D tilt, magnetic buttons, click sparks. Needs a decent GPU.'
+    low: 'Fastest. No blur, aura, dust, tilt, hover lift or glow, and decorative loops are off. Best for older or busy PCs.',
+    balanced: 'Recommended. Smooth, with light effects (cursor aura, a small lift on hover). Hover glow, magnetic buttons, click sparks and counting numbers are High only.',
+    high: 'Everything on: hover glow, floating dust, 3D tilt, magnetic buttons, click sparks, counting numbers. Needs a decent GPU.'
   };
   /* ---- fine-tune registry: every effect has its own on/off (js = checked by js/motion-pack.js, css = <html data-fx-off="..."> gates style/motion-pack.css) ---- */
   const FX = [
@@ -8800,7 +8809,8 @@ var LABELS = {
                                          they are replaced by a quiet "taking longer than usual" line, so a skeleton can never stay forever
    SARA.skeleton.clear(el)               remove the placeholders (a no-op when real content is already there)
    Wired here, through the API hooks in core.js, to the calls that have a visible wait:
-     list_routines -> #routinesList (first load only: an already filled list is never blanked)     get_weather -> the Today card temperature
+     list_routines -> #routinesList, get_notes -> #notesList, get_reminders -> #reminderGroups, get_security_summary -> #secRecent
+       (first load only: an already filled list is never blanked)     get_weather -> the Today card temperature
    The memory view calls fill() itself (js/settings/memory-view.js). Failed loads keep using the error cards of js/shared/empty-states.js.
    Not wired on purpose: the Apps grid (built synchronously, nothing to wait for) and the chat log (no history is fetched; it starts empty).
    Styles: .skel* in style/core/components.css, .sk-slow in style/shared/empty-states.css. Respects reduced motion (the shimmer is a plain background then).
@@ -8846,6 +8856,12 @@ var LABELS = {
       const el = doc.getElementById('routinesList'); if (el && !el.children.length) fill(el, 3, 'row');
     });
     SARA.api.after('list_routines', function () { clear(doc.getElementById('routinesList')); }, true);
+
+    /* ---- same rule for the notes, reminders and recent security events (redesign Phase 7: no blank list while the backend is slow) ---- */
+    [['get_notes', 'notesList', 3, 'row'], ['get_reminders', 'reminderGroups', 3, 'row'], ['get_security_summary', 'secRecent', 3, 'line']].forEach(function (w) {
+      SARA.api.before(w[0], function () { const el = doc.getElementById(w[1]); if (el && !el.children.length) fill(el, w[2], w[3]); });
+      SARA.api.after(w[0], function () { clear(doc.getElementById(w[1])); }, true);
+    });
 
     /* ---- Today card temperature: the "--°" placeholder becomes a shimmer until the weather arrives ---- */
     SARA.api.before('get_weather', function () {

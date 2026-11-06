@@ -4,7 +4,8 @@
                                          they are replaced by a quiet "taking longer than usual" line, so a skeleton can never stay forever
    SARA.skeleton.clear(el)               remove the placeholders (a no-op when real content is already there)
    Wired here, through the API hooks in core.js, to the calls that have a visible wait:
-     list_routines -> #routinesList (first load only: an already filled list is never blanked)     get_weather -> the Today card temperature
+     list_routines -> #routinesList, get_notes -> #notesList, get_reminders -> #reminderGroups, get_security_summary -> #secRecent
+       (first load only: an already filled list is never blanked)     get_weather -> the Today card temperature
    The memory view calls fill() itself (js/settings/memory-view.js). Failed loads keep using the error cards of js/shared/empty-states.js.
    Not wired on purpose: the Apps grid (built synchronously, nothing to wait for) and the chat log (no history is fetched; it starts empty).
    Styles: .skel* in style/core/components.css, .sk-slow in style/shared/empty-states.css. Respects reduced motion (the shimmer is a plain background then).
@@ -50,6 +51,12 @@
       const el = doc.getElementById('routinesList'); if (el && !el.children.length) fill(el, 3, 'row');
     });
     SARA.api.after('list_routines', function () { clear(doc.getElementById('routinesList')); }, true);
+
+    /* ---- same rule for the notes, reminders and recent security events (redesign Phase 7: no blank list while the backend is slow) ---- */
+    [['get_notes', 'notesList', 3, 'row'], ['get_reminders', 'reminderGroups', 3, 'row'], ['get_security_summary', 'secRecent', 3, 'line']].forEach(function (w) {
+      SARA.api.before(w[0], function () { const el = doc.getElementById(w[1]); if (el && !el.children.length) fill(el, w[2], w[3]); });
+      SARA.api.after(w[0], function () { clear(doc.getElementById(w[1])); }, true);
+    });
 
     /* ---- Today card temperature: the "--°" placeholder becomes a shimmer until the weather arrives ---- */
     SARA.api.before('get_weather', function () {

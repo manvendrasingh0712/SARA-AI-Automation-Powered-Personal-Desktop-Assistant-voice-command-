@@ -29,7 +29,8 @@
 .field:focus,.add-row input:focus,.modal input:focus,.modal select:focus,.set-row input[type=text]:focus{border-color:var(--core);}
 input::placeholder{color:var(--muted);}
 .pill-btn{background:var(--panel-2);border:1px solid var(--line);color:var(--text-soft);border-radius:12px;padding:10px 16px;font-size:13px;cursor:pointer;white-space:nowrap;transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--ease-spring,cubic-bezier(.34,1.56,.64,1)),box-shadow .2s;}
-.pill-btn:hover:not(:disabled){box-shadow:0 0 14px rgb(var(--core-rgb) / .12);transform:scale(1.02);}
+.pill-btn:hover:not(:disabled){transform:scale(1.02);}
+:where(html[data-quality="high"]:not([data-motion="reduce"])) .pill-btn:hover:not(:disabled){box-shadow:0 0 14px rgb(var(--core-rgb) / .12);}   /* hover glow: High tier only (spec 4.5) */
 .pill-btn:active:not(:disabled){transform:scale(.97);transition-duration:.08s;}
 .pill-btn:hover{border-color:var(--core);color:var(--text);}
 .pill-btn:disabled{opacity:.45;cursor:default;}
@@ -100,7 +101,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;heigh
 /* ---- chips (language, modes) ---- */
 .chip-row{display:flex;gap:10px;flex-wrap:wrap;}
 .chip{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:8px 15px;font-size:12.5px;color:var(--text-soft);cursor:pointer;transition:border-color .2s,color .2s,transform var(--dur-fast,.16s) var(--ease-spring,cubic-bezier(.34,1.56,.64,1)),box-shadow .2s;}
-.chip:hover{box-shadow:0 0 12px rgb(var(--core-rgb) / .10);transform:scale(1.02);}
+.chip:hover{transform:scale(1.02);}
+:where(html[data-quality="high"]:not([data-motion="reduce"])) .chip:hover{box-shadow:0 0 12px rgb(var(--core-rgb) / .10);}
 .chip:active{transform:scale(.97);transition-duration:.08s;}
 .chip:hover{color:var(--text);}
 .chip.on{border-color:rgb(var(--core-rgb) / .45);color:var(--core);}

@@ -69,7 +69,8 @@
 .skills-scroll{max-height:320px;overflow-y:auto;}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;}
 .stat{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-sm);min-width:0;transition:border-color .2s,transform .15s,box-shadow .2s;}
-.stat:hover{border-color:rgb(var(--core-rgb) / .4);transform:translateY(-2px);box-shadow:0 0 16px rgb(var(--core-rgb) / .12);}
+.stat:hover{border-color:rgb(var(--core-rgb) / .4);transform:translateY(-2px);}
+:where(html[data-quality="high"]:not([data-motion="reduce"])) .stat:hover{box-shadow:0 0 16px rgb(var(--core-rgb) / .12);}   /* hover glow: High tier only */
 .stat b{font-size:15px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;overflow-wrap:anywhere;}
 .stat span{font-size:11px;color:var(--muted);}
 

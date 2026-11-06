@@ -20,13 +20,13 @@
   const TIERS = ['low', 'balanced', 'high'];
   const FEATURES = {
     high:     { aura: 1, dust: 1, tilt: 1, magnetic: 1, spark: 1, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
-    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 1, reveal: 1, numberroll: 1, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
-    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 1, progress: 1, edgepulse: 0, idle: 0, p6: 0, hoverpreview: 0, hints: 0, radial: 1 }
+    balanced: { aura: 1, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 1, reveal: 1, numberroll: 0, progress: 1, edgepulse: 1, idle: 1, p6: 1, hoverpreview: 1, hints: 1, radial: 1 },
+    low:      { aura: 0, dust: 0, tilt: 0, magnetic: 0, spark: 0, decrypt: 0, reveal: 0, numberroll: 0, progress: 1, edgepulse: 0, idle: 0, p6: 0, hoverpreview: 0, hints: 0, radial: 1 }
   };
   const NOTES = {
-    low: 'Fastest. No blur, aura, dust or tilt, and decorative loops are off. Best for older or busy PCs.',
-    balanced: 'Recommended. Smooth, with light effects (cursor aura). Magnetic buttons and click sparks are High only.',
-    high: 'Everything on: floating dust, 3D tilt, magnetic buttons, click sparks. Needs a decent GPU.'
+    low: 'Fastest. No blur, aura, dust, tilt, hover lift or glow, and decorative loops are off. Best for older or busy PCs.',
+    balanced: 'Recommended. Smooth, with light effects (cursor aura, a small lift on hover). Hover glow, magnetic buttons, click sparks and counting numbers are High only.',
+    high: 'Everything on: hover glow, floating dust, 3D tilt, magnetic buttons, click sparks, counting numbers. Needs a decent GPU.'
   };
   /* ---- fine-tune registry: every effect has its own on/off (js = checked by js/motion-pack.js, css = <html data-fx-off="..."> gates style/motion-pack.css) ---- */
   const FX = [
