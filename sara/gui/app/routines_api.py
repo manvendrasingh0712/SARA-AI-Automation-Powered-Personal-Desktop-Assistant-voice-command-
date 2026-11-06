@@ -83,6 +83,16 @@ class ApiRoutinesMixin:
             print(f"[delete_routine error] {e}")
             return {"ok": False, "error": str(e)}
 
+    def set_routine_enabled(self, name, enabled):
+        """Turns a routine's scheduled auto-trigger on/off (sara/orchestrator/proactive.py
+        skips a disabled routine's trigger_time); it can still be run manually either way."""
+        try:
+            ok = self.db.set_routine_enabled(name, bool(enabled))
+            return {"ok": ok}
+        except Exception as e:
+            print(f"[set_routine_enabled error] {e}")
+            return {"ok": False, "error": str(e)}
+
     def run_routine_now(self, name):
         """
         Test-run button. Fires the routine in a background thread (same

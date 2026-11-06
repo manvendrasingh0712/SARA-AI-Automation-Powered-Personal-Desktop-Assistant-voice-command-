@@ -4081,7 +4081,10 @@
   const PINKEY = 'sara_note_pins';
   let pins = []; try { pins = JSON.parse(store.get(PINKEY) || '[]') || []; } catch (e) { pins = []; }
   const savePins = function () { store.set(PINKEY, JSON.stringify(pins)); };
-  const keyOf = function (n) { return String(n.id != null ? n.id : (n.timestamp || '') + '|' + String(n.text || '').slice(0, 40)); };
+  // `n.id` is the note's 0-indexed line position (see files_notes.py get_notes()), which shifts for every note
+  // after one that gets deleted -- so a pin keyed on id could silently jump onto a different note post-delete.
+  // timestamp+text is the note's actual content, stable across deletions; id is only a last-resort fallback.
+  const keyOf = function (n) { return (n.timestamp || n.text) ? String((n.timestamp || '') + '|' + String(n.text || '').slice(0, 40)) : 'id' + n.id; };
   function tagsOf(text) { const out = [], re = /(^|\s)#([\p{L}\p{N}_-]{2,24})/gu; let m; while ((m = re.exec(text))) { const t = m[2].toLowerCase(); if (out.indexOf(t) < 0) out.push(t); } return out; }
   const tools = el('div', 'nt-tools'); tools.hidden = true;
   const sbox = el('div', 'nt-search'); sbox.appendChild(svg('search')); const sin = el('input'); sin.type = 'search'; sin.placeholder = 'Search notes or #tags'; sin.autocomplete = 'off'; sin.setAttribute('aria-label', 'Search notes'); sbox.appendChild(sin);
@@ -5767,12 +5770,15 @@ var LABELS = {
     $('routinesList').innerHTML = list.length ? list.map(function (r) {
       const n = (r.steps || []).length;
       const sub = n + ' step' + (n === 1 ? '' : 's') + ' · ' + (r.trigger_time ? 'runs at ' + SARA.fmt12h(r.trigger_time) : 'manual trigger');
-      return '<div class="auto-card" data-name="' + esc(r.name) + '"><span class="auto-plate" aria-hidden="true"><svg class="ic"><use href="#i-automation"/></svg></span>' +
+      const enabled = r.enabled !== false;   // DB default is enabled=1; missing/omitted also reads as enabled
+      return '<div class="auto-card' + (enabled ? '' : ' auto-off') + '" data-name="' + esc(r.name) + '"><span class="auto-plate" aria-hidden="true"><svg class="ic"><use href="#i-automation"/></svg></span>' +
         '<div class="auto-info"><div class="a-name">' + esc(r.label || r.name) +
-        '</div><div class="a-sub" title="' + esc((r.steps || []).map(stepName).join(' → ')) + '">' + esc(sub) + '</div></div>' +
+        '</div><div class="a-sub" title="' + esc((r.steps || []).map(stepName).join(' → ')) + '">' + esc(sub) + (enabled ? '' : ' · off') + '</div></div>' +
         '<div class="auto-actions"><button type="button" class="auto-more" data-more aria-haspopup="menu" aria-expanded="false" aria-label="Actions for ' + esc(r.label || r.name) + '" title="Actions">' +
         '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>' +
-        '<div class="auto-menu" role="menu" hidden><button type="button" role="menuitem" data-run>Run now</button><button type="button" role="menuitem" data-edit>Edit</button>' +
+        '<div class="auto-menu" role="menu" hidden><button type="button" role="menuitem" data-run>Run now</button>' +
+        '<button type="button" role="menuitem" data-toggle-enable>' + (enabled ? 'Turn off' : 'Turn on') + '</button>' +
+        '<button type="button" role="menuitem" data-edit>Edit</button>' +
         '<button type="button" role="menuitem" class="danger" data-del>Delete</button></div></div></div>';
     }).join('') : '<div class="empty">No automations yet. Create one to chain several actions together.</div>';
   }
@@ -5813,6 +5819,10 @@ var LABELS = {
       const res = await SARA.callApi('run_routine_now', name);
       if (res && res.ok) { SARA.sound.run(); SARA.ok('Running — watch the Chat page'); } else SARA.fail((res && res.error) || 'Could not run routine');
       setTimeout(() => { btn.disabled = false; }, 1200);
+    } else if (e.target.closest('[data-toggle-enable]')) {
+      const turningOn = card.classList.contains('auto-off');
+      const res = await SARA.callApi('set_routine_enabled', name, turningOn);
+      if (res && res.ok) { SARA.sound.tap(); loadRoutines(); } else SARA.fail((res && res.error) || 'Could not update automation');
     } else if (e.target.closest('[data-edit]')) {
       const res = await SARA.callApi('get_routine', name);
       if (res && res.ok && res.data) SARA.openRoutineBuilder(res.data); else SARA.fail((res && res.error) || 'Could not load routine');

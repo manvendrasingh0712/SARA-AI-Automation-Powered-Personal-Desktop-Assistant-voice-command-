@@ -195,6 +195,7 @@
       case 'get_routine': { const r = S.routines.find(x => x.name === a[0]); return r ? ok({ data: r }) : { ok: false, data: null, error: 'Routine not found.' }; }
       case 'save_routine': { const d = { name: a[0], label: a[1] || a[0], steps: a[2], trigger_time: a[3] || null }; const i = S.routines.findIndex(x => x.name === a[0]); if (i >= 0) S.routines[i] = d; else S.routines.push(d); return ok(); }
       case 'delete_routine': S.routines = S.routines.filter(r => r.name !== a[0]); return ok();
+      case 'set_routine_enabled': { const r = S.routines.find(x => x.name === a[0]); if (r) r.enabled = !!a[1]; return ok(); }
       case 'run_routine_now': setTimeout(() => ev('transcript', 'sara', '(preview mode) Ran routine "' + a[0] + '".'), 500); return ok();
       case 'get_analytics_dashboard': {
         const counts = [4, 9, 0, 12, 7, 15, 3, 0, 8, 11, 6, 18, 9, 5];
