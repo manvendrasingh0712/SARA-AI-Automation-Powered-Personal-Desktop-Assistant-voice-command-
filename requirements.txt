@@ -185,13 +185,13 @@ numpy==2.1.0
 
 # ONNX Runtime is intentionally NOT listed here. Install exactly one build via
 #   requirements-cpu.txt  (onnxruntime==1.21.0)      or
-#   requirements-gpu.txt  (onnxruntime-gpu==1.21.0)
+#   requirements-gpu.txt  (onnxruntime-gpu==1.21.0, plus the CUDA/cuDNN DLL
+#                          packages for it and faster-whisper's ctranslate2
+#                          backend -- see requirements-gpu.txt. P1.2: moved
+#                          out of this base file, ~1 GB, CPU-only installs
+#                          don't need them; main.py's `import nvidia` block
+#                          at the top already tolerates them being absent.)
 
-# CUDA/cuDNN DLLs for onnxruntime-gpu + faster-whisper's ctranslate2 backend
-# (both need cuDNN 9.x / CUDA 12.x; loaded explicitly in main.py, see note above)
-nvidia-cudnn-cu12==9.5.1.17
-nvidia-cublas-cu12==12.9.2.10
-
-nvidia-ml-py==12.560.30  # sara/tools/system/system_info.py — GPU usage/VRAM/temperature (NVIDIA only, imported as `pynvml`)
+nvidia-ml-py==12.560.30  # sara/tools/system/system_info.py — GPU usage/VRAM/temperature (NVIDIA only, imported as `pynvml`); small, no CUDA binaries, keep here
 
 pywin32==312  # sara/tools/system/window_control.py — find/move/resize/topmost windows by app name (win32gui/win32con/win32process/win32api)
