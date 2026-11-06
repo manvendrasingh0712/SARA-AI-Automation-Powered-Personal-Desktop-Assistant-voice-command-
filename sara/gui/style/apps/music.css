@@ -605,3 +605,4 @@ html[data-quality="low"] .ly-line{transition:none;}
 #page-apps .transport .t-play{width:56px;height:56px;}
 #page-apps .transport .t-play svg{width:20px;height:20px;}
 #page-apps .spectrum{height:48px;}
+#page-apps .src-badge{color:var(--text);}   /* was --text-soft on the tinted badge: 4.3:1 in Paper and Oat */

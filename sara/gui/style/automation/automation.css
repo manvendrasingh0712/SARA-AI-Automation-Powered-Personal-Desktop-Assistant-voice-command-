@@ -149,6 +149,7 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 #page-automation .mode-tile b{font:600 14px/1.25 var(--font);color:var(--text);}
 #page-automation .mode-tile small{max-width:100%;font:var(--t-helper);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #page-automation #modeChips .mode-tile.on{border-color:rgb(var(--core-rgb) / .55);background:rgb(var(--core-rgb) / .10);}
+#page-automation #modeChips .mode-tile.on small{color:var(--text-soft);}   /* muted on the tinted tile was 4.06 in light themes */
 #page-automation .mode-check{position:absolute;top:var(--sp-2);right:var(--sp-2);width:20px;height:20px;padding:var(--sp-1);box-sizing:border-box;border-radius:50%;background:var(--core);color:var(--on-core);stroke-width:2.4;opacity:0;transform:scale(.6);transition:opacity var(--dur-fast),transform var(--dur-med) var(--ease-spring);}
 #page-automation .mode-tile.on .mode-check{opacity:1;transform:none;}
 
