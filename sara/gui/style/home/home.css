@@ -335,7 +335,7 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 #page-home .clock-card .cc-greet{display:none;}              /* the greeting is the page title now */
 #page-home .clock-card .cc-time{font:var(--t-display);font-variant-numeric:tabular-nums;}
 #page-home .clock-card .cc-ampm,#page-home .clock-card .cc-sec{font-size:14px;}
-#page-home .clock-card .cc-sec{color:var(--muted);}
+#page-home .clock-card .cc-sec{color:var(--muted);opacity:1;}
 #page-home .clock-card .cc-date{font-size:13px;}
 #page-home .clock-card .cc-bar{position:absolute;left:0;right:0;bottom:0;height:4px;margin:0;border-radius:0;}
 #page-home .today-card{min-height:176px;padding:var(--sp-5) var(--sp-6);}

@@ -99,7 +99,7 @@
   --void:#EFEDFC; --deep:#F9F8FF; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F5F3FE; --line:#D9D4F0;
   --core-rgb:94 92 230; --think-rgb:191 90 242; --speak-rgb:255 107 157;
   --text:#1A1633; --text-soft:#46406B; --muted:#666090; --faint:#A9A4C8;
-  --danger:#E5362B; --danger-rgb:229 54 43; --on-core:#FFFFFF;
+  --danger:#E3291D; --danger-rgb:227 41 29; --on-core:#FFFFFF;
   --fg-rgb:26 22 51; color-scheme:light; --mesh-k:1.15;
   --void-rgb:239 237 252; --vignette:rgba(94,92,230,.07);
 }
@@ -108,7 +108,7 @@
 :root[data-theme="slate"], [data-theme-preview="slate"]{
   --void:#050509; --deep:#10131F; --panel:#1C1C1E; --panel-rgb:28 28 30; --panel-2:#2C2C2E; --line:#3A3A3C;
   --core-rgb:10 132 255; --think-rgb:191 90 242; --speak-rgb:255 159 10;
-  --text:#F5F5F7; --text-soft:#B0B0B6; --muted:#8E8E93; --faint:#545458;
+  --text:#F5F5F7; --text-soft:#B0B0B6; --muted:#939397; --faint:#545458;
   --danger:#FF453A; --danger-rgb:255 69 58; --on-core:#04122B;
   --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:.9;
   --void-rgb:5 5 9; --vignette:rgba(0,0,0,.5);
@@ -140,7 +140,7 @@
   --void:#E8F7EF; --deep:#F6FDF9; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F0FAF5; --line:#CDE6DA;
   --core-rgb:8 132 84; --think-rgb:0 168 176; --speak-rgb:255 159 10;
   --text:#11271F; --text-soft:#35504A; --muted:#587068; --faint:#9BB3A8;
-  --danger:#E5382E; --danger-rgb:229 56 46; --on-core:#FFFFFF;
+  --danger:#E3291E; --danger-rgb:227 41 30; --on-core:#FFFFFF;
   --fg-rgb:17 39 31; color-scheme:light; --mesh-k:1.2;
   --void-rgb:232 247 239; --vignette:rgba(8,132,84,.06);
 }
@@ -150,7 +150,7 @@
   --void:#EAF1FB; --deep:#F7FAFF; --panel:#FFFFFF; --panel-rgb:255 255 255; --panel-2:#F2F6FD; --line:#D3DFEF;
   --core-rgb:0 108 235; --think-rgb:88 86 214; --speak-rgb:255 149 0;
   --text:#0F1B2D; --text-soft:#3C4A60; --muted:#5B6B82; --faint:#9AA7BA;
-  --danger:#FF3B30; --danger-rgb:255 59 48; --on-core:#FFFFFF;
+  --danger:#EB0D00; --danger-rgb:235 13 0; --on-core:#FFFFFF;
   --fg-rgb:15 27 45; color-scheme:light; --mesh-k:1.15;
   --void-rgb:234 241 251; --vignette:rgba(0,108,235,.06);
 }
@@ -201,7 +201,7 @@
 :root[data-theme="ink"], [data-theme-preview="ink"]{
   --void:#050505; --deep:#0A0A0A; --panel:#0C0C0C; --panel-rgb:12 12 12; --panel-2:#131313; --line:#242424;
   --core-rgb:255 90 54; --think-rgb:150 150 150; --speak-rgb:236 236 236;
-  --text:#EDEDED; --text-soft:#A8A8A8; --muted:#7C7C7C; --faint:#484848;
+  --text:#EDEDED; --text-soft:#A8A8A8; --muted:#7E7E7E; --faint:#484848;
   --danger:#FF2D55; --danger-rgb:255 45 85; --on-core:#1A0600;
   --fg-rgb:255 255 255; color-scheme:dark; --mesh-k:0;
   --void-rgb:5 5 5; --vignette:rgba(0,0,0,.55);
@@ -216,7 +216,7 @@
 :root[data-theme="oat"], [data-theme-preview="oat"]{
   --void:#E9E4D8; --deep:#F1EDE2; --panel:#F7F4EC; --panel-rgb:247 244 236; --panel-2:#EEE9DC; --line:#D6CFBE;
   --core-rgb:79 111 82; --think-rgb:139 154 126; --speak-rgb:196 154 108;
-  --text:#2B2A26; --text-soft:#55524A; --muted:#6F6B60; --faint:#A8A294;
+  --text:#2B2A26; --text-soft:#55524A; --muted:#69655B; --faint:#A8A294;
   --danger:#B3402F; --danger-rgb:179 64 47; --on-core:#FFFFFF;
   --fg-rgb:43 42 38; color-scheme:light; --mesh-k:.4;
   --void-rgb:233 228 216; --vignette:rgba(90,80,50,.08);
@@ -817,7 +817,7 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
    The selected segment can be marked either with aria-checked="true" or with .on */
 .seg{display:inline-flex;align-items:stretch;gap:2px;padding:2px;min-height:40px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-ctl);}
 .seg>button{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);padding:0 var(--sp-4);border:none;background:none;border-radius:calc(var(--r-ctl) - 3px);
-  font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
+  font:var(--t-label);font-size:13px;color:var(--text-soft);cursor:pointer;white-space:nowrap;
   transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
 .seg>button:hover{color:var(--text);}
 .seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on,.seg>button.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
@@ -1173,7 +1173,7 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
 #page-home .clock-card .cc-greet{display:none;}              /* the greeting is the page title now */
 #page-home .clock-card .cc-time{font:var(--t-display);font-variant-numeric:tabular-nums;}
 #page-home .clock-card .cc-ampm,#page-home .clock-card .cc-sec{font-size:14px;}
-#page-home .clock-card .cc-sec{color:var(--muted);}
+#page-home .clock-card .cc-sec{color:var(--muted);opacity:1;}
 #page-home .clock-card .cc-date{font-size:13px;}
 #page-home .clock-card .cc-bar{position:absolute;left:0;right:0;bottom:0;height:4px;margin:0;border-radius:0;}
 #page-home .today-card{min-height:176px;padding:var(--sp-5) var(--sp-6);}
@@ -1871,6 +1871,8 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 #page-notes .rem-add .pill-btn{height:40px;padding:0 18px;border-radius:var(--r-ctl);}
 
 @media (max-width:1099.98px){#page-notes #notesList{grid-template-columns:minmax(0,1fr);}}
+/* the accent on its own 10 % tint was 2.9:1 in light themes: the tag text mixes the accent with the text colour (light: darker, dark: lighter) */
+#page-notes .n-tag{color:color-mix(in srgb,var(--core) 45%,var(--text));}
 
 /* ==== style/apps/apps.css ==== */
 /* ==========================================================================
@@ -2523,6 +2525,7 @@ html[data-quality="low"] .ly-line{transition:none;}
 #page-apps .transport .t-play{width:56px;height:56px;}
 #page-apps .transport .t-play svg{width:20px;height:20px;}
 #page-apps .spectrum{height:48px;}
+#page-apps .src-badge{color:var(--text);}   /* was --text-soft on the tinted badge: 4.3:1 in Paper and Oat */
 
 /* ==== style/automation/automation.css ==== */
 /* ==========================================================================
@@ -2676,6 +2679,7 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 #page-automation .mode-tile b{font:600 14px/1.25 var(--font);color:var(--text);}
 #page-automation .mode-tile small{max-width:100%;font:var(--t-helper);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 #page-automation #modeChips .mode-tile.on{border-color:rgb(var(--core-rgb) / .55);background:rgb(var(--core-rgb) / .10);}
+#page-automation #modeChips .mode-tile.on small{color:var(--text-soft);}   /* muted on the tinted tile was 4.06 in light themes */
 #page-automation .mode-check{position:absolute;top:var(--sp-2);right:var(--sp-2);width:20px;height:20px;padding:var(--sp-1);box-sizing:border-box;border-radius:50%;background:var(--core);color:var(--on-core);stroke-width:2.4;opacity:0;transform:scale(.6);transition:opacity var(--dur-fast),transform var(--dur-med) var(--ease-spring);}
 #page-automation .mode-tile.on .mode-check{opacity:1;transform:none;}
 

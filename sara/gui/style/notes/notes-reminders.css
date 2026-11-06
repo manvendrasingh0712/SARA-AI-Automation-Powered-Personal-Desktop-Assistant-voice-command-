@@ -182,3 +182,5 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 #page-notes .rem-add .pill-btn{height:40px;padding:0 18px;border-radius:var(--r-ctl);}
 
 @media (max-width:1099.98px){#page-notes #notesList{grid-template-columns:minmax(0,1fr);}}
+/* the accent on its own 10 % tint was 2.9:1 in light themes: the tag text mixes the accent with the text colour (light: darker, dark: lighter) */
+#page-notes .n-tag{color:color-mix(in srgb,var(--core) 45%,var(--text));}

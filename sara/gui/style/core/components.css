@@ -232,7 +232,7 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
    The selected segment can be marked either with aria-checked="true" or with .on */
 .seg{display:inline-flex;align-items:stretch;gap:2px;padding:2px;min-height:40px;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--line);border-radius:var(--r-ctl);}
 .seg>button{flex:1 1 0;display:inline-flex;align-items:center;justify-content:center;gap:var(--sp-2);padding:0 var(--sp-4);border:none;background:none;border-radius:calc(var(--r-ctl) - 3px);
-  font:var(--t-label);font-size:13px;color:var(--muted);cursor:pointer;white-space:nowrap;
+  font:var(--t-label);font-size:13px;color:var(--text-soft);cursor:pointer;white-space:nowrap;
   transition:color var(--dur-fast),background var(--dur-fast),box-shadow var(--dur-fast);}
 .seg>button:hover{color:var(--text);}
 .seg>button[aria-checked="true"],.seg>button[aria-pressed="true"],.seg>button.on,.seg>button.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow-rest);}
