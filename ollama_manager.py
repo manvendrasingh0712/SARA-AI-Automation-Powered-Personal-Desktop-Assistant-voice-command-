@@ -40,6 +40,16 @@ class OllamaManager:
         exe_path: Optional[str] = None,
     ) -> None:
         self.host = self._normalize_host(host)
+        # P1.8: a non-loopback OLLAMA_HOST (incl. 0.0.0.0, which binds every interface) means
+        # Ollama's API is reachable from other machines on the network, not just this PC.
+        # No behavior change -- this only logs; `_is_local_host()` below serves a different
+        # purpose (whether SARA manages the process lifecycle) and is intentionally untouched.
+        _warn_hostname = urlparse(self.host).hostname
+        if _warn_hostname not in ("localhost", "127.0.0.1", "::1"):
+            logger.warning(
+                "OLLAMA_HOST (%s) is not loopback-only -- Ollama's API may be reachable from other devices on the network.",
+                self.host,
+            )
         self.ready_timeout_s = max(1.0, float(ready_timeout_s))
         self.poll_interval_s = max(0.05, float(poll_interval_s))
         self.exe_path = exe_path or os.getenv("OLLAMA_EXE_PATH") or None
