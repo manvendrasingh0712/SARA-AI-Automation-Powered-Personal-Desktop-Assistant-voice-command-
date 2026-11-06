@@ -146,3 +146,7 @@ sara/gui/CHANGELOG_GUI.md
 tests/PROVIDER_FEATURE_MATRIX.md
 bench/results/*
 !bench/results/RESULTS.md
+
+# Claude Code plan/progress state (P0.1) — local working state, not for the repo
+.claude/
+CLAUDE_CODE_PLAN.md
