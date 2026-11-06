@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import threading
+import urllib.parse
 import urllib.request
 import webbrowser
 
@@ -42,6 +43,8 @@ def _check_ollama() -> dict:
     }
     try:
         req = urllib.request.Request(f"{Config.OLLAMA_HOST}/api/tags")
+        if urllib.parse.urlparse(Config.OLLAMA_HOST).scheme not in ("http", "https"):  # P1.9
+            raise ValueError(f"refusing non-http(s) OLLAMA_HOST: {Config.OLLAMA_HOST!r}")
         with urllib.request.urlopen(req, timeout=2) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         names = [m.get("name", "") for m in data.get("models", [])]

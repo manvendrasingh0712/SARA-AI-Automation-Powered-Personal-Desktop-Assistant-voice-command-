@@ -13,6 +13,13 @@ import urllib.parse
 from .events import _push
 
 
+def _safe_urlopen(url: str, timeout: float):
+    """P1.9: refuse to open anything but http(s) before it ever reaches urlopen()."""
+    if urllib.parse.urlparse(url).scheme not in ("http", "https"):
+        raise ValueError(f"refusing non-http(s) URL: {url!r}")
+    return urllib.request.urlopen(url, timeout=timeout)
+
+
 def mic_sensitivity_to_threshold(value) -> int:
     """0-100 slider position -> SpeechToText energy_threshold.
     Shared by settings.py (set_mic_sensitivity) and modes.py
@@ -105,7 +112,7 @@ def _fetch_weather_from_api() -> dict:
             {"q": WEATHER_CITY, "appid": WEATHER_API_KEY, "units": "metric"}
         )
         url = f"https://api.openweathermap.org/data/2.5/weather?{params}"
-        with urllib.request.urlopen(url, timeout=6) as resp:
+        with _safe_urlopen(url, timeout=6) as resp:
             raw = json.loads(resp.read().decode("utf-8"))
 
         weather0 = (raw.get("weather") or [{}])[0]
@@ -133,7 +140,7 @@ def _fetch_weather_from_api() -> dict:
             aqi_url = (
                 f"https://api.openweathermap.org/data/2.5/air_pollution?{aqi_params}"
             )
-            with urllib.request.urlopen(aqi_url, timeout=6) as resp2:
+            with _safe_urlopen(aqi_url, timeout=6) as resp2:
                 aqi_raw = json.loads(resp2.read().decode("utf-8"))
             aqi_value = aqi_raw["list"][0]["main"]["aqi"]  # OWM scale: 1-5
             result["aqi_label"] = _AQI_LABELS.get(aqi_value, "—")

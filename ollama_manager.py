@@ -384,7 +384,9 @@ class OllamaManager:
         if "://" not in host:
             host = f"http://{host}"
         parsed = urlparse(host)
-        if not parsed.netloc:
+        # P1.9: enforce http(s) before this is ever passed to urlopen() -- a stray
+        # file:// or ftp:// (e.g. a mistyped/tampered OLLAMA_HOST) must not reach it.
+        if not parsed.netloc or parsed.scheme not in ("http", "https"):
             return "http://127.0.0.1:11434"
         return host
 
