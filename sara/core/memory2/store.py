@@ -186,7 +186,7 @@ class Memory2Store(_ReadMixin, _WriteMixin):
                     sets.append("embedding = ?")
                     params.append(None if vec is None else encode_vec(vec))
             with self._tx() as conn:
-                cur = conn.execute(f"UPDATE {TABLES[kind]} SET {', '.join(sets)} WHERE id = ?", (*params, item_id))
+                cur = conn.execute(f"UPDATE {TABLES[kind]} SET {', '.join(sets)} WHERE id = ?", (*params, item_id))  # nosec B608 -- table from fixed TABLES dict, columns are literal strings above, values are ? params
                 return cur.rowcount > 0
         except (ValueError, sqlite3.Error, RuntimeError) as exc:
             logger.warning("[Memory2] update_item failed (%s)", type(exc).__name__)
@@ -197,7 +197,7 @@ class Memory2Store(_ReadMixin, _WriteMixin):
             return False
         try:
             with self._tx() as conn:
-                cur = conn.execute(f"UPDATE {TABLES[kind]} SET {sql_set} WHERE id = ?", (*params, item_id))
+                cur = conn.execute(f"UPDATE {TABLES[kind]} SET {sql_set} WHERE id = ?", (*params, item_id))  # nosec B608 -- table from fixed TABLES dict, sql_set is always a literal passed by callers below, values are ? params
                 return cur.rowcount > 0
         except (sqlite3.Error, RuntimeError) as exc:
             logger.warning("[Memory2] update failed (%s)", type(exc).__name__)
@@ -239,6 +239,7 @@ class Memory2Store(_ReadMixin, _WriteMixin):
                     if row_ids:
                         marks = ",".join("?" * len(row_ids))
                         conn.execute(
+                            # nosec B608 -- table from fixed TABLES dict, marks is just "?" repeated (placeholders), row ids are ? params
                             f"UPDATE {TABLES[kind]} SET last_used_at = ?, use_count = use_count + 1 "
                             f"WHERE id IN ({marks})",
                             (stamp, *row_ids),
@@ -254,9 +255,9 @@ class Memory2Store(_ReadMixin, _WriteMixin):
         """
         with self._tx() as conn:
             marks = ",".join("?" * len(_KEEP_META))
-            keep = conn.execute(f"SELECT key, value FROM mem2_meta WHERE key IN ({marks})", _KEEP_META).fetchall()
+            keep = conn.execute(f"SELECT key, value FROM mem2_meta WHERE key IN ({marks})", _KEEP_META).fetchall()  # nosec B608 -- marks is just "?" repeated, values are params
             for table in ("mem2_facts", "mem2_events", "mem2_entities", "mem2_meta"):
-                conn.execute(f"DELETE FROM {table}")
+                conn.execute(f"DELETE FROM {table}")  # nosec B608 -- table from a fixed literal tuple above
             for row in keep:
                 conn.execute("INSERT INTO mem2_meta(key, value) VALUES (?, ?)", (row["key"], row["value"]))
 

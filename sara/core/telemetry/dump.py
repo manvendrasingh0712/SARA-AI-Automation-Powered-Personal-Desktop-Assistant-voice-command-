@@ -37,7 +37,7 @@ def fetch_rows(path: Path, limit: int) -> list[tuple]:
     conn = sqlite3.connect(uri, uri=True, timeout=5.0)
     try:
         return conn.execute(
-            f"SELECT {', '.join(_COLUMNS)} FROM turn_trace ORDER BY ts DESC LIMIT ?",
+            f"SELECT {', '.join(_COLUMNS)} FROM turn_trace ORDER BY ts DESC LIMIT ?",  # nosec B608 -- _COLUMNS is a fixed literal tuple, value is a ? param
             (limit,),
         ).fetchall()
     finally:

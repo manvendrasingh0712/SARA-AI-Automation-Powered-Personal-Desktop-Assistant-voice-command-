@@ -78,7 +78,7 @@ class _ReadMixin:
     def _rows(self, kind: str, statuses: Sequence[str], cap: int = _SCAN_CAP) -> list[dict]:
         if kind == "entities":
             return [_entity_dict(r) for r in self._read(_ENTITY_SQL + " ORDER BY id DESC LIMIT ?", (cap,))]
-        marks = ",".join("?" * len(statuses))
+        marks = ",".join("?" * len(statuses))  # nosec B608 -- just "?" repeated (placeholders); statuses go through ? params below
         if kind == "facts":
             sql = f"{_FACT_SQL} WHERE f.status IN ({marks}) ORDER BY f.id DESC LIMIT ?"
             return [_fact_dict(r) for r in self._read(sql, (*statuses, cap))]
@@ -139,7 +139,7 @@ class _ReadMixin:
         out: dict = {"schema_version": SCHEMA_VERSION}
         for kind, table in TABLES.items():
             counts = {s: 0 for s in sorted(STATUSES)}
-            for row in self._read(f"SELECT status, COUNT(*) AS c FROM {table} GROUP BY status"):
+            for row in self._read(f"SELECT status, COUNT(*) AS c FROM {table} GROUP BY status"):  # nosec B608 -- table from TABLES.items(), a fixed dict
                 counts[row["status"] or "active"] = int(row["c"])
             counts["total"] = sum(counts.values())
             out[kind] = counts
@@ -162,7 +162,7 @@ class _ReadMixin:
         if cached is not None and cached[0] == self._gen:
             return cached[1]
         rows = self._conn.execute(
-            f"SELECT id, embedding FROM {TABLES[kind]} WHERE status = ? AND embedding IS NOT NULL",
+            f"SELECT id, embedding FROM {TABLES[kind]} WHERE status = ? AND embedding IS NOT NULL",  # nosec B608 -- table from fixed TABLES dict, value is a ? param
             (status,),
         ).fetchall()
         groups: dict[int, tuple[list[int], list[np.ndarray]]] = {}

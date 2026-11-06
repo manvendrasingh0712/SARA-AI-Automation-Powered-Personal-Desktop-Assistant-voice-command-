@@ -507,7 +507,7 @@ class ReminderManager:
         try:
             with self._lock:
                 row = self._conn.execute(
-                    "SELECT " + ", ".join(_INTEL_COLUMNS)
+                    "SELECT " + ", ".join(_INTEL_COLUMNS)  # nosec B608 -- _INTEL_COLUMNS is a fixed literal tuple, value is a ? param
                     + " FROM reminder_intelligence WHERE reminder_id = ?",
                     (int(reminder_id),),
                 ).fetchone()
@@ -535,7 +535,7 @@ class ReminderManager:
                     (rid,),
                 )
                 self._conn.execute(
-                    f"UPDATE reminder_intelligence SET {assignments} WHERE reminder_id = ?",
+                    f"UPDATE reminder_intelligence SET {assignments} WHERE reminder_id = ?",  # nosec B608 -- assignments built only from keys whitelist-filtered against _INTEL_COLUMNS above, values are ? params
                     (*cols.values(), rid),
                 )
                 self._conn.commit()

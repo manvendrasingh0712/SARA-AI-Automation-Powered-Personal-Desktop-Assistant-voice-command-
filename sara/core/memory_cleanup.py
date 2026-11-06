@@ -55,7 +55,7 @@ def find_noise(db_file: Path) -> list[tuple[int, str, str]]:
     con = sqlite3.connect(f"file:{db_file}?mode=ro", uri=True)
     try:
         rows = con.execute(
-            "SELECT id, source, text FROM long_term_memory WHERE source IN (%s) ORDER BY id"
+            "SELECT id, source, text FROM long_term_memory WHERE source IN (%s) ORDER BY id"  # nosec B608 -- placeholder string only, _SOURCES is a fixed tuple passed as ? params
             % ",".join("?" * len(_SOURCES)),
             _SOURCES,
         ).fetchall()

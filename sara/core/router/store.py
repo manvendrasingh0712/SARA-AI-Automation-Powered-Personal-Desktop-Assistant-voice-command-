@@ -23,7 +23,7 @@ COLUMNS = (
     "ts", "turn_id", "tier", "static_tier", "propensity", "x_json", "quality",
     "latency_ms", "cost", "reward", "flags", "decision_id", "labelled",
 )
-_INSERT_SQL = (
+_INSERT_SQL = (  # nosec B608 -- COLUMNS is a fixed literal tuple above, values are ? params
     f"INSERT INTO router_samples ({', '.join(COLUMNS)}) "
     f"VALUES ({', '.join('?' * len(COLUMNS))})"
 )
@@ -161,7 +161,7 @@ class RouterStore:
         cols = [k for k in fields if k in COLUMNS and k != "decision_id"]
         if not cols:
             return False
-        sql = f"UPDATE router_samples SET {', '.join(c + '=?' for c in cols)} WHERE decision_id=?"
+        sql = f"UPDATE router_samples SET {', '.join(c + '=?' for c in cols)} WHERE decision_id=?"  # nosec B608 -- cols is whitelist-filtered against COLUMNS above, values are ? params
         params = tuple(fields[c] for c in cols) + (decision_id,)
 
         def _do(conn: sqlite3.Connection) -> bool:

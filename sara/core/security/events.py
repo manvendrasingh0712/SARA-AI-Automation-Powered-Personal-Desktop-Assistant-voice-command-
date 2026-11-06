@@ -43,7 +43,7 @@ _MAX_DB_ROWS = 100000
 _RING_ID_BASE = -(2 ** 31)
 _COLUMNS = ("ts", "turn_id", "kind", "tool", "tier", "origin", "source", "score", "details")
 _OUT_KEYS = ("id",) + _COLUMNS
-_INSERT_SQL = (
+_INSERT_SQL = (  # nosec B608 -- _COLUMNS is a fixed literal tuple above, values are ? params
     f"INSERT INTO security_event ({', '.join(_COLUMNS)}) "
     f"VALUES ({', '.join('?' * len(_COLUMNS))})"
 )
