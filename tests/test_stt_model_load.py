@@ -154,7 +154,7 @@ def test_loader_is_safe_under_concurrent_use(_fake_model) -> None:
 
 
 # ── D35 ─────────────────────────────────────────────────────────────────
-def test_missing_model_is_reported_loudly(capsys: pytest.CaptureFixture) -> None:
+def test_missing_model_is_reported_loudly(caplog: pytest.LogCaptureFixture) -> None:
     """
     The report must name the cause AND the remedy. Without it, the only
     outward symptom of a dead STT model is empty transcripts.
@@ -166,17 +166,17 @@ def test_missing_model_is_reported_loudly(capsys: pytest.CaptureFixture) -> None
             "traffic has been disabled ... set 'HF_HUB_OFFLINE=0'"
         ),
     )
-    out = capsys.readouterr().out
+    out = caplog.text
     assert "CANNOT HEAR" in out.upper(), "the report does not state the impact"
     assert "HF_HUB_OFFLINE" in out, "the report does not name the cause"
     assert "WhisperModel(" in out, "the report does not give the download command"
     assert "medium" in out, "the report does not name the configured model"
 
 
-def test_report_handles_a_non_offline_failure(capsys: pytest.CaptureFixture) -> None:
+def test_report_handles_a_non_offline_failure(caplog: pytest.LogCaptureFixture) -> None:
     """A bad model name must not get the offline remedy."""
     SpeechToText._report_no_stt_model("nonsuch", RuntimeError("unknown model size"))
-    out = capsys.readouterr().out
+    out = caplog.text
     assert "WHISPER_MODEL_SIZE" in out
     assert "$env:HF_HUB_OFFLINE" not in out, (
         "offline remedy shown for a failure that is not about offline mode"

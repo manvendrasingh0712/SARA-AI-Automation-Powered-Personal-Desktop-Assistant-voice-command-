@@ -166,18 +166,19 @@ def test_bytes_per_chunk_comes_from_the_class_not_a_literal() -> None:
 
 
 # ── the behavioural proof ───────────────────────────────────────────────
-def test_the_prebuffer_blob_is_counted_as_its_real_length(capsys) -> None:
+def test_the_prebuffer_blob_is_counted_as_its_real_length(caplog) -> None:
     """
     With a 9-chunk pre-buffer and N_SPEECH voiced chunks, the reported
     utterance must reflect all of them. Counting entries would report
     1 + N_SPEECH chunks instead of PRE_CHUNKS + N_SPEECH.
     """
+    caplog.set_level("DEBUG")  # P2.3: logger.info(), below caplog's default WARNING floor
     stt = _make_stt()
     stt._collect_speech(
         timeout=1.0, max_duration=12.0, silence_limit=0.8,
         on_partial_transcript=lambda t: None,
     )
-    out = capsys.readouterr().out
+    out = caplog.text
     line = [l for l in out.splitlines() if "endpoint rule=" in l]
     assert line, f"no endpoint debug line was printed; got:\n{out}"
     utt_ms = int(line[-1].split("utt_ms=")[1].split()[0])

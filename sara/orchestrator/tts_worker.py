@@ -243,7 +243,7 @@ class TTSWorker:
                 return False
             return True
         except Exception as e:
-            print(f"[TTSWorker] _should_speak preference check failed (defaulting to speak): {e}")
+            logger.warning(f"[TTSWorker] _should_speak preference check failed (defaulting to speak): {e}")
             return True
 
     def _ears_is_listening(self) -> bool:
@@ -289,14 +289,14 @@ class TTSWorker:
                     try:
                         on_first_chunk()
                     except Exception as e:
-                        print(f"[TTSWorker] on_first_chunk callback failed: {e}")
+                        logger.warning(f"[TTSWorker] on_first_chunk callback failed: {e}")
             if _DEBUG:
-                print(f"[LIVE-CAPTION-DEBUG] playback started @ {time.time():.3f}: {s[:30]}")
+                logger.info(f"[LIVE-CAPTION-DEBUG] playback started @ {time.time():.3f}: {s[:30]}")
             if on_chunk is not None:
                 try:
                     on_chunk(s)
                 except Exception as e:
-                    print(f"[TTSWorker] on_chunk callback failed: {e}")
+                    logger.warning(f"[TTSWorker] on_chunk callback failed: {e}")
 
         def _collecting_gen():
             for s in gen:
@@ -304,7 +304,7 @@ class TTSWorker:
                     break
                 sentences.append(s)
                 if _DEBUG:
-                    print(f"[Streaming to Audio]: {s}")
+                    logger.info(f"[Streaming to Audio]: {s}")
                 yield s
 
         if not self._should_speak():

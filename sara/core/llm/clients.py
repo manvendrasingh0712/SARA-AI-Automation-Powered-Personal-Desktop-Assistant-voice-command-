@@ -41,9 +41,9 @@ def _get_ollama_client(cfg):
                 timeout=getattr(cfg, "OLLAMA_TIMEOUT", 30.0),
             )
         except ImportError:
-            print("[LLM Error] 'ollama' missing. Run: pip install ollama")
+            logger.error("[LLM Error] 'ollama' missing. Run: pip install ollama")
         except Exception as e:
-            print(f"[LLM Error] Ollama client init failed: {e}")
+            logger.error(f"[LLM Error] Ollama client init failed: {e}")
     return _ollama_client
 
 
@@ -59,7 +59,7 @@ def _get_gemini_client(cfg):
 
             _gemini_client = _genai.Client(api_key=cfg.GEMINI_API_KEY)
         except Exception as e:
-            print(f"[LLM Error] Gemini init failed: {e}")
+            logger.error(f"[LLM Error] Gemini init failed: {e}")
     return _gemini_client
 
 
@@ -138,7 +138,7 @@ def _get_embedding_vector_uncached(cfg, text: str):
         try:
             resp = client.embed(model=model, input=text, **kwargs)
         except Exception as e:
-            print(f"[Embeddings] Ollama embed() call failed: {e}")
+            logger.warning(f"[Embeddings] Ollama embed() call failed: {e}")
             _embed_down_until = time.monotonic() + _EMBED_COOLDOWN_S
             return None
         embeddings = getattr(resp, "embeddings", None)
@@ -163,7 +163,7 @@ def _get_embedding_vector_uncached(cfg, text: str):
             http_options=_gtypes.HttpOptions(timeout=int(timeout_s * 1000))
         )
     except Exception as e:
-        print(f"[Embeddings] per-call timeout unsupported by this SDK, continuing without it: {e}")
+        logger.warning(f"[Embeddings] per-call timeout unsupported by this SDK, continuing without it: {e}")
         embed_config = None
 
     max_retries = max(0, int(getattr(cfg, "EMBEDDING_MAX_RETRIES", 2)))

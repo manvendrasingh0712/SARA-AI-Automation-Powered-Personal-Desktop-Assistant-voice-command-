@@ -704,14 +704,14 @@ def open_application(app_name: str, *, allow_search_fallback: bool = True) -> st
             fixed_status, fixed_err = _try_launch(_APP_ALIASES[corrected])
             if fixed_status == _LAUNCH_OK:
                 if Config.DEBUG_MODE:
-                    print(f"[Debug] Auto-corrected '{label}' -> '{corrected}'")
+                    logger.info(f"[Debug] Auto-corrected '{label}' -> '{corrected}'")
                 return f"Opened {corrected}."
             if fixed_status == _LAUNCH_ERROR:
                 status, err, label = fixed_status, fixed_err, corrected
 
     if status == _LAUNCH_OK:
         if Config.DEBUG_MODE:
-            print(f"[Debug] Launched application: {target} (spoken: '{label}')")
+            logger.info(f"[Debug] Launched application: {target} (spoken: '{label}')")
         return f"Opened {label}."
 
     if status == _LAUNCH_ERROR:

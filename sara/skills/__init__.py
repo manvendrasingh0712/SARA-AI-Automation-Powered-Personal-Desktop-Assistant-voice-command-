@@ -150,7 +150,7 @@ def _read_disabled_skills() -> set:
             conn.close()
         return {str(r[0]).split(":", 1)[1] for r in rows}
     except Exception as e:  # noqa: BLE001
-        logger.info("Could not read skill enabled-state (all skills stay enabled): %s", e)
+        logger.warning("Could not read skill enabled-state (all skills stay enabled): %s", e)
         return set()
 
 

@@ -7,11 +7,14 @@ so first UI paint / wake-word readiness never blocks on a cold-start).
 import threading
 
 from sara.orchestrator._constants import _DEBUG
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def _debug_log(msg: str) -> None:
     if _DEBUG:
-        print(msg)
+        logger.info(msg)
 
 
 # ----------------------------------------------------------------------------
@@ -36,7 +39,7 @@ class _Lazy:
             obj = self._factory()
             object.__setattr__(self, "_obj", obj)
         except Exception as e:
-            print(f"[_Lazy] background factory failed: {e}")
+            logger.warning(f"[_Lazy] background factory failed: {e}")
             object.__setattr__(self, "_error", e)
         finally:
             self._ready.set()

@@ -247,7 +247,7 @@ def _consolidation_loop(db, brain, rag_memory, stop_event: threading.Event) -> N
             _memory2_tick(db, brain)
         except Exception as e:  # noqa: BLE001 -- one bad tick must never kill the thread
             logger.error(f"[MemoryConsolidation] tick failed: {e}")
-            print(f"[MemoryConsolidation] tick failed (non-fatal): {e}")
+            logger.warning(f"[MemoryConsolidation] tick failed (non-fatal): {e}")
         stop_event.wait(interval_s)
 
 
@@ -262,10 +262,10 @@ def start_memory_consolidation(
     for the exact call site and required arguments.
     """
     if not getattr(Config, "MEMORY_CONSOLIDATION_ENABLED", True):
-        print("[MemoryConsolidation] Disabled via Config.MEMORY_CONSOLIDATION_ENABLED.")
+        logger.info("[MemoryConsolidation] Disabled via Config.MEMORY_CONSOLIDATION_ENABLED.")
         return None
     if rag_memory is None:
-        print("[MemoryConsolidation] No rag_memory instance provided -- disabled.")
+        logger.info("[MemoryConsolidation] No rag_memory instance provided -- disabled.")
         return None
 
     event = stop_event or threading.Event()
@@ -276,7 +276,7 @@ def start_memory_consolidation(
         daemon=True,
     )
     thread.start()
-    print(
+    logger.info(
         f"[MemoryConsolidation] Started -- every "
         f"{getattr(Config, 'MEMORY_CONSOLIDATION_INTERVAL_S', 60)}s, "
         f"batch={getattr(Config, 'MEMORY_CONSOLIDATION_BATCH_SIZE', 20)}, "

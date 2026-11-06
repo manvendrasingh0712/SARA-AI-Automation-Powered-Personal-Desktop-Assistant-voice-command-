@@ -300,7 +300,7 @@ def _request_step_correction(
         )
         return None
     except Exception as exc:  # noqa: BLE001 -- degrade to "no correction available"
-        logger.info(
+        logger.warning(
             "Step correction call for tool '%s' failed (%s): %s",
             step.tool,
             type(exc).__name__,
@@ -709,7 +709,7 @@ def execute_plan(
                     error="Skipped: depended on a previous step that failed or was skipped.",
                 )
                 _fire_plan_event(on_event, "step", {"index": first_index, "tool": first_step.tool, "status": "skipped"})
-                logger.info(
+                logger.warning(
                     "Skipping step %d ('%s'): depended on a failed/skipped predecessor.",
                     first_index,
                     first_step.tool,
@@ -796,7 +796,7 @@ def execute_plan(
     failed_count = sum(1 for r in results if r.status == StepStatus.FAILED)
     skipped_count = sum(1 for r in results if r.status == StepStatus.SKIPPED)
 
-    logger.info(
+    logger.warning(
         "Plan execution finished: %d step(s) (%d success, %d failed, "
         "%d skipped), aborted=%s, elapsed=%.2fs",
         len(results),

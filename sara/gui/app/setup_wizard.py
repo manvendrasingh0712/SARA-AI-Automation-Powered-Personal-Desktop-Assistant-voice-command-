@@ -27,6 +27,9 @@ import webbrowser
 from config import Config
 
 from . import events
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def _check_ollama() -> dict:
@@ -127,7 +130,7 @@ class ApiSetupWizardMixin:
         try:
             return {"seen": self.db.get_preference("setup_wizard_completed") == "1"}
         except Exception as e:
-            print(f"[get_setup_wizard_seen error] {e}")
+            logger.error(f"[get_setup_wizard_seen error] {e}")
             return {"seen": False}
 
     def mark_setup_wizard_seen(self):
@@ -135,7 +138,7 @@ class ApiSetupWizardMixin:
             self.db.set_preference("setup_wizard_completed", "1")
             return {"ok": True}
         except Exception as e:
-            print(f"[mark_setup_wizard_seen error] {e}")
+            logger.error(f"[mark_setup_wizard_seen error] {e}")
             return {"ok": False}
 
     # ── Status check ─────────────────────────────────────────────────────
@@ -185,7 +188,7 @@ class ApiSetupWizardMixin:
             )
             return status
         except Exception as e:
-            print(f"[check_setup_status error] {e}")
+            logger.error(f"[check_setup_status error] {e}")
             return {"error": str(e), "all_ready": False}
 
     # ── One-click fixes ──────────────────────────────────────────────────

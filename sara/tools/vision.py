@@ -78,9 +78,9 @@ class VisionAssistant:
             self.client = genai.Client(api_key=Config.GEMINI_API_KEY)
             self.model_name = Config.VISION_MODEL
             if Config.DEBUG_MODE:
-                print("[Debug] VisionAssistant initialized.")
+                logger.info("[Debug] VisionAssistant initialized.")
         except Exception as e:
-            print(f"[Error] Failed to initialize VisionAssistant: {e}")
+            logger.error(f"[Error] Failed to initialize VisionAssistant: {e}")
             self.client = None
 
     def capture_screenshot(self) -> "Image.Image | None":

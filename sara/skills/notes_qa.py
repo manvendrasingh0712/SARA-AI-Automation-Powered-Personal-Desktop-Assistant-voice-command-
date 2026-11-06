@@ -457,7 +457,7 @@ def sync_notes_folder(rag_memory, db) -> int:
     if hasattr(rag_memory, "check_backend") and not rag_memory.check_backend():
         _needs_retry = True
         model = getattr(Config, "EMBEDDING_MODEL", "gemini-embedding-001")
-        print(
+        logger.info(
             f"[NotesQA] Gemini embedding model '{model}' isn't responding — "
             f"notes won't be searchable until it is. Check that GEMINI_API_KEY "
             f"is set in .env, that you're online, and that EMBEDDING_MODEL is "
@@ -528,13 +528,13 @@ def sync_notes_folder(rag_memory, db) -> int:
                 # or has no mtime key, so it is retried.
                 _pref_set(db, _SCHEMA_PREF_KEY, _SCHEMA_VERSION)
             if queued:
-                print(f"[NotesQA] Queued {queued} note file(s) from "
+                logger.info(f"[NotesQA] Queued {queued} note file(s) from "
                       f"{getattr(Config, 'NOTES_FOLDER', '?')} for indexing")
             batch.seal()
             return queued
         except Exception as e:  # noqa: BLE001
             _needs_retry = True
-            print(f"[NotesQA] sync_notes_folder failed: {e}")
+            logger.warning(f"[NotesQA] sync_notes_folder failed: {e}")
             return 0
 
 

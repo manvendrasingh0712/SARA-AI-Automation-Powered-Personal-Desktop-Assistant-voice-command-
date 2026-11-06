@@ -48,6 +48,9 @@ from sara.orchestrator.intent_handlers import _handle_command
 # RLock, not Lock: _handle_command() may re-enter Api methods on the same
 # thread (e.g. the session_control "sleep" path calling stop_sara()).
 from sara.orchestrator.state import STATE_LOCK, TURN_STATE, note_typed_activity
+import logging
+logger = logging.getLogger(__name__)
+
 
 try:
     from sara.core.telemetry import begin_turn as _t_begin, end_turn as _t_end
@@ -267,7 +270,7 @@ class ApiCoreMixin:
             n for n in dir(self)
             if not n.startswith("_") and callable(getattr(self, n, None))
         )
-        print(f"[Api] {len(exposed)} methods exposed to frontend: {exposed}")
+        logger.info(f"[Api] {len(exposed)} methods exposed to frontend: {exposed}")
 
     def get_system_stats(self):
         # Update disk usage sparingly to prevent UI thread blocking
@@ -329,7 +332,7 @@ class ApiCoreMixin:
                 "approx_mb": round(approx_bytes / (1024 * 1024), 2),
             }
         except Exception as e:
-            print(f"[get_memory_stats error] {e}")
+            logger.error(f"[get_memory_stats error] {e}")
             return {"ok": False}
 
     # ── Proactive Insights card (Settings page) ─────────────────────────
@@ -348,7 +351,7 @@ class ApiCoreMixin:
                 "recent": stats.get("recent", []),
             }
         except Exception as e:
-            print(f"[get_proactive_stats error] {e}")
+            logger.error(f"[get_proactive_stats error] {e}")
             return {"ok": False}
 
     # ── Shareable Moments card (Memory page) ────────────────────────────
@@ -382,7 +385,7 @@ class ApiCoreMixin:
                 "sara_name": getattr(Config, "SARA_NAME", "Sara"),
             }
         except Exception as e:
-            print(f"[get_share_card_data error] {e}")
+            logger.error(f"[get_share_card_data error] {e}")
             return {"ok": False}
 
     # ── Weather card (Home page) ────────────────────────────────────────
@@ -420,7 +423,7 @@ class ApiCoreMixin:
             if hasattr(self.tts, "clear_interrupt"):
                 self.tts.clear_interrupt()
         except Exception as e:
-            print(f"[wake_now clear_interrupt error] {e}")
+            logger.error(f"[wake_now clear_interrupt error] {e}")
         events._manual_wake_event.set()
         return {"ok": True}
 
@@ -448,16 +451,16 @@ class ApiCoreMixin:
             TURN_STATE.cancel()
             _t_end("cancelled")
         except Exception as e:
-            print(f"[stop_sara cancel error] {e}")
+            logger.error(f"[stop_sara cancel error] {e}")
         try:
             if hasattr(self.tts, "stop"):
                 self.tts.stop()
         except Exception as e:
-            print(f"[stop_sara tts.stop() error] {e}")
+            logger.error(f"[stop_sara tts.stop() error] {e}")
         try:
             _push("status", "sleeping")
         except Exception as e:
-            print(f"[stop_sara push error] {e}")
+            logger.error(f"[stop_sara push error] {e}")
         return {"ok": True}
 
     # ── Serialized typed-command pipeline (v14) ─────────────────────────
@@ -490,7 +493,7 @@ class ApiCoreMixin:
                     return
                 self._run_text_command(text)
             except Exception as e:
-                print(f"[command worker error] {e}")
+                logger.error(f"[command worker error] {e}")
             finally:
                 self._cmd_queue.task_done()
 
@@ -505,7 +508,7 @@ class ApiCoreMixin:
             if hasattr(self.tts, "clear_interrupt"):
                 self.tts.clear_interrupt()
         except Exception as e:
-            print(f"[send_text_command clear_interrupt error] {e}")
+            logger.error(f"[send_text_command clear_interrupt error] {e}")
 
         # Cancellation: new generation + fresh cancel event for this command.
         turn_gen, turn_cancel = TURN_STATE.begin()
@@ -519,7 +522,7 @@ class ApiCoreMixin:
             if self.lang_state is not None and isinstance(self.context_state, dict):
                 self.context_state["turn_lang_mode"] = self.lang_state.snapshot()[0]
         except Exception as e:
-            print(f"[send_text_command lang mode error] {e}")
+            logger.error(f"[send_text_command lang mode error] {e}")
 
         # SESSION-CONTROL FIX: exit/sleep/forget-memory/"my name is X"
         # used to only be checked in the voice loop (run_sara_logic),
@@ -560,18 +563,18 @@ class ApiCoreMixin:
                     session_control=session_control,
                 )
         except Exception as e:
-            print(f"[send_text_command _handle_command error] {e}")
+            logger.error(f"[send_text_command _handle_command error] {e}")
             reply = "Sorry, something went wrong handling that. Please try again."
             _t_end("error")
             try:
                 _push("status", "sleeping")
             except Exception as e2:
-                print(f"[send_text_command status push error] {e2}")
+                logger.error(f"[send_text_command status push error] {e2}")
         note_typed_activity()  # the idle-sleep clock restarts when the reply is done
         was_cancelled = turn_cancel.is_set() or not TURN_STATE.is_current(turn_gen)
         _t_end("cancelled" if was_cancelled else "ok")
         if was_cancelled:
-            print("[send_text_command] turn cancelled by Stop; dropping late result")
+            logger.info("[send_text_command] turn cancelled by Stop; dropping late result")
             reply = None
         if reply:
             try:
@@ -580,13 +583,13 @@ class ApiCoreMixin:
                 if _reply_turn:
                     _push("reply_meta", str(_reply_turn)[:40], str(self.context_state.get("last_route", "command")))
             except Exception as e:
-                print(f"[reply_meta push error] {type(e).__name__}")
+                logger.error(f"[reply_meta push error] {type(e).__name__}")
             _push("transcript", "sara", reply)
             try:
                 self.db.log_message("user", text)
                 self.db.log_message("assistant", reply)
             except Exception as e:
-                print(f"[db log error] {e}")
+                logger.error(f"[db log error] {e}")
 
         # SESSION-CONTROL FIX: act on what _handle_command() decided.
         # GUI equivalents of the voice loop's stop_event.set()/break --
@@ -675,7 +678,7 @@ class ApiCoreMixin:
                     break
             self._cmd_queue.put_nowait(None)
         except Exception as e:
-            print(f"[close_window queue drain error] {e}")
+            logger.error(f"[close_window queue drain error] {e}")
 
         for w in webview.windows:
             w.destroy()

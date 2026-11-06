@@ -18,6 +18,9 @@ import numpy as np
 
 from config import Config
 from sara.core.diag import swallowed
+import logging
+logger = logging.getLogger(__name__)
+
 
 try:
     import sounddevice as sd
@@ -26,7 +29,7 @@ try:
 except (ImportError, OSError):
     _SD_OK = False
     sd = None
-    print("[TTS] sounddevice not found — pip install sounddevice")
+    logger.warning("[TTS] sounddevice not found — pip install sounddevice")
 
 try:
     import pygame
@@ -43,7 +46,7 @@ try:
 except ImportError:
     _KOKORO_OK = False
     Kokoro = None
-    print("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
+    logger.warning("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
 
 try:
     import onnxruntime as _ort
@@ -253,7 +256,7 @@ class _PersistentPlayer:
         if _SD_OK and sd is not None:
             self._open_stream()
         elif getattr(Config, "DEBUG_MODE", False):
-            print(
+            logger.info(
                 "[TTS] sounddevice unavailable — persistent player will use "
                 "pygame fallback (per-call, no continuous AEC reference)."
             )
@@ -270,9 +273,9 @@ class _PersistentPlayer:
             )
             self._stream.start()
             if getattr(Config, "DEBUG_MODE", False):
-                print("[TTS] Persistent OutputStream opened.")
+                logger.info("[TTS] Persistent OutputStream opened.")
         except Exception as e:
-            print(f"[TTS] Persistent OutputStream open failed: {e}")
+            logger.warning(f"[TTS] Persistent OutputStream open failed: {e}")
             self._stream = None
 
     def _far_end_worker(self) -> None:
@@ -311,7 +314,7 @@ class _PersistentPlayer:
 
     def _callback(self, outdata, frames, time_info, status) -> None:
         if status and getattr(Config, "DEBUG_MODE", False):
-            print(f"[TTS] output stream status: {status}")
+            logger.info(f"[TTS] output stream status: {status}")
 
         if self._clear_flag.is_set():
             self._current = None
@@ -510,7 +513,7 @@ class _PersistentPlayer:
                     time.sleep(_POLL_S)
         except Exception as e:
             if getattr(Config, "DEBUG_MODE", False):
-                print(f"[TTS] pygame fallback error: {e}")
+                logger.error(f"[TTS] pygame fallback error: {e}")
         return False
 
     def play_and_wait(

@@ -11,6 +11,9 @@ No relative imports on purpose: this file can be imported and tested on its own.
 
 import importlib
 import threading
+import logging
+logger = logging.getLogger(__name__)
+
 
 _LOCK = threading.Lock()
 _PREF_KEY = "ui:telemetry_enabled"
@@ -51,7 +54,7 @@ def _apply_saved(host, telemetry):
         if saved is not None and str(saved).strip() != "":
             telemetry.set_enabled(str(saved).strip() == "1")
     except Exception as e:
-        print(f"[perf pref apply error] {e}")
+        logger.error(f"[perf pref apply error] {e}")
 
 
 class ApiPerfMixin:
@@ -74,7 +77,7 @@ class ApiPerfMixin:
                 pass
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_perf_summary error] {e}")
+            logger.error(f"[get_perf_summary error] {e}")
             return {"ok": False, "data": None}
 
     def get_recent_turns(self, n=10):
@@ -84,7 +87,7 @@ class ApiPerfMixin:
         try:
             return {"ok": True, "data": list(telemetry.get_recent(_clamp(n, 1, 50, 10)))}
         except Exception as e:
-            print(f"[get_recent_turns error] {e}")
+            logger.error(f"[get_recent_turns error] {e}")
             return {"ok": False, "data": None}
 
     def set_telemetry_enabled(self, enabled):
@@ -99,8 +102,8 @@ class ApiPerfMixin:
             try:
                 self._pref_writer.enqueue(_PREF_KEY, "1" if on else "0")
             except Exception as e:
-                print(f"[set_telemetry_enabled persist error] {e}")
+                logger.error(f"[set_telemetry_enabled persist error] {e}")
             return {"ok": True, "enabled": bool(telemetry.is_enabled())}
         except Exception as e:
-            print(f"[set_telemetry_enabled error] {e}")
+            logger.error(f"[set_telemetry_enabled error] {e}")
             return {"ok": False, "data": None, "enabled": False}

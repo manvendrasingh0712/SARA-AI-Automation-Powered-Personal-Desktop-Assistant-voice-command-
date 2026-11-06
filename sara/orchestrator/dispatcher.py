@@ -240,7 +240,7 @@ def _match_reply_language(brain, user_input: str, context_state: dict) -> None:
         if callable(setter) and (not callable(getter) or getter() != lang):
             setter(lang)
     except Exception as e:
-        print(f"[Dispatcher] reply-language match failed (continuing): {e}")
+        logger.warning(f"[Dispatcher] reply-language match failed (continuing): {e}")
 
 
 def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
@@ -278,7 +278,7 @@ def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
                 "(It's morning — a bit more upbeat/energetic tone fits.)"
             )
     except Exception as e:
-        print(f"[Dispatcher] mood-hint build failed (continuing): {e}")
+        logger.warning(f"[Dispatcher] mood-hint build failed (continuing): {e}")
 
     try:
         if context_state.get("turn_lang_mode") == "auto":
@@ -286,7 +286,7 @@ def _build_turn_mood_mix_hint(user_input: str, context_state: dict) -> str:
             # it made the 4B model write fragments ("Haan, haan haan.") instead of an answer, so it is no longer sent.
             pass
     except Exception as e:
-        print(f"[Dispatcher] script-mix hint build failed (continuing): {e}")
+        logger.warning(f"[Dispatcher] script-mix hint build failed (continuing): {e}")
 
     return " ".join(parts)
 
@@ -565,7 +565,7 @@ def _build_plan_dispatch_fn(ctx: dict):
         try:
             ctx["ui_update"]("plan_progress", stage, payload)
         except Exception as e:
-            print(f"[PlanProgress] event push failed (non-fatal): {e}")
+            logger.warning(f"[PlanProgress] event push failed (non-fatal): {e}")
     _dispatch.on_event = _on_plan_event
 
     return _dispatch
@@ -665,7 +665,7 @@ def _try_compound_plan(user_input, brain, ctx, cancel_event):
         brain.record_exchange(user_input, reply)
         return reply
     except Exception as exc:  # noqa: BLE001 -- the single-action path is the safety net
-        print(f"[Planning] compound plan failed, using the single-action path: {exc}")
+        logger.warning(f"[Planning] compound plan failed, using the single-action path: {exc}")
         return None
 
 
@@ -905,14 +905,14 @@ def _handle_command(
                         try:
                             ok = rag.clear_all()
                         except Exception as e:
-                            print(f"[Memory] clear_all failed: {e}")
+                            logger.warning(f"[Memory] clear_all failed: {e}")
                             ok = False
                         try:
                             from sara.core.memory2 import forget as _m2_forget
 
                             _m2_forget.forget_all()
                         except Exception as e:
-                            print(f"[Memory2] forget_all failed: {type(e).__name__}")
+                            logger.warning(f"[Memory2] forget_all failed: {type(e).__name__}")
                         result = (
                             "Done -- I've forgotten everything I knew about you long-term."
                             if ok
@@ -938,7 +938,7 @@ def _handle_command(
                             result = action_fn()
                             _log_action(db, "system_action", action, "success")
                         except Exception as e:
-                            print(f"[Core] Confirmed low-confidence action '{action}' raised: {e}")
+                            logger.info(f"[Core] Confirmed low-confidence action '{action}' raised: {e}")
                             result = "Sorry, I ran into a problem with that."
                             _log_action(db, "system_action", action, "fail")
                 else:
@@ -1060,7 +1060,7 @@ def _handle_command(
             # outer try/except, which treats any escaped exception as
             # fatal and exits the ENTIRE main voice loop thread. One
             # failed command should just be one failed command.
-            print(f"[Core] Handler for intent '{intent}' raised: {e}")
+            logger.info(f"[Core] Handler for intent '{intent}' raised: {e}")
             result = _quick(
                 ctx, "Sorry, I ran into a problem with that. Let's try something else."
             )
@@ -1133,7 +1133,7 @@ def _handle_command(
             brain.record_exchange(user_input, result)
             return result
         except Exception as e:
-            print(f"[Core] SIMPLE_ACTIONS['{intent}'] raised: {e}")
+            logger.info(f"[Core] SIMPLE_ACTIONS['{intent}'] raised: {e}")
             # AUDIT LOG (NEW): zero-arg system action raised.
             _log_action(db, "system_action", intent, "fail")
             return _quick(
@@ -1231,7 +1231,7 @@ def _handle_command(
                     brain.record_exchange(user_input, plan_result)
                     return plan_result
             except Exception as e:  # noqa: BLE001 -- absolute safety net
-                print(f"[Planning] Multi-step plan attempt failed unexpectedly: {e}")
+                logger.warning(f"[Planning] Multi-step plan attempt failed unexpectedly: {e}")
             # NOTE: no longer falls through to the tool-router. The router
             # already judged this message multi-action; re-asking a second
             # LLM to squeeze it into one tool was both slow and usually
@@ -1273,7 +1273,7 @@ def _handle_command(
                             brain.record_exchange(user_input, tool_result)
                             return tool_result
             except Exception as e:
-                print(f"[ToolRouter] resolution failed: {e}")
+                logger.warning(f"[ToolRouter] resolution failed: {e}")
 
         # chat_route == "chat": both LLM routing stages deliberately
         # skipped -- straight to the single generation call below.
@@ -1317,7 +1317,7 @@ def _handle_command(
                     if note_text:
                         context_hint = f"(Relevant past note: {note_text})"
         except Exception as e:
-            print(f"[RAG] follow-up context lookup failed (continuing): {e}")
+            logger.warning(f"[RAG] follow-up context lookup failed (continuing): {e}")
 
     if intent == "chat":
         # E2E 2026-10-30: every chat turn showed route_ms 2.06 s in the real
@@ -1381,7 +1381,7 @@ def _handle_command(
                         _rc_clean = False
                         context_hint = (context_hint + chr(10) + block) if context_hint else block
             except Exception as _g:  # noqa: BLE001 -- grounding is optional; the normal answer still goes out
-                print(f"[Grounding] skipped: {_g}")
+                logger.info(f"[Grounding] skipped: {_g}")
         stream = brain.generate_response_stream(user_input, reference_context=context_hint)
         if getattr(Config, "REPLY_GUARDRAILS_ENABLED", True):
             from sara.core.llm.guardrails import guard_stream
@@ -1409,7 +1409,7 @@ def _handle_command(
                 logger.debug("response cache store skipped: %s", _c)
         return " ".join(sentences)
     except Exception as e:
-        print(f"[Error] LLM stream failed: {e}")
+        logger.error(f"[Error] LLM stream failed: {e}")
         return _quick(
             ctx, "Sorry, I had trouble responding to that. Could you try again?"
         )

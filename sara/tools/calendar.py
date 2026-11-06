@@ -85,7 +85,7 @@ def get_calendar_service():
     """
     if not _GOOGLE_LIBS_AVAILABLE:
         if Config.DEBUG_MODE:
-            print("[Calendar] google-auth/api-client packages not installed.")
+            logger.info("[Calendar] google-auth/api-client packages not installed.")
         return None
 
     creds_path = _creds_path()
@@ -112,7 +112,7 @@ def get_calendar_service():
                     creds = Credentials.from_authorized_user_info(json.loads(token_json), _SCOPES)
                 except Exception as e:
                     if Config.DEBUG_MODE:
-                        print(f"[Calendar] Couldn't load encrypted token, will try plaintext/re-auth: {e}")
+                        logger.warning(f"[Calendar] Couldn't load encrypted token, will try plaintext/re-auth: {e}")
                     creds = None
 
         if creds is None and token_path and os.path.exists(token_path):
@@ -120,7 +120,7 @@ def get_calendar_service():
                 creds = Credentials.from_authorized_user_file(token_path, _SCOPES)
             except Exception as e:
                 if Config.DEBUG_MODE:
-                    print(f"[Calendar] Couldn't load token.json, will re-auth: {e}")
+                    logger.warning(f"[Calendar] Couldn't load token.json, will re-auth: {e}")
                 creds = None
 
         if not creds or not creds.valid:
@@ -128,7 +128,7 @@ def get_calendar_service():
                 try:
                     creds.refresh(Request())
                 except Exception as e:
-                    print(f"[Calendar] Token refresh failed, re-running consent flow: {e}")
+                    logger.warning(f"[Calendar] Token refresh failed, re-running consent flow: {e}")
                     creds = None
 
             if not creds or not creds.valid:
@@ -146,11 +146,11 @@ def get_calendar_service():
                     with open(token_path, "w", encoding="utf-8") as f:
                         f.write(creds.to_json())
                 except Exception as e:
-                    print(f"[Calendar] Failed to save token.json: {e}")
+                    logger.warning(f"[Calendar] Failed to save token.json: {e}")
 
         return build("calendar", "v3", credentials=creds, cache_discovery=False)
     except Exception as e:
-        print(f"[Error] get_calendar_service failed: {e}")
+        logger.error(f"[Error] get_calendar_service failed: {e}")
         return None
 
 
@@ -184,7 +184,7 @@ def _list_events(time_min: datetime, time_max: datetime) -> List[Dict[str, Any]]
         )
         return [_event_to_dict(e) for e in events_result.get("items", [])]
     except Exception as e:
-        print(f"[Error] Calendar event listing failed: {e}")
+        logger.error(f"[Error] Calendar event listing failed: {e}")
         return []
 
 
@@ -256,7 +256,7 @@ def create_event(
             "event_id": created.get("id"),
         }
     except Exception as e:
-        print(f"[Error] create_event failed: {e}")
+        logger.error(f"[Error] create_event failed: {e}")
         return {"ok": False, "message": "Sorry, I couldn't create that event.", "event_id": None}
 
 
@@ -272,5 +272,5 @@ def get_calendar_status() -> Dict[str, Any]:
         calendar_info = service.calendars().get(calendarId=_CALENDAR_ID).execute()
         return {"connected": True, "email": calendar_info.get("id")}
     except Exception as e:
-        print(f"[Error] get_calendar_status failed: {e}")
+        logger.error(f"[Error] get_calendar_status failed: {e}")
         return {"connected": False, "email": None}

@@ -38,6 +38,9 @@ from .._shared_state import (
     _RISKY_SERVICE_KEYWORDS,
     _CONFIRM_PENDING_TTL_S,
 )
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _h_clipboard_read(match, ctx):
     from sara.core.security.untrusted import guard_spoken
@@ -255,7 +258,7 @@ def _h_open_app(match, ctx):
             _activity(ctx, "error", "app", f"Couldn't open {_activity_label(target)}")
             return _quick(ctx, str(e))
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
-            print(f"[Security] open_app validation raised unexpectedly: {e}")
+            logger.info(f"[Security] open_app validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely open that application.")
     # CONTEXT TRACKING (NEW): remember the (validated) app name so a later
     # turn -- e.g. a future pronoun-style "close it" handler -- has
@@ -323,7 +326,7 @@ def _h_close_app(match, ctx):
             _activity(ctx, "error", "app", f"Couldn't close {_activity_label(app_name)}")
             return _quick(ctx, str(e))
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
-            print(f"[Security] close_app validation raised unexpectedly: {e}")
+            logger.info(f"[Security] close_app validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely close that application.")
     # CONTEXT TRACKING (NEW): same rationale as _h_open_app() above --
     # remember the (validated) app name regardless of whether it then

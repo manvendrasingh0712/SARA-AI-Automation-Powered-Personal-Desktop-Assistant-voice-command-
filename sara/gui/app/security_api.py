@@ -12,6 +12,9 @@ No relative imports on purpose: this file can be imported and tested on its own.
 
 import importlib
 import threading
+import logging
+logger = logging.getLogger(__name__)
+
 
 _LOCK = threading.Lock()
 _PREF_KEY = "ui:security_mode"
@@ -92,7 +95,7 @@ def _apply_saved(host):
         if mode is not None:
             _set_config_mode(mode)
     except Exception as e:
-        print(f"[security pref apply error] {type(e).__name__}")
+        logger.error(f"[security pref apply error] {type(e).__name__}")
 
 
 class ApiSecurityMixin:
@@ -116,7 +119,7 @@ class ApiSecurityMixin:
             }
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_security_summary error] {type(e).__name__}")
+            logger.error(f"[get_security_summary error] {type(e).__name__}")
             return {"ok": False, "data": None}
 
     def get_security_events(self, limit=50, kind=None):
@@ -131,7 +134,7 @@ class ApiSecurityMixin:
             rows = events.get_events(_clamp(limit, 1, 200, 50), kind=kind)
             return {"ok": True, "data": _slim(rows)}
         except Exception as e:
-            print(f"[get_security_events error] {type(e).__name__}")
+            logger.error(f"[get_security_events error] {type(e).__name__}")
             return {"ok": False, "data": None}
 
     def set_security_mode(self, mode):
@@ -148,8 +151,8 @@ class ApiSecurityMixin:
             try:
                 self._pref_writer.enqueue(_PREF_KEY, chosen)
             except Exception as e:
-                print(f"[set_security_mode persist error] {type(e).__name__}")
+                logger.error(f"[set_security_mode persist error] {type(e).__name__}")
             return {"ok": True, "mode": chosen}
         except Exception as e:
-            print(f"[set_security_mode error] {type(e).__name__}")
+            logger.error(f"[set_security_mode error] {type(e).__name__}")
             return {"ok": False, "data": None}

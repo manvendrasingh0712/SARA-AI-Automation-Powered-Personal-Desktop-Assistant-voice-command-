@@ -199,7 +199,7 @@ def _embed_text_uncached(
                     "OLLAMA_EMBEDDING_MODEL" if backend == "ollama" else "EMBEDDING_MODEL",
                     "",
                 )
-                print(
+                logger.info(
                     f"[RAG] Embedding call to '{used_model}' returned no "
                     f"vector for text: {text[:80]!r}"
                 )
@@ -208,7 +208,7 @@ def _embed_text_uncached(
     except Exception as e:
         logger.debug(f"[RAG] embedding request failed: {e}")
         if debug:
-            print(
+            logger.warning(
                 f"[RAG] Embedding request FAILED ({type(e).__name__}: {e}) -- "
                 f"check EMBEDDING_BACKEND/GEMINI_API_KEY/OLLAMA_HOST and "
                 f"network connectivity."
@@ -269,7 +269,7 @@ class LongTermMemory:
         self._writer_thread: Optional[threading.Thread] = None
 
         if not self.enabled:
-            print("[RAG] Disabled via Config.RAG_ENABLED — long-term memory inactive.")
+            logger.info("[RAG] Disabled via Config.RAG_ENABLED — long-term memory inactive.")
             return
 
         try:
@@ -278,7 +278,7 @@ class LongTermMemory:
             self._load_into_memory()
         except (sqlite3.Error, ValueError, OSError) as e:
             logger.error(f"[RAG] Failed to initialize: {e}")
-            print(f"[RAG] Failed to initialize — long-term memory disabled: {e}")
+            logger.warning(f"[RAG] Failed to initialize — long-term memory disabled: {e}")
             self.enabled = False
             self._conn = None
             return
@@ -287,7 +287,7 @@ class LongTermMemory:
                 "[RAG] Failed to initialize with an unexpected error type "
                 "(this may be a bug): %s", e
             )
-            print(f"[RAG] Failed to initialize — long-term memory disabled: {e}")
+            logger.warning(f"[RAG] Failed to initialize — long-term memory disabled: {e}")
             self.enabled = False
             self._conn = None
             return
@@ -298,7 +298,7 @@ class LongTermMemory:
         self._writer_thread.start()
         if self._ids:
             self._write_queue.put(("__REEMBED__",))
-        print(
+        logger.info(
             f"[RAG] Ready — {len(self._ids)} memories loaded | "
             f"model={self._embed_model} | top_k={self._top_k_default} | "
             f"min_sim={self._min_similarity} | fact_min_sim={self._fact_min_similarity}"
@@ -393,7 +393,7 @@ class LongTermMemory:
                         f"re-embedded."
                     )
                     logger.warning(msg)
-                    print(msg)
+                    logger.info(msg)
                 ids, texts, sources, timestamps, vecs = (
                     filtered_ids,
                     filtered_texts,
@@ -409,7 +409,7 @@ class LongTermMemory:
                 # fix existed.
                 logger.error(f"[RAG] dimension-filter step failed: {e}")
                 if self._debug:
-                    print(f"[RAG] dimension-filter step failed: {e}")
+                    logger.warning(f"[RAG] dimension-filter step failed: {e}")
 
         with self._matrix_lock:
             self._ids = ids
@@ -566,7 +566,7 @@ class LongTermMemory:
         except sqlite3.Error as e:
             logger.error(f"[RAG] DB insert failed: {e}")
             if self._debug:
-                print(f"[RAG] DB insert FAILED for text {text[:80]!r}: {e}")
+                logger.warning(f"[RAG] DB insert FAILED for text {text[:80]!r}: {e}")
             return
 
         with self._matrix_lock:
@@ -591,7 +591,7 @@ class LongTermMemory:
                 self._matrix = self._matrix[overflow:]
 
         if self._debug:
-            print(f"[RAG] Stored memory id={new_id} source={source} text={text[:80]!r}")
+            logger.info(f"[RAG] Stored memory id={new_id} source={source} text={text[:80]!r}")
 
     def _check_fact_supersede(
         self, text: str, precomputed_vector: Optional[np.ndarray] = None
@@ -648,7 +648,7 @@ class LongTermMemory:
 
             if hit.text.strip().lower() == text.strip().lower():
                 if self._debug:
-                    print(f"[RAG] Skipped duplicate fact: {text[:80]!r}")
+                    logger.info(f"[RAG] Skipped duplicate fact: {text[:80]!r}")
                 return True
 
             # New fact carries no new info (its words are all in the old one,
@@ -657,11 +657,11 @@ class LongTermMemory:
             _ow = set(re.findall(r"\w+", hit.text.lower()))
             if _nw and _nw <= _ow:
                 if self._debug:
-                    print(f"[RAG] Skipped less-informative fact: {text[:80]!r}")
+                    logger.info(f"[RAG] Skipped less-informative fact: {text[:80]!r}")
                 return True
 
             if self._debug:
-                print(
+                logger.info(
                     f"[RAG] Superseding old fact id={hit.id} "
                     f"{hit.text[:80]!r} -> {text[:80]!r}"
                 )
@@ -933,7 +933,7 @@ class LongTermMemory:
         except queue.Full as e:
             logger.debug(f"[RAG] add_memory enqueue failed: {e}")
             if self._debug:
-                print(f"[RAG] add_memory enqueue FAILED: {e}")
+                logger.warning(f"[RAG] add_memory enqueue FAILED: {e}")
         except Exception as e:
             logger.exception(
                 "[RAG] add_memory enqueue raised an unexpected error type "
@@ -947,7 +947,7 @@ class LongTermMemory:
         fact_text = _extract_fact_sentence(user_text)
         if fact_text:
             if self._debug:
-                print(f"[RAG] Extracted fact from user message: {fact_text!r}")
+                logger.info(f"[RAG] Extracted fact from user message: {fact_text!r}")
             self.add_memory(fact_text, source="fact")
 
     def list_memories(self) -> List[dict]:
@@ -1085,7 +1085,7 @@ class LongTermMemory:
         )
         if query_vec is None:
             if self._debug:
-                print(
+                logger.info(
                     f"[RAG] search() aborted -- embedding unavailable for "
                     f"query: {query[:80]!r}"
                 )
@@ -1094,7 +1094,7 @@ class LongTermMemory:
         with self._matrix_lock:
             if self._matrix.size == 0 or len(self._texts) == 0:
                 if self._debug:
-                    print("[RAG] search() found no stored memories yet.")
+                    logger.info("[RAG] search() found no stored memories yet.")
                 return []
             # Snapshot references under the lock; numpy arrays/lists are
             # not mutated in place elsewhere (only reassigned), so reading
@@ -1119,7 +1119,7 @@ class LongTermMemory:
             )
             logger.warning(msg)
             if self._debug:
-                print(msg)
+                logger.info(msg)
             return []
 
         scores = _cosine_sim_batch(query_vec, matrix)
@@ -1164,7 +1164,7 @@ class LongTermMemory:
 
         if not hits and self._debug:
             top_score = float(scores.max())
-            print(
+            logger.info(
                 f"[RAG] search() found {scores.size} candidates but none cleared "
                 f"the similarity threshold for query {query[:80]!r} "
                 f"(top score={top_score:.3f}, min_sim={general_min_similarity}, "

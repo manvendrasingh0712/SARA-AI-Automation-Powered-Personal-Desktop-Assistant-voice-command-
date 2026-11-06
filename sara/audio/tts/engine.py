@@ -34,6 +34,9 @@ import numpy as np
 
 from config import Config
 from sara.core.diag import swallowed
+import logging
+logger = logging.getLogger(__name__)
+
 
 try:
     from sara.core.telemetry import mark as _t_mark
@@ -48,7 +51,7 @@ try:
 except (ImportError, OSError):
     _SD_OK = False
     sd = None
-    print("[TTS] sounddevice not found — pip install sounddevice")
+    logger.warning("[TTS] sounddevice not found — pip install sounddevice")
 
 try:
     import pygame
@@ -65,7 +68,7 @@ try:
 except ImportError:
     _KOKORO_OK = False
     Kokoro = None
-    print("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
+    logger.warning("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
 
 try:
     import onnxruntime as _ort
@@ -256,7 +259,7 @@ class TextToSpeech:
 
         # ── Kokoro ONNX Initialization (persistent, in-process) ────────────────
         if not _KOKORO_OK:
-            print(
+            logger.info(
                 "[TTS] kokoro-onnx is unavailable — TTS is disabled. "
                 "Run: pip install kokoro-onnx."
             )
@@ -273,7 +276,7 @@ class TextToSpeech:
         voices_path = getattr(Config, "KOKORO_VOICES_PATH", "models/voices-v1.0.bin")
 
         if not os.path.isfile(model_path) or not os.path.isfile(voices_path):
-            print(
+            logger.info(
                 "[TTS] Kokoro model or voices file is missing — TTS is disabled. "
                 f"model={model_path} voices={voices_path}"
             )
@@ -321,16 +324,16 @@ class TextToSpeech:
             # onnxruntime package, which is why the remedy is named here
             # rather than left to be guessed.
             if wanted_gpu and not use_gpu:
-                print(
+                logger.info(
                     "[TTS] GPU was requested (KOKORO_USE_GPU=True) but "
                     "onnxruntime has no CUDAExecutionProvider, so synthesis "
                     "runs on CPU."
                 )
-                print(
+                logger.info(
                     "[TTS]   available providers: "
                     f"{available}"
                 )
-                print(
+                logger.info(
                     "[TTS]   to use the GPU: pip uninstall -y onnxruntime && "
                     "pip install onnxruntime-gpu"
                 )
@@ -371,7 +374,7 @@ class TextToSpeech:
                     )
                     self._kokoro = Kokoro.from_session(session, voices_path)
                 except Exception as e:
-                    print(
+                    logger.warning(
                         f"[TTS] Custom ONNX session setup failed ({e}); "
                         f"falling back to Kokoro's default session."
                     )
@@ -379,7 +382,7 @@ class TextToSpeech:
             else:
                 self._kokoro = Kokoro(model_path, voices_path)
         except Exception as e:
-            print(
+            logger.warning(
                 f"[TTS] Kokoro initialization failed ({e}) — TTS is disabled."
             )
             self._disabled = True
@@ -393,7 +396,7 @@ class TextToSpeech:
 
         if getattr(Config, "DEBUG_MODE", False) and _ORT_OK:
             active = providers[0] if isinstance(providers, list) else "default"
-            print(
+            logger.info(
                 f"[TTS] ONNX providers requested: {active} | available: {_ort.get_available_providers()}"
             )
 
@@ -447,7 +450,7 @@ class TextToSpeech:
                 aec_status = "wired"
             else:
                 aec_status = "provided but DISABLED (no echo cancellation)"
-            print(
+            logger.info(
                 f"[TTS v12] Ready | Active Engine: KOKORO-ONNX (in-process) | AEC: {aec_status}"
             )
 
@@ -479,13 +482,13 @@ class TextToSpeech:
                         _phrase_cache_put((ack_text, "en", True, None), ack_pcm.copy())
             except Exception as e:
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(f"[TTS] wake-ack pre-cache failed (non-fatal): {e}")
+                    logger.warning(f"[TTS] wake-ack pre-cache failed (non-fatal): {e}")
 
             if getattr(Config, "DEBUG_MODE", False):
-                print(f"[TTS] warm-up complete in {time.time() - t0:.3f}s")
+                logger.info(f"[TTS] warm-up complete in {time.time() - t0:.3f}s")
         except Exception as e:
             if getattr(Config, "DEBUG_MODE", False):
-                print(f"[TTS] warm-up failed: {e}")
+                logger.warning(f"[TTS] warm-up failed: {e}")
         finally:
             self._warmup_done.set()
         try:
@@ -576,7 +579,7 @@ class TextToSpeech:
 
         if self._disabled:
             if getattr(Config, "DEBUG_MODE", False):
-               print(f"[TTS] disabled speak(): {text[:50]}")
+               logger.info(f"[TTS] disabled speak(): {text[:50]}")
             return
 
         _echo_start = time.monotonic()
@@ -641,7 +644,7 @@ class TextToSpeech:
                    if not _guard.record_end(text, time.monotonic()):
                        _guard.record(text, _echo_start, time.monotonic())
                elif getattr(Config, "DEBUG_MODE", False):
-                   print(
+                   logger.info(
                        f'[TTS] speak(): empty audio — lang={lang} text="{text[:50]}"'
                    )
             finally:
@@ -659,7 +662,7 @@ class TextToSpeech:
 
         if self._disabled:
             if getattr(Config, "DEBUG_MODE", False):
-               print("[TTS] disabled speak_stream()");
+               logger.info("[TTS] disabled speak_stream()");
             for _ in text_chunks:
                pass
             return False
@@ -687,7 +690,7 @@ class TextToSpeech:
                interrupted = self._playback_worker(play_q)
             except Exception:
                failed = True
-               print("[TTS] stream playback failed; falling back to whole-reply synthesis")
+               logger.warning("[TTS] stream playback failed; falling back to whole-reply synthesis")
             finally:
                self._stop.set()
                _drain(synth_q)
@@ -725,7 +728,7 @@ class TextToSpeech:
                 self.speak(text, fast=fast)
             return self._interrupted.is_set()
         except Exception:
-            print("[TTS] whole-reply fallback failed")
+            logger.warning("[TTS] whole-reply fallback failed")
             return False
 
     def stop(self) -> None:
@@ -839,7 +842,7 @@ class TextToSpeech:
                     try:
                         cut = first_chunk_end(buf, False)
                     except Exception:
-                        print("[TTS] chunker v2 failed; legacy splitter used")
+                        logger.warning("[TTS] chunker v2 failed; legacy splitter used")
                         use_v2 = False
                     else:
                         if cut is None:
@@ -891,7 +894,7 @@ class TextToSpeech:
                 self._stop_aware_put(synth_q, tail)
         except Exception as e:
             if getattr(Config, "DEBUG_MODE", False):
-                print(f"[TTS Chunker] {e}")
+                logger.info(f"[TTS Chunker] {e}")
         finally:
             if self._stop.is_set():
                 _drain(synth_q)
@@ -935,7 +938,7 @@ class TextToSpeech:
             except Exception as e:
                 seg.failed = True
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(f"[TTS Synth] {e}")
+                    logger.info(f"[TTS Synth] {e}")
             seg.ready.set()
             return seg
 
@@ -963,7 +966,7 @@ class TextToSpeech:
 
         except Exception as e:
             if getattr(Config, "DEBUG_MODE", False):
-                print(f"[TTS Synth outer] {e}")
+                logger.info(f"[TTS Synth outer] {e}")
         finally:
             if self._stop.is_set():
                 _drain(play_q)
@@ -1009,7 +1012,7 @@ class TextToSpeech:
             seg.ready.wait(timeout=10)
             if seg.failed or seg.pcm is None or len(seg.pcm) == 0:
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(
+                    logger.warning(
                         f'[TTS Playback] skipping failed seg: "{seg.text[:40]}" lang={seg.lang}'
                     )
                 continue

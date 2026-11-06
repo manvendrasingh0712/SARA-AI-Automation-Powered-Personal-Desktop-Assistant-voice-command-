@@ -22,6 +22,9 @@ import time
 from pathlib import Path
 
 from config import Config
+import logging
+logger = logging.getLogger(__name__)
+
 
 _SOURCES = ("consolidation", "fact")
 _GARBLED_NAME_RE = re.compile(r"\bname\s+(?:is|:)\s+(?:just\s+)?([^.]{0,40})", re.IGNORECASE)
@@ -90,19 +93,19 @@ def main(argv=None) -> int:
 
     db_file = Path(args.db) if args.db else _db_path()
     if not db_file.exists():
-        print(f"No database at {db_file}")
+        logger.info(f"No database at {db_file}")
         return 1
     noise = find_noise(db_file)
-    print(f"{len(noise)} noisy memories in {db_file}")
+    logger.info(f"{len(noise)} noisy memories in {db_file}")
     for i, src, text in noise:
-        print(f"  #{i:<4} [{src}] {text[:100]}")
+        logger.info(f"  #{i:<4} [{src}] {text[:100]}")
     if not noise:
         return 0
     if not args.apply:
-        print("\nDry run only. Close SARA, then run again with --apply to remove them.")
+        logger.info("\nDry run only. Close SARA, then run again with --apply to remove them.")
         return 0
     backup = apply_cleanup(db_file, [i for i, _, _ in noise])
-    print(f"\nRemoved {len(noise)} memories. Backup: {backup}")
+    logger.info(f"\nRemoved {len(noise)} memories. Backup: {backup}")
     return 0
 
 

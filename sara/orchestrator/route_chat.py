@@ -24,6 +24,9 @@ from ._shared_state import (
     should_attempt_plan,
 )
 from .context_tracking import _is_pronoun_reference, _describe_recent_entities
+import logging
+logger = logging.getLogger(__name__)
+
 
 # ── Chat-route selection (LATENCY FIX) ──────────────────────────────────
 # Before this, a "chat"-intent message (i.e. the fast-path regex matcher
@@ -274,5 +277,5 @@ def _retry_via_tool_router(user_input: str, ctx: dict, brain) -> Optional[str]:
         fake_match = build_fake_match(tool_name, tool_args)
         return tool_handler(fake_match, ctx)
     except Exception as e:
-        print(f"[ToolRouter] misfire-retry resolution failed: {e}")
+        logger.warning(f"[ToolRouter] misfire-retry resolution failed: {e}")
         return None

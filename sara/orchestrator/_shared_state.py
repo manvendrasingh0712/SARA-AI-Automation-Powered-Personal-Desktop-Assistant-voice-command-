@@ -10,6 +10,9 @@ the full rationale behind each of these.
 """
 import logging
 
+logger = logging.getLogger("sara.core_logic")  # P2.3: moved up from its old spot further down --
+# some module-level try/except blocks below call logger.* at IMPORT time, before that point.
+
 # Same latency fix as sara/tools/reminders.py's add_reminder(): restrict
 # dateparser to only the languages Sara actually needs (en/hi), instead
 # of letting it try dozens of locales.
@@ -28,7 +31,7 @@ try:
 except Exception as _rag_import_err:  # noqa: BLE001
     LongTermMemory = None
     _HAS_RAG = False
-    print(
+    logger.info(
         f"[Core] sara.core.rag unavailable, long-term memory disabled: {_rag_import_err}"
     )
 
@@ -45,7 +48,7 @@ except Exception as _tool_router_import_err:  # noqa: BLE001
     build_fake_match = None
     TOOL_NAME_TO_INTENT = {}
     _HAS_TOOL_ROUTER = False
-    print(
+    logger.info(
         f"[Core] sara.core.tool_router unavailable, LLM tool-calling fallback "
         f"disabled: {_tool_router_import_err}"
     )
@@ -91,13 +94,10 @@ except Exception as _planning_import_err:  # noqa: BLE001
     PlanStepRequiresConfirmation = None
 
     _HAS_PLANNING = False
-    print(
+    logger.info(
         f"[Core] sara.core.planning unavailable, multi-step planning "
         f"disabled (single-tool routing is unaffected): {_planning_import_err}"
     )
-    
-
-logger = logging.getLogger("sara.core_logic")
 
 # STOP-WORD FIX: bare "stop" used to be in this set. _matches_phrase_set()
 # does prefix/suffix word matching, not exact matching, so ANY sentence

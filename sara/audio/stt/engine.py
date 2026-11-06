@@ -54,7 +54,7 @@ def _optional_import_failed(dep_name: str, exc: Exception) -> None:
     ImportError/OSError this used to be narrowed to. Any of those must
     still degrade this feature to "disabled", not take down STT entirely.
     """
-    print(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
+    logger.warning(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
 
 
 try:
@@ -482,7 +482,7 @@ class SpeechToText:
 
             _restored = recover_after_crash()
             if _restored:
-                print(f"[STT] restored the volume of {_restored} app(s) that a previous run had turned down")
+                logger.info(f"[STT] restored the volume of {_restored} app(s) that a previous run had turned down")
         except Exception as _exc:
             swallowed(logger, "engine.__init__:481", _exc)
 
@@ -620,12 +620,12 @@ class SpeechToText:
                 list(segments)
                 elapsed_ms = (time.monotonic() - started) * 1000.0
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(
+                    logger.info(
                         f"[STT] warm-up ({label}) {elapsed_ms:.0f}ms "
                         f"on {seconds:.2f}s of silence"
                     )
             except Exception as e:  # noqa: BLE001 -- must never block boot
-                print(f"[STT] warm-up ({label}) failed, continuing: {e}")
+                logger.warning(f"[STT] warm-up ({label}) failed, continuing: {e}")
 
     # ── Wake word helpers ────────────────────────────────────────────
 
@@ -762,7 +762,7 @@ class SpeechToText:
             for old in wavs[:-200]:
                 old.unlink(missing_ok=True)
         except Exception as e:
-            print(f"[STT] could not save the debug capture: {e}")
+            logger.warning(f"[STT] could not save the debug capture: {e}")
 
     def _load_hinglish_model(self) -> Optional[object]:
         """Second recogniser for Hindi / Hinglish (see helpers.choose_transcript). None when off or unavailable."""
@@ -781,22 +781,22 @@ class SpeechToText:
             )
             # CTranslate2 pays its kernel bring-up on the first inference: pay it now, on silence.
             list(model.transcribe(np.zeros(8000, dtype=np.float32), beam_size=1, vad_filter=False)[0])
-            print(f"[STT] Hinglish model ready: {name} ({device})")
+            logger.info(f"[STT] Hinglish model ready: {name} ({device})")
             return model
         except Exception as e:
-            print(f"[STT] Hinglish model '{name}' unavailable ({type(e).__name__}: {e}); using the main model only.")
+            logger.info(f"[STT] Hinglish model '{name}' unavailable ({type(e).__name__}: {e}); using the main model only.")
             return None
 
     def _load_faster_whisper(self) -> Optional[object]:
         if not _HAS_WHISPER:
-            print("[STT Error] faster-whisper not installed. Offline STT will fail.")
+            logger.error("[STT Error] faster-whisper not installed. Offline STT will fail.")
             return None
 
         model_size = getattr(Config, "WHISPER_MODEL_SIZE", "large-v3-turbo")
 
         cpu_threads = max(4, (os.cpu_count() or 4) // 2)
 
-        print(f"[STT] Loading Faster-Whisper '{model_size}'...")
+        logger.info(f"[STT] Loading Faster-Whisper '{model_size}'...")
 
         try:
             if str(getattr(Config, "WHISPER_MAIN_DEVICE", "cuda") or "cuda").lower() == "cpu":
@@ -823,7 +823,7 @@ class SpeechToText:
             # infer. The probe doubles as the warm-up (see
             # _warm_recognisers), so this costs nothing extra.
             self._prove_model_can_infer(model)
-            print("[STT] ✅ Faster Whisper loaded on GPU (CUDA, int8_float16).")
+            logger.info("[STT] ✅ Faster Whisper loaded on GPU (CUDA, int8_float16).")
             self._main_model_warmed = True
             # D37: record what was ACTUALLY accepted, so _log_init can report
             # the real device instead of a hardcoded string.
@@ -832,9 +832,9 @@ class SpeechToText:
 
         except Exception as gpu_error:
             if "WHISPER_MAIN_DEVICE=cpu" in str(gpu_error):
-                print("[STT] Main model on the CPU as configured (WHISPER_MAIN_DEVICE=cpu).")
+                logger.info("[STT] Main model on the CPU as configured (WHISPER_MAIN_DEVICE=cpu).")
             else:
-                print(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
+                logger.warning(f"[STT Warning] GPU initialization failed ({gpu_error}) -- falling back to CPU.")
             try:
                 model = _load_whisper_model_offline_first(
                     model_size_or_path=model_size,
@@ -845,12 +845,12 @@ class SpeechToText:
                 # Same proof on the CPU path: a model that cannot infer is
                 # not a usable model, whichever device it claims.
                 self._prove_model_can_infer(model)
-                print("[STT] ✅ Faster Whisper loaded on CPU (fallback).")
+                logger.info("[STT] ✅ Faster Whisper loaded on CPU (fallback).")
                 self._main_model_warmed = True
                 self._model_device = f"{model_size} on CPU (int8, {cpu_threads} threads)"
                 return model
             except Exception as cpu_error:
-                print(f"[STT Error] CPU initialization failed:\n{cpu_error}")
+                logger.error(f"[STT Error] CPU initialization failed:\n{cpu_error}")
                 self._report_no_stt_model(model_size, cpu_error)
                 return None
 
@@ -874,31 +874,32 @@ class SpeechToText:
         """
         text = str(error)
         offline = "HF_HUB_OFFLINE" in text or "outgoing traffic has been disabled" in text
-        print("")
-        print("  " + "=" * 70)
-        print("  SPEECH RECOGNITION IS UNAVAILABLE -- SARA CANNOT HEAR COMMANDS")
-        print("  " + "=" * 70)
-        print(f"  The faster-whisper '{model_size}' model could not be loaded, so")
-        print("  every spoken command will produce an empty transcript. Wake word,")
-        print("  playback and the microphone level meter will still appear to work.")
-        print("")
+        logger.error("")
+        logger.error("  " + "=" * 70)
+        logger.error("  SPEECH RECOGNITION IS UNAVAILABLE -- SARA CANNOT HEAR COMMANDS")
+        logger.error("  " + "=" * 70)
+        logger.error(f"  The faster-whisper '{model_size}' model could not be loaded, so")
+        logger.error("  every spoken command will produce an empty transcript. Wake word,")
+        logger.error("  playback and the microphone level meter will still appear to work.")
+        logger.error("")
         if offline:
-            print("  CAUSE: the model is not in the local Hugging Face cache, and")
-            print("         offline mode is active, so it cannot be downloaded.")
-            print("")
-            print("  FIX (run once, with a working connection):")
-            print("      $env:HF_HUB_OFFLINE=0")
-            print(f"      python -c \"from faster_whisper import WhisperModel;"
+            logger.error("  CAUSE: the model is not in the local Hugging Face cache, and")
+            logger.error("         offline mode is active, so it cannot be downloaded.")
+            logger.error("")
+            logger.error("  FIX (run once, with a working connection):")
+            logger.error("      $env:HF_HUB_OFFLINE=0")
+            logger.error(f"      python -c \"from faster_whisper import WhisperModel;"
                   f" WhisperModel('{model_size}', device='cpu', compute_type='int8')\"")
-            print("")
-            print("  Then make sure HF_HUB_OFFLINE is not set to 1 in your")
-            print("  environment, or SARA will not be able to load it either:")
-            print("      [Environment]::GetEnvironmentVariable('HF_HUB_OFFLINE','User')")
+            logger.error("")
+            logger.error("  Then make sure HF_HUB_OFFLINE is not set to 1 in your")
+            logger.error("  environment, or SARA will not be able to load it either:")
+            logger.error("      [Environment]::GetEnvironmentVariable('HF_HUB_OFFLINE','User')")
         else:
-            print("  Check that the model name in WHISPER_MODEL_SIZE is valid and")
-            print("  that there is room on disk for it.")
-        print("  " + "=" * 70)
-        print("")
+            logger.error("  Check that the model name in WHISPER_MODEL_SIZE is valid and")
+            logger.error("  that there is room on disk for it.")
+        logger.error("  " + "=" * 70)
+        logger.error("")
+
     def _load_fast_wake_whisper(self) -> Optional[object]:
         """
         Small/fast dedicated Whisper model used for the STT-fallback
@@ -915,7 +916,7 @@ class SpeechToText:
             return None
         model_size = getattr(Config, "WAKE_WORD_FAST_MODEL_SIZE", "tiny")
         cpu_threads = max(2, (os.cpu_count() or 4) // 4)
-        print(f"[STT] Loading dedicated wake-word Whisper '{model_size}'...")
+        logger.info(f"[STT] Loading dedicated wake-word Whisper '{model_size}'...")
 
         # D52: try the GPU first, exactly as _load_faster_whisper does.
         #
@@ -943,7 +944,7 @@ class SpeechToText:
                     compute_type="int8_float16",
                 )
                 self._prove_model_can_infer(model)
-                print(
+                logger.info(
                     "[STT] ✅ Wake-word Whisper loaded on GPU "
                     "(CUDA, int8_float16) -- live preview and wake checks "
                     "share it."
@@ -954,7 +955,7 @@ class SpeechToText:
                 self._wake_model_warmed = True
                 return model
             except Exception as gpu_error:
-                print(
+                logger.warning(
                     f"[STT] Wake-word Whisper GPU load failed "
                     f"({gpu_error}) -- falling back to CPU."
                 )
@@ -966,11 +967,11 @@ class SpeechToText:
                 compute_type="int8",
                 cpu_threads=cpu_threads,
             )
-            print("[STT] ✅ Wake-word Whisper loaded on CPU.")
+            logger.info("[STT] ✅ Wake-word Whisper loaded on CPU.")
             self._wake_model_device = f"{model_size} on CPU (int8, {cpu_threads} threads)"
             return model
         except Exception as e:
-            print(
+            logger.warning(
                 f"[STT Warning] Dedicated wake-word model load failed "
                 f"({e}) -- wake checks will use the main model instead, "
                 f"and live preview will be skipped."
@@ -985,7 +986,7 @@ class SpeechToText:
         Whisper/STT fallback is intentionally not allowed.
         """
         if not _HAS_WAKEWORD or not _OWWModel:
-            print(
+            logger.warning(
                 "[STT Warning] OpenWakeWord is unavailable. "
                 "Passive wake detection is disabled."
             )
@@ -994,7 +995,7 @@ class SpeechToText:
         model_path = getattr(Config, "WAKE_WORD_MODEL_PATH", None)
 
         if not model_path:
-            print(
+            logger.warning(
                 "[STT Warning] WAKE_WORD_MODEL_PATH is not configured. "
                 "Passive wake detection is disabled."
             )
@@ -1008,7 +1009,7 @@ class SpeechToText:
             )
 
         if not os.path.exists(model_path):
-            print(
+            logger.warning(
                 f"[STT Warning] OpenWakeWord model not found: "
                 f"{model_path}. Passive wake detection is disabled."
             )
@@ -1020,7 +1021,7 @@ class SpeechToText:
                 inference_framework="onnx",
             )
 
-            print(
+            logger.info(
                 "[STT] ✅ OpenWakeWord loaded successfully: "
                 f"{model_path}"
             )
@@ -1031,7 +1032,7 @@ class SpeechToText:
             return model
 
         except Exception as e:
-            print(
+            logger.warning(
                 f"[STT Warning] OpenWakeWord model load failed: {e}. "
                 "Passive wake detection is disabled."
             )
@@ -1149,7 +1150,7 @@ class SpeechToText:
 
             if not getattr(self, "_wake_diag_audio_seen", False):
                 self._wake_diag_audio_seen = True
-                print(
+                logger.info(
                     f"[WakeDiag] RAW mic stream reached wake detector | "
                     f"chunks={len(chunks)} | "
                     f"rms={_rms(chunks[-1]):.1f}"
@@ -1201,15 +1202,15 @@ class SpeechToText:
             try:
                 _dev_idx = self._stream.device
                 _dev_info = sd.query_devices(_dev_idx)
-                print(
+                logger.info(
                     f"[STT] Mic input device (sounddevice): index={_dev_idx} "
                     f"name='{_dev_info.get('name', '?')}'"
                 )
             except Exception as _dev_e:
-                print(f"[STT] Could not resolve mic device info: {_dev_e}")
+                logger.warning(f"[STT] Could not resolve mic device info: {_dev_e}")
             return True
         except (sd.PortAudioError, OSError, ValueError) as e:
-            print(f"[STT Error] sounddevice open failed: {e}")
+            logger.error(f"[STT Error] sounddevice open failed: {e}")
             return False
         except Exception as e:
             logger.exception(
@@ -1234,15 +1235,15 @@ class SpeechToText:
             self._stream.start_stream()
             try:
                 _dev_info = self._pa.get_default_input_device_info()
-                print(
+                logger.info(
                     f"[STT] Mic input device (pyaudio): index={_dev_info.get('index', '?')} "
                     f"name='{_dev_info.get('name', '?')}'"
                 )
             except Exception as _dev_e:
-                print(f"[STT] Could not resolve mic device info: {_dev_e}")
+                logger.warning(f"[STT] Could not resolve mic device info: {_dev_e}")
             return True
         except (OSError, ValueError) as e:
-            print(f"[STT Error] PyAudio open failed: {e}")
+            logger.error(f"[STT Error] PyAudio open failed: {e}")
             return False
         except Exception as e:
             logger.exception(
@@ -1644,7 +1645,7 @@ class SpeechToText:
                 break
             if not ran and not self._closed and getattr(Config, "DEBUG_MODE", False):
                 # Say so. A silent skip is why this went unnoticed.
-                print(
+                logger.info(
                     "[STT] startup calibration skipped: the engine stayed "
                     "busy (listening or speaking) for the whole window; the "
                     "gate keeps its configured value until the next cycle."
@@ -1778,7 +1779,7 @@ class SpeechToText:
             # change this calibration actually made, so a no-op reads as a
             # no-op rather than as an override.
             moved = abs(new_thr - thr) > 1.0
-            print(
+            logger.info(
                 f"[STT] startup calibration: noise floor "
                 f"{('%.0f' % floor) if floor is not None else '?'} "
                 f"-> threshold {new_thr:.0f} (start gate {new_thr * 0.35:.0f})"
@@ -1845,20 +1846,20 @@ class SpeechToText:
 
             try:
                 if not self._stream_is_healthy():
-                    print(
+                    logger.warning(
                         "[STT WARNING] Mic input stream appears dead "
                         "(disconnected/crashed) — attempting to reopen..."
                     )
                     reopened = self._open_mic_stream()
                     if reopened:
-                        print("[STT] ✅ Mic input stream reopened successfully.")
+                        logger.info("[STT] ✅ Mic input stream reopened successfully.")
                     else:
-                        print(
+                        logger.warning(
                             "[STT WARNING] Mic input stream reopen attempt "
                             "failed; will retry on next watchdog cycle."
                         )
             except Exception as e:
-                print(f"[STT WARNING] Watchdog check failed (non-fatal): {e}")
+                logger.warning(f"[STT WARNING] Watchdog check failed (non-fatal): {e}")
 
     # ── end v8.1 watchdog block ──────────────────────────────────────
 
@@ -1923,7 +1924,7 @@ class SpeechToText:
                 "lang": self._endpoint_lang(),
             }
         except Exception:
-            print("[STT] adaptive endpoint unavailable; using legacy rule")
+            logger.info("[STT] adaptive endpoint unavailable; using legacy rule")
             return None
 
     @staticmethod
@@ -1949,7 +1950,7 @@ class SpeechToText:
         try:
             self._endpoint_guard_get().note_next_speech_start(None)
         except Exception:
-            print("[STT] endpoint guard failed")
+            logger.warning("[STT] endpoint guard failed")
 
     def _endpoint_preview(self, ep: dict) -> None:
         """Request the one extra preview of this silence run (skipped while one is in flight)."""
@@ -1988,14 +1989,14 @@ class SpeechToText:
             rule = _ep.required_silence_ms(text, noise, ep["lang"], **kw)[1]
             guard.note_endpoint(text, rule)
             if getattr(Config, "DEBUG_MODE", False):
-                print(
+                logger.info(
                     f"[STT] endpoint rule={rule} silence_ms={int(silence_ms)} "
                     f"utt_ms={int(utt_ms)}"
                 )
             return True
         except Exception:
             ep["on"] = False
-            print("[STT] adaptive endpoint failed; using legacy rule for this utterance")
+            logger.warning("[STT] adaptive endpoint failed; using legacy rule for this utterance")
             return silence_count >= ep["limit_n"]
 
     def _collect_speech(
@@ -2466,7 +2467,7 @@ class SpeechToText:
                             f"saved {_t_base - _fires:.0f}ms against the "
                             f"{_base:.0f}ms base rule"
                         )
-                    print(
+                    logger.info(
                         f"[STT] preview took {_took:.0f}ms -> endpoint fires "
                         f"~{_fires:.0f}ms (ideal {_ideal:.0f}ms, "
                         f"+{_fires - _ideal:.0f}ms); {_verdict}"
@@ -2607,10 +2608,10 @@ class SpeechToText:
             ducker = AudioDucker(level=float(getattr(Config, "VOICE_DUCK_LEVEL", 0.15)))
             n = ducker.duck()
             if n and getattr(Config, "DEBUG_MODE", False):
-                print(f"[STT] other audio turned down ({n} app session(s)) while listening")
+                logger.info(f"[STT] other audio turned down ({n} app session(s)) while listening")
             return ducker
         except Exception as e:
-            print(f"[STT] ducking unavailable ({type(e).__name__}: {e})")
+            logger.info(f"[STT] ducking unavailable ({type(e).__name__}: {e})")
             return None
 
     @staticmethod
@@ -2661,7 +2662,7 @@ class SpeechToText:
             min_logprob=float(getattr(Config, "WHISPER_HINGLISH_MIN_LOGPROB", -0.5)),
         )
         if getattr(Config, "DEBUG_MODE", False):
-            print(
+            logger.info(
                 f"[STT] hinglish={first['text'][:50]!r} (lp {first['lp']:.2f}, {first['ms']:.0f} ms) | "
                 f"main={a_text[:50]!r} ({getattr(info, 'language', '?')} "
                 f"{float(getattr(info, 'language_probability', 0.0) or 0.0):.2f}, lp {lp:.2f}) -> using "
@@ -2721,7 +2722,7 @@ class SpeechToText:
         )
         if getattr(Config, "DEBUG_MODE", False):
             if "ms" in box:
-                print(
+                logger.info(
                     f"[STT] main={text[:60]!r} ({getattr(info, 'language', '?')} "
                     f"{float(getattr(info, 'language_probability', 0.0) or 0.0):.2f}, lp {lp:.2f}) | "
                     f"hinglish={chosen[:60] if which == 'B' else (box.get('rejected') or '')[:60]!r} "
@@ -2774,7 +2775,7 @@ class SpeechToText:
                         np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0, no_speech_thr
                     )
                 except Exception as _e:
-                    print(f"[STT] Hinglish pass failed ({type(_e).__name__}: {_e}); using the main model.")
+                    logger.warning(f"[STT] Hinglish pass failed ({type(_e).__name__}: {_e}); using the main model.")
 
             if first is not None and first["done"]:
                 usable = first["segs"]
@@ -2822,7 +2823,7 @@ class SpeechToText:
                             audio_np, text, usable, _info, beam_size, no_speech_thr
                         )
                     except Exception as _e:
-                        print(f"[STT] Hinglish pass failed ({type(_e).__name__}: {_e}); keeping the main transcript.")
+                        logger.warning(f"[STT] Hinglish pass failed ({type(_e).__name__}: {_e}); keeping the main transcript.")
 
             # ── STT CONFIDENCE SIGNAL ────────────────────────────────────
             # Mean of (1 - no_speech_prob) across the SAME `usable`
@@ -2850,7 +2851,7 @@ class SpeechToText:
             min_repeats = int(getattr(Config, "STT_HALLUCINATION_MIN_REPEATS", 3))
             if _is_hallucinated_repetition(text, min_repeats=min_repeats):
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(f"[STT] Discarded hallucinated repetition: {text[:80]!r}...")
+                    logger.info(f"[STT] Discarded hallucinated repetition: {text[:80]!r}...")
                 return TranscriptionResult("", 0.0)
 
             # BUGFIX: see _HALLUCINATION_PHRASES docstring in helpers.py —
@@ -2859,14 +2860,14 @@ class SpeechToText:
             # check above can't, since they only appear once per capture.
             if _is_known_hallucination(text):
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(f"[STT] Discarded known hallucination phrase: {text[:80]!r}")
+                    logger.info(f"[STT] Discarded known hallucination phrase: {text[:80]!r}")
                 return TranscriptionResult("", 0.0)
 
             # The style prompt echoed back, or text with no content (punctuation only, one unit
             # repeated "ndndnd...", "vay,vay,..."): invented on silence / music, never a command.
             if _is_prompt_echo(text) or _is_degenerate_text(text):
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(f"[STT] Discarded prompt-echo / degenerate text: {text[:80]!r}")
+                    logger.info(f"[STT] Discarded prompt-echo / degenerate text: {text[:80]!r}")
                 return TranscriptionResult("", 0.0)
 
             # D43: the two filters above are phrase-shaped and
@@ -2887,7 +2888,7 @@ class SpeechToText:
                 text, getattr(Config, "STT_LANGUAGE", None)
             ):
                 if getattr(Config, "DEBUG_MODE", False):
-                    print(
+                    logger.info(
                         f"[STT] Discarded foreign-script hallucination: {text[:80]!r}"
                     )
                 return TranscriptionResult("", 0.0)
@@ -2906,7 +2907,7 @@ class SpeechToText:
             return TranscriptionResult(text, confidence, speech_rate)
 
         except Exception as e:
-            print(f"[STT Error] Faster-Whisper Inference Failed: {e}")
+            logger.error(f"[STT Error] Faster-Whisper Inference Failed: {e}")
             return TranscriptionResult("", 0.0)
 
     def listen(
@@ -2920,7 +2921,7 @@ class SpeechToText:
 
         if not self._listen_lock.acquire(blocking=False):
             if getattr(Config, "DEBUG_MODE", False):
-                print(
+                logger.info(
                     f"[STT] listen(mode='{mode}') skipped — another listen() session is already active."
                 )
             return TranscriptionResult("", 0.0)
@@ -2985,7 +2986,7 @@ class SpeechToText:
             if mode == "command":
                 _t_pending("stt_done")
 
-            print(
+            logger.info(
                 f"[STTDiag] listen completed | "
                 f"mode={mode} | "
                 f"audio={len(audio) / (self.SAMPLE_RATE * self.SAMPLE_WIDTH):.2f}s | "
@@ -3012,7 +3013,7 @@ class SpeechToText:
             self._wake_diag_gate_seen = True
             _pending_now = len(self._wake_pending) if hasattr(self, "_wake_pending") else -1
             _ring_now = len(self._wake_ring.peek_latest(9999)) if hasattr(self, "_wake_ring") else -1
-            print(
+            logger.info(
                 "[WakeDiag] is_wake_word_detected() first call | "
                 f"model_loaded={model is not None} | "
                 f"tts_active={self._tts_active.is_set()} | "
@@ -3024,7 +3025,7 @@ class SpeechToText:
         # No Whisper fallback.
         if model is None:
             if getattr(Config, "DEBUG_MODE", False):
-                print("[WakeDebug] OpenWakeWord model is unavailable.")
+                logger.info("[WakeDebug] OpenWakeWord model is unavailable.")
             return False
 
         now = time.monotonic()
@@ -3139,7 +3140,7 @@ class SpeechToText:
                 if max_score > self._wake_diag_window_max:
                     self._wake_diag_window_max = max_score
                 if now - self._wake_diag_window_start >= 1.0:
-                    print(
+                    logger.info(
                         f"[WakeDiag] 1s-peak score={self._wake_diag_window_max:.4f} | "
                         f"threshold={threshold:.4f} | raw={scores}"
                     )
@@ -3150,7 +3151,7 @@ class SpeechToText:
                 with self._threshold_lock:
                     self._wakeword_last_triggered = now
 
-                print(
+                logger.info(
                     f"[STT] ✅ Wake word detected | "
                     f"score={max_score:.4f} | "
                     f"threshold={threshold:.4f}"
@@ -3269,13 +3270,13 @@ class SpeechToText:
             Config.STT_LANGUAGE = lang
             Config.LANG_DETECTION_MODE = "manual"
         else:
-            print(
+            logger.info(
                 f"[STT] set_language('{lang}') ignored -- not a recognized "
                 f"Whisper language code (expected one of {sorted(self._VALID_STT_LANGS)} "
                 f"or 'auto'). Forced language, if any, is unchanged."
             )
             return
-        print(f"[STT] Language set to '{lang}'.")
+        logger.info(f"[STT] Language set to '{lang}'.")
 
     def close(self) -> None:
         if self._closed:
@@ -3284,7 +3285,7 @@ class SpeechToText:
         self._recalib_event.set()
         self._watchdog_event.set()  # v8.1: wake watchdog thread so it exits promptly
         self._close_stream()
-        print("[STT] Closed.")
+        logger.info("[STT] Closed.")
 
     def __enter__(self) -> "SpeechToText":
         return self
@@ -3298,7 +3299,7 @@ class SpeechToText:
         # a speech engine is missing. The old line said "Ready" with
         # FasterWhisper=✗ among five ticks, which reads as success.
         state = "Ready" if self._whisper_model is not None else "DEGRADED (no STT model)"
-        print(
+        logger.info(
             f"[STT] {state} — "
             # D37: this used to read '✓ (CPU INT8)' -- a HARDCODED string,
             # printed regardless of the device actually in use. On a machine

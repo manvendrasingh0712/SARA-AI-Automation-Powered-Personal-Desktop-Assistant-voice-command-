@@ -59,6 +59,6 @@ def decode_recent(stt: Any, max_ms: int = 700) -> Optional[str]:
         _BUSY.release()
         return None
     if not done.wait(DECODE_TIMEOUT_S):
-        logger.info("[BargeDecode] timeout after %d ms window", ms)
+        logger.warning("[BargeDecode] timeout after %d ms window", ms)
         return None
     return (box[0] or None) if box else None

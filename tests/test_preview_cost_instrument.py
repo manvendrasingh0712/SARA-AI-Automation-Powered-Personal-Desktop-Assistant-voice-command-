@@ -134,7 +134,7 @@ def _instrument_src() -> str:
 
 
 # ── behavioural: the printed numbers vs the shipped decision function ───
-def _run_preview_and_capture(capsys, monkeypatch, fake_took_ms, silence_limit_s):
+def _run_preview_and_capture(caplog, monkeypatch, fake_took_ms, silence_limit_s):
     """
     Drive the real preview path with a `_transcribe` that takes a known
     time and a `_silence_gate` reporting a known limit, then return the
@@ -142,6 +142,7 @@ def _run_preview_and_capture(capsys, monkeypatch, fake_took_ms, silence_limit_s)
     """
     from sara.audio.stt.engine import SpeechToText
 
+    caplog.set_level("DEBUG")  # P2.3: this line is now logger.info(), below caplog's default WARNING capture floor
     monkeypatch.setattr(Config, "DEBUG_MODE", True, raising=False)
 
     class _Gate:
@@ -171,7 +172,7 @@ def _run_preview_and_capture(capsys, monkeypatch, fake_took_ms, silence_limit_s)
         _time.sleep(0.01)
     assert not stub._preview_busy.is_set(), "the preview thread never finished"
 
-    out = capsys.readouterr().out
+    out = caplog.text
     lines = [l for l in out.splitlines() if "preview took" in l]
     assert lines, f"the preview timing line was not printed; stdout was {out!r}"
     return lines[-1]
@@ -190,7 +191,7 @@ _LINE_RE = re.compile(
 )
 @pytest.mark.parametrize("fake_took_ms", [60, 300, 520])
 def test_the_reported_fire_time_matches_the_real_endpoint(
-    capsys, monkeypatch, fake_took_ms, silence_limit_s, base_label
+    caplog, monkeypatch, fake_took_ms, silence_limit_s, base_label
 ) -> None:
     """
     The line claims the endpoint fires at ~N ms. Drive the real
@@ -207,7 +208,7 @@ def test_the_reported_fire_time_matches_the_real_endpoint(
     formula that just reports max(MIN, AT+took) is lying.
     """
     line = _run_preview_and_capture(
-        capsys, monkeypatch, fake_took_ms, silence_limit_s
+        caplog, monkeypatch, fake_took_ms, silence_limit_s
     )
     m = _LINE_RE.search(line)
     assert m, f"the preview line no longer has a readable shape: {line!r}"
@@ -234,7 +235,7 @@ def test_the_reported_fire_time_matches_the_real_endpoint(
     )
 
 
-def test_a_wasted_preview_is_reported_as_wasted(capsys, monkeypatch) -> None:
+def test_a_wasted_preview_is_reported_as_wasted(caplog, monkeypatch) -> None:
     """
     The case the second instrument got wrong. Against the 450ms base a
     520ms preview lands at 670ms, long after the base rule ended the turn
@@ -242,7 +243,7 @@ def test_a_wasted_preview_is_reported_as_wasted(capsys, monkeypatch) -> None:
     attribute the 480ms to it.
     """
     line = _run_preview_and_capture(
-        capsys, monkeypatch, 520, _SilenceGate._FLOOR
+        caplog, monkeypatch, 520, _SilenceGate._FLOOR
     )
     m = _LINE_RE.search(line)
     assert m, f"unreadable line: {line!r}"
@@ -260,7 +261,7 @@ def test_a_wasted_preview_is_reported_as_wasted(capsys, monkeypatch) -> None:
 
 
 def test_a_preview_inside_endpoint_min_ms_is_reported_as_free(
-    capsys, monkeypatch
+    caplog, monkeypatch
 ) -> None:
     """
     The other half of dropping the binary verdict: a FAST preview must be
@@ -268,7 +269,7 @@ def test_a_preview_inside_endpoint_min_ms_is_reported_as_free(
     ENDPOINT_MIN_MS however quickly the partial arrives.
     """
     line = _run_preview_and_capture(
-        capsys, monkeypatch, 40, _SilenceGate._FLOOR
+        caplog, monkeypatch, 40, _SilenceGate._FLOOR
     )
     m = _LINE_RE.search(line)
     assert m, f"unreadable line: {line!r}"
@@ -282,7 +283,7 @@ def test_a_preview_inside_endpoint_min_ms_is_reported_as_free(
 
 
 def test_the_instrument_reads_the_live_base_not_the_fallback(
-    capsys, monkeypatch
+    caplog, monkeypatch
 ) -> None:
     """
     The D71-class guard. The same preview latency against two different
@@ -290,10 +291,10 @@ def test_the_instrument_reads_the_live_base_not_the_fallback(
     instrument is using a constant base and the numbers are fiction.
     """
     short = _run_preview_and_capture(
-        capsys, monkeypatch, 400, _SilenceGate._FLOOR
+        caplog, monkeypatch, 400, _SilenceGate._FLOOR
     )
     fresh = _run_preview_and_capture(
-        capsys, monkeypatch, 400, _SilenceGate._DEFAULT
+        caplog, monkeypatch, 400, _SilenceGate._DEFAULT
     )
     v_short = _LINE_RE.search(short).group(5)
     v_fresh = _LINE_RE.search(fresh).group(5)
@@ -439,7 +440,7 @@ def test_the_instrument_stays_debug_gated_and_logs_no_transcript() -> None:
     assert "DEBUG_MODE" in src[max(0, i - 2000):i], (
         "the preview timing line is no longer DEBUG_MODE-gated (D51/D60)"
     )
-    printed = src[src.rindex("print(", 0, i):src.index(")", src.index("_ideal:.0f", i))]
+    printed = src[src.rindex("logger.info(", 0, i):src.index(")", src.index("_ideal:.0f", i))]  # P2.3: was print(
     for forbidden in ("result", "snapshot", "str(result)"):
         assert forbidden not in printed, (
             f"the preview timing line interpolates {forbidden!r}; recognised "

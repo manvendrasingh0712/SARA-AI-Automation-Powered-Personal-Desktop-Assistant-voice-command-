@@ -15,6 +15,9 @@ import threading
 import numpy as np
 
 from config import Config
+import logging
+logger = logging.getLogger(__name__)
+
 
 try:
     import sounddevice as sd
@@ -23,7 +26,7 @@ try:
 except (ImportError, OSError):
     _SD_OK = False
     sd = None
-    print("[TTS] sounddevice not found — pip install sounddevice")
+    logger.warning("[TTS] sounddevice not found — pip install sounddevice")
 
 try:
     import pygame
@@ -40,7 +43,7 @@ try:
 except ImportError:
     _KOKORO_OK = False
     Kokoro = None
-    print("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
+    logger.warning("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
 
 try:
     import onnxruntime as _ort
@@ -147,7 +150,7 @@ def _synth_kokoro(
             )
         if samples is None or len(samples) == 0:
             if getattr(Config, "DEBUG_MODE", False):
-                print(f'[TTS] kokoro returned empty audio for: "{text[:50]}"')
+                logger.info(f'[TTS] kokoro returned empty audio for: "{text[:50]}"')
             return None
 
         arr = np.asarray(samples, dtype=np.float32)
@@ -168,7 +171,7 @@ def _synth_kokoro(
         return result
     except Exception as e:
         if getattr(Config, "DEBUG_MODE", False):
-            print(f"[TTS] kokoro synth error: {e}")
+            logger.error(f"[TTS] kokoro synth error: {e}")
         return None
 
 

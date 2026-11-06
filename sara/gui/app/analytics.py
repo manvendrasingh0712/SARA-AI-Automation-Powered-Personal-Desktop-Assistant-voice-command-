@@ -28,6 +28,9 @@ from threading import Lock
 # on Windows, ~/.sara-ai/data elsewhere) via the shared helper in config.py,
 # which falls back to the project root only if that directory can't be created.
 from config import app_data_subdir
+import logging
+logger = logging.getLogger(__name__)
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 _ANALYTICS_PATH = app_data_subdir("data") / "analytics_usage.json"
@@ -51,7 +54,7 @@ def _load_state():
                 data.setdefault("total_commands", 0)
                 return data
     except Exception as e:
-        print(f"[analytics] load error, starting fresh: {e}")
+        logger.error(f"[analytics] load error, starting fresh: {e}")
     return _empty_state()
 
 
@@ -63,7 +66,7 @@ def _save_state(state):
         os.replace(tmp_path, str(_ANALYTICS_PATH))
         return True
     except Exception as e:
-        print(f"[analytics] save error: {e}")
+        logger.error(f"[analytics] save error: {e}")
         return False
 
 
@@ -102,7 +105,7 @@ class ApiAnalyticsMixin:
                 _save_state(state)
             return {"ok": True}
         except Exception as e:
-            print(f"[record_command_usage error] {e}")
+            logger.error(f"[record_command_usage error] {e}")
             return {"ok": False}
 
     # ── action timeline (Analytics page, "Recent activity") ────────────
@@ -135,7 +138,7 @@ class ApiAnalyticsMixin:
             ]
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_action_timeline error] {e}")
+            logger.error(f"[get_action_timeline error] {e}")
             return {"ok": False, "data": []}
 
     # ── frequently missed commands (Analytics page) ─────────────────────
@@ -173,7 +176,7 @@ class ApiAnalyticsMixin:
             ]
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_frequent_misses error] {e}")
+            logger.error(f"[get_frequent_misses error] {e}")
             return {"ok": False, "data": []}
 
     # ── dashboard payload (Analytics page) ─────────────────────────────
@@ -197,12 +200,12 @@ class ApiAnalyticsMixin:
                 if hasattr(self, "db") and hasattr(self.db, "get_conversation_stats"):
                     conversation_stats = self.db.get_conversation_stats() or {}
             except Exception as e:
-                print(f"[get_analytics_dashboard conversation_stats error] {e}")
+                logger.error(f"[get_analytics_dashboard conversation_stats error] {e}")
             try:
                 if hasattr(self, "db") and hasattr(self.db, "get_proactive_stats"):
                     proactive_stats = self.db.get_proactive_stats() or {}
             except Exception as e:
-                print(f"[get_analytics_dashboard proactive_stats error] {e}")
+                logger.error(f"[get_analytics_dashboard proactive_stats error] {e}")
 
             return {
                 "ok": True,
@@ -215,7 +218,7 @@ class ApiAnalyticsMixin:
                 }
             }
         except Exception as e:
-            print(f"[get_analytics_dashboard error] {e}")
+            logger.error(f"[get_analytics_dashboard error] {e}")
             return {"ok": False, "data": {
                 "total_commands": 0, "top_commands": [], "daily_trend": [],
                 "conversation_stats": {}, "proactive_stats": {}

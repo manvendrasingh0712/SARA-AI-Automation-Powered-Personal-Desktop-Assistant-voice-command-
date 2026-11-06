@@ -13,6 +13,9 @@ import random
 import threading
 
 from config import Config
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _is_risky(name: str, keywords) -> bool:
     lowered = (name or "").lower()
@@ -227,7 +230,7 @@ def _ack(ctx: dict) -> None:
         ctx["tts"].speak(_ACK_PHRASES[index], fast=True, block=False)
         ctx["_ack_spoken"] = True
     except Exception as e:
-        print(f"[Core] _ack() failed (non-fatal, command continues): {e}")
+        logger.warning(f"[Core] _ack() failed (non-fatal, command continues): {e}")
 
 
 # ── Filler acknowledgement (audit Task 5c) ────────────────────────────────
@@ -311,7 +314,7 @@ def _activity(ctx: dict, state: str, icon: str, text: str) -> None:
     try:
         ctx["ui_update"]("activity", state, str(icon)[:24], str(text)[:60])
     except Exception as e:  # noqa: BLE001
-        print(f"[Activity] push failed (non-fatal, command continues): {e}")
+        logger.warning(f"[Activity] push failed (non-fatal, command continues): {e}")
 
 
 def _activity_label(name, limit: int = 28) -> str:
@@ -384,5 +387,5 @@ def _log_action(db, action_type: str, action_name: str, outcome: str, reason: st
     try:
         db.log_action(action_type, action_name, outcome, reason=reason, wait=False)
     except Exception as e:  # noqa: BLE001 -- audit logging must never break dispatch
-        print(f"[AuditLog] log_action('{action_type}', '{action_name}') failed (non-fatal): {e}")
+        logger.warning(f"[AuditLog] log_action('{action_type}', '{action_name}') failed (non-fatal): {e}")
 

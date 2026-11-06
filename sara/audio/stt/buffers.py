@@ -11,6 +11,9 @@ from enum import Enum, auto
 from typing import Deque, List, Optional
 
 from config import Config
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def _optional_import_failed(dep_name: str, exc: Exception) -> None:
@@ -23,7 +26,7 @@ def _optional_import_failed(dep_name: str, exc: Exception) -> None:
     ImportError/OSError this used to be narrowed to. Any of those must
     still degrade this feature to "disabled", not take down STT entirely.
     """
-    print(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
+    logger.warning(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
 
 
 try:

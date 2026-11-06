@@ -321,6 +321,8 @@ class DeliveryWiringScenarios(unittest.TestCase):
         )
         namespace = {}
         code = (
+            "import logging\n"
+            "logger = logging.getLogger('test_reminder_scenarios')\n"  # P2.3: core_wiring.py's sliced-out block now calls logger.*
             "def build(ui_update, tts, play_alarm_beep, db, brain, Config, ReminderComposer,\n"
             "          ReminderContextBuilder, notes_memory):\n" + block +
             "\n    return _on_reminder_event, _on_reminder_late, _on_reminder_missed\n"

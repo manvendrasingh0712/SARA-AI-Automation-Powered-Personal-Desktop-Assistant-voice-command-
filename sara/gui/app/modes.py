@@ -16,6 +16,9 @@ from sara.orchestrator.intent_handlers import (
     _MODE_CONFIRMATIONS,
 )
 from .helpers import mic_sensitivity_to_threshold
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 class ApiModesMixin:
@@ -29,7 +32,7 @@ class ApiModesMixin:
                 active = self.db.get_preference("active_mode") or "normal"
                 return {"ok": True, "active_mode": active, "modes": list(_MODE_BUNDLES.keys())}
         except Exception as e:
-            print(f"[get_modes_status error] {e}")
+            logger.error(f"[get_modes_status error] {e}")
         return {"ok": False, "active_mode": None, "modes": list(_MODE_BUNDLES.keys())}
 
     def apply_mode(self, mode_name):
@@ -69,7 +72,7 @@ class ApiModesMixin:
                         assistant_state.set_active(active_flag)
                         applied_live = True
                     except Exception as e:
-                        print(f"[apply_mode live assistant_active error] {e}")
+                        logger.error(f"[apply_mode live assistant_active error] {e}")
                 if not applied_live:
                     confirmation += " Assistant active/paused state will apply after a restart."
 
@@ -87,11 +90,11 @@ class ApiModesMixin:
                             ears.energy_threshold = threshold
                             applied_live = True
                     except Exception as e:
-                        print(f"[apply_mode live mic sensitivity error] {e}")
+                        logger.error(f"[apply_mode live mic sensitivity error] {e}")
                 if not applied_live:
                     confirmation += " Mic sensitivity change will apply after a restart."
 
             return {"ok": True, "active_mode": resolved_name, "message": confirmation}
         except Exception as e:
-            print(f"[apply_mode error] {e}")
+            logger.error(f"[apply_mode error] {e}")
             return {"ok": False, "error": "Something went wrong applying that mode.", "active_mode": None}

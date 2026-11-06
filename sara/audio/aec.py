@@ -97,6 +97,9 @@ from typing import Optional
 import numpy as np
 
 from config import Config
+import logging
+logger = logging.getLogger(__name__)
+
 
 try:
     from aec_audio_processing import AudioProcessor as _WebRTCAudioProcessor
@@ -105,7 +108,7 @@ try:
 except (ImportError, OSError) as e:
     _WebRTCAudioProcessor = None
     _HAS_AEC_LIB = False
-    print(
+    logger.info(
         "[AEC] 'aec-audio-processing' is unavailable — echo cancellation "
         "disabled, falling back to passthrough. Run: pip install aec-audio-processing. "
         f"({e})"
@@ -227,7 +230,7 @@ class AECProcessor:
         self._last_process_error_log: Optional[float] = None
 
         if not self.enabled:
-            print(
+            logger.info(
                 "[AEC] Disabled (either AEC_ENABLED=False or library missing) — "
                 "mic audio will pass through unmodified. Echo-hearing / "
                 "self-triggering may reoccur without it."
@@ -271,7 +274,7 @@ class AECProcessor:
             self._reverse_method_name = self._resolve_reverse_method()
             self._start_system_reference()
 
-            print(
+            logger.info(
                 f"[AEC] Ready — rate={self.sample_rate}Hz | delay={delay_ms}ms | "
                 f"aec={getattr(self._ap, 'aec_enabled', lambda: '?')()} | "
                 f"ns={getattr(self._ap, 'ns_enabled', lambda: '?')()} | "
@@ -279,8 +282,8 @@ class AECProcessor:
                 f"far-end method='{self._reverse_method_name or 'NOT FOUND — see warning above'}'"
             )
         except Exception as e:
-            print(f"[AEC Error] Failed to initialize WebRTC AudioProcessor: {e}")
-            print("[AEC] Falling back to passthrough (no echo cancellation).")
+            logger.error(f"[AEC Error] Failed to initialize WebRTC AudioProcessor: {e}")
+            logger.info("[AEC] Falling back to passthrough (no echo cancellation).")
             self._ap = None
             self.enabled = False
 
@@ -291,7 +294,7 @@ class AECProcessor:
             if hasattr(self._ap, name):
                 return name
         available = [m for m in dir(self._ap) if not m.startswith("_")]
-        print(
+        logger.warning(
             "[AEC WARNING] Could not find a far-end/reverse-stream method on "
             f"AudioProcessor among candidates {_REVERSE_METHOD_CANDIDATES}. "
             "Echo cancellation will NOT work correctly (near-end processing "
@@ -343,7 +346,7 @@ class AECProcessor:
                 self._sysref = None
         except Exception as e:
             self._sysref = None
-            print(f"[AEC] system-audio reference not started ({type(e).__name__}: {e})")
+            logger.info(f"[AEC] system-audio reference not started ({type(e).__name__}: {e})")
 
     def external_active(self) -> bool:
         """True while OTHER audio is playing and SARA is not speaking (the loopback is then the reference)."""
@@ -371,7 +374,7 @@ class AECProcessor:
                     method(frame)
         except Exception as e:
             if self._should_log_now("far_end"):
-                print(f"[AEC] feed_external_reference error: {e}")
+                logger.error(f"[AEC] feed_external_reference error: {e}")
 
     # ── Far-end (reference / reverse stream) ───────────────────────────────
 
@@ -411,7 +414,7 @@ class AECProcessor:
             # _should_log_now) and accurately describes that SOME error
             # occurred in feed_far_end, without claiming a specific cause.
             if self._should_log_now("far_end"):
-                print(
+                logger.error(
                     f"[AEC] feed_far_end error (further identical errors "
                     f"suppressed for {_ERROR_LOG_RATE_LIMIT_S:.0f}s): {e}"
                 )
@@ -438,7 +441,7 @@ class AECProcessor:
                 # instead of letting _near_buf grow without limit.
                 if len(self._near_buf) > self._frame_bytes * _NEAR_BUF_MAX_FRAMES:
                     if self._should_log_now("process"):
-                        print(
+                        logger.warning(
                             f"[AEC WARNING] near-end buffer exceeded "
                             f"{_NEAR_BUF_MAX_FRAMES} frames worth of audio "
                             f"and was reset — processing may be falling "
@@ -471,7 +474,7 @@ class AECProcessor:
                             out.extend(processed if processed else fr)
                         except Exception as e:
                             if self._should_log_now("process"):
-                                print(
+                                logger.error(
                                     f"[AEC] process_stream error (further identical "
                                     f"errors suppressed for {_ERROR_LOG_RATE_LIMIT_S:.0f}s, "
                                     f"passing raw audio through): {e}"
@@ -479,7 +482,7 @@ class AECProcessor:
                             out.extend(fr)
                 return bytes(out)
         except Exception as e:
-            print(f"[AEC] process_near_end fatal error, disabling AEC for safety: {e}")
+            logger.error(f"[AEC] process_near_end fatal error, disabling AEC for safety: {e}")
             self.enabled = False
             return pcm_bytes
 
@@ -502,7 +505,7 @@ class AECProcessor:
         try:
             self._ap.set_stream_delay(max(0, min(500, int(delay_ms))))
         except Exception as e:
-            print(f"[AEC] reset_stream_delay failed: {e}")
+            logger.warning(f"[AEC] reset_stream_delay failed: {e}")
 
     def close(self) -> None:
         """

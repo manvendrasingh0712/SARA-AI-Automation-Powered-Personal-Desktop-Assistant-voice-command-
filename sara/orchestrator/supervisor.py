@@ -56,7 +56,7 @@ def _emit(level: int, msg: str) -> None:
     except Exception:
         pass
     try:
-        print(f"[Supervisor] {msg}", flush=True)
+        logger.info(f"[Supervisor] {msg}", flush=True)
     except Exception:
         pass
 
@@ -157,7 +157,7 @@ class ThreadSupervisor:
             try:
                 self.check_once()
             except Exception as e:  # noqa: BLE001 -- a bad check must never kill the supervisor
-                print(f"[Supervisor] check failed (continuing): {e}")
+                logger.warning(f"[Supervisor] check failed (continuing): {e}")
 
     def check_once(self) -> None:
         for t in list(self._targets):
@@ -166,7 +166,7 @@ class ThreadSupervisor:
             try:
                 self._check_target(t)
             except Exception as e:  # noqa: BLE001
-                print(f"[Supervisor] check of '{t.name}' failed (continuing): {e}")
+                logger.warning(f"[Supervisor] check of '{t.name}' failed (continuing): {e}")
 
     # ------------------------------------------------------------
     # Per-target logic
@@ -193,7 +193,7 @@ class ThreadSupervisor:
         try:
             owner = t.owner_getter()
         except Exception as e:  # noqa: BLE001
-            print(f"[Supervisor] could not reach '{t.name}' owner (continuing): {e}")
+            logger.warning(f"[Supervisor] could not reach '{t.name}' owner (continuing): {e}")
 
         # Stopped on purpose (shutdown/close) -> never a death.
         stop_ev = _peek(owner, "_stop_event") if owner is not None else None

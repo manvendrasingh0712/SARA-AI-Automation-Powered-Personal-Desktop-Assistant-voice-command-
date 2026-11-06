@@ -243,7 +243,7 @@ def run_routine(name: str, ctx: dict) -> list[dict]:
                 outcome = runner(step, ctx)
         except Exception as e:  # noqa: BLE001 -- one bad step must never abort the routine
             logger.warning("run_routine('%s') step %d raised: %s", name, i, e)
-            print(f"[Routines] '{name}' step {i} raised: {e}")
+            logger.info(f"[Routines] '{name}' step {i} raised: {e}")
             outcome = _fail_outcome(ctx)
 
         results.append(outcome)

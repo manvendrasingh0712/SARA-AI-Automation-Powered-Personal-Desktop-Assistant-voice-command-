@@ -7,6 +7,9 @@ former monolithic intent_handlers.py -- see that module's docstring.
 from sara.core import routines
 
 from ..command_helpers import _quick, _ack
+import logging
+logger = logging.getLogger(__name__)
+
 
 _ROUTINE_FILLER = frozenset(
     "my the mera meri mere apna apni apne wala wali wale ka ki ke ko "
@@ -60,7 +63,7 @@ def _h_run_routine(match, ctx):
         try:
             ctx["ui_update"]("transcript", "sara", text)
         except Exception as e:
-            print(f"[Routines] transcript push failed: {e}")
+            logger.warning(f"[Routines] transcript push failed: {e}")
         spoken_texts.append(text)
 
     return " ".join(spoken_texts) if spoken_texts else "Routine finished."

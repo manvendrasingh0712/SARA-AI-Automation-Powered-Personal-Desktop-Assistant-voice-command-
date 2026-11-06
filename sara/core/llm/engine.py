@@ -599,14 +599,14 @@ class SaraLLM:
         lang = lang.lower().strip()
         if lang not in self._VALID_LANGS:
             if getattr(self._cfg, "DEBUG_MODE", False):
-                print(f"[LLM] Unknown language '{lang}'. valid: {self._VALID_LANGS}")
+                logger.info(f"[LLM] Unknown language '{lang}'. valid: {self._VALID_LANGS}")
             return
         self._lang = lang
         self._turn_lang = None  # an explicit choice beats a leftover per-turn note
         self._tod = _time_of_day(self._tz, self._lang)
         self._build_and_cache_system_instruction()
         if getattr(self._cfg, "DEBUG_MODE", False):
-            print(f"[LLM] Language switched to '{self._lang}'.")
+            logger.info(f"[LLM] Language switched to '{self._lang}'.")
 
     def get_language(self) -> str:
         return self._lang
@@ -729,7 +729,7 @@ class SaraLLM:
             if report_event:
                 self._warmup_error = str(e)
             elif getattr(self._cfg, "DEBUG_MODE", False):
-                print(f"[LLM] Ollama fallback warm-up failed (non-fatal): {e}")
+                logger.warning(f"[LLM] Ollama fallback warm-up failed (non-fatal): {e}")
         finally:
             if report_event:
                 self._warm_event.set()
@@ -1277,7 +1277,7 @@ class SaraLLM:
         # yielding nothing.
         skip_primary = len(stages) > 1 and self._circuit_breaker_active()
         if skip_primary and is_debug:
-            print(
+            logger.info(
                 "[LLM] Circuit breaker tripped — skipping primary backend "
                 "this turn, going straight to fallback."
             )
@@ -1364,7 +1364,7 @@ class SaraLLM:
 
                 except Exception as e:
                     if is_debug:
-                        print(
+                        logger.error(
                             f"[LLM:{stage_name}] stream error on attempt {attempt+1}: {e}"
                         )
                     if on_rate_limit is not None and _looks_rate_limited(e):
@@ -1414,7 +1414,7 @@ class SaraLLM:
                             if stage_idx == 0 and len(stages) > 1:
                                 self._circuit_breaker_trip_for(asked)
                             if is_debug:
-                                print(
+                                logger.info(
                                     f"[LLM:{stage_name}] server asked to wait "
                                     f"{asked:.0f}s (> max_delay {max_delay:.0f}s) "
                                     f"-- not retrying, falling back now"
@@ -1429,7 +1429,7 @@ class SaraLLM:
                         if isinstance(e, _EmptyReplyError):
                             delay = min(delay, 0.2)  # nothing is overloaded; just ask again
                         if is_debug:
-                            print(
+                            logger.info(
                                 f"[LLM:{stage_name}] Retry {attempt+1}/{stage_retries} "
                                 f"in {delay:.1f}s: {e}"
                             )
@@ -1480,7 +1480,7 @@ class SaraLLM:
                     self._lang, _STREAM_FAIL_MESSAGES["english"]
                 )
             elif is_debug:
-                print(
+                logger.info(
                     f"[LLM] '{stage_name}' unavailable — falling back to next backend."
                 )
 
@@ -1607,7 +1607,7 @@ class SaraLLM:
             self._memory.maybe_extract_fact(prompt)
         except Exception as e:
             if getattr(self._cfg, "DEBUG_MODE", False):
-                print(f"[LLM] Fact extraction failed (continuing): {e}")
+                logger.warning(f"[LLM] Fact extraction failed (continuing): {e}")
 
     @staticmethod
     def _is_trivial_prompt(prompt: str) -> bool:
@@ -1884,7 +1884,7 @@ class SaraLLM:
         warm_wait_s = float(getattr(self._cfg, "LLM_WARMUP_WAIT_S", 20.0))
         warm = self.wait_until_warm(timeout=warm_wait_s)
         if not warm.ok and getattr(self._cfg, "DEBUG_MODE", False):
-            print(
+            logger.info(
                 f"[LLM] Proceeding without confirmed warm-up ({warm.error}) — "
                 f"first request may be slower than usual."
             )
@@ -1947,13 +1947,13 @@ class SaraLLM:
                 hits = self._filter_history_duplicates(hits, history)
                 memory_context, memory_context_tokens = self._build_capped_memory_context(hits)
                 if memory_context and getattr(self._cfg, "DEBUG_MODE", False):
-                    print(
+                    logger.info(
                         f"[LLM] RAG retrieved {len(hits)} memor{'y' if len(hits)==1 else 'ies'} "
                         f"(top score={hits[0].score:.2f})"
                     )
             except Exception as e:
                 if getattr(self._cfg, "DEBUG_MODE", False):
-                    print(f"[LLM] RAG retrieval failed (continuing without it): {e}")
+                    logger.warning(f"[LLM] RAG retrieval failed (continuing without it): {e}")
 
             # PRIORITY-3 FIX: fact extraction submitted to the bounded
             # background pool instead of running inline — keeps this a
@@ -2250,7 +2250,7 @@ class SaraLLM:
             except Exception as e:
                 last_exc = e
                 if getattr(self._cfg, "DEBUG_MODE", False):
-                    print(f"[LLM] summarize_ollama attempt {attempt+1} failed: {e}")
+                    logger.warning(f"[LLM] summarize_ollama attempt {attempt+1} failed: {e}")
         # BUGFIX: last_exc used to be assigned every attempt and then
         # discarded — in production (DEBUG_MODE off) the real reason for
         # the failure was never recorded anywhere, only the debug print
@@ -2295,7 +2295,7 @@ class SaraLLM:
             except Exception as e:
                 last_exc = e
                 if getattr(self._cfg, "DEBUG_MODE", False):
-                    print(f"[LLM] summarize_gemini attempt {attempt+1} failed: {e}")
+                    logger.warning(f"[LLM] summarize_gemini attempt {attempt+1} failed: {e}")
         # BUGFIX: same as _summarize_ollama above — surface the real
         # exception unconditionally via logger, keep the spoken/returned
         # text friendly and TTS-safe.
@@ -2328,7 +2328,7 @@ class SaraLLM:
             if self._fallback_enabled
             else ""
         )
-        print(
+        logger.info(
             f"[LLM] Ready — backend={self._primary_backend} | "
             f"model={self.model_name}{fallback_note} | "
             f"memory={self._cfg.MAX_MEMORY_EXCHANGES} exchanges | "

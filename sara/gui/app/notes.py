@@ -11,6 +11,8 @@ import json
 import threading
 import importlib
 import logging
+logger = logging.getLogger(__name__)
+
 
 _log = logging.getLogger(__name__)
 _M2_STATUSES = ("active", "superseded", "retracted", "archived")
@@ -52,7 +54,7 @@ class ApiNotesMixin:
                 return {"ok": True, "message": result, "id": None}
             return {"ok": False, "message": "System tools missing", "id": None}
         except Exception as e:
-            print(f"[save_note error] {e}")
+            logger.error(f"[save_note error] {e}")
             return {"ok": False, "id": None}
 
     # ── Quick Notes card: fetch notes back from the backend ────────────
@@ -69,7 +71,7 @@ class ApiNotesMixin:
                 return {"ok": True, "data": self.system_tools.get_notes()}
             return {"ok": False, "data": []}
         except Exception as e:
-            print(f"[get_notes error] {e}")
+            logger.error(f"[get_notes error] {e}")
             return {"ok": False, "data": []}
 
     def delete_note(self, note_id, text=None):
@@ -79,7 +81,7 @@ class ApiNotesMixin:
                 return self.system_tools.delete_note(note_id, text)
             return {"ok": False, "message": "System tools missing", "text": ""}
         except Exception as e:
-            print(f"[delete_note error] {e}")
+            logger.error(f"[delete_note error] {e}")
             return {"ok": False, "message": "Could not delete that note.", "text": ""}
 
     # ── Answer cache (sara/core/response_cache.py) ────────────────────────────
@@ -93,7 +95,7 @@ class ApiNotesMixin:
             n = response_cache.shared_cache(Config.DB_PATH).clear()
             return {"ok": True, "cleared": int(n)}
         except Exception as e:
-            print(f"[clear_response_cache error] {type(e).__name__}")
+            logger.error(f"[clear_response_cache error] {type(e).__name__}")
             return {"ok": False}
 
     # ── Memory page ────────────────────────────────────────────────────
@@ -127,7 +129,7 @@ class ApiNotesMixin:
                         "Memory export completed",
                     )
                 except Exception as e:
-                    print(f"[export_memory bg error] {e}")
+                    logger.error(f"[export_memory bg error] {e}")
                     _push(
                         "notification",
                         "ti-alert-triangle",
@@ -138,5 +140,5 @@ class ApiNotesMixin:
             threading.Thread(target=_export, daemon=True).start()
             return {"ok": True, "path": export_path}
         except Exception as e:
-            print(f"[export_memory error] {e}")
+            logger.error(f"[export_memory error] {e}")
             return {"ok": False}

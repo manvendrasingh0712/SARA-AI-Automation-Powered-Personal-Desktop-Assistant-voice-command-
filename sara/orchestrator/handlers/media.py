@@ -11,6 +11,9 @@ from sara.tools import web as web_tools
 from ..network_utils import _call_with_timeout
 from ..command_helpers import _quick, _ack, _run_activity
 from .._shared_state import _HAS_PLANNING, validate_tool_arguments, PlanValidationError
+import logging
+logger = logging.getLogger(__name__)
+
 
 def _h_play_youtube(match, ctx):
     if not match:
@@ -151,7 +154,7 @@ def _h_open_url(match, ctx):
         except PlanValidationError as e:
             return _quick(ctx, str(e))
         except Exception as e:  # noqa: BLE001 -- validation must never crash the handler
-            print(f"[Security] open_url validation raised unexpectedly: {e}")
+            logger.info(f"[Security] open_url validation raised unexpectedly: {e}")
             return _quick(ctx, "Sorry, I couldn't safely open that link.")
     _ack(ctx)
     return _quick(

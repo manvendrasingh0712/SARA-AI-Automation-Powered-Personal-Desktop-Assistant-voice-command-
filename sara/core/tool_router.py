@@ -73,6 +73,9 @@ import re
 import threading
 import time
 from typing import Any, Dict, Optional
+import logging
+logger = logging.getLogger(__name__)
+
 
 TOOL_NAME_TO_INTENT: Dict[str, str] = {
     "weather": "weather",
@@ -411,7 +414,7 @@ def _shutdown_tool_call_executor() -> None:
             # Python < 3.9: shutdown() has no cancel_futures parameter.
             _TOOL_CALL_EXECUTOR.shutdown(wait=False)
     except Exception as e:  # noqa: BLE001 -- shutdown must never raise
-        print(f"[ToolRouter] executor shutdown failed: {e}")
+        logger.warning(f"[ToolRouter] executor shutdown failed: {e}")
 
 # Circuit breaker: if the LLM tool-call times out this many turns IN A
 # ROW, skip the LLM entirely (go straight to heuristic) for a cooldown
@@ -987,7 +990,7 @@ def _validate_tool_result(result: Dict[str, Any], cfg=None) -> Dict[str, Any]:
     """Validate a tool candidate against the registered schema before dispatch."""
     def _reject(reason: str) -> Dict[str, Any]:
         if cfg is not None and getattr(cfg, "DEBUG_MODE", False):
-            print(f"[ToolRouter] Rejected invalid tool result: {reason}")
+            logger.info(f"[ToolRouter] Rejected invalid tool result: {reason}")
         return {"name": "unknown", "arguments": {}}
 
     if not isinstance(result, dict):
@@ -1108,7 +1111,7 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
         now = time.monotonic()
         if now < _circuit_open_until:
             if getattr(cfg, "DEBUG_MODE", False):
-                print("[ToolRouter] Circuit breaker open, skipping LLM call for this turn.")
+                logger.info("[ToolRouter] Circuit breaker open, skipping LLM call for this turn.")
             return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
 
         from sara.core.llm.clients import backend_timeout
@@ -1134,7 +1137,7 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
                     _circuit_open_until = time.monotonic() + _CIRCUIT_BREAKER_COOLDOWN_S
                     _consecutive_timeouts = 0
                     if getattr(cfg, "DEBUG_MODE", False):
-                        print(
+                        logger.warning(
                             f"[ToolRouter] {_CIRCUIT_BREAKER_THRESHOLD} consecutive timeouts, "
                             f"opening circuit breaker for {_CIRCUIT_BREAKER_COOLDOWN_S:.0f}s."
                         )
@@ -1157,13 +1160,13 @@ def resolve_tool_call(user_input: str, model_name: str, cfg=None) -> Dict[str, A
             # elapses or the call returns. Check network/API status if
             # this happens.
             if getattr(cfg, "DEBUG_MODE", False):
-                print(
+                logger.info(
                     f"[ToolRouter] LLM tool-call exceeded its "
                     f"{timeout_s:.1f}s budget, using heuristic fallback."
                 )
         except Exception as e:  # noqa: BLE001 -- any other failure also degrades to the heuristic below
             if getattr(cfg, "DEBUG_MODE", False):
-                print(f"[ToolRouter] LLM tool-call failed ({type(e).__name__}: {e}), using heuristic fallback.")
+                logger.warning(f"[ToolRouter] LLM tool-call failed ({type(e).__name__}: {e}), using heuristic fallback.")
 
     return _validate_tool_result(_resolve_tool_call_heuristic(user_input), cfg)
 

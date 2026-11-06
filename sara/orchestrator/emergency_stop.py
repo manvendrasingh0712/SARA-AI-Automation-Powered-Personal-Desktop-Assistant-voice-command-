@@ -51,17 +51,17 @@ def _on_emergency_stop(api) -> None:
     try:
         api.stop_sara()
     except Exception as e:  # noqa: BLE001 -- must never propagate
-        print(f"[EmergencyStop] stop_sara() failed: {e}")
+        logger.warning(f"[EmergencyStop] stop_sara() failed: {e}")
 
     try:
         watcher = notifications.get_watcher()
         if watcher is not None:
             watcher.cancel()
     except Exception as e:  # noqa: BLE001 -- must never propagate
-        print(f"[EmergencyStop] notification watcher cancel failed: {e}")
+        logger.warning(f"[EmergencyStop] notification watcher cancel failed: {e}")
 
     if _DEBUG:
-        print("[EmergencyStop] Panic button triggered -- TTS stopped, watch cancelled.")
+        logger.info("[EmergencyStop] Panic button triggered -- TTS stopped, watch cancelled.")
 
 
 def register_emergency_stop(api) -> None:
@@ -89,21 +89,21 @@ def register_emergency_stop(api) -> None:
 
     if not getattr(Config, "EMERGENCY_STOP_ENABLED", True):
         if _DEBUG:
-            print("[EmergencyStop] EMERGENCY_STOP_ENABLED=False, not registering.")
+            logger.info("[EmergencyStop] EMERGENCY_STOP_ENABLED=False, not registering.")
         return
 
     if _hotkey_handle is not None:
         if _DEBUG:
-            print("[EmergencyStop] Hotkey already registered, skipping.")
+            logger.info("[EmergencyStop] Hotkey already registered, skipping.")
         return
 
     combo = getattr(Config, "EMERGENCY_STOP_HOTKEY", "ctrl+alt+s")
     try:
         _hotkey_handle = keyboard.add_hotkey(combo, lambda: _on_emergency_stop(api))
         if _DEBUG:
-            print(f"[EmergencyStop] Registered hotkey '{combo}'.")
+            logger.info(f"[EmergencyStop] Registered hotkey '{combo}'.")
     except Exception as e:  # noqa: BLE001 -- must never crash startup
-        print(f"[EmergencyStop] Failed to register hotkey '{combo}': {e}")
+        logger.warning(f"[EmergencyStop] Failed to register hotkey '{combo}': {e}")
         _hotkey_handle = None
 
 
@@ -121,8 +121,8 @@ def unregister_emergency_stop() -> None:
     try:
         keyboard.remove_hotkey(_hotkey_handle)
         if _DEBUG:
-            print("[EmergencyStop] Hotkey unregistered.")
+            logger.info("[EmergencyStop] Hotkey unregistered.")
     except Exception as e:  # noqa: BLE001
-        print(f"[EmergencyStop] Failed to unregister hotkey: {e}")
+        logger.warning(f"[EmergencyStop] Failed to unregister hotkey: {e}")
     finally:
         _hotkey_handle = None

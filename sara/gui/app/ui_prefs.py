@@ -10,6 +10,9 @@ Stored as preferences "ui:theme", "ui:accent_hue", "ui:clock_theme" through the 
 (helpers._PrefWriter) -- a colour change is not a "why did you change that" event.
 No relative imports on purpose: this file can be imported and tested on its own.
 """
+import logging
+logger = logging.getLogger(__name__)
+
 
 _THEMES = ("sara", "paper", "arctic", "emerald", "rose", "violet", "slate", "ember", "aurora", "neon", "ink", "oat", "lime", "obsidian", "ocean", "sunset", "forest", "custom")
 _CLOCK_THEMES = ("sara", "aurora", "midnight", "glass", "pulse")
@@ -48,7 +51,7 @@ class ApiUiPrefsMixin:
                 data[key] = "" if value is None else str(value)
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_ui_prefs error] {e}")
+            logger.error(f"[get_ui_prefs error] {e}")
             return {"ok": False, "data": {}}
 
     def set_ui_pref(self, key, value):
@@ -59,5 +62,5 @@ class ApiUiPrefsMixin:
             self._pref_writer.enqueue(f"ui:{key}", cleaned)
             return {"ok": True}
         except Exception as e:
-            print(f"[set_ui_pref error] {e}")
+            logger.error(f"[set_ui_pref error] {e}")
             return {"ok": False, "error": "Could not save."}

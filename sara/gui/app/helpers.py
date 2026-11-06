@@ -11,6 +11,9 @@ import urllib.request
 import urllib.parse
 
 from .events import _push
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def _safe_urlopen(url: str, timeout: float):
@@ -38,7 +41,7 @@ WEATHER_CITY = "Ajmer,IN"
 WEATHER_CACHE_SECONDS = 900  # 15 minutes — keeps us well inside the free tier
 
 if not WEATHER_API_KEY:
-    print(
+    logger.warning(
         "[weather] WARNING: WEATHER_API_KEY environment variable is not set. "
         "The Weather card will fail to fetch data until it is configured."
     )
@@ -145,7 +148,7 @@ def _fetch_weather_from_api() -> dict:
             aqi_value = aqi_raw["list"][0]["main"]["aqi"]  # OWM scale: 1-5
             result["aqi_label"] = _AQI_LABELS.get(aqi_value, "—")
         except Exception as e:
-            print(f"[weather] AQI fetch failed (non-fatal): {e}")
+            logger.warning(f"[weather] AQI fetch failed (non-fatal): {e}")
 
         return result
     except Exception as e:
@@ -225,7 +228,7 @@ class _PrefWriter:
                 try:
                     old_value = self._get_preference(key)
                 except Exception as e:
-                    print(f"[decision log error] could not read old value for {key}: {e}")
+                    logger.error(f"[decision log error] could not read old value for {key}: {e}")
 
             try:
                 self._set_preference(key, value)
@@ -237,9 +240,9 @@ class _PrefWriter:
                         )
                         self._log_decision(key, old_value, value, reason, wait=False)
                     except Exception as e:
-                        print(f"[decision log error] {key}={value}: {e}")
+                        logger.error(f"[decision log error] {key}={value}: {e}")
             except Exception as e:
-                print(f"[pref write error] {key}={value}: {e}")
+                logger.error(f"[pref write error] {key}={value}: {e}")
                 # Genuine background persistence failures must not vanish into
                 # only a console print -- surface them to the frontend via the
                 # existing push/notification channel (same 'notification' event
@@ -253,7 +256,7 @@ class _PrefWriter:
                         f"Failed to save setting: {key}",
                     )
                 except Exception as e2:
-                    print(f"[pref write error] failed to notify frontend for {key}: {e2}")
+                    logger.error(f"[pref write error] failed to notify frontend for {key}: {e2}")
             finally:
                 self._q.task_done()
 

@@ -21,6 +21,7 @@ from ..command_helpers import (
 from .._shared_state import logger
 from sara.tools import system as system_tools
 
+
 _UNDO_CLOSE_TTL_S = 300  # 5 min -- separate, longer window than the 120s follow-up TTL in context_tracking.py, since "undo" is a deliberate recall, not a quick follow-up
 
 def _h_why_proactive(match, ctx):
@@ -36,7 +37,7 @@ def _h_why_proactive(match, ctx):
         try:
             event = db.get_last_proactive_event()
         except (sqlite3.Error, _FutureTimeoutError) as e:
-            print(f"[Proactive] get_last_proactive_event failed: {e}")
+            logger.warning(f"[Proactive] get_last_proactive_event failed: {e}")
         except Exception as e:
             logger.exception(
                 "[Proactive] get_last_proactive_event raised an unexpected error "
@@ -70,7 +71,7 @@ def _h_why_decision(match, ctx):
     try:
         entry = db.find_decision_by_query(query_text)
     except (sqlite3.Error, _FutureTimeoutError) as e:
-        print(f"[Memory] find_decision_by_query failed: {e}")
+        logger.warning(f"[Memory] find_decision_by_query failed: {e}")
         return _quick(ctx, "Sorry, I couldn't look that up right now.")
     except Exception as e:
         logger.exception(
@@ -89,7 +90,7 @@ def _h_why_decision(match, ctx):
         try:
             action_entry = db.find_action_by_query(query_text)
         except (sqlite3.Error, _FutureTimeoutError) as e:
-            print(f"[Memory] find_action_by_query failed: {e}")
+            logger.warning(f"[Memory] find_action_by_query failed: {e}")
             action_entry = None
         except Exception as e:
             logger.exception(
@@ -170,7 +171,7 @@ def _h_undo_setting_change(match, ctx):
     try:
         entry = db.get_last_decision()
     except (sqlite3.Error, _FutureTimeoutError) as e:
-        print(f"[Undo] get_last_decision failed: {e}")
+        logger.warning(f"[Undo] get_last_decision failed: {e}")
         return _quick(ctx, "Sorry, I couldn't look up your last change right now.")
     except Exception as e:
         logger.exception(
@@ -204,7 +205,7 @@ def _h_undo_setting_change(match, ctx):
     try:
         ok = db.set_preference(setting_key, old_value)
     except (sqlite3.Error, _FutureTimeoutError) as e:
-        print(f"[Undo] set_preference('{setting_key}') failed: {e}")
+        logger.warning(f"[Undo] set_preference('{setting_key}') failed: {e}")
         ok = False
     except Exception as e:
         logger.exception(
@@ -225,7 +226,7 @@ def _h_undo_setting_change(match, ctx):
             wait=False,
         )
     except Exception as e:  # noqa: BLE001 -- audit logging must never break the revert
-        print(f"[Undo] log_decision failed (non-fatal, revert already applied): {e}")
+        logger.warning(f"[Undo] log_decision failed (non-fatal, revert already applied): {e}")
 
     display_key = setting_key.replace("_", " ")
     return _quick(ctx, f"Okay, I've set {display_key} back to {old_value}.")
@@ -278,7 +279,7 @@ def _h_switch_mode(match, ctx):
             db.set_preference(key, value)
         db.set_preference("active_mode", mode_name)
     except (sqlite3.Error, _FutureTimeoutError) as e:
-        print(f"[Mode] set_preference failed while switching to '{mode_name}': {e}")
+        logger.warning(f"[Mode] set_preference failed while switching to '{mode_name}': {e}")
         return _quick(ctx, "Sorry, I ran into a problem switching modes.")
     except Exception as e:
         logger.exception(
@@ -303,7 +304,7 @@ def _h_switch_mode(match, ctx):
                     ears.energy_threshold = threshold
                     applied_live = True
             except Exception as e:
-                print(f"[Mode] live mic sensitivity update failed: {e}")
+                logger.warning(f"[Mode] live mic sensitivity update failed: {e}")
         if not applied_live:
             confirmation += " Mic sensitivity change will apply after a restart."
 

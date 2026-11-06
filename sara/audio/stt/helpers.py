@@ -13,6 +13,9 @@ from typing import Optional
 
 import numpy as np
 from sara.core.diag import swallowed
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def _optional_import_failed(dep_name: str, exc: Exception) -> None:
@@ -25,7 +28,7 @@ def _optional_import_failed(dep_name: str, exc: Exception) -> None:
     ImportError/OSError this used to be narrowed to. Any of those must
     still degrade this feature to "disabled", not take down STT entirely.
     """
-    print(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
+    logger.warning(f"[STT] {dep_name} import failed; related features disabled. ({type(exc).__name__}: {exc})")
 
 
 # NOTE: these two blocks (_HAS_WHISPER / _HAS_SD) have no actual import in

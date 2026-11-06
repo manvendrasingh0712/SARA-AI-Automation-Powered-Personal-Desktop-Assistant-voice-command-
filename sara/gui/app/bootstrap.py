@@ -11,6 +11,9 @@ import threading
 import webview
 
 from sara.orchestrator import notifications, emergency_stop
+import logging
+logger = logging.getLogger(__name__)
+
 
 # NOTE: this file lives at sara/gui/app/bootstrap.py — one directory deeper
 # than the original sara/gui/app.py. index.html itself did NOT move (it's
@@ -102,7 +105,7 @@ def main():
                         daemon=True,
                     ).start()
             except Exception as e:
-                print(f"[startup sound error] {e}")
+                logger.error(f"[startup sound error] {e}")
 
             # NEW: file-notification watcher (sara/orchestrator/notifications.py).
             notifications.init_watcher(tts, _push, db)
@@ -162,7 +165,7 @@ def main():
             # page load nahi ho jaata.
             _push('backend_ready')
         except Exception as e:
-            print(f"[boot heavy error] {e}")
+            logger.error(f"[boot heavy error] {e}")
             _boot["error"] = e
         finally:
             # Proxy calls ko hamesha unblock karo -- boot fail ho jaye
@@ -218,11 +221,11 @@ def main():
     try:
         emergency_stop.unregister_emergency_stop()
     except Exception as e:
-        print(f"[shutdown] unregister_emergency_stop failed: {e}")
+        logger.warning(f"[shutdown] unregister_emergency_stop failed: {e}")
     try:
         notifications.shutdown_watcher()
     except Exception as e:
-        print(f"[shutdown] notifications watcher shutdown failed: {e}")
+        logger.warning(f"[shutdown] notifications watcher shutdown failed: {e}")
 
     # NEW: stop project-owned worker executors (planner + step-correction,
     # LLM tool-router, network-call) BEFORE the pref-writer flush and
@@ -235,19 +238,19 @@ def main():
 
         shutdown_planning_executors(wait=False)
     except Exception as e:
-        print(f"[shutdown] planning executors shutdown failed: {e}")
+        logger.warning(f"[shutdown] planning executors shutdown failed: {e}")
     try:
         from sara.core.tool_router import _shutdown_tool_call_executor
 
         _shutdown_tool_call_executor()
     except Exception as e:
-        print(f"[shutdown] tool-router executor shutdown failed: {e}")
+        logger.warning(f"[shutdown] tool-router executor shutdown failed: {e}")
     try:
         from sara.orchestrator.network_utils import _shutdown_network_executor
 
         _shutdown_network_executor()
     except Exception as e:
-        print(f"[shutdown] network executor shutdown failed: {e}")
+        logger.warning(f"[shutdown] network executor shutdown failed: {e}")
 
     # Flush any pending preference writes (e.g. a slider dragged right
     # before the window was closed) before the process exits. `api` tab
@@ -265,4 +268,4 @@ def main():
         try:
             db.close()
         except Exception as e:
-            print(f"[shutdown] db.close() failed: {e}")
+            logger.warning(f"[shutdown] db.close() failed: {e}")

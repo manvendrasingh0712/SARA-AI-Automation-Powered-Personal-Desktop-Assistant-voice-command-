@@ -86,7 +86,8 @@ def test_disabled_flag_writes_nothing(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_enabled_flag_persists_and_second_run_loads_from_disk(tmp_path, monkeypatch, capsys):
+def test_enabled_flag_persists_and_second_run_loads_from_disk(tmp_path, monkeypatch, caplog):
+    caplog.set_level("DEBUG")  # P2.3: the disk-cache line is logger.info(), below caplog's default WARNING floor
     synth = _Synth()
     monkeypatch.setattr(prewarm, "_synth_kokoro", synth)
     monkeypatch.setattr(prewarm._disk, "cache_dir", lambda: tmp_path)
@@ -98,11 +99,11 @@ def test_enabled_flag_persists_and_second_run_loads_from_disk(tmp_path, monkeypa
     with cache_mod._phrase_cache_lock:
         cache_mod._phrase_cache.clear()
     cache_mod.unpin_all()
-    capsys.readouterr()
+    caplog.clear()
     _run(_make_tts())
     assert synth.calls == first_calls  # nothing synthesised the second time
     assert len(cache_mod._phrase_cache) == first_calls
-    assert f"disk cache: {first_calls} loaded" in capsys.readouterr().out
+    assert f"disk cache: {first_calls} loaded" in caplog.text
 
 
 def test_changed_speed_resynthesises_instead_of_loading(tmp_path, monkeypatch):

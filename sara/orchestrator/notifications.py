@@ -86,6 +86,9 @@ import threading
 from typing import Callable, Optional
 
 from config import Config
+import logging
+logger = logging.getLogger(__name__)
+
 
 _DEBUG = getattr(Config, "DEBUG_MODE", False)
 
@@ -139,7 +142,7 @@ def get_downloads_folder() -> str:
             windll.ole32.CoTaskMemFree(path_ptr)
             return path
     except Exception as e:  # noqa: BLE001 -- must never crash startup
-        print(f"[Notifications] SHGetKnownFolderPath failed, falling back: {e}")
+        logger.warning(f"[Notifications] SHGetKnownFolderPath failed, falling back: {e}")
     return os.path.expanduser(os.path.join("~", "Downloads"))
 
 
@@ -184,7 +187,7 @@ class NotificationWatcher:
         )
         self._thread.start()
         if _DEBUG:
-            print("[Notifications] Background watcher thread started.")
+            logger.info("[Notifications] Background watcher thread started.")
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -212,7 +215,7 @@ class NotificationWatcher:
         try:
             existing = set(os.listdir(target_folder))
         except Exception as e:
-            print(f"[Notifications] Could not list '{target_folder}': {e}")
+            logger.warning(f"[Notifications] Could not list '{target_folder}': {e}")
             return f"Sorry, I can't access the folder '{target_folder}'."
 
         with self._lock:
@@ -224,7 +227,7 @@ class NotificationWatcher:
             self._active = True
 
         if _DEBUG:
-            print(f"[Notifications] Watching '{target_folder}' for the next completed file.")
+            logger.info(f"[Notifications] Watching '{target_folder}' for the next completed file.")
 
         if was_active:
             return (
@@ -257,7 +260,7 @@ class NotificationWatcher:
             try:
                 self._tick()
             except Exception as e:  # noqa: BLE001 -- a bad tick must never kill the thread
-                print(f"[Notifications] tick failed: {e}")
+                logger.warning(f"[Notifications] tick failed: {e}")
 
     def _tick(self) -> None:
         # Gate checked FRESH every tick (same convention as
@@ -271,7 +274,7 @@ class NotificationWatcher:
             if self._db is not None and self._db.get_preference("setting:show_notifications", "1") == "0":
                 return
         except Exception as e:
-            print(f"[Notifications] show_notifications preference check failed (defaulting to enabled): {e}")
+            logger.warning(f"[Notifications] show_notifications preference check failed (defaulting to enabled): {e}")
 
         with self._lock:
             if not self._active or not self._folder:
@@ -282,7 +285,7 @@ class NotificationWatcher:
             current_files = set(os.listdir(folder))
         except Exception as e:
             if _DEBUG:
-                print(f"[Notifications] listdir failed for '{folder}': {e}")
+                logger.warning(f"[Notifications] listdir failed for '{folder}': {e}")
             return
 
         completed_name = None
@@ -383,19 +386,19 @@ class NotificationWatcher:
                     "proactive_notification", "ti-download", "#34d399", text, "file_notification"
                 )
             except Exception as e:
-                print(f"[Notifications] ui_update failed: {e}")
+                logger.warning(f"[Notifications] ui_update failed: {e}")
             return
         try:
             self._tts.speak(text, fast=True)
         except Exception as e:
-            print(f"[Notifications] tts.speak failed: {e}")
+            logger.warning(f"[Notifications] tts.speak failed: {e}")
         try:
             self._ui_update("transcript", "sara", text)
             self._ui_update(
                 "proactive_notification", "ti-download", "#34d399", text, "file_notification"
             )
         except Exception as e:
-            print(f"[Notifications] ui_update failed: {e}")
+            logger.warning(f"[Notifications] ui_update failed: {e}")
 
 
 # ----------------------------------------------------------------------------

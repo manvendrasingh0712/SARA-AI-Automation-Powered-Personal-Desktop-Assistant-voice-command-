@@ -7,6 +7,9 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 def _dbg(where, exc):
@@ -14,7 +17,7 @@ def _dbg(where, exc):
     player doesn't expose, ...). Silent by default because get_media_status polls every ~2s; set the environment
     variable SARA_GUI_DEBUG=1 to print them while investigating."""
     if os.environ.get("SARA_GUI_DEBUG") == "1":
-        print(f"[media:{where}] swallowed {type(exc).__name__}: {exc}")
+        logger.info(f"[media:{where}] swallowed {type(exc).__name__}: {exc}")
 
 
 # ── module-level session identity cache: keeps the media widget's
@@ -164,10 +167,10 @@ async def _extract_album_art(props):
         # DEBUG (Task 1, item 1): confirms the art genuinely arrived from
         # WinRT before it's ever handed to the frontend. Remove once the
         # theming bug is confirmed fixed.
-        print(f"[art] {len(b64)} bytes, mime={mime}")
+        logger.info(f"[art] {len(b64)} bytes, mime={mime}")
         return f"data:{mime};base64,{b64}"
     except Exception as e:
-        print(f"[album art skipped] {e}")
+        logger.info(f"[album art skipped] {e}")
         return None
 
 
@@ -294,7 +297,7 @@ def _real_aumid_for_pid(pid):
     except Exception as e:
         # DEBUG (Task 1, Tier 1): remove once this is confirmed reliable
         # across VLC/WMP/Chrome/Edge/Spotify in the field.
-        print(f"[aumid-tier1] GetApplicationUserModelId failed for pid={pid}: {e}")
+        logger.warning(f"[aumid-tier1] GetApplicationUserModelId failed for pid={pid}: {e}")
         return None
 
 
@@ -322,7 +325,7 @@ def _session_display_name(session):
     except Exception as e:
         # DEBUG (Task 1, Tier 3): remove once confirmed what Chrome/Edge
         # actually populate this with (page title vs domain vs nothing).
-        print(f"[display-name] GetDisplayName failed: {e}")
+        logger.warning(f"[display-name] GetDisplayName failed: {e}")
         return ""
 
 
@@ -343,7 +346,7 @@ def _vm_print(message: str, every_s: float = 30.0) -> None:
     if prev is not None and prev[0] == message and now - prev[1] < every_s:
         return
     _vm_last[key] = (message, now)
-    print(message)
+    logger.info(message)
 
 
 def _pycaw_session_for(aumid, title=None, artist=None):
@@ -380,7 +383,7 @@ def _pycaw_session_for(aumid, title=None, artist=None):
     try:
         sessions = list(AudioUtilities.GetAllSessions())
     except Exception as e:
-        print(f"[volume-match] GetAllSessions failed: {e}")
+        logger.warning(f"[volume-match] GetAllSessions failed: {e}")
         return None
 
     # Collect PID / process name / display name for every session ONCE up
@@ -407,7 +410,7 @@ def _pycaw_session_for(aumid, title=None, artist=None):
         for session, pid, name, disp in rows:
             real_aumid = _real_aumid_for_pid(pid)
             if real_aumid and real_aumid == aumid:
-                print(f"[volume-match] TIER1 real-aumid match pid={pid} proc={name!r} real_aumid={real_aumid!r}")
+                logger.info(f"[volume-match] TIER1 real-aumid match pid={pid} proc={name!r} real_aumid={real_aumid!r}")
                 return session
 
     # ---- Tier 2: exe-name fallback (original logic, unchanged) ------
@@ -420,7 +423,7 @@ def _pycaw_session_for(aumid, title=None, artist=None):
 
     if len(tier2_candidates) == 1:
         session, pid, name, disp = tier2_candidates[0]
-        print(f"[volume-match] TIER2 exe-name match aumid={aumid!r} -> proc_name={proc_name!r} pid={pid} MATCHED")
+        logger.info(f"[volume-match] TIER2 exe-name match aumid={aumid!r} -> proc_name={proc_name!r} pid={pid} MATCHED")
         return session
 
     # ---- Tier 2b: installed web-app (PWA) -> its audio lives in the host browser ----
@@ -451,7 +454,7 @@ def _pycaw_session_for(aumid, title=None, artist=None):
             if score > best_score:
                 best, best_session_info, best_score = session, (pid, name, disp), score
         if best is not None:
-            print(f"[volume-match] TIER3 display-name match pid={best_session_info[0]} "
+            logger.info(f"[volume-match] TIER3 display-name match pid={best_session_info[0]} "
                   f"proc={best_session_info[1]!r} display_name={best_session_info[2]!r} score={best_score}")
             return best
 
@@ -461,7 +464,7 @@ def _pycaw_session_for(aumid, title=None, artist=None):
         # title/artist) -- refuse rather than risk moving the wrong tab's
         # volume. See the module docstring above for why "no match" beats
         # a wrong guess here.
-        print(f"[volume-match] aumid={aumid!r} -> proc_name={proc_name!r} AMBIGUOUS "
+        logger.warning(f"[volume-match] aumid={aumid!r} -> proc_name={proc_name!r} AMBIGUOUS "
               f"({len(tier2_candidates)} same-named sessions, Tier 3 could not disambiguate) NO MATCH")
         return None
 
@@ -669,7 +672,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[get_media_status error] {e}")
+            logger.error(f"[get_media_status error] {e}")
             return {"ok": False, "error": str(e)}
 
     # ── Multi-session switcher (Feature: control ANY currently-playing
@@ -727,7 +730,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[list_media_sessions error] {e}")
+            logger.error(f"[list_media_sessions error] {e}")
             return {"ok": False, "sessions": []}
 
     def select_media_session(self, app_id):
@@ -763,7 +766,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[select_media_session error] {e}")
+            logger.error(f"[select_media_session error] {e}")
             return {"ok": False}
 
     # ── NEW FEATURE: per-session mute toggle (Task 4) ────────────────────
@@ -827,7 +830,7 @@ class ApiMediaMixin:
             confirmed = _run_on_com_thread(_work)
             if confirmed is None:
                 return {"ok": False, "error": "No matching Windows audio session for this app yet."}
-            print(f"[session-mute] app_id={app_id!r} muted={confirmed}")
+            logger.info(f"[session-mute] app_id={app_id!r} muted={confirmed}")
             return {"ok": True, "muted": confirmed}
         except ImportError:
             return {
@@ -835,7 +838,7 @@ class ApiMediaMixin:
                 "error": "winsdk/pycaw not installed.",
             }
         except Exception as e:
-            print(f"[toggle_session_mute error] {e}")
+            logger.error(f"[toggle_session_mute error] {e}")
             return {"ok": False}
 
     def toggle_music_playback(self, playing):
@@ -859,7 +862,7 @@ class ApiMediaMixin:
                 self._pref_writer.enqueue("music_playing", "1" if playing else "0")
             return {"ok": bool(ok)}
         except Exception as e:
-            print(f"[toggle_music_playback error] {e}")
+            logger.error(f"[toggle_music_playback error] {e}")
             return {"ok": False}
 
     def stop_music(self):
@@ -879,7 +882,7 @@ class ApiMediaMixin:
 
             smtc_stopped = asyncio.run(_do())
         except Exception as e:
-            print(f"[stop_music SMTC error] {e}")
+            logger.error(f"[stop_music SMTC error] {e}")
         try:
             # Only fall back to the broader system_tools stop (which is not
             # scoped to a single session) when the targeted SMTC stop above
@@ -893,7 +896,7 @@ class ApiMediaMixin:
             self._pref_writer.enqueue("music_playing", "0")
             return {"ok": True, "message": message}
         except Exception as e:
-            print(f"[stop_music error] {e}")
+            logger.error(f"[stop_music error] {e}")
             return {"ok": False}
 
     # ── Mini music player: skip / seek (real SMTC calls) ────────────────
@@ -919,7 +922,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[skip_next_track error] {e}")
+            logger.error(f"[skip_next_track error] {e}")
             return {"ok": False}
 
     def skip_previous_track(self):
@@ -944,7 +947,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[skip_previous_track error] {e}")
+            logger.error(f"[skip_previous_track error] {e}")
             return {"ok": False}
 
     def seek_media(self, position_sec):
@@ -986,7 +989,7 @@ class ApiMediaMixin:
         except (TypeError, ValueError):
             return {"ok": False, "error": "Invalid seek position."}
         except Exception as e:
-            print(f"[seek_media error] {e}")
+            logger.error(f"[seek_media error] {e}")
             return {"ok": False}
 
     # ── Mini music player: shuffle / repeat (Spotify-style controls) ────
@@ -1025,7 +1028,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[toggle_shuffle error] {e}")
+            logger.error(f"[toggle_shuffle error] {e}")
             return {"ok": False}
 
     def cycle_repeat_mode(self):
@@ -1069,7 +1072,7 @@ class ApiMediaMixin:
                 "error": "winsdk not installed. Run: pip install winsdk",
             }
         except Exception as e:
-            print(f"[cycle_repeat_mode error] {e}")
+            logger.error(f"[cycle_repeat_mode error] {e}")
             return {"ok": False}
 
     # ── Mini music player: per-app volume (Task 2) ──────────────────────
@@ -1132,7 +1135,7 @@ class ApiMediaMixin:
                 "error": "pycaw not installed. Run: pip install pycaw",
             }
         except Exception as e:
-            print(f"[get_master_volume error] {e}")
+            logger.error(f"[get_master_volume error] {e}")
             return {"ok": False}
 
     def set_master_volume(self, level):
@@ -1149,7 +1152,7 @@ class ApiMediaMixin:
             confirmed = _run_on_com_thread(_work)
             # DEBUG: same "confirm the write actually landed" pattern as
             # set_media_volume above -- remove once verified end-to-end.
-            print(f"[set_master_volume] requested={level} confirmed_by_endpoint={confirmed}")
+            logger.info(f"[set_master_volume] requested={level} confirmed_by_endpoint={confirmed}")
             return {"ok": True, "volume": confirmed}
         except ImportError:
             return {
@@ -1159,7 +1162,7 @@ class ApiMediaMixin:
         except (TypeError, ValueError):
             return {"ok": False, "error": "Invalid volume level."}
         except Exception as e:
-            print(f"[set_master_volume error] {e}")
+            logger.error(f"[set_master_volume error] {e}")
             return {"ok": False}
 
     def toggle_master_mute(self):
@@ -1179,7 +1182,7 @@ class ApiMediaMixin:
                 "error": "pycaw not installed. Run: pip install pycaw",
             }
         except Exception as e:
-            print(f"[toggle_master_mute error] {e}")
+            logger.error(f"[toggle_master_mute error] {e}")
             return {"ok": False}
 
     def get_media_volume(self):
@@ -1216,7 +1219,7 @@ class ApiMediaMixin:
                 "error": "pycaw not installed. Run: pip install pycaw",
             }
         except Exception as e:
-            print(f"[get_media_volume error] {e}")
+            logger.error(f"[get_media_volume error] {e}")
             return {"ok": False}
 
     def set_media_volume(self, level):
@@ -1249,7 +1252,7 @@ class ApiMediaMixin:
             # DEBUG (Task 2, item 1): remove once Problem 1 is confirmed
             # fixed end-to-end (Spotify's actual volume changing, not just
             # this call returning ok).
-            print(f"[set_media_volume] requested={level} confirmed_by_session={confirmed}")
+            logger.info(f"[set_media_volume] requested={level} confirmed_by_session={confirmed}")
             return {"ok": True, "volume": confirmed}
         except ImportError:
             return {
@@ -1259,7 +1262,7 @@ class ApiMediaMixin:
         except (TypeError, ValueError):
             return {"ok": False, "error": "Invalid volume level."}
         except Exception as e:
-            print(f"[set_media_volume error] {e}")
+            logger.error(f"[set_media_volume error] {e}")
             return {"ok": False}
 
     def toggle_media_mute(self):
@@ -1314,5 +1317,5 @@ class ApiMediaMixin:
                 "error": "pycaw not installed. Run: pip install pycaw",
             }
         except Exception as e:
-            print(f"[toggle_media_mute error] {e}")
+            logger.error(f"[toggle_media_mute error] {e}")
             return {"ok": False}

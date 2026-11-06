@@ -60,6 +60,9 @@ from sara.tools.reminder_context import minutes_until as _minutes_until
 from sara.tools.reminder_followup import pick_followup as _pick_followup
 from sara.tools.reminder_followup import settings_from_config as _followup_settings
 from sara.core.diag import swallowed
+import logging
+logger = logging.getLogger(__name__)
+
 
 _DEBUG = getattr(Config, "DEBUG_MODE", False)
 
@@ -175,7 +178,7 @@ def _quick_llm_rephrase(template: str, lang: str) -> Optional[str]:
         return text or None
     except Exception as e:  # noqa: BLE001 — must never propagate
         if _DEBUG:
-            print(f"[Proactive] LLM rephrase failed, using template: {e}")
+            logger.warning(f"[Proactive] LLM rephrase failed, using template: {e}")
         return None
 
 
@@ -237,7 +240,7 @@ class ProactiveEngine:
             return
         if not getattr(Config, "PROACTIVE_ENABLED", True):
             if _DEBUG:
-                print("[Proactive] PROACTIVE_ENABLED=False, not starting.")
+                logger.info("[Proactive] PROACTIVE_ENABLED=False, not starting.")
             return
         self._stop_event.clear()
         self._thread = threading.Thread(
@@ -245,7 +248,7 @@ class ProactiveEngine:
         )
         self._thread.start()
         if _DEBUG:
-            print("[Proactive] Background engine started.")
+            logger.info("[Proactive] Background engine started.")
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -265,7 +268,7 @@ class ProactiveEngine:
             try:
                 self._tick()
             except Exception as e:  # noqa: BLE001 — a bad tick must never kill the thread
-                print(f"[Proactive] tick failed: {e}")
+                logger.warning(f"[Proactive] tick failed: {e}")
 
     def _tick(self) -> None:
         if not self._enabled_now():
@@ -353,7 +356,7 @@ class ProactiveEngine:
             raw = get_battery_raw()
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] battery check failed: {e}")
+                logger.warning(f"[Proactive] battery check failed: {e}")
             return
         if raw is None:
             return  # desktop / no battery sensor
@@ -380,7 +383,7 @@ class ProactiveEngine:
             upcoming = self._reminders.get_upcoming(lead_minutes)
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] reminder check failed: {e}")
+                logger.warning(f"[Proactive] reminder check failed: {e}")
             return
         for item in upcoming:
             rid = item.get("id")
@@ -425,7 +428,7 @@ class ProactiveEngine:
             upcoming = calendar_tools.get_upcoming_events(days=1)
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] meeting check failed: {e}")
+                logger.warning(f"[Proactive] meeting check failed: {e}")
             return
 
         now = time.time()
@@ -486,7 +489,7 @@ class ProactiveEngine:
             all_routines = self._db.list_routines()
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] list_routines failed: {e}")
+                logger.warning(f"[Proactive] list_routines failed: {e}")
             return
 
         now = datetime.now()
@@ -505,7 +508,7 @@ class ProactiveEngine:
                 target = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
             except (ValueError, AttributeError, TypeError):
                 if _DEBUG:
-                    print(f"[Proactive] routine '{name}' has a bad trigger_time {trigger_time!r}")
+                    logger.info(f"[Proactive] routine '{name}' has a bad trigger_time {trigger_time!r}")
                 continue
 
             if abs((now - target).total_seconds()) > 60:
@@ -545,7 +548,7 @@ class ProactiveEngine:
         try:
             outcomes = routines.run_routine(name, ctx)
         except Exception as e:  # noqa: BLE001 — one bad routine must never kill the proactive thread
-            print(f"[Proactive] scheduled routine '{name}' failed: {e}")
+            logger.warning(f"[Proactive] scheduled routine '{name}' failed: {e}")
             return
 
         # run_routine() already speaks every step in order, as it runs
@@ -558,7 +561,7 @@ class ProactiveEngine:
             try:
                 self._ui_update("transcript", "sara", text)
             except Exception as e:
-                print(f"[Proactive] ui_update failed for routine step: {e}")
+                logger.warning(f"[Proactive] ui_update failed for routine step: {e}")
 
         try:
             self._ui_update(
@@ -566,7 +569,7 @@ class ProactiveEngine:
                 f"Ran your '{label}' routine.", "routine",
             )
         except Exception as e:
-            print(f"[Proactive] ui_update (notification) failed: {e}")
+            logger.warning(f"[Proactive] ui_update (notification) failed: {e}")
 
         try:
             if hasattr(self._db, "log_proactive_event"):
@@ -579,12 +582,12 @@ class ProactiveEngine:
                 )
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] log_proactive_event failed: {e}")
+                logger.warning(f"[Proactive] log_proactive_event failed: {e}")
 
         try:
             self._db.set_routine_last_run_date(name, today, wait=False)
         except Exception as e:
-            print(f"[Proactive] set_routine_last_run_date('{name}') failed: {e}")
+            logger.warning(f"[Proactive] set_routine_last_run_date('{name}') failed: {e}")
 
     def _check_morning_prefetch(self) -> None:
         if not self._trigger_enabled("morning_prefetch"):
@@ -599,7 +602,7 @@ class ProactiveEngine:
             web_tools.get_news()  # populates both caches as a side effect
             self._last_fired["morning_prefetch"] = time.monotonic()
         except Exception as e:
-            print(f"[Proactive] morning news prefetch failed: {e}")
+            logger.warning(f"[Proactive] morning news prefetch failed: {e}")
 
     def _check_idle_break(self) -> None:
         if not self._trigger_enabled("idle"):
@@ -656,7 +659,7 @@ class ProactiveEngine:
         try:
             recent = self._db.get_recent_actions(limit=200)
         except Exception as e:
-            print(f"[Proactive] get_recent_actions failed: {e}")
+            logger.warning(f"[Proactive] get_recent_actions failed: {e}")
             return
         if not recent:
             return
@@ -716,12 +719,12 @@ class ProactiveEngine:
             try:
                 self._ui_update("proactive_notification", icon, color, text, trigger, reason)
             except Exception as e:
-                print(f"[Proactive] ui_update failed: {e}")
+                logger.warning(f"[Proactive] ui_update failed: {e}")
             return False
         try:
             self._tts.speak(text, fast=True)
         except Exception as e:
-            print(f"[Proactive] tts.speak failed: {e}")
+            logger.warning(f"[Proactive] tts.speak failed: {e}")
         try:
             self._ui_update("transcript", "sara", text)
             # Explicit tag (generic "notification" ki jagah) — taaki
@@ -729,7 +732,7 @@ class ProactiveEngine:
             # hai, icon guess kiye bina.
             self._ui_update("proactive_notification", icon, color, text, trigger, reason)
         except Exception as e:
-            print(f"[Proactive] ui_update failed: {e}")
+            logger.warning(f"[Proactive] ui_update failed: {e}")
         try:
             if self._db is not None and hasattr(self._db, "log_proactive_event"):
                 # Fire-and-forget (wait=False) — logging must never add
@@ -737,7 +740,7 @@ class ProactiveEngine:
                 self._db.log_proactive_event(trigger, text, reason, wait=False)
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] log_proactive_event failed: {e}")
+                logger.warning(f"[Proactive] log_proactive_event failed: {e}")
         return True
 
     def _check_reminder_followups(self) -> None:
@@ -777,7 +780,7 @@ class ProactiveEngine:
             result = self._composer.start(
                 plan.message, stage="followup", minutes_since=plan.minutes_since
             )()
-            print(result.describe().replace("[Reminder]", "[Reminder follow-up]", 1))
+            logger.info(result.describe().replace("[Reminder]", "[Reminder follow-up]", 1))
             reason = (
                 f'Your "{plan.message}" reminder was due about {plan.minutes_since} '
                 f"minutes ago and you were still talking to me, so I gave you a gentle follow-up."
@@ -795,7 +798,7 @@ class ProactiveEngine:
                 )
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] reminder follow-up failed: {e}")
+                logger.warning(f"[Proactive] reminder follow-up failed: {e}")
 
     def _upcoming_already_notified(self, rid: Any) -> bool:
         """True if this reminder's heads-up was already given (survives restarts)."""
@@ -814,7 +817,7 @@ class ProactiveEngine:
                 )
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] could not record heads-up for reminder {rid}: {e}")
+                logger.warning(f"[Proactive] could not record heads-up for reminder {rid}: {e}")
 
     def _compose_upcoming(self, text: str, due_at: str) -> Optional[str]:
         """Contextual heads-up wording, or None to keep the legacy wording."""
@@ -830,11 +833,11 @@ class ProactiveEngine:
                 text, stage="upcoming", minutes_until=_minutes_until(due_at)
             )
             result = wait_for_text()
-            print(result.describe().replace("[Reminder]", "[Reminder upcoming]", 1))
+            logger.info(result.describe().replace("[Reminder]", "[Reminder upcoming]", 1))
             return result.text or None
         except Exception as e:
             if _DEBUG:
-                print(f"[Proactive] contextual heads-up failed: {e}")
+                logger.warning(f"[Proactive] contextual heads-up failed: {e}")
             return None
 
     def _phrase(self, template: str) -> str:

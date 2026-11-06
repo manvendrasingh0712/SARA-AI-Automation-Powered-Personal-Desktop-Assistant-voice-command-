@@ -98,10 +98,10 @@ class PreferencesDB:
             self._create_tables(self._write_conn)
             logger.debug("PreferencesDB initialized at '%s'.", self.db_path)
             if Config.DEBUG_MODE:
-                print(f"[Debug] PreferencesDB initialized at '{self.db_path}'.")
+                logger.info(f"[Debug] PreferencesDB initialized at '{self.db_path}'.")
         except sqlite3.Error as e:
             logger.error("Failed to initialize preferences database: %s", e)
-            print(f"[Error] Failed to initialize preferences database: {e}")
+            logger.error(f"[Error] Failed to initialize preferences database: {e}")
             self._write_conn = None
             self._closed = True
             return
@@ -234,7 +234,7 @@ class PreferencesDB:
                     future.set_exception(e)
                 else:
                     logger.error("Background DB write failed: %s", e)
-                    print(f"[Error] Background DB write failed: {e}")
+                    logger.error(f"[Error] Background DB write failed: {e}")
             except Exception as e:
                 # Unexpected (non-sqlite) failure: still forwarded/handled exactly
                 # as before so the writer thread never dies, but with a traceback.
@@ -243,7 +243,7 @@ class PreferencesDB:
                     future.set_exception(e)
                 else:
                     logger.exception("Background DB write failed unexpectedly: %s", e)
-                    print(f"[Error] Background DB write failed: {e}")
+                    logger.error(f"[Error] Background DB write failed: {e}")
 
     def _submit_write(
         self,
@@ -267,17 +267,17 @@ class PreferencesDB:
                 return bool(future.result(timeout=timeout))
             except FutureTimeoutError:
                 logger.error("DB write timed out after %.1fs.", timeout)
-                print(f"[Error] DB write did not complete in time ({timeout}s).")
+                logger.error(f"[Error] DB write did not complete in time ({timeout}s).")
                 return False
             except (sqlite3.Error, RuntimeError) as e:
                 # Expected: a sqlite error, or the writer's own
                 # RuntimeError("Write connection is closed.") during shutdown.
                 logger.error("DB write raised an exception: %s", e)
-                print(f"[Error] DB write raised an exception: {e}")
+                logger.error(f"[Error] DB write raised an exception: {e}")
                 return False
             except Exception as e:
                 logger.exception("DB write raised an unexpected exception: %s", e)
-                print(f"[Error] DB write raised an unexpected exception: {e}")
+                logger.error(f"[Error] DB write raised an unexpected exception: {e}")
                 return False
         return True
 
@@ -321,7 +321,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("set_preference('%s'): %s", key, e)
-                print(f"[Error] set_preference('{key}'): {e}")
+                logger.error(f"[Error] set_preference('{key}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -338,7 +338,7 @@ class PreferencesDB:
             return row[0] if row else default
         except sqlite3.Error as e:
             logger.error("get_preference('%s'): %s", key, e)
-            print(f"[Error] get_preference('{key}'): {e}")
+            logger.error(f"[Error] get_preference('{key}'): {e}")
             return default
 
     def delete_preference(self, key: str, wait: bool = True) -> bool:
@@ -353,7 +353,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("delete_preference('%s'): %s", key, e)
-                print(f"[Error] delete_preference('{key}'): {e}")
+                logger.error(f"[Error] delete_preference('{key}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -368,7 +368,7 @@ class PreferencesDB:
             return dict(cursor.fetchall())
         except sqlite3.Error as e:
             logger.error("get_all_preferences: %s", e)
-            print(f"[Error] get_all_preferences: {e}")
+            logger.error(f"[Error] get_all_preferences: {e}")
             return {}
 
     # ── Typed helpers ─────────────────────────────────────────────────────
@@ -429,7 +429,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("log_message: %s", e)
-                print(f"[Error] log_message: {e}")
+                logger.error(f"[Error] log_message: {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -460,7 +460,7 @@ class PreferencesDB:
             ]
         except sqlite3.Error as e:
             logger.error("get_recent_messages: %s", e)
-            print(f"[Error] get_recent_messages: {e}")
+            logger.error(f"[Error] get_recent_messages: {e}")
             return []
 
     def get_messages_after(
@@ -521,7 +521,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("clear_conversation_log: %s", e)
-                print(f"[Error] clear_conversation_log: {e}")
+                logger.error(f"[Error] clear_conversation_log: {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -559,7 +559,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("log_proactive_event: %s", e)
-                print(f"[Error] log_proactive_event: {e}")
+                logger.error(f"[Error] log_proactive_event: {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -590,7 +590,7 @@ class PreferencesDB:
             ]
         except sqlite3.Error as e:
             logger.error("get_recent_proactive_events: %s", e)
-            print(f"[Error] get_recent_proactive_events: {e}")
+            logger.error(f"[Error] get_recent_proactive_events: {e}")
             return []
 
     def get_last_proactive_event(self) -> Optional[dict[str, str]]:
@@ -619,7 +619,7 @@ class PreferencesDB:
             }
         except sqlite3.Error as e:
             logger.error("get_proactive_stats: %s", e)
-            print(f"[Error] get_proactive_stats: {e}")
+            logger.error(f"[Error] get_proactive_stats: {e}")
             return {"total": 0, "by_trigger": {}, "recent": []}
 
     # ── Decision memory (NEW) ────────────────────────────────────────────
@@ -667,7 +667,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("log_decision('%s'): %s", setting_key, e)
-                print(f"[Error] log_decision('{setting_key}'): {e}")
+                logger.error(f"[Error] log_decision('{setting_key}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -704,7 +704,7 @@ class PreferencesDB:
             ]
         except sqlite3.Error as e:
             logger.error("get_recent_decisions: %s", e)
-            print(f"[Error] get_recent_decisions: {e}")
+            logger.error(f"[Error] get_recent_decisions: {e}")
             return []
 
     def find_decision_by_query(
@@ -832,7 +832,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("log_action('%s','%s'): %s", action_type, action_name, e)
-                print(f"[Error] log_action('{action_type}','{action_name}'): {e}")
+                logger.error(f"[Error] log_action('{action_type}','{action_name}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -869,7 +869,7 @@ class PreferencesDB:
             ]
         except sqlite3.Error as e:
             logger.error("get_recent_actions: %s", e)
-            print(f"[Error] get_recent_actions: {e}")
+            logger.error(f"[Error] get_recent_actions: {e}")
             return []
 
     def find_action_by_query(
@@ -978,7 +978,7 @@ class PreferencesDB:
             }
         except sqlite3.Error as e:
             logger.error("get_conversation_stats: %s", e)
-            print(f"[Error] get_conversation_stats: {e}")
+            logger.error(f"[Error] get_conversation_stats: {e}")
             return {"total_messages": 0, "first_message_date": None}
 
     # ── Routines (Automation) ─────────────────────────────────────────────
@@ -1001,7 +1001,7 @@ class PreferencesDB:
             payload = json.dumps(definition)
         except (TypeError, ValueError) as e:
             logger.error("save_routine('%s'): definition not JSON-serializable: %s", name, e)
-            print(f"[Error] save_routine('{name}'): definition not JSON-serializable: {e}")
+            logger.error(f"[Error] save_routine('{name}'): definition not JSON-serializable: {e}")
             return False
 
         def _do(conn: sqlite3.Connection) -> bool:
@@ -1018,7 +1018,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("save_routine('%s'): %s", name, e)
-                print(f"[Error] save_routine('{name}'): {e}")
+                logger.error(f"[Error] save_routine('{name}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -1046,7 +1046,7 @@ class PreferencesDB:
             return definition
         except sqlite3.Error as e:
             logger.error("get_routine('%s'): %s", name, e)
-            print(f"[Error] get_routine('{name}'): {e}")
+            logger.error(f"[Error] get_routine('{name}'): {e}")
             return None
 
     def delete_routine(self, name: str, wait: bool = True) -> bool:
@@ -1061,7 +1061,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("delete_routine('%s'): %s", name, e)
-                print(f"[Error] delete_routine('{name}'): {e}")
+                logger.error(f"[Error] delete_routine('{name}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -1086,7 +1086,7 @@ class PreferencesDB:
             return out
         except sqlite3.Error as e:
             logger.error("list_routines: %s", e)
-            print(f"[Error] list_routines: {e}")
+            logger.error(f"[Error] list_routines: {e}")
             return []
 
     def set_routine_enabled(self, name: str, enabled: bool, wait: bool = True) -> bool:
@@ -1108,7 +1108,7 @@ class PreferencesDB:
             except sqlite3.Error as e:
                 conn.rollback()
                 logger.error("set_routine_enabled('%s'): %s", name, e)
-                print(f"[Error] set_routine_enabled('{name}'): {e}")
+                logger.error(f"[Error] set_routine_enabled('{name}'): {e}")
                 return False
 
         return self._submit_write(_do, wait=wait)
@@ -1161,7 +1161,7 @@ class PreferencesDB:
 
         logger.debug("PreferencesDB closed.")
         if Config.DEBUG_MODE:
-            print("[Debug] PreferencesDB connection closed.")
+            logger.info("[Debug] PreferencesDB connection closed.")
 
     def __del__(self) -> None:
         # Only catch Exception, not BaseException — SystemExit/KeyboardInterrupt must propagate.

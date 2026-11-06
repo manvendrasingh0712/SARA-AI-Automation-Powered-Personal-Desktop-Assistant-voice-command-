@@ -21,6 +21,9 @@ from config import Config
 # detects independently here rather than requiring a language parameter
 # be threaded through every clean_for_tts() call site.
 from sara.audio.stt.helpers import _detect_language as _stt_detect_language
+import logging
+logger = logging.getLogger(__name__)
+
 
 try:
     import sounddevice as sd
@@ -29,7 +32,7 @@ try:
 except (ImportError, OSError):
     _SD_OK = False
     sd = None
-    print("[TTS] sounddevice not found — pip install sounddevice")
+    logger.warning("[TTS] sounddevice not found — pip install sounddevice")
 
 try:
     import pygame
@@ -46,7 +49,7 @@ try:
 except ImportError:
     _KOKORO_OK = False
     Kokoro = None
-    print("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
+    logger.warning("[TTS] kokoro-onnx not found — pip install kokoro-onnx")
 
 try:
     import onnxruntime as _ort

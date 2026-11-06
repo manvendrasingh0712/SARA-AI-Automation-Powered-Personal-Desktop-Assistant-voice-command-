@@ -285,6 +285,7 @@ from .dispatcher import (
     _handle_command,
 )
 
+
 __all__ = [
     "_CALENDAR_DATEPARSER_LANGUAGES", "_DEFAULT_MEETING_DURATION_MINUTES",
     "LongTermMemory", "_HAS_RAG", "resolve_tool_call", "build_fake_match",
@@ -343,4 +344,4 @@ try:
 
     _importlib.import_module("sara.skills")
 except Exception as _skills_import_err:  # noqa: BLE001
-    print(f"[Core] sara.skills unavailable, plugin skills disabled: {_skills_import_err}")
+    logger.info(f"[Core] sara.skills unavailable, plugin skills disabled: {_skills_import_err}")

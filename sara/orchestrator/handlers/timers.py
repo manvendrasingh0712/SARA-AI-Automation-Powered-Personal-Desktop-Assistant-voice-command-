@@ -7,6 +7,9 @@ monolithic intent_handlers.py -- see that module's docstring.
 import re
 from datetime import datetime, timedelta
 from sara.core.text.lazy_import import lazy_module
+import logging
+logger = logging.getLogger(__name__)
+
 
 dateparser = lazy_module("dateparser")  # ~0.4 s at start-up otherwise
 
@@ -47,7 +50,7 @@ def _h_set_timer(match, ctx):
         try:
             play_alarm_beep(repetitions=2)
         except Exception as e:
-            print(f"[Warning] alarm beep failed: {e}")
+            logger.warning(f"[Warning] alarm beep failed: {e}")
         ui_update("status", "speaking")
         tts.speak(msg, fast=True)
         ui_update("transcript", "sara", f"\u23f0 {msg}")
@@ -168,7 +171,7 @@ def _h_set_alarm(match, ctx):
         try:
             play_alarm_beep(repetitions=2)
         except Exception as e:
-            print(f"[Warning] alarm beep failed: {e}")
+            logger.warning(f"[Warning] alarm beep failed: {e}")
         ui_update("status", "speaking")
         tts.speak(msg, fast=True)
         ui_update("transcript", "sara", f"\u23f0 {msg}")

@@ -41,14 +41,14 @@ def pieces():
 
 # ── failures -> whole-reply fallback ─────────────────────────────────────────
 
-def test_player_exception_falls_back_to_whole_reply(synth, pieces, capsys):
+def test_player_exception_falls_back_to_whole_reply(synth, pieces, caplog):
     player = FakePlayer(fail_on_call=2, auto_complete=True)
     tts = make_tts(player)
     assert tts.speak_stream(iter(pieces)) is False
     whole = clean_for_tts(" ".join(pieces))
     assert synth.texts[-1] == whole
     assert len(player.whole_plays) == 1
-    out = capsys.readouterr().out
+    out = caplog.text
     assert "falling back to whole-reply" in out
     assert "alpha" not in out
     assert tts._speaking.is_set() is False

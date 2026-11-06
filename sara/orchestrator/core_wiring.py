@@ -11,6 +11,11 @@ from .ui_bridge import _UICoalescer
 from .tts_worker import TTSWorker
 from sara.core.diag import swallowed
 
+import logging
+
+logger = logging.getLogger("sara.core_logic")  # P2.3: moved up from further down -- the try/except
+# blocks below call logger.* at IMPORT time, before that point.
+
 try:
     from sara.core.telemetry import (
         begin_turn as _t_begin,
@@ -32,7 +37,7 @@ except Exception as _telemetry_import_error:  # optional: fall back to no-ops
     # _sweep()/_flush_at_exit() were both verified to persist a tool-only
     # turn (no tts_done) at t+23s. If the import is fine, this line costs
     # one grep; if it is not, it names the cause on the next boot.
-    print(
+    logger.info(
         "[Telemetry] UNAVAILABLE -- voice turns will NOT be recorded this "
         f"session: {type(_telemetry_import_error).__name__}: "
         f"{_telemetry_import_error}"
@@ -64,7 +69,6 @@ from ._constants import (
 )
 
 import time
-import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
@@ -115,7 +119,7 @@ try:
 except Exception as _rag_import_err:  # noqa: BLE001
     LongTermMemory = None
     _HAS_RAG = False
-    print(
+    logger.info(
         f"[Core] sara.core.rag unavailable, long-term memory disabled: {_rag_import_err}"
     )
 
@@ -134,16 +138,11 @@ except Exception as _tool_router_import_err:  # noqa: BLE001
     TOOL_NAME_TO_INTENT = {}
     has_probable_tool_intent = lambda _t: False
     _HAS_TOOL_ROUTER = False
-    print(
+    logger.info(
         f"[Core] sara.core.tool_router unavailable, LLM tool-calling fallback "
         f"disabled: {_tool_router_import_err}"
     )
 
-# ----------------------------------------------------------------------------
-# Logging
-# ----------------------------------------------------------------------------
-
-logger = logging.getLogger("sara.core_logic")
 
 # ----------------------------------------------------------------------------
 # Constants
@@ -209,7 +208,7 @@ def build_core_objects(ui_update):
         try:
             aec = AECProcessor()
         except Exception as e:
-            print(
+            logger.warning(
                 f"[Core] AECProcessor construction failed, continuing without AEC: {e}"
             )
             aec = None
@@ -250,7 +249,7 @@ def build_core_objects(ui_update):
         _saved_active = db.get_preference("assistant_active")
         initial_active = True if _saved_active is None else (_saved_active == "1")
     except Exception as e:
-        print(f"[Warning] Could not restore assistant_active preference: {e}")
+        logger.warning(f"[Warning] Could not restore assistant_active preference: {e}")
         initial_active = True
     assistant_state = AssistantState(initial_active=initial_active)
 
@@ -313,7 +312,7 @@ def build_core_objects(ui_update):
                 try:
                     play_alarm_beep(repetitions=3)
                 except Exception as e:
-                    print(f"[Warning] alarm beep failed: {e}")
+                    logger.warning(f"[Warning] alarm beep failed: {e}")
         if callable(text):
             # Wording may still be generating while the beep plays.
             text = text()
@@ -321,7 +320,7 @@ def build_core_objects(ui_update):
             try:
                 tts.speak(text, fast=True)
             except Exception as e:
-                print(f"[Warning] reminder speech failed: {e}")
+                logger.warning(f"[Warning] reminder speech failed: {e}")
         if transcript:
             ui_update("transcript", "sara", f"\U0001f514 {text}")
         ui_update("notification", icon, color, text)
@@ -381,17 +380,17 @@ def build_core_objects(ui_update):
                 return
             wait_for_text = _composer.start(event.message)
         except Exception as e:
-            print(f"[Warning] contextual reminder failed, using plain wording: {e}")
+            logger.warning(f"[Warning] contextual reminder failed, using plain wording: {e}")
             _deliver(fallback_text, beep=True, reason=reason)
             return
 
         def _text() -> str:
             try:
                 result = wait_for_text()
-                print(result.describe())
+                logger.info(result.describe())
                 return result.text or fallback_text
             except Exception as e:
-                print(f"[Warning] contextual reminder wording failed: {e}")
+                logger.warning(f"[Warning] contextual reminder wording failed: {e}")
                 return fallback_text
 
         _deliver(_text, beep=True, reason=reason)
@@ -406,7 +405,7 @@ def build_core_objects(ui_update):
         try:
             db.log_proactive_event(trigger, text, reason, wait=False)
         except Exception as e:
-            print(f"[Warning] reminder event log failed: {e}")
+            logger.warning(f"[Warning] reminder event log failed: {e}")
 
     def _on_reminder_late(messages: list) -> None:
         # Slightly late reminders from a previous run: one calm grouped line,
@@ -554,7 +553,7 @@ class _WakeWatcher:
                 if not getattr(self, "_wake_diag_error_seen", False):
                     self._wake_diag_error_seen = True
                     import traceback
-                    print(
+                    logger.error(
                         "[WakeDiag] WakeWatcher._run() caught an exception "
                         f"(first occurrence, will keep repeating silently after this): {e!r}"
                     )
@@ -796,7 +795,7 @@ def run_sara_logic(
         )
         thread_supervisor.start()
     except Exception as e:
-        print(f"[Supervisor] failed to start (continuing without it): {e}")
+        logger.warning(f"[Supervisor] failed to start (continuing without it): {e}")
         thread_supervisor = None
 
     # NOTES Q&A (sara/skills/notes_qa.py): notes_memory is now built in
@@ -814,7 +813,7 @@ def run_sara_logic(
 
                 sync_notes_folder(notes_memory, db)
             except Exception as e:
-                print(f"[NotesQA] startup sync failed: {e}")
+                logger.warning(f"[NotesQA] startup sync failed: {e}")
 
         threading.Thread(
             target=_sync_notes_once, daemon=True, name="sara-notes-sync"
@@ -857,7 +856,7 @@ def run_sara_logic(
             f"[Logic] AEC unavailable — per-turn mic settle is {post_tts_settle_s}s"
         )
     if _DEBUG:
-        print(
+        logger.info(
             f"[Logic] Post-TTS mic settle: {post_tts_settle_s}s (AEC active={aec_active})"
         )
 
@@ -879,7 +878,7 @@ def run_sara_logic(
         from sara.core.telemetry.store import db_path as _t_db_path
 
         if _t_is_enabled():
-            print(f"[Telemetry] recording ON -> {_t_db_path()}")
+            logger.info(f"[Telemetry] recording ON -> {_t_db_path()}")
         else:
             # D68: name the SOURCE, do not guess it. The first version of
             # this message blamed the GUI preference outright. On the target
@@ -896,15 +895,15 @@ def run_sara_logic(
                 _saved = db.get_preference("ui:telemetry_enabled")
             except Exception as _exc:
                 swallowed(logger, "core_wiring.run_sara_logic:824", _exc)
-            print(
+            logger.info(
                 "[Telemetry] recording OFF -- no turns will be measured this "
                 "session."
             )
-            print(
+            logger.info(
                 f"[Telemetry]   TELEMETRY_ENABLED (.env/config) = {_cfg_on}"
                 + ("   <-- this is what disabled it" if not _cfg_on else "")
             )
-            print(
+            logger.info(
                 f"[Telemetry]   saved GUI preference            = "
                 f"{_saved!r}"
                 + (
@@ -914,17 +913,17 @@ def run_sara_logic(
                 )
             )
             if not _cfg_on:
-                print(
+                logger.info(
                     "[Telemetry]   fix: set TELEMETRY_ENABLED=True in .env "
                     "and restart"
                 )
             else:
-                print(
+                logger.info(
                     "[Telemetry]   fix: re-enable tracing in the GUI's "
                     "performance panel"
                 )
     except Exception as e:
-        print(f"[Telemetry] state unknown ({e})")
+        logger.info(f"[Telemetry] state unknown ({e})")
 
     wake_words_display = ", ".join(
         getattr(Config, "WAKE_WORDS", None) or [Config.WAKE_WORD]
@@ -966,7 +965,7 @@ def run_sara_logic(
             try:
                 db.record_interaction_day()
             except Exception as e:
-                print(f"[Streak] record_interaction_day failed: {e}")
+                logger.warning(f"[Streak] record_interaction_day failed: {e}")
             ui_update("status", "waking")
             if hasattr(tts, "clear_interrupt"):
                 tts.clear_interrupt()
@@ -997,7 +996,7 @@ def run_sara_logic(
                 tts.speak(ack, fast=True, block=not aec_active)
             except Exception as e:
                 # Ack failing must NEVER stop the command-listening cycle.
-                print(f"[Logic] wake-ack speak failed (continuing): {e}")
+                logger.warning(f"[Logic] wake-ack speak failed (continuing): {e}")
 
             empty_retries = 0
             session_start = time.monotonic()
@@ -1061,7 +1060,7 @@ def run_sara_logic(
                     str(user_input), ack, time.monotonic() - session_start,
                     bool(confirm_state.get("pending")),
                 ):
-                    print(f"[Logic] Ignored wake-ack echo: {str(user_input)!r}")
+                    logger.info(f"[Logic] Ignored wake-ack echo: {str(user_input)!r}")
                     user_input = ""
 
                 # Self-Echo Guard (general case, see sara/audio/echo_guard.py):
@@ -1081,7 +1080,7 @@ def run_sara_logic(
                     _guard = get_default_guard()
                     if _guard.is_echo(str(user_input), aec_enabled=aec_active, confidence=stt_confidence):
                         _score = _guard.best_match(str(user_input), aec_enabled=aec_active)
-                        print(
+                        logger.info(
                             f"[Logic] Ignored self-echo: {str(user_input)!r} "
                             f"(score={_score if _score is None else round(_score, 2)}, "
                             f"confidence={stt_confidence:.2f}, aec={aec_active})"
@@ -1153,7 +1152,7 @@ def run_sara_logic(
                             else:
                                 brain.set_language(brain_lang)
                     except Exception as e:
-                        print(f"[Logic] brain.set_language (auto) failed (continuing): {e}")
+                        logger.warning(f"[Logic] brain.set_language (auto) failed (continuing): {e}")
                 else:
                     tts.set_language(turn_manual_lang)
                     _debug_log(
@@ -1175,7 +1174,7 @@ def run_sara_logic(
                     try:
                         tts.clear_interrupt()
                     except Exception as e:
-                        print(f"[Logic] tts.clear_interrupt() failed (continuing): {e}")
+                        logger.warning(f"[Logic] tts.clear_interrupt() failed (continuing): {e}")
 
                 session_control: dict = {}
                 with STATE_LOCK:
@@ -1211,7 +1210,7 @@ def run_sara_logic(
                             _state = f"{_turn_id} <<NOT RECORDED -- tracing off>>"
                         else:
                             _state = _turn_id
-                        print(f"[Telemetry] voice turn begun: {_state}")
+                        logger.info(f"[Telemetry] voice turn begun: {_state}")
                     from .command_helpers import start_filler
 
                     _filler = start_filler(
@@ -1244,7 +1243,7 @@ def run_sara_logic(
                     # ends is dropped by _sweep() (it only finalises turns
                     # with ended_at set), so seeing both halves is what rules
                     # that out.
-                    print(f"[Telemetry] voice turn ended: {_turn_id}")
+                    logger.info(f"[Telemetry] voice turn ended: {_turn_id}")
                 if turn_cancel.is_set():
                     logger.info("[Logic] turn cancelled by Stop; dropping late result")
                     continue
@@ -1270,7 +1269,7 @@ def run_sara_logic(
                     used_fallback = brain.used_fallback_last_turn()
                 except Exception as e:
                     used_fallback = None
-                    print(f"[Logic] used_fallback_last_turn() check failed (continuing): {e}")
+                    logger.warning(f"[Logic] used_fallback_last_turn() check failed (continuing): {e}")
 
                 if used_fallback and not session_fallback_disclosed:
                     disclosure = _FALLBACK_DISCLOSURE_MESSAGES.get(
@@ -1279,7 +1278,7 @@ def run_sara_logic(
                     try:
                         tts.speak(disclosure, fast=True)
                     except Exception as e:
-                        print(f"[Logic] fallback-disclosure speak failed (continuing): {e}")
+                        logger.warning(f"[Logic] fallback-disclosure speak failed (continuing): {e}")
                     ui_update("transcript", "sara", disclosure)
                     session_fallback_disclosed = True
                     session_recovery_disclosed = False
@@ -1290,7 +1289,7 @@ def run_sara_logic(
                     try:
                         tts.speak(recovery, fast=True)
                     except Exception as e:
-                        print(f"[Logic] fallback-recovery speak failed (continuing): {e}")
+                        logger.warning(f"[Logic] fallback-recovery speak failed (continuing): {e}")
                     ui_update("transcript", "sara", recovery)
                     session_recovery_disclosed = True
                     session_fallback_disclosed = False
@@ -1306,7 +1305,7 @@ def run_sara_logic(
                     break
 
                 if _record_turn_and_check_runaway():
-                    print(
+                    logger.warning(
                         "[Logic Warning] Rapid consecutive turns detected "
                         "(possible echo/feedback loop) — forcing sleep as a safety measure."
                     )
@@ -1320,7 +1319,7 @@ def run_sara_logic(
         try:
             ears.close()
         except Exception as e:
-            print(f"[Warning] ears.close() failed: {e}")
+            logger.warning(f"[Warning] ears.close() failed: {e}")
 
     except Exception as e:
         logger.critical(f"[Fatal Error \u2014 Sara logic thread] {e}", exc_info=True)
@@ -1380,7 +1379,7 @@ def shutdown_logic_components(
         except Exception as e:  # noqa: BLE001 -- a cleanup failure must never
             # prevent the remaining cleanup steps from running.
             failures.append((name, e))
-            print(f"[Shutdown] {name} failed: {e}")
+            logger.warning(f"[Shutdown] {name} failed: {e}")
 
     # The ORDER below is byte-for-byte the order the original inline finally:
     # block used. Only the guarding changed. An earlier draft of this fix also

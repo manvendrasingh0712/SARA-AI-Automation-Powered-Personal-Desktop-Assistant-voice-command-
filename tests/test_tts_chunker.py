@@ -265,7 +265,7 @@ def test_flag_is_read_per_call():
     assert first != second
 
 
-def test_v2_exception_falls_back_to_legacy(monkeypatch, capsys):
+def test_v2_exception_falls_back_to_legacy(monkeypatch, caplog):
     pieces = ["Dr.", "Smith", "is", "here", "today.", "Please", "come", "in."]
     tts = _bare_tts()
     set_flag("VOICE_CHUNKER_V2", False)
@@ -277,6 +277,6 @@ def test_v2_exception_falls_back_to_legacy(monkeypatch, capsys):
     monkeypatch.setattr(engine, "first_chunk_end", boom)
     set_flag("VOICE_CHUNKER_V2", True)
     assert _collect(tts, pieces) == legacy
-    out = capsys.readouterr().out
+    out = caplog.text
     assert out.count("chunker v2 failed") == 1
     assert "secret" not in out

@@ -74,9 +74,9 @@ def set_timer(
             try:
                 callback(msg)
             except Exception as e:
-                print(f"[Timer] Callback error: {e}")
+                logger.error(f"[Timer] Callback error: {e}")
         else:
-            print(f"\n[Timer] {msg}")
+            logger.info(f"\n[Timer] {msg}")
 
     with _active_timer_lock:
         if _active_timer and _active_timer.is_alive():

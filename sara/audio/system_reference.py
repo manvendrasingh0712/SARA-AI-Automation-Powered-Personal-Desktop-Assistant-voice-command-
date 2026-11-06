@@ -90,7 +90,7 @@ class SystemAudioReference:
                 if mic is None:
                     raise RuntimeError("no loopback device")
                 self.device_name = mic.name
-                print(f"[AEC] system-audio reference on '{mic.name}'")
+                logger.info(f"[AEC] system-audio reference on '{mic.name}'")
                 with mic.recorder(samplerate=_RATE, channels=1, blocksize=_BLOCK) as rec:
                     backoff = 1.0
                     while not self._stop.is_set():

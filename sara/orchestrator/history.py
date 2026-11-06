@@ -8,6 +8,9 @@ from .lazy import _debug_log
 from config import Config
 
 from sara.orchestrator._constants import _KOKORO_SPEED_MIN, _KOKORO_SPEED_MAX
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 # ----------------------------------------------------------------------------
@@ -46,7 +49,7 @@ def _restore_history(db, brain) -> None:
                 i += 1
         brain.load_history(pairs)
     except Exception as e:
-        print(f"[Warning] Could not restore conversation history: {e}")
+        logger.warning(f"[Warning] Could not restore conversation history: {e}")
 
 
 # ----------------------------------------------------------------------------
@@ -111,7 +114,7 @@ def _apply_saved_preferences(db, ears):
                     if _gate_adaptive
                     else " Change it with the GUI slider, not .env."
                 )
-                print(
+                logger.info(
                     f"[Debug] Mic sensitivity {_sens_val}% (saved in the GUI) "
                     f"OVERRIDES BARGE_IN_ENERGY_THRESHOLD "
                     f"{_previous:.0f} -> {_restored:.0f}; "
@@ -124,7 +127,7 @@ def _apply_saved_preferences(db, ears):
                     f"(threshold={_restored:.0f}, unchanged)"
                 )
     except Exception as e:
-        print(f"[Warning] Could not restore mic sensitivity: {e}")
+        logger.warning(f"[Warning] Could not restore mic sensitivity: {e}")
     try:
         _saved_speed = db.get_preference("speech_speed")
         if _saved_speed is not None:
@@ -138,7 +141,7 @@ def _apply_saved_preferences(db, ears):
                 f"[Debug] Restored speech speed: {_speed_val}% (kokoro_speed={speed_val_mapped:.2f})"
             )
     except Exception as e:
-        print(f"[Warning] Could not restore speech speed: {e}")
+        logger.warning(f"[Warning] Could not restore speech speed: {e}")
 
     try:
         saved_mode = db.get_preference("language_mode")
@@ -146,7 +149,7 @@ def _apply_saved_preferences(db, ears):
             _debug_log(f"[Debug] Restored manual language preference: {saved_mode}")
             return "manual", saved_mode
     except Exception as e:
-        print(f"[Warning] Could not restore language preference: {e}")
+        logger.warning(f"[Warning] Could not restore language preference: {e}")
     return "auto", "en"
 
 
@@ -157,4 +160,4 @@ def _finish_brain_setup(db, brain) -> None:
         if saved_name:
             brain.set_user_name(saved_name)
     except Exception as e:
-        print(f"[Warning] Deferred brain setup failed: {e}")
+        logger.warning(f"[Warning] Deferred brain setup failed: {e}")

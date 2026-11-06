@@ -12,6 +12,9 @@ from config import app_data_dir
 
 from .events import _push
 from .helpers import mic_sensitivity_to_threshold
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 # ── Weather integration (OpenWeatherMap free tier) ──────────────────────────
@@ -25,7 +28,7 @@ class ApiSettingsMixin:
             self._pref_writer.enqueue("muted", "1" if muted else "0")
             return {"ok": True}
         except Exception as e:
-            print(f"[set_mute error] {e}")
+            logger.error(f"[set_mute error] {e}")
             return {"ok": False}
 
     def set_focus_mode(self, enabled):
@@ -33,7 +36,7 @@ class ApiSettingsMixin:
             self._pref_writer.enqueue("focus_mode", "1" if enabled else "0")
             return {"ok": True}
         except Exception as e:
-            print(f"[set_focus_mode error] {e}")
+            logger.error(f"[set_focus_mode error] {e}")
             return {"ok": False}
 
     # ── Home page: "What should Sara call you?" display-name field ─────
@@ -55,7 +58,7 @@ class ApiSettingsMixin:
                 self.brain.set_user_name(cleaned)
             return {"ok": True, "name": cleaned}
         except Exception as e:
-            print(f"[set_display_name error] {e}")
+            logger.error(f"[set_display_name error] {e}")
             return {"ok": False, "error": "Could not save name."}
 
     def get_display_name(self):
@@ -63,7 +66,7 @@ class ApiSettingsMixin:
             if hasattr(self, "db") and hasattr(self.db, "get_user_name"):
                 return {"ok": True, "name": self.db.get_user_name() or ""}
         except Exception as e:
-            print(f"[get_display_name error] {e}")
+            logger.error(f"[get_display_name error] {e}")
         return {"ok": True, "name": ""}
 
     # ── System page / Voice page toggle switches ──────────────────────
@@ -72,7 +75,7 @@ class ApiSettingsMixin:
             self._pref_writer.enqueue(f"setting:{name}", "1" if value else "0")
             return {"ok": True}
         except Exception as e:
-            print(f"[update_setting error] {e}")
+            logger.error(f"[update_setting error] {e}")
             _push(
                 "notification",
                 "ti-alert-triangle",
@@ -97,7 +100,7 @@ class ApiSettingsMixin:
             self._pref_writer.enqueue("assistant_active", "1" if active else "0")
             return {"ok": True, "active": active}
         except Exception as e:
-            print(f"[set_assistant_active error] {e}")
+            logger.error(f"[set_assistant_active error] {e}")
             return {"ok": False}
 
     def get_assistant_active(self):
@@ -106,7 +109,7 @@ class ApiSettingsMixin:
                 return {"ok": True, "active": self.assistant_state.is_active()}
             return {"ok": True, "active": True}
         except Exception as e:
-            print(f"[get_assistant_active error] {e}")
+            logger.error(f"[get_assistant_active error] {e}")
             return {"ok": True, "active": True}
 
     # ── UI state restore on boot ─────────────────────────────────────────
@@ -154,7 +157,7 @@ class ApiSettingsMixin:
             data = {k: self.db.get_preference(k) for k in keys}
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_ui_settings error] {e}")
+            logger.error(f"[get_ui_settings error] {e}")
             return {"ok": False, "data": {}}
 
     # ── Voice Control page sliders ─────────────────────────────────────
@@ -175,7 +178,7 @@ class ApiSettingsMixin:
                 self.ears.energy_threshold = threshold
             return {"ok": True, "threshold": threshold}
         except Exception as e:
-            print(f"[set_mic_sensitivity error] {e}")
+            logger.error(f"[set_mic_sensitivity error] {e}")
             return {"ok": False}
 
     def set_speech_speed(self, value):
@@ -209,7 +212,7 @@ class ApiSettingsMixin:
 
             return {"ok": True, "speed": speed_val}
         except Exception as e:
-            print(f"[set_speech_speed error] {e}")
+            logger.error(f"[set_speech_speed error] {e}")
             return {"ok": False}
 
     # ── Command Palette: "Toggle Wi-Fi" — genuine OS-level action ──────
@@ -230,7 +233,7 @@ class ApiSettingsMixin:
             if radio.get("found") and not radio.get("error") and radio.get("now_on") is not None:
                 return {"ok": True, "message": f"Wi-Fi {'enabled' if radio['now_on'] else 'disabled'}."}
         except Exception as e:
-            print(f"[toggle_wifi radio error] {e}")
+            logger.error(f"[toggle_wifi radio error] {e}")
 
         # Fallback: netsh (needs Administrator).
         try:
@@ -271,7 +274,7 @@ class ApiSettingsMixin:
                 "message": f"Wi-Fi {'disabled' if new_state == 'disable' else 'enabled'}.",
             }
         except Exception as e:
-            print(f"[toggle_wifi error] {e}")
+            logger.error(f"[toggle_wifi error] {e}")
             return {"ok": False, "message": "Wi-Fi toggle failed."}
 
     # ── Language toggle (Home/System page EN⇄HI switch) ────────────────
@@ -308,12 +311,12 @@ class ApiSettingsMixin:
                 try:
                     self.tts.set_language("auto")
                 except Exception as e:
-                    print(f"[set_language auto tts error] {e}")
+                    logger.error(f"[set_language auto tts error] {e}")
                 try:
                     if hasattr(self.ears, "set_language"):
                         self.ears.set_language("auto")
                 except Exception as e:
-                    print(f"[set_language auto ears error] {e}")
+                    logger.error(f"[set_language auto ears error] {e}")
                 return {"ok": True, "mode": "auto"}
 
             self.lang_state.set_manual(lang)
@@ -324,12 +327,12 @@ class ApiSettingsMixin:
             try:
                 self.tts.set_language(lang)
             except Exception as e:
-                print(f"[set_language tts error] {e}")
+                logger.error(f"[set_language tts error] {e}")
             try:
                 if hasattr(self.ears, "set_language"):
                     self.ears.set_language(lang)
             except Exception as e:
-                print(f"[set_language ears error] {e}")
+                logger.error(f"[set_language ears error] {e}")
 
             # BUGFIX: propagate to the LLM brain too, so the reply
             # personality/language actually switches, not just STT/TTS.
@@ -352,11 +355,11 @@ class ApiSettingsMixin:
                 if brain_lang and hasattr(self.brain, "set_language"):
                     self.brain.set_language(brain_lang)
             except Exception as e:
-                print(f"[set_language brain error] {e}")
+                logger.error(f"[set_language brain error] {e}")
 
             return {"ok": True, "mode": "manual", "lang": lang}
         except Exception as e:
-            print(f"[set_language error] {e}")
+            logger.error(f"[set_language error] {e}")
             return {"ok": False, "message": "Failed to switch language."}
 
     # ── Settings page: Notes Q&A index status ──────────────────────────
@@ -382,7 +385,7 @@ class ApiSettingsMixin:
         try:
             from sara.skills.notes_qa import get_notes_index_status
         except Exception as e:
-            print(f"[get_notes_status import error] {e}")
+            logger.error(f"[get_notes_status import error] {e}")
             return {"ok": True, "enabled": False, "count": 0, "last_synced": None}
 
         notes_memory = getattr(self, "notes_memory", None)
@@ -394,7 +397,7 @@ class ApiSettingsMixin:
 
                 enabled = bool(getattr(Config, "NOTES_FOLDER", None))
             except Exception as e:
-                print(f"[get_notes_status config error] {e}")
+                logger.error(f"[get_notes_status config error] {e}")
                 enabled = False
 
         if not enabled:
@@ -409,7 +412,7 @@ class ApiSettingsMixin:
                 "last_synced": status.get("last_synced"),
             }
         except Exception as e:
-            print(f"[get_notes_status error] {e}")
+            logger.error(f"[get_notes_status error] {e}")
             return {"ok": True, "enabled": True, "count": 0, "last_synced": None}
 
     # ── Settings page: Skills manager ───────────────────────────────────
@@ -433,7 +436,7 @@ class ApiSettingsMixin:
                 data = list(_LOADED_SKILLS)
             return {"ok": True, "data": data}
         except Exception as e:
-            print(f"[get_skills_list error] {e}")
+            logger.error(f"[get_skills_list error] {e}")
             return {"ok": False, "data": []}
 
     def set_skill_enabled(self, name, enabled):
@@ -446,10 +449,10 @@ class ApiSettingsMixin:
 
                 live = bool(set_skill_enabled_live(name, enabled))
             except Exception as e:  # persisted anyway; applies on next start
-                print(f"[set_skill_enabled live-toggle error] {e}")
+                logger.error(f"[set_skill_enabled live-toggle error] {e}")
             return {"ok": True, "live": live, "restart_required": not live}
         except Exception as e:
-            print(f"[set_skill_enabled error] {e}")
+            logger.error(f"[set_skill_enabled error] {e}")
             return {"ok": False}
 
     # "Sync notes now" button: re-scans the notes folder and queues new/changed
@@ -465,7 +468,7 @@ class ApiSettingsMixin:
             queued = sync_notes_folder(notes_memory, self.db)
             return {"ok": True, "queued": queued, "status": get_notes_index_status(self.db)}
         except Exception as e:
-            print(f"[sync_notes_now error] {e}")
+            logger.error(f"[sync_notes_now error] {e}")
             return {"ok": False, "message": "Couldn't start the sync."}
 
     # ── Settings page: Open data folder ─────────────────────────────────
@@ -485,5 +488,5 @@ class ApiSettingsMixin:
 
             return {"ok": True, "path": str(folder)}
         except Exception as e:
-            print(f"[open_data_folder error] {e}")
+            logger.error(f"[open_data_folder error] {e}")
             return {"ok": False, "error": "Could not open data folder."}

@@ -81,13 +81,14 @@ def test_start_twice_returns_same_running_thread(synth):
     assert not first.is_alive()
 
 
-def test_gives_up_when_warmup_never_finishes(synth, capsys):
+def test_gives_up_when_warmup_never_finishes(synth, caplog):
+    caplog.set_level("DEBUG")  # P2.3: logger.info(), below caplog's default WARNING floor
     tts = make_tts()
     tts._warmup_done = threading.Event()
     jumps = iter([0.0, 100.0, 200.0, 300.0])
     prewarm._run(tts, lambda s: None, lambda: next(jumps, 400.0))
     assert synth.calls == []
-    assert "prewarmed 0 phrases" in capsys.readouterr().out
+    assert "prewarmed 0 phrases" in caplog.text
 
 
 def test_yields_while_speaking(synth):
@@ -162,7 +163,8 @@ def test_aborts_when_flag_switched_off(synth):
     assert len(synth.calls) == 4
 
 
-def test_one_failing_phrase_does_not_stop_the_rest(monkeypatch, capsys):
+def test_one_failing_phrase_does_not_stop_the_rest(monkeypatch, caplog):
+    caplog.set_level("DEBUG")  # P2.3: logger.info(), below caplog's default WARNING floor
     tts = make_tts()
     fake = Synth(fail_on={2})
     monkeypatch.setattr(prewarm, "_synth_kokoro", fake)
@@ -172,7 +174,7 @@ def test_one_failing_phrase_does_not_stop_the_rest(monkeypatch, capsys):
     cached = [k for k in (prewarm.cache_key_for(tts, t, l, f) for t, l, f in plan)
               if cache_mod._phrase_cache_get(k) is not None]
     assert len(cached) == len(plan) - 1
-    assert f"({1} skipped)" in capsys.readouterr().out
+    assert f"({1} skipped)" in caplog.text
 
 
 def test_empty_audio_is_skipped_not_cached(monkeypatch):
@@ -220,7 +222,7 @@ def test_no_exception_escapes_the_thread(monkeypatch):
     assert errors == []
 
 
-def test_start_prewarm_swallows_internal_errors(monkeypatch, capsys):
+def test_start_prewarm_swallows_internal_errors(monkeypatch, caplog):
     class Exploding:
         _disabled = False
         _kokoro = object()
@@ -229,12 +231,13 @@ def test_start_prewarm_swallows_internal_errors(monkeypatch, capsys):
             raise RuntimeError("no attributes allowed")
 
     assert prewarm.start_prewarm(Exploding()) is None
-    assert "prewarm could not start" in capsys.readouterr().out
+    assert "prewarm could not start" in caplog.text
 
 
-def test_log_line_has_counts_and_timings_only(synth, capsys):
+def test_log_line_has_counts_and_timings_only(synth, caplog):
+    caplog.set_level("DEBUG")  # P2.3: logger.info(), below caplog's default WARNING floor
     run(make_tts())
-    out = capsys.readouterr().out
+    out = caplog.text
     assert len(re.findall(r"\[TTS\] prewarmed \d+ phrases in \d+\.\d s \(\d+ skipped\)", out)) == 1
     assert out.count("\n") == 1
     for text, _, _ in prewarm._plan():

@@ -27,6 +27,9 @@ holding it.
 """
 import json
 import threading
+import logging
+logger = logging.getLogger(__name__)
+
 
 _window = None
 _stop_event = threading.Event()
@@ -63,7 +66,7 @@ def _emit(payload: str) -> None:
         try:
             window.evaluate_js(f"window.saraEvent && window.saraEvent({payload})")
         except Exception as e:
-            print(f"[push error] {e}")
+            logger.error(f"[push error] {e}")
 
 
 def _push(kind: str, *args) -> None:
@@ -77,7 +80,7 @@ def _push(kind: str, *args) -> None:
             # loading yet -- queue instead of silently dropping the event.
             if len(_push_buffer) >= _MAX_BUFFERED_PUSHES:
                 dropped = _push_buffer.pop(0)
-                print(f"[push buffer full] dropped oldest event: {dropped[:80]}")
+                logger.info(f"[push buffer full] dropped oldest event: {dropped[:80]}")
             _push_buffer.append(payload)
             return
 

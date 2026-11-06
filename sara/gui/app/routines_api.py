@@ -16,6 +16,9 @@ import threading
 
 from .events import _push
 from sara.orchestrator.state import STATE_LOCK
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 class ApiRoutinesMixin:
@@ -27,7 +30,7 @@ class ApiRoutinesMixin:
         try:
             return {"ok": True, "data": self.db.list_routines()}
         except Exception as e:
-            print(f"[list_routines error] {e}")
+            logger.error(f"[list_routines error] {e}")
             return {"ok": False, "data": [], "error": str(e)}
 
     def get_routine(self, name):
@@ -38,7 +41,7 @@ class ApiRoutinesMixin:
                 return {"ok": False, "data": None, "error": "Routine not found."}
             return {"ok": True, "data": routine}
         except Exception as e:
-            print(f"[get_routine error] {e}")
+            logger.error(f"[get_routine error] {e}")
             return {"ok": False, "data": None, "error": str(e)}
 
     def save_routine(self, name, label, steps, trigger_time=None):
@@ -71,7 +74,7 @@ class ApiRoutinesMixin:
                 return {"ok": False, "error": "Failed to save routine."}
             return {"ok": True}
         except Exception as e:
-            print(f"[save_routine error] {e}")
+            logger.error(f"[save_routine error] {e}")
             return {"ok": False, "error": str(e)}
 
     def delete_routine(self, name):
@@ -80,7 +83,7 @@ class ApiRoutinesMixin:
             ok = self.db.delete_routine(name)
             return {"ok": ok}
         except Exception as e:
-            print(f"[delete_routine error] {e}")
+            logger.error(f"[delete_routine error] {e}")
             return {"ok": False, "error": str(e)}
 
     def set_routine_enabled(self, name, enabled):
@@ -90,7 +93,7 @@ class ApiRoutinesMixin:
             ok = self.db.set_routine_enabled(name, bool(enabled))
             return {"ok": ok}
         except Exception as e:
-            print(f"[set_routine_enabled error] {e}")
+            logger.error(f"[set_routine_enabled error] {e}")
             return {"ok": False, "error": str(e)}
 
     def run_routine_now(self, name):
@@ -109,7 +112,7 @@ class ApiRoutinesMixin:
         try:
             existing = self.db.get_routine(name)
         except Exception as e:
-            print(f"[run_routine_now error] {e}")
+            logger.error(f"[run_routine_now error] {e}")
             return {"ok": False, "error": str(e)}
 
         if existing is None:
@@ -142,7 +145,7 @@ class ApiRoutinesMixin:
                 with STATE_LOCK:
                     outcomes = routines.run_routine(name, ctx)
             except Exception as e:  # noqa: BLE001 — background thread, nothing to propagate to
-                print(f"[run_routine_now worker error] {e}")
+                logger.error(f"[run_routine_now worker error] {e}")
                 return
 
             # run_routine() already speaks every step in order as it runs
@@ -155,7 +158,7 @@ class ApiRoutinesMixin:
                 try:
                     _push("transcript", "sara", text)
                 except Exception as e:
-                    print(f"[run_routine_now ui_update error] {e}")
+                    logger.error(f"[run_routine_now ui_update error] {e}")
 
         threading.Thread(target=_worker, daemon=True, name="sara-routine-test-run").start()
         return {"ok": True}

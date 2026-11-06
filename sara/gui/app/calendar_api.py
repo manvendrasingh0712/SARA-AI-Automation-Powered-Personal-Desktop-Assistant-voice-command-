@@ -5,6 +5,9 @@ sara/tools/calendar.py, same shape as ApiRemindersMixin
 (sara/gui/app/reminders.py).
 """
 from sara.tools import calendar as calendar_tools
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 class ApiCalendarMixin:
@@ -14,7 +17,7 @@ class ApiCalendarMixin:
             status = calendar_tools.get_calendar_status()
             return {"ok": True, "data": status}
         except Exception as e:
-            print(f"[get_calendar_status error] {e}")
+            logger.error(f"[get_calendar_status error] {e}")
             return {"ok": False, "data": {"connected": False, "email": None}}
 
     def get_today_calendar_events(self):
@@ -22,5 +25,5 @@ class ApiCalendarMixin:
             events = calendar_tools.get_today_events()
             return {"ok": True, "data": events}
         except Exception as e:
-            print(f"[get_today_calendar_events error] {e}")
+            logger.error(f"[get_today_calendar_events error] {e}")
             return {"ok": False, "data": []}

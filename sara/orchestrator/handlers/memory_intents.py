@@ -10,6 +10,9 @@ import time
 
 from ..command_helpers import _quick, _ack, _MEMORY_FORGET_MATCH_THRESHOLD
 from .._shared_state import _HAS_RAG, _CONFIRM_PENDING_TTL_S
+import logging
+logger = logging.getLogger(__name__)
+
 
 _HINGLISH_MARKERS = frozenset({"mujhe", "mera", "meri", "mere", "bhool", "jao", "hai", "ki", "main"})
 
@@ -57,7 +60,7 @@ def _memory2_recall_line() -> str:
         parts = [f"{top[0]['text']} (since {since})"] + [str(r["text"]) for r in top[1:]]
         return "Here's what I remember: " + "; ".join(parts) + "."
     except Exception as e:
-        print(f"[Memory2] recall failed: {type(e).__name__}")
+        logger.warning(f"[Memory2] recall failed: {type(e).__name__}")
         return ""
 
 
@@ -72,7 +75,7 @@ def _arm_forget_items(ctx, phrase: str):
 
         hits = forget.find_matches(phrase, store=store)
     except Exception as e:
-        print(f"[Memory2] forget lookup failed: {type(e).__name__}")
+        logger.warning(f"[Memory2] forget lookup failed: {type(e).__name__}")
     rag_ids, rag_texts = [], []
     rag = ctx.get("notes_memory")
     if rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
@@ -82,7 +85,7 @@ def _arm_forget_items(ctx, phrase: str):
                 rag_ids.append(best["id"])
                 rag_texts.append(str(best.get("text") or ""))
         except Exception as e:
-            print(f"[Memory] list_memories failed: {e}")
+            logger.warning(f"[Memory] list_memories failed: {e}")
     if not hits and not rag_ids:
         return None
     try:
@@ -95,7 +98,7 @@ def _arm_forget_items(ctx, phrase: str):
         ]
         preview = forget.preview_text(shown, _preview_lang(phrase))
     except Exception as e:
-        print(f"[Memory2] preview failed: {type(e).__name__}")
+        logger.warning(f"[Memory2] preview failed: {type(e).__name__}")
         return None
     ctx["confirm_state"]["pending"] = {
         "action": "forget_memory_items",
@@ -117,7 +120,7 @@ def apply_forget_items(pending: dict, ctx) -> str:
                 if store.retract(int(entry[1]), str(entry[0])):
                     forgotten += 1
             except Exception as e:
-                print(f"[Memory2] retract failed: {type(e).__name__}")
+                logger.warning(f"[Memory2] retract failed: {type(e).__name__}")
     rag = ctx.get("notes_memory")
     if rag is not None and _HAS_RAG and getattr(rag, "enabled", False):
         for rag_id in pending.get("rag_ids") or []:
@@ -125,7 +128,7 @@ def apply_forget_items(pending: dict, ctx) -> str:
                 if rag.delete_memory(rag_id):
                     forgotten += 1
             except Exception as e:
-                print(f"[Memory] delete_memory failed: {e}")
+                logger.warning(f"[Memory] delete_memory failed: {e}")
     if forgotten <= 0:
         return "Sorry, I ran into a problem forgetting that."
     return f"Okay, I've forgotten {forgotten} thing{'s' if forgotten != 1 else ''}."
@@ -196,7 +199,7 @@ def _h_memory_recall(match, ctx):
                 or (getattr(h, "source", "") == "consolidation" and _is_durable_fact(h.text))
             ]
         except Exception as e:
-            print(f"[Memory] recall search failed: {e}")
+            logger.warning(f"[Memory] recall search failed: {e}")
 
     if not m2_line and not memory_texts and rag is not None and getattr(rag, "enabled", False):
         # The semantic search above only returns hits above a high similarity bar, so a generic
@@ -219,7 +222,7 @@ def _h_memory_recall(match, ctx):
                 if len(memory_texts) >= 5:
                     break
         except Exception as e:
-            print(f"[Memory] recall list failed: {e}")
+            logger.warning(f"[Memory] recall list failed: {e}")
     if m2_line:
         name_part = f"I know your name is {user_name}. " if user_name else ""
         return _quick(ctx, name_part + m2_line)
@@ -262,7 +265,7 @@ def _h_memory_forget_specific(match, ctx):
     try:
         candidates = rag.list_memories()
     except Exception as e:
-        print(f"[Memory] list_memories failed: {e}")
+        logger.warning(f"[Memory] list_memories failed: {e}")
         return _quick(ctx, "Sorry, I couldn't look through my memories right now.")
 
     best = _best_fuzzy_memory_match(target_phrase, candidates)
@@ -277,7 +280,7 @@ def _h_memory_forget_specific(match, ctx):
     try:
         ok = rag.delete_memory(best["id"])
     except Exception as e:
-        print(f"[Memory] delete_memory failed: {e}")
+        logger.warning(f"[Memory] delete_memory failed: {e}")
         ok = False
     if ok:
         return _quick(ctx, "Okay, I've forgotten that.")

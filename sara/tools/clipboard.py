@@ -32,7 +32,7 @@ def read_clipboard(as_full_sentence: bool = False) -> str:
             return "Your clipboard is currently empty."
 
         if Config.DEBUG_MODE:
-            print(f"[Debug] Clipboard read: {len(content)} characters.")
+            logger.info(f"[Debug] Clipboard read: {len(content)} characters.")
 
         clean_content = content.strip()
         if as_full_sentence:
@@ -59,7 +59,7 @@ def write_clipboard(text: str) -> str:
     try:
         pyperclip.copy(text.strip())
         if Config.DEBUG_MODE:
-            print(f"[Debug] Clipboard write: {len(text)} characters.")
+            logger.info(f"[Debug] Clipboard write: {len(text)} characters.")
         return "Copied to your clipboard."
     except Exception as e:
         logger.error(f"Clipboard write failed: {e}")

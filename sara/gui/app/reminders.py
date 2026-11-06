@@ -2,6 +2,9 @@
 sara.gui.app.reminders
 ApiRemindersMixin -- Calendar/Reminders page CRUD, backed by ReminderManager.
 """
+import logging
+logger = logging.getLogger(__name__)
+
 
 class ApiRemindersMixin:
 
@@ -16,7 +19,7 @@ class ApiRemindersMixin:
                 new_id = self.reminders.add(date_str, time_str, text)
                 return {"ok": new_id != -1, "id": new_id}
         except Exception as e:
-            print(f"[add_reminder error] {e}")
+            logger.error(f"[add_reminder error] {e}")
         return {"ok": False, "id": None}
 
     def delete_reminder(self, reminder_id):
@@ -35,7 +38,7 @@ class ApiRemindersMixin:
                     return {"ok": False}
                 return {"ok": True}
         except Exception as e:
-            print(f"[delete_reminder error] {e}")
+            logger.error(f"[delete_reminder error] {e}")
         return {"ok": False}
 
     def toggle_reminder(self, reminder_id):
@@ -49,7 +52,7 @@ class ApiRemindersMixin:
                     return {"ok": False}
                 return {"ok": True}
         except Exception as e:
-            print(f"[toggle_reminder error] {e}")
+            logger.error(f"[toggle_reminder error] {e}")
         return {"ok": False}
 
     def get_reminders(self):
@@ -57,5 +60,5 @@ class ApiRemindersMixin:
             if hasattr(self.reminders, "get_all"):
                 return {"ok": True, "data": self.reminders.get_all()}
         except Exception as e:
-            print(f"[get_reminders error] {e}")
+            logger.error(f"[get_reminders error] {e}")
         return {"ok": False, "data": []}

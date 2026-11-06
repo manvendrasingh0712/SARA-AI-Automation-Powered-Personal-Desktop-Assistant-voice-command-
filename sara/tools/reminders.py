@@ -38,6 +38,9 @@ from datetime import datetime, timedelta
 from typing import Optional, Callable, List, Dict, Any
 
 from sara.core.text.lazy_import import lazy_module
+import logging
+logger = logging.getLogger(__name__)
+
 
 dateparser = lazy_module("dateparser")  # ~0.4 s at start-up otherwise
 
@@ -156,9 +159,9 @@ class ReminderManager:
             self._ensure_done_column()
             self._ensure_intelligence_table()
             if Config.DEBUG_MODE:
-                print(f"[Debug] ReminderManager initialized at '{self.db_path}'.")
+                logger.info(f"[Debug] ReminderManager initialized at '{self.db_path}'.")
         except sqlite3.Error as e:
-            print(f"[Error] Failed to initialize reminders database: {e}")
+            logger.error(f"[Error] Failed to initialize reminders database: {e}")
             self._conn = None
 
     def _create_table(self) -> None:
@@ -205,7 +208,7 @@ class ReminderManager:
             )
             self._conn.commit()
         except sqlite3.Error as e:
-            print(f"[Warning] Could not ensure reminder_intelligence table: {e}")
+            logger.warning(f"[Warning] Could not ensure reminder_intelligence table: {e}")
 
     def _ensure_done_column(self) -> None:
         """
@@ -224,9 +227,9 @@ class ReminderManager:
                 )
                 self._conn.commit()
                 if Config.DEBUG_MODE:
-                    print("[Debug] Migrated reminders table: added 'done' column.")
+                    logger.info("[Debug] Migrated reminders table: added 'done' column.")
         except sqlite3.Error as e:
-            print(f"[Warning] Could not ensure 'done' column on reminders table: {e}")
+            logger.warning(f"[Warning] Could not ensure 'done' column on reminders table: {e}")
 
     # ------------------------------------------------------------
     # Public API (voice-driven, natural language)
@@ -283,7 +286,7 @@ class ReminderManager:
             friendly_time = due_dt.strftime("%I:%M %p on %B %d")
             return f"Got it. I'll remind you to {message.strip()} at {friendly_time}."
         except sqlite3.Error as e:
-            print(f"[Error] Failed to save reminder: {e}")
+            logger.error(f"[Error] Failed to save reminder: {e}")
             return "Sorry, I couldn't save that reminder right now."
 
     def list_reminders(self) -> str:
@@ -307,7 +310,7 @@ class ReminderManager:
 
             return "Here are your upcoming reminders: " + "; ".join(lines)
         except sqlite3.Error as e:
-            print(f"[Error] Failed to fetch reminders: {e}")
+            logger.error(f"[Error] Failed to fetch reminders: {e}")
             return "Sorry, I couldn't fetch your reminders right now."
 
     def cancel_all_reminders(self) -> str:
@@ -325,7 +328,7 @@ class ReminderManager:
                 return "You have no pending reminders to cancel."
             return f"Cancelled {count} pending reminder(s)."
         except sqlite3.Error as e:
-            print(f"[Error] Failed to cancel reminders: {e}")
+            logger.error(f"[Error] Failed to cancel reminders: {e}")
             return "Sorry, I couldn't cancel that reminder right now."
 
     # ------------------------------------------------------------
@@ -355,7 +358,7 @@ class ReminderManager:
             try:
                 due_at = datetime.strptime(f"{(date_str or '').strip()}T{time_part}", "%Y-%m-%dT%H:%M:%S").isoformat()
             except ValueError:
-                print(f"[Error] ReminderManager.add: invalid date/time {date_str!r} {time_str!r}")
+                logger.error(f"[Error] ReminderManager.add: invalid date/time {date_str!r} {time_str!r}")
                 return -1
             with self._lock:
                 cur = self._conn.execute(
@@ -366,7 +369,7 @@ class ReminderManager:
                 self._conn.commit()
                 return cur.lastrowid
         except sqlite3.Error as e:
-            print(f"[Error] ReminderManager.add failed: {e}")
+            logger.error(f"[Error] ReminderManager.add failed: {e}")
             return -1
 
     def delete(self, reminder_id: Any) -> bool:
@@ -381,7 +384,7 @@ class ReminderManager:
                 self._conn.commit()
             return True
         except (sqlite3.Error, ValueError, TypeError) as e:
-            print(f"[Error] ReminderManager.delete failed: {e}")
+            logger.error(f"[Error] ReminderManager.delete failed: {e}")
             return False
 
     def toggle(self, reminder_id: Any) -> bool:
@@ -404,7 +407,7 @@ class ReminderManager:
                 self._conn.commit()
             return True
         except (sqlite3.Error, ValueError, TypeError) as e:
-            print(f"[Error] ReminderManager.toggle failed: {e}")
+            logger.error(f"[Error] ReminderManager.toggle failed: {e}")
             return False
 
     def get_all(self) -> List[Dict[str, Any]]:
@@ -436,7 +439,7 @@ class ReminderManager:
                 })
             return result
         except sqlite3.Error as e:
-            print(f"[Error] ReminderManager.get_all failed: {e}")
+            logger.error(f"[Error] ReminderManager.get_all failed: {e}")
             return []
 
     def get_upcoming(self, within_minutes: int) -> List[Dict[str, Any]]:
@@ -469,7 +472,7 @@ class ReminderManager:
                 for rid, message, due_at in rows
             ]
         except sqlite3.Error as e:
-            print(f"[Error] ReminderManager.get_upcoming failed: {e}")
+            logger.error(f"[Error] ReminderManager.get_upcoming failed: {e}")
             return []
 
     # ------------------------------------------------------------
@@ -497,7 +500,7 @@ class ReminderManager:
             keys = ("id", "message", "due_at", "delivered_at", "last_nudge_at", "nudge_count")
             return [dict(zip(keys, row)) for row in rows]
         except (sqlite3.Error, ValueError, TypeError) as e:
-            print(f"[Error] ReminderManager.followup_candidates failed: {e}")
+            logger.error(f"[Error] ReminderManager.followup_candidates failed: {e}")
             return []
 
     def get_intel(self, reminder_id: Any) -> Dict[str, Any]:
@@ -513,7 +516,7 @@ class ReminderManager:
                 ).fetchone()
             return dict(zip(_INTEL_COLUMNS, row)) if row else {}
         except (sqlite3.Error, ValueError, TypeError) as e:
-            print(f"[Error] ReminderManager.get_intel failed: {e}")
+            logger.error(f"[Error] ReminderManager.get_intel failed: {e}")
             return {}
 
     def update_intel(self, reminder_id: Any, **fields: Any) -> bool:
@@ -541,7 +544,7 @@ class ReminderManager:
                 self._conn.commit()
             return True
         except (sqlite3.Error, ValueError, TypeError) as e:
-            print(f"[Error] ReminderManager.update_intel failed: {e}")
+            logger.error(f"[Error] ReminderManager.update_intel failed: {e}")
             return False
 
     def _deliver_due(self, reminder_id: Any, message: str) -> None:
@@ -582,7 +585,7 @@ class ReminderManager:
         )
         self._thread.start()
         if Config.DEBUG_MODE:
-            print("[Debug] Reminder background polling started.")
+            logger.info("[Debug] Reminder background polling started.")
 
     def stop(self) -> None:
         """Stops the background polling thread."""
@@ -598,11 +601,11 @@ class ReminderManager:
                 self._conn.close()
             except Exception as e:
                 if Config.DEBUG_MODE:
-                    print(f"[Warning] ReminderManager close failed: {e}")
+                    logger.warning(f"[Warning] ReminderManager close failed: {e}")
             finally:
                 self._conn = None
         if Config.DEBUG_MODE:
-            print("[Debug] ReminderManager closed.")
+            logger.info("[Debug] ReminderManager closed.")
 
     def shutdown(self) -> None:
         """Alias for close() to support consumers using a shutdown lifecycle."""
@@ -615,7 +618,7 @@ class ReminderManager:
             try:
                 self._check_due_reminders()
             except Exception as e:  # noqa: BLE001 -- a bad tick must never kill the thread
-                print(f"[Reminders] check failed (continuing): {e}")
+                logger.warning(f"[Reminders] check failed (continuing): {e}")
 
     def _route_due_rows(self, due_rows: List[Any]) -> List[Any]:
         """
@@ -648,7 +651,7 @@ class ReminderManager:
                 try:
                     self.on_late([m for _, m in late])
                 except Exception as e:
-                    print(f"[Warning] Reminder late callback failed: {e}")
+                    logger.warning(f"[Warning] Reminder late callback failed: {e}")
             else:
                 on_time.extend(late)
         if missed:
@@ -656,7 +659,7 @@ class ReminderManager:
                 try:
                     self.on_missed([m for _, m in missed])
                 except Exception as e:
-                    print(f"[Warning] Reminder missed callback failed: {e}")
+                    logger.warning(f"[Warning] Reminder missed callback failed: {e}")
             else:
                 on_time.extend(missed)
         return on_time
@@ -687,9 +690,9 @@ class ReminderManager:
                     try:
                         self._deliver_due(reminder_id, message)
                     except Exception as e:
-                        print(f"[Warning] Reminder trigger callback failed: {e}")
+                        logger.warning(f"[Warning] Reminder trigger callback failed: {e}")
         except sqlite3.Error as e:
-            print(f"[Error] Failed to check due reminders: {e}")
+            logger.error(f"[Error] Failed to check due reminders: {e}")
 
 
 def play_alarm_beep(repetitions: int = 3) -> None:
@@ -709,8 +712,8 @@ def play_alarm_beep(repetitions: int = 3) -> None:
     except ImportError:
         # Non-Windows fallback: terminal bell character.
         for _ in range(repetitions):
-            print("\a", end="", flush=True)
+            logger.info("\a", end="", flush=True)
             time.sleep(0.3)
     except Exception as e:
         if Config.DEBUG_MODE:
-            print(f"[Warning] Failed to play alarm beep: {e}")
+            logger.warning(f"[Warning] Failed to play alarm beep: {e}")

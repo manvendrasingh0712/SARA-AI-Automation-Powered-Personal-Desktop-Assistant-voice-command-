@@ -19,6 +19,9 @@ from .synth import _synth_kokoro
 from .text_prep import clean_for_tts
 from .voice_params import _build_params, _detect_lang, _fast_variant
 from sara.core.diag import swallowed
+import logging
+logger = logging.getLogger(__name__)
+
 
 _WARMUP_WAIT_S = 30.0
 _GAP_S = 0.03
@@ -202,12 +205,12 @@ def _run(
         swallowed(None, "prewarm._run:200", _exc)
     finally:
         try:
-            print(
+            logger.info(
                 f"[TTS] prewarmed {done} phrases in {clock() - started:.1f} s "
                 f"({max(0, len(plan) - done)} skipped)"
             )
             if from_disk or stored:
-                print(f"[TTS] disk cache: {from_disk} loaded, {stored} stored")
+                logger.info(f"[TTS] disk cache: {from_disk} loaded, {stored} stored")
         except Exception as _exc:
             swallowed(None, "prewarm._run:210", _exc)
 
@@ -234,5 +237,5 @@ def start_prewarm(
         thread.start()
         return thread
     except Exception:
-        print("[TTS] prewarm could not start; continuing without it")
+        logger.warning("[TTS] prewarm could not start; continuing without it")
         return None

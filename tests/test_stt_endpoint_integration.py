@@ -215,7 +215,7 @@ def test_stale_partial_is_ignored():
     assert stt._ring.consumed > N_SPEECH + quiet_run + 5 + 11
 
 
-def test_decide_exception_falls_back_to_legacy(monkeypatch, capsys):
+def test_decide_exception_falls_back_to_legacy(monkeypatch, caplog):
     def boom(*a, **k):
         raise RuntimeError("secret text")
 
@@ -223,7 +223,7 @@ def test_decide_exception_falls_back_to_legacy(monkeypatch, capsys):
     stt = _make_stt()
     _previews(stt, "open chrome")
     _run(stt)
-    out = capsys.readouterr().out
+    out = caplog.text
     assert stt._ring.consumed == N_SPEECH + LEGACY_SILENCE + WINDOW_LAG
     assert out.count("adaptive endpoint failed") == 1 and "secret" not in out
     assert stt.endpoint_stats()["endpoints"] == 0
@@ -236,12 +236,13 @@ def test_max_duration_still_enforced():
     assert audio and stt._ring.consumed < 10_000
 
 
-def test_debug_line_has_no_text(monkeypatch, capsys):
+def test_debug_line_has_no_text(monkeypatch, caplog):
+    caplog.set_level("DEBUG")  # P2.3: the line is logger.info(), below caplog's default WARNING floor
     monkeypatch.setattr(Config, "DEBUG_MODE", True)
     stt = _make_stt()
     _previews(stt, "open chrome")
     _run(stt)
-    out = capsys.readouterr().out
+    out = caplog.text
     # utt_ms = (N_SPEECH + WINDOW_LAG) chunks x 30ms = 1260. Was 1200 when
     # VAD decided voicing and the 2 lag chunks counted as silence (D39).
     expect_utt_ms = (N_SPEECH + WINDOW_LAG) * 30
