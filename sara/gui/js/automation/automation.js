@@ -41,12 +41,15 @@
     $('routinesList').innerHTML = list.length ? list.map(function (r) {
       const n = (r.steps || []).length;
       const sub = n + ' step' + (n === 1 ? '' : 's') + ' · ' + (r.trigger_time ? 'runs at ' + SARA.fmt12h(r.trigger_time) : 'manual trigger');
-      return '<div class="auto-card" data-name="' + esc(r.name) + '"><span class="auto-plate" aria-hidden="true"><svg class="ic"><use href="#i-automation"/></svg></span>' +
+      const enabled = r.enabled !== false;   // DB default is enabled=1; missing/omitted also reads as enabled
+      return '<div class="auto-card' + (enabled ? '' : ' auto-off') + '" data-name="' + esc(r.name) + '"><span class="auto-plate" aria-hidden="true"><svg class="ic"><use href="#i-automation"/></svg></span>' +
         '<div class="auto-info"><div class="a-name">' + esc(r.label || r.name) +
-        '</div><div class="a-sub" title="' + esc((r.steps || []).map(stepName).join(' → ')) + '">' + esc(sub) + '</div></div>' +
+        '</div><div class="a-sub" title="' + esc((r.steps || []).map(stepName).join(' → ')) + '">' + esc(sub) + (enabled ? '' : ' · off') + '</div></div>' +
         '<div class="auto-actions"><button type="button" class="auto-more" data-more aria-haspopup="menu" aria-expanded="false" aria-label="Actions for ' + esc(r.label || r.name) + '" title="Actions">' +
         '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>' +
-        '<div class="auto-menu" role="menu" hidden><button type="button" role="menuitem" data-run>Run now</button><button type="button" role="menuitem" data-edit>Edit</button>' +
+        '<div class="auto-menu" role="menu" hidden><button type="button" role="menuitem" data-run>Run now</button>' +
+        '<button type="button" role="menuitem" data-toggle-enable>' + (enabled ? 'Turn off' : 'Turn on') + '</button>' +
+        '<button type="button" role="menuitem" data-edit>Edit</button>' +
         '<button type="button" role="menuitem" class="danger" data-del>Delete</button></div></div></div>';
     }).join('') : '<div class="empty">No automations yet. Create one to chain several actions together.</div>';
   }
@@ -87,6 +90,10 @@
       const res = await SARA.callApi('run_routine_now', name);
       if (res && res.ok) { SARA.sound.run(); SARA.ok('Running — watch the Chat page'); } else SARA.fail((res && res.error) || 'Could not run routine');
       setTimeout(() => { btn.disabled = false; }, 1200);
+    } else if (e.target.closest('[data-toggle-enable]')) {
+      const turningOn = card.classList.contains('auto-off');
+      const res = await SARA.callApi('set_routine_enabled', name, turningOn);
+      if (res && res.ok) { SARA.sound.tap(); loadRoutines(); } else SARA.fail((res && res.error) || 'Could not update automation');
     } else if (e.target.closest('[data-edit]')) {
       const res = await SARA.callApi('get_routine', name);
       if (res && res.ok && res.data) SARA.openRoutineBuilder(res.data); else SARA.fail((res && res.error) || 'Could not load routine');

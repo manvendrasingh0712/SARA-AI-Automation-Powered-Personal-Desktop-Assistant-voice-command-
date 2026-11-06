@@ -46,7 +46,7 @@ from sara.tools.reminder_time import parse_when, split_trailing_day
 from config import Config
 from sara.tools.reminder_context import urgency_level
 
-_DEFAULT_DB_PATH = "sara_data.db"
+_DEFAULT_DB_PATH = Config.DB_PATH  # was a bare "sara_data.db" (CWD-relative); see sara/core/memory.py's note
 
 # A reminder that comes due this many seconds (or less) after its due time is
 # treated as "on time" and goes through the normal beep + speak path.

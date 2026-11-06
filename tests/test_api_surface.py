@@ -245,6 +245,7 @@ EXPECTED_METHODS = {
     "set_media_volume",
     "set_mic_sensitivity",
     "set_mute",
+    "set_routine_enabled",
     "set_skill_enabled",
     "set_speech_speed",
     "skip_next_track",
@@ -289,8 +290,8 @@ EXPECTED_METHODS = {
     "submit_feedback",
 }
 
-assert len(EXPECTED_METHODS) == 95, (
-    "EXPECTED_METHODS must contain exactly 95 entries, found "
+assert len(EXPECTED_METHODS) == 96, (
+    "EXPECTED_METHODS must contain exactly 96 entries, found "
     f"{len(EXPECTED_METHODS)}. Fix the list in this test file itself."
 )
 

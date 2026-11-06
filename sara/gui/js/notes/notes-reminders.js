@@ -292,7 +292,10 @@
   const PINKEY = 'sara_note_pins';
   let pins = []; try { pins = JSON.parse(store.get(PINKEY) || '[]') || []; } catch (e) { pins = []; }
   const savePins = function () { store.set(PINKEY, JSON.stringify(pins)); };
-  const keyOf = function (n) { return String(n.id != null ? n.id : (n.timestamp || '') + '|' + String(n.text || '').slice(0, 40)); };
+  // `n.id` is the note's 0-indexed line position (see files_notes.py get_notes()), which shifts for every note
+  // after one that gets deleted -- so a pin keyed on id could silently jump onto a different note post-delete.
+  // timestamp+text is the note's actual content, stable across deletions; id is only a last-resort fallback.
+  const keyOf = function (n) { return (n.timestamp || n.text) ? String((n.timestamp || '') + '|' + String(n.text || '').slice(0, 40)) : 'id' + n.id; };
   function tagsOf(text) { const out = [], re = /(^|\s)#([\p{L}\p{N}_-]{2,24})/gu; let m; while ((m = re.exec(text))) { const t = m[2].toLowerCase(); if (out.indexOf(t) < 0) out.push(t); } return out; }
   const tools = el('div', 'nt-tools'); tools.hidden = true;
   const sbox = el('div', 'nt-search'); sbox.appendChild(svg('search')); const sin = el('input'); sin.type = 'search'; sin.placeholder = 'Search notes or #tags'; sin.autocomplete = 'off'; sin.setAttribute('aria-label', 'Search notes'); sbox.appendChild(sin);
