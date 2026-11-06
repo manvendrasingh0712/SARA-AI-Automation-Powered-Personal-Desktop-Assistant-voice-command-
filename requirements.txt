@@ -179,7 +179,7 @@ dateparser==1.2.0
 pytz==2026.3.post1  # sara/core/llm/prompt.py — direct import for timezone-aware hour lookup
 pyperclip==1.8.2
 mss==9.0.1
-Pillow==10.0.0
+Pillow==13.0.0
 python-dotenv==1.0.1
 numpy==2.1.0
 
