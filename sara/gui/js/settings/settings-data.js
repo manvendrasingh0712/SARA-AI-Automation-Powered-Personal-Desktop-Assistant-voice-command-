@@ -10,11 +10,12 @@
   const SARA = window.SARA, $ = SARA.$, esc = SARA.escapeHtml;
 
   /* ---- first-view count-up: runs once per number, the first time Settings is on screen; later refreshes only swap the text ---- */
+  const rollOK = () => !SARA.quality || SARA.quality.allows('numberroll');   // count-up is a High-tier effect (spec 4.5)
   const COUNT_IDS = ['memPct', 'memExchanges', 'memSize', 'shStreak', 'shMessages', 'shDays', 'shNudges'];
   function reveal(el) {
     if (el._cu === 'done') return; el._cu = 'done';
     const m = /^(-?\d+(?:\.(\d+))?)(.*)$/.exec(el.textContent);
-    if (!m || SARA.reduceMotion) return;
+    if (!m || SARA.reduceMotion || !rollOK()) return;
     const end = parseFloat(m[1]), dec = m[2] ? m[2].length : 0, tail = m[3], tok = el._tok = (el._tok || 0) + 1;
     if (!(end > 0)) return;
     const t0 = performance.now();
@@ -105,7 +106,7 @@
   function countTo(el, to, fmt) {
     const tok = el._ktok = (el._ktok || 0) + 1;
     const from = typeof el._kcur === 'number' ? el._kcur : 0;
-    if (SARA.reduceMotion || from === to || SARA.current !== 'settings' || document.hidden) { el._kcur = to; el.textContent = fmt(to); return; }
+    if (SARA.reduceMotion || !rollOK() || from === to || SARA.current !== 'settings' || document.hidden) { el._kcur = to; el.textContent = fmt(to); return; }
     const t0 = performance.now(), dur = 650;
     (function step(now) {
       if (el._ktok !== tok) return;

@@ -37,3 +37,16 @@ html[data-quality="low"] body.pm-overlay-open .page.active{scale:1;}
 .fx-panel>summary::-webkit-details-marker{display:none;}
 .fx-panel>summary::after{content:'\25B8';float:right;color:var(--muted);transition:rotate .25s ease;}
 .fx-panel[open]>summary::after{rotate:90deg;}
+
+/* ---- motion tiers (redesign spec 4.5) ----
+   Low      : no stagger, no hover lift, no glow
+   Balanced : stagger + hover lift, no glow
+   High     : + glow on hover, spring on the page indicator, count-up numbers (js/fx/quality.js turns 'numberroll' off below High)
+   Reduce motion (the OS setting or Settings > Accessibility; both set <html data-motion="reduce">): no hover lift and no glow either.
+   The hover glows themselves are written as :where(html[data-quality="high"]:not([data-motion="reduce"])) rules next to their components. */
+html:is(:not([data-quality="high"]),[data-motion="reduce"]) body{--shadow-hover:var(--shadow-hover-flat);}
+html:not([data-quality="high"]) .nav-ind{transition-timing-function:var(--ease-premium);}
+html:not([data-quality="high"]) body:not(.sara-active) .mini-orb,html:not([data-quality="high"]) body:not(.sara-active) .mini-orb::after{animation:none;}   /* the header status dot is still while Sara sleeps (two endless loops on every page cost ~2-4 % CPU, Phase 7 measure); it pulses again when she is active */
+html[data-quality="low"] :is(.page,.overlay) :not(.dot){animation-delay:0s !important;}   /* everything enters together (the typing dots keep their rhythm) */
+html:is([data-quality="low"],[data-motion="reduce"]) :is(button,[role="button"],a,.card,.gl-on,.chip,.row,.stat,.toast,.rt-tpl,.auto-card,.app-tile,.qc-tile,.mode-tile,.theme-card,.chat-starter,.sk-chip,.set-row,.today-card,.next-card,.plan-card,.usage-card,.clock-card,.home-activity):hover:not(:active){translate:none;scale:none;}
+html:is([data-quality="low"],[data-motion="reduce"]) :is(.pill-btn,.chip,.dock-btn,.mc-play,.t-play,.theme-card,.stat,.app-tile):hover:not(:active){transform:none;}

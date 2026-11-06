@@ -19,7 +19,7 @@
   }
   async function pollStats() {
     if (SARA.current !== 'settings') return;
-    const s = await SARA.callApi('get_system_stats'); if (!s) return;
+    const s = await SARA.callApi('get_system_stats'); if (!s || s.ok === false || typeof s.cpu !== 'number') return;   // a failed call keeps the "—" instead of printing NaN / undefined
     $('sysCpuRam').textContent = Math.round(s.cpu) + '% · ' + Math.round(s.ram) + '%';
     $('sysDisk').textContent = s.disk_total_gb ? s.disk_used_gb + ' / ' + s.disk_total_gb + ' GB (' + Math.round(s.disk) + '%)' : Math.round(s.disk) + '%';
     $('sysNet').textContent = '↓ ' + s.net_down_mbps + ' Mb/s · ↑ ' + s.net_up_mbps + ' Mb/s';

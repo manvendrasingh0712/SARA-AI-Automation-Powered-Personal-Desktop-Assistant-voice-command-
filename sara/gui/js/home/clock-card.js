@@ -99,6 +99,12 @@
     tick();
   }
 
+  /* the card's thin bar and the sheet's ring. The bar grows with transform (no layout every second, redesign Phase 7);
+     the ring is only touched while the sheet is open (openSheet() ticks at once, so it is never stale). */
+  function bar(frac) {
+    el.ccBarFill.style.transform = 'scaleX(' + frac.toFixed(4) + ')';
+    if (sheet.classList.contains('open')) el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+  }
   function renderClock(now) {
     let h = now.getHours(); const m = pad2(now.getMinutes()), s = now.getSeconds();
     const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
@@ -112,8 +118,7 @@
     const greet = greetingText(now);
     if (el.ccGreet.textContent !== greet) { el.ccGreet.textContent = greet; el.csGreet.textContent = greet; }
     const frac = s / 60;
-    el.ccBarFill.style.width = (frac * 100).toFixed(1) + '%';
-    el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+    bar(frac);
     el.ccStatus.hidden = true; el.csStatus.hidden = true;
   }
 
@@ -127,8 +132,7 @@
     const label = timer.completed ? 'Timer complete' : (timer.paused ? 'Timer paused' : 'Timer running');
     revealIfChanged(el.ccDate, label); el.csSub.textContent = label;
     const frac = timer.duration > 0 ? Math.max(0, Math.min(1, remaining / (timer.duration * 1000))) : 0;
-    el.ccBarFill.style.width = (frac * 100).toFixed(1) + '%';
-    el.csRingFg.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+    bar(frac);
     // Urgency: last 15% of the countdown gets the danger-tinted ring (see style/clock-card.css).
     // Cleared as soon as it's no longer true -- never sticks around after a pause/resume/cancel.
     sheetInner.dataset.urgent = (!timer.completed && frac > 0 && frac <= 0.15) ? '1' : '0';

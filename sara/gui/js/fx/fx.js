@@ -213,7 +213,10 @@
     const el = glEl; if (!el) return;
     const r = el.getBoundingClientRect(); if (!r.width || !r.height) return;
     const x = glX - r.left, y = glY - r.top;
-    el.style.setProperty('--gx', x.toFixed(0) + 'px'); el.style.setProperty('--gy', y.toFixed(0) + 'px');
+    /* --gx/--gy go on the sheen child (the only thing that reads them): written on the card they were inherited by every element inside it,
+       so each pointer move restyled the whole card (Settings with the pointer moving: style recalc ~33 % of a core, Phase 7 measure).
+       --gdx/--gdy stay on the card; they are registered as non-inherited in style/fx/motion.css. */
+    const sh = el._gl; if (sh) { sh.style.setProperty('--gx', x.toFixed(0) + 'px'); sh.style.setProperty('--gy', y.toFixed(0) + 'px'); }
     el.style.setProperty('--gdx', ((x / r.width - 0.5) * 2).toFixed(2)); el.style.setProperty('--gdy', ((y / r.height - 0.5) * 2).toFixed(2));
   }
   document.addEventListener('pointermove', function (e) {
