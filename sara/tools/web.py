@@ -760,7 +760,7 @@ def search_web(query: str, max_results: int = 3) -> str:
 def _news_google_rss(topic: str, max_results: int) -> "list[str]":
     """Headlines from Google News (India edition, free, no key). Used first for "the news" with no topic (DuckDuckGo's
     generic query returned US local-news pages) and as the backup when DuckDuckGo fails or finds nothing."""
-    import xml.etree.ElementTree as ET
+    import defusedxml.ElementTree as ET  # stdlib xml.etree is vulnerable to XML attacks on untrusted input (this parses a live web response)
     from urllib.parse import quote_plus
 
     base = "https://news.google.com/rss"
