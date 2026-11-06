@@ -192,6 +192,10 @@ class TTSWorker:
                     current_epoch = self._epoch
 
                 if job_epoch != current_epoch:
+                    if text:  # superseded before it ran -- close the open echo-guard entry from speak() (never spoken)
+                        from sara.audio.echo_guard import get_default_guard
+
+                        get_default_guard().record_end(text)
                     if done_event is not None:
                         done_event.set()
                     continue
@@ -206,6 +210,10 @@ class TTSWorker:
                 except Exception as e:
                     logger.exception(f"[TTSWorker] playback error: {e}")
                 finally:
+                    if text:  # closes the open entry speak() created before enqueueing (see speak() above)
+                        from sara.audio.echo_guard import get_default_guard
+
+                        get_default_guard().record_end(text)
                     _t_mark("tts_done")
                     if done_event is not None:
                         done_event.set()
@@ -324,6 +332,16 @@ class TTSWorker:
                 ears.mark_tts_stopped()
 
     def speak(self, text: str, fast: bool = False, block: bool = True, priority: int = 1) -> None:
+        # Self-Echo Guard (sara/audio/echo_guard.py): opened HERE, before the
+        # job is even queued, not after playback. With block=False (wake-ack /
+        # filler / progress phrases) this call returns immediately, so the
+        # orchestrator's next ears.listen() can run before the job has even
+        # started -- an entry must already exist for that window, or the
+        # eventual echo would be invisible to is_echo(). _run()'s finally
+        # below closes it once the job actually finishes.
+        from sara.audio.echo_guard import get_default_guard
+
+        get_default_guard().record_start(text)
         done_event = threading.Event() if block else None
         with self._epoch_lock:
             current_epoch = self._epoch

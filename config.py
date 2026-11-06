@@ -457,6 +457,10 @@ _CLAMPS = (
     ('NOTES_CHUNK_CHARS', 200, 4000),
     ('NOTES_QA_TOP_K', 1, 20),
     ('NOTES_MAX_CHUNKS_PER_FILE', 1, 5000),
+    ('ECHO_GUARD_SIM_THRESHOLD', 0.5, 0.99),
+    ('ECHO_GUARD_CONF_ADJUST_MAX', 0.0, 0.3),
+    ('ECHO_GUARD_TAIL_WITH_AEC_S', 0.1, 3.0),
+    ('ECHO_GUARD_TAIL_WITHOUT_AEC_S', 0.3, 5.0),
 )
 
 class Config:
@@ -1070,6 +1074,20 @@ class Config:
     AEC_ENABLE_AGC: bool = _bool(os.getenv("AEC_ENABLE_AGC", "False"), default=False)
 
     AEC_ENABLE_VAD: bool = _bool(os.getenv("AEC_ENABLE_VAD", "False"), default=False)
+
+    # ── Self-Echo Guard (sara/audio/echo_guard.py) — transcript-level fallback on top of AEC ─
+    ECHO_GUARD_ENABLED: bool = _bool(os.getenv("ECHO_GUARD_ENABLED", "True"), default=True)
+    # Similarity floor (0..1) a transcript needs against a recently-spoken TTS phrase to count
+    # as an echo; lowered per-transcript (down to this minus ECHO_GUARD_CONF_ADJUST_MAX) when
+    # STT itself was unsure about that transcript -- never raised, so a confident genuine
+    # transcript is never held to a lower bar.
+    ECHO_GUARD_SIM_THRESHOLD: float = _float(os.getenv("ECHO_GUARD_SIM_THRESHOLD"), default=0.82)
+    ECHO_GUARD_CONF_ADJUST_MAX: float = _float(os.getenv("ECHO_GUARD_CONF_ADJUST_MAX"), default=0.10)
+    # How long after a phrase actually stopped playing its echo can still plausibly reach the
+    # mic -- short with AEC active (it already cancelled the live echo; this only covers the
+    # tail), longer when AEC is off/unavailable (nothing cancelled it at all).
+    ECHO_GUARD_TAIL_WITH_AEC_S: float = _float(os.getenv("ECHO_GUARD_TAIL_WITH_AEC_S"), default=0.6)
+    ECHO_GUARD_TAIL_WITHOUT_AEC_S: float = _float(os.getenv("ECHO_GUARD_TAIL_WITHOUT_AEC_S"), default=1.8)
 
     # ── Memory ────────────────────────────────────────────────────────────
     MAX_MEMORY_EXCHANGES: int = _int(os.getenv("MAX_MEMORY_EXCHANGES"), default=6)
