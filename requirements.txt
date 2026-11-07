@@ -147,7 +147,7 @@ ollama==0.6.2
 google-genai==1.23.0
 
 # Web tools
-requests==2.32.3
+requests==2.33.0
 beautifulsoup4==4.12.3
 duckduckgo_search==5.3.1  # Legacy-fallback, used only if the ddgs import below fails
 ddgs==9.14.4
@@ -181,7 +181,8 @@ pyperclip==1.8.2
 mss==9.0.1
 defusedxml==0.7.1  # sara/tools/web.py — safe XML parsing for the Google News RSS feed (untrusted web response)
 Pillow==13.0.0
-python-dotenv==1.0.1
+python-dotenv==1.2.2
+defusedxml==0.7.1
 numpy==2.1.0
 
 # ONNX Runtime is intentionally NOT listed here. Install exactly one build via

@@ -384,3 +384,28 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
   #page-home .home-grid > .next-card{align-self:end;}
 }
 @media (prefers-reduced-motion:reduce){.quick-dock .qc-tile,.quick-dock .qc-sw{transition:none;}}
+
+/* Dashboard surface hierarchy and small-window layout. */
+#page-home .home-grid > :is(.clock-card,.today-card,.usage-card,.next-card){
+  background:linear-gradient(150deg,rgb(var(--core-rgb) / .055),transparent 48%),var(--panel);
+  border-color:rgb(var(--fg-rgb) / .11);
+}
+#page-home .home-grid > .clock-card{box-shadow:var(--shadow-rest),inset 0 1px 0 rgb(var(--fg-rgb) / .045);}
+#page-home .home-grid > .today-card,#page-home .home-grid > .next-card{box-shadow:var(--shadow-rest),inset 0 1px 0 rgb(var(--fg-rgb) / .04);}
+#page-home .quick-dock{background:linear-gradient(145deg,rgb(var(--core-rgb) / .055),transparent 66%),var(--glass-bg);border-color:rgb(var(--core-rgb) / .14);backdrop-filter:blur(14px);}
+#page-home .quick-dock .qc-tile:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+@media(max-width:760px){
+  #page-home .home-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"clock today" "center center" "next next";gap:var(--sp-2);padding:12px 16px 16px;}
+  #page-home .home-center{--orb:clamp(128px,42vw,200px);min-height:0;}
+  #page-home .home-grid > .clock-card{height:auto;min-height:112px;padding:var(--sp-3);}
+  #page-home .home-grid > .today-card{min-height:112px;padding:var(--sp-3);}
+  #page-home .clock-card .cc-time{font-size:clamp(27px,8vw,38px);}
+  #page-home .clock-card .cc-ampm,#page-home .clock-card .cc-sec{font-size:11px;}
+  #page-home .today-card .tc-temp{font-size:26px;}
+  #page-home .today-card .tc-next{font-size:11px;}
+  #page-home .quick-dock{width:min(100%,380px);box-sizing:border-box;gap:3px;margin-top:var(--sp-3);padding:6px;}
+  #page-home .quick-dock .qc-tile{width:auto;min-width:0;flex:1;height:48px;gap:2px;}
+  #page-home .quick-dock .qc-tile .ic{width:17px;height:17px;}
+  #page-home .quick-dock .qc-name{font-size:9.5px;}
+}
+@media(max-height:620px){#page-home .home-grid{overflow-y:auto;align-content:start;}#page-home .home-center{padding:8px 0;}}

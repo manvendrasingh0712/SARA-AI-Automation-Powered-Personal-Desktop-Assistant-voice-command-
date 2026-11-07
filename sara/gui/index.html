@@ -8,7 +8,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- P1.11: built from what this page actually loads -- one script tag (bundle/app.js?v=b2900af8b4, no inline
+<!-- P1.11: built from what this page actually loads -- one script tag (bundle/app.js?v=e39485d202, no inline
      scripts/handlers anywhere), bundled CSS + fonts, data: URIs for the media-session album art
      (sara/gui/app/media.py base64-encodes it, never a remote image URL), and one real external
      fetch() call (js/apps/music.js -> lrclib.net for lyrics). A few static style="" attributes in
@@ -18,7 +18,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=0abf09622a">
+<link rel="stylesheet" href="bundle/app.css?v=97ecf37a5f">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -58,18 +58,32 @@
 <div class="app">
 
   <a class="skip-link" href="#" id="skipLink">Skip to content</a>
-  <nav class="nav" id="navBar">
-    <span class="nav-ind" id="navInd"></span>
-    <button type="button" class="nav-logo" id="navLogo" data-goto="home" aria-label="SARA home"><span class="nav-mark" aria-hidden="true"></span><span class="nav-brand nav-label">SARA</span></button>
-    <button type="button" class="nav-pin" id="navPin" aria-pressed="false" aria-label="Keep the sidebar open" title="Keep the sidebar open"><svg class="ic sm" aria-hidden="true"><use href="#i-chevron"/></svg></button>
-    <button class="active" data-page="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span class="nav-label">home</span></button>
-    <button data-page="chat"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span class="nav-label">chat</span></button>
-    <button data-page="notes"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg><span class="nav-label">notes</span></button>
-    <button data-page="apps"><svg class="ic" aria-hidden="true"><use href="#i-apps"/></svg><span class="nav-label">apps</span></button>
-    <button data-page="automation"><svg class="ic" aria-hidden="true"><use href="#i-automation"/></svg><span class="nav-label">automation</span></button>
-    <div class="nav-bottom">
-      <button type="button" class="nav-foot" id="navTheme" aria-label="Switch light / dark theme" title="Switch light / dark theme"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg><span class="nav-label">theme</span></button>
-      <button data-page="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span class="nav-label">settings</span></button>
+  <nav class="nav" id="navBar" aria-label="Main navigation">
+    <button type="button" class="nav-logo" id="navLogo" data-goto="home" aria-label="SARA home" title="Home"><span class="nav-mark" aria-hidden="true"></span></button>
+    <div class="nav-links" role="group" aria-label="Pages">
+      <span class="nav-ind" id="navInd" aria-hidden="true"></span>
+      <button class="active" data-page="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span class="nav-label">Home</span></button>
+      <button data-page="chat"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span class="nav-label">Chat</span></button>
+      <button data-page="notes"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg><span class="nav-label">Notes</span></button>
+      <button data-page="apps"><svg class="ic" aria-hidden="true"><use href="#i-apps"/></svg><span class="nav-label">Apps</span></button>
+      <button data-page="automation"><svg class="ic" aria-hidden="true"><use href="#i-automation"/></svg><span class="nav-label">Automation</span></button>
+      <button data-page="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span class="nav-label">Settings</span></button>
+    </div>
+    <div class="nav-tools">
+      <div class="nav-quick-wrap">
+        <button type="button" class="nav-action" id="navQuick" aria-expanded="false" aria-controls="navQuickMenu" aria-label="Quick controls" title="Quick controls"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg></button>
+        <div class="nav-quick-menu" id="navQuickMenu" role="group" aria-label="Quick controls and preferences" hidden>
+          <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setActive" title="Wake-word listening: turn off to pause Sara"><svg class="ic" aria-hidden="true"><use href="#i-mic"/></svg><span class="qc-name">Listening</span><i class="qc-sw" aria-hidden="true"></i></button>
+          <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setFocus" title="Focus mode: fewer interruptions"><svg class="ic" aria-hidden="true"><use href="#i-focus"/></svg><span class="qc-name">Focus</span><i class="qc-sw" aria-hidden="true"></i></button>
+          <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:show_notifications" title="Notifications: on-screen alerts"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span class="qc-name">Alerts</span><i class="qc-sw" aria-hidden="true"></i></button>
+          <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:voice_replies" title="Voice replies: Sara speaks"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><span class="qc-name">Voice</span><i class="qc-sw" aria-hidden="true"></i></button>
+          <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setMute" title="Mute: silence Sara now"><svg class="ic" aria-hidden="true"><use href="#i-volume-off"/></svg><span class="qc-name">Mute</span><i class="qc-sw" aria-hidden="true"></i></button>
+          <div class="nav-quick-footer">
+            <button type="button" class="nav-foot" id="navTheme" aria-label="Switch light / dark theme" title="Switch light / dark theme"><svg class="ic sm" aria-hidden="true"><use href="#i-palette"/></svg><span>Theme</span></button>
+            <button type="button" class="nav-pin" id="navPin" aria-pressed="false" aria-label="Keep navigation labels expanded" title="Keep navigation labels expanded"><svg class="ic sm" aria-hidden="true"><use href="#i-chevron"/></svg><span>Keep labels expanded</span></button>
+          </div>
+        </div>
+      </div>
     </div>
   </nav>
 
@@ -769,6 +783,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=b2900af8b4"></script>
+<script src="bundle/app.js?v=e39485d202"></script>
 </body>
 </html>
