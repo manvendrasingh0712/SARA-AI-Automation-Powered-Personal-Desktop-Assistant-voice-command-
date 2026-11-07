@@ -302,3 +302,19 @@ html[data-quality="low"] .msg.thinking::before{display:none;}
 #page-chat .dock-btn.mic.on{color:var(--on-core);}
 /* send looks switched off until there is something to send */
 #page-chat .chat-dock:has(#chatInputField:placeholder-shown) .dock-btn.send{background:var(--panel-2);color:var(--muted);box-shadow:none;}
+
+/* Conversation rhythm and an adaptive composer that stays inside the page's reserved content area. */
+#chatLog{gap:18px;}
+#chatLog .msg.user{background:linear-gradient(145deg,rgb(var(--core-rgb) / .075),transparent 76%),var(--panel);border-color:rgb(var(--fg-rgb) / .13);box-shadow:0 5px 16px -14px rgb(0 0 0 / .65);}
+#chatLog .msg.sara{max-width:88%;line-height:1.62;border-left-color:rgb(var(--core-rgb) / .65);}
+#page-chat .chat-dock{background:linear-gradient(145deg,rgb(var(--core-rgb) / .045),transparent 54%),var(--glass-bg);border-color:rgb(var(--fg-rgb) / .13);backdrop-filter:blur(18px) saturate(1.15);}
+#page-chat .chat-dock:focus-within{border-color:rgb(var(--core-rgb) / .58);}
+@media(max-width:620px){
+  #page-chat .page-body{--pad-x:16px;padding-inline:16px;}
+  #page-chat .chat-log{padding-bottom:108px;}
+  #chatLog .msg{max-width:92%;font-size:14px;}
+  #chatLog .msg.sara{max-width:96%;}
+  #page-chat .chat-dock{left:10px;right:10px;bottom:12px;height:58px;padding:7px;gap:8px;border-radius:18px;}
+  #page-chat .chat-dock input{height:42px;font-size:14px;}
+  #page-chat .dock-btn{width:42px;height:42px;}
+}

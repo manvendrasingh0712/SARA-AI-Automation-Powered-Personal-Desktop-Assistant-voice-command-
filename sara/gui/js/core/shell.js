@@ -1,6 +1,6 @@
 /* ==========================================================================
-   shell.js -- behaviour of the app shell (redesign phase 2): the left sidebar and the page header bar.
-   Owns: sidebar expand on hover / keyboard focus (>= 1180 px) and the "keep open" pin, the logo (-> Home), the light/dark quick
+   shell.js -- behaviour of the app shell and horizontal navigation.
+   Owns: the responsive label pin, navbar quick controls, the logo (-> Home), the light/dark quick
    toggle, the header search button (opens the command palette), the hairline under the header once a page is scrolled,
    and the skip-to-content link.  The active-page pill itself is positioned by js/fx/fx.js, the page switching by js/core/core.js.
    Styles: style/core/shell.css.  Markup: index.html (#navBar, .page-header).  Nothing here calls the backend.
@@ -9,42 +9,18 @@
   'use strict';
   const SARA = window.SARA, $ = SARA.$;
   const nav = $('navBar'); if (!nav) return;
-  const mm = function (q) { return window.matchMedia ? window.matchMedia(q) : { matches: false, addEventListener: function () {} }; };
-  const rail = mm('(min-width:1000px)'), wide = mm('(min-width:1180px)');
   const store = {
     get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   };
 
-  /* ---- layout mode, for anything that wants to know ---- */
-  function mode() { document.body.dataset.nav = rail.matches ? 'rail' : 'bar'; }
-  mode(); rail.addEventListener && rail.addEventListener('change', mode);
-
-  /* ---- expand on hover (after 250 ms) or keyboard focus; collapse shortly after the pointer leaves ---- */
-  let openT = 0, closeT = 0;
-  function setOpen(on) {
-    nav.classList.toggle('open', !!on);
-    if (!on) { const t = $('navTip'); if (t) t.classList.remove('show'); }
-  }
-  nav.addEventListener('pointerenter', function (e) {
-    if (e.pointerType === 'touch' || !wide.matches) return;
-    clearTimeout(closeT); openT = setTimeout(function () { setOpen(true); }, 250);
-  });
-  nav.addEventListener('pointerleave', function () { clearTimeout(openT); closeT = setTimeout(function () { setOpen(false); }, 140); });
-  nav.addEventListener('focusin', function (e) {
-    if (!wide.matches || !e.target.matches || !e.target.matches(':focus-visible')) return;
-    clearTimeout(closeT); setOpen(true);
-  });
-  nav.addEventListener('focusout', function (e) { if (!nav.contains(e.relatedTarget)) closeT = setTimeout(function () { setOpen(false); }, 140); });
-  wide.addEventListener && wide.addEventListener('change', function () { if (!wide.matches) setOpen(false); });
-
-  /* ---- pin ---- */
+  /* ---- preserve the label pin preference for compact window sizes ---- */
   const pin = $('navPin'), K_PIN = 'sara.nav.pinned';
   function applyPin(on) {
     document.body.classList.toggle('nav-pinned', !!on);
     if (pin) {
       pin.setAttribute('aria-pressed', on ? 'true' : 'false');
-      const t = on ? 'Let the sidebar collapse' : 'Keep the sidebar open';
+      const t = on ? 'Let navigation labels collapse' : 'Keep navigation labels expanded';
       pin.title = t; pin.setAttribute('aria-label', t);
     }
     requestAnimationFrame(function () { window.dispatchEvent(new Event('resize')); });     // the indicator and open sheets re-measure
@@ -54,6 +30,29 @@
     const on = !document.body.classList.contains('nav-pinned');
     applyPin(on); store.set(K_PIN, on ? '1' : '0'); SARA.sound.tap();
   });
+
+  /* ---- navbar quick controls ---- */
+  const quick = $('navQuick'), quickMenu = $('navQuickMenu');
+  function closeQuick() {
+    if (!quick || !quickMenu) return;
+    quickMenu.hidden = true; quick.setAttribute('aria-expanded', 'false');
+  }
+  if (quick && quickMenu) {
+    quick.addEventListener('click', function () {
+      const open = quickMenu.hidden;
+      quickMenu.hidden = !open; quick.setAttribute('aria-expanded', open ? 'true' : 'false');
+      SARA.sound.tap();
+    });
+    document.addEventListener('click', function (e) {
+      if (!quickMenu.hidden && !quickMenu.contains(e.target) && !quick.contains(e.target)) closeQuick();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !quickMenu.hidden) { closeQuick(); quick.focus(); }
+    });
+    quickMenu.addEventListener('click', function (e) {
+      if (e.target.closest('[data-proxy]')) closeQuick();
+    });
+  }
 
   /* ---- logo -> Home ---- */
   const logo = $('navLogo');

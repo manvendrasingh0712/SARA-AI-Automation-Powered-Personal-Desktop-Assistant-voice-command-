@@ -251,3 +251,13 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 
 /* banner: a short message inside a card */
 .banner{display:block;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-ctl);font-size:12.5px;line-height:1.45;color:var(--text-soft);background:rgb(var(--info-rgb) / .12);overflow-wrap:anywhere;}
+
+/* Shared surface polish: controls stay quiet at rest and gain a clear edge on hover/focus. */
+.pill-btn:not(.primary){background:linear-gradient(180deg,rgb(var(--fg-rgb) / .025),transparent 70%),var(--panel-2);}
+.pill-btn:not(:disabled):hover{border-color:rgb(var(--core-rgb) / .48);box-shadow:0 5px 16px -12px rgb(var(--core-rgb) / .55);}
+.pill-btn:focus-visible,.field:focus-visible,.add-row input:focus-visible,.modal input:focus-visible,.modal select:focus-visible{
+  outline:2px solid var(--focus-ring);outline-offset:2px;
+}
+.empty{border:1px dashed rgb(var(--fg-rgb) / .15);border-radius:var(--r-card);background:linear-gradient(145deg,rgb(var(--core-rgb) / .035),transparent 58%),rgb(var(--fg-rgb) / .018);}
+.seg{box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+@media(prefers-reduced-motion:reduce){.pill-btn,.seg>button{transition:none;}}

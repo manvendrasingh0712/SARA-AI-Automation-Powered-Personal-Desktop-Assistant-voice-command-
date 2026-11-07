@@ -184,3 +184,19 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 @media (max-width:1099.98px){#page-notes #notesList{grid-template-columns:minmax(0,1fr);}}
 /* the accent on its own 10 % tint was 2.9:1 in light themes: the tag text mixes the accent with the text colour (light: darker, dark: lighter) */
 #page-notes .n-tag{color:color-mix(in srgb,var(--core) 45%,var(--text));}
+
+/* Narrow-width composition keeps note controls and reminder fields within the scrolling pane. */
+@media(max-width:620px){
+  #page-notes .page-body{padding:var(--sp-3) 16px var(--sp-4);}
+  #page-notes .notes-top{align-items:stretch;flex-direction:column;gap:var(--sp-2);margin-bottom:var(--sp-3);}
+  #page-notes .tabs.seg{width:100%;}
+  #pane-notes .add-row{flex-wrap:wrap;padding:7px;}
+  #pane-notes .add-row input[type=text]{flex:1 0 100%;}
+  #pane-notes .add-row .pill-btn{height:36px;}
+  #page-notes .note-row2{padding:var(--sp-3);}
+  #page-notes .n-act,#page-notes .n-grip{width:34px;height:34px;}
+  #page-notes .rem-add{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2);padding:9px;}
+  #page-notes #newReminderText,#page-notes .rem-add .pill-btn{grid-column:1/-1;}
+  #page-notes .rem-add input{width:100%;min-width:0;padding-inline:8px;font-size:12px;}
+  #page-notes .rem-add .pill-btn{justify-self:end;min-width:104px;}
+}

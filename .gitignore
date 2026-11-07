@@ -57,6 +57,7 @@ captures/
 # ---------- AI Models ----------
 models/
 *.onnx
+!packaging_resources/openwakeword/*.onnx
 *.safetensors
 *.gguf
 *.pt
@@ -150,3 +151,7 @@ bench/results/*
 # Claude Code plan/progress state (P0.1) — local working state, not for the repo
 .claude/
 CLAUDE_CODE_PLAN.md
+
+# Packaging directories
+/packaging_hooks/
+/packaging_resources/

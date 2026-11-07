@@ -186,3 +186,22 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 @media (max-width:1099.98px){#page-automation #modeChips{grid-template-columns:repeat(2,minmax(0,1fr));}}
 html:is([data-quality="low"],[data-motion="reduce"]) #page-automation #modeChips .mode-tile:hover:not(:active){transform:none;}   /* same weight as the hover rule above, so it really wins */
 @media (prefers-reduced-motion:reduce){#page-automation .mode-check,#page-automation #modeChips .mode-tile{transition:none;}}
+
+/* Routine workspace surfaces and small-screen controls. */
+#page-automation #modeChips .mode-tile{background:linear-gradient(145deg,rgb(var(--core-rgb) / .045),transparent 58%),var(--panel);box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+#page-automation #modeChips .mode-tile:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+#page-automation .auto-card{background:linear-gradient(115deg,rgb(var(--core-rgb) / .035),transparent 44%),var(--panel);border-color:rgb(var(--fg-rgb) / .11);box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+#page-automation .auto-card:hover{border-color:rgb(var(--core-rgb) / .32);box-shadow:var(--shadow-rest);}
+#page-automation .rt-tpl{background:linear-gradient(145deg,rgb(var(--think-rgb) / .035),transparent 62%),var(--panel);}
+#page-automation .section-label{display:flex;align-items:center;gap:var(--sp-2);}
+#page-automation .section-label::before{content:"";width:4px;height:14px;border-radius:3px;background:linear-gradient(var(--core),var(--think));}
+@media(max-width:620px){
+  #page-automation .page-body{padding-inline:16px;}
+  #page-automation #modeChips{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2);}
+  #page-automation #modeChips .mode-tile{min-height:90px;padding:var(--sp-3);}
+  #page-automation .auto-head{align-items:center;}
+  #page-automation #newRoutineBtn{padding-inline:var(--sp-3);font-size:12px;}
+  #page-automation .auto-card{padding:var(--sp-2);gap:var(--sp-2);}
+  #page-automation .auto-plate{width:34px;height:34px;}
+  #page-automation .auto-info .a-name{font-size:13px;}
+}

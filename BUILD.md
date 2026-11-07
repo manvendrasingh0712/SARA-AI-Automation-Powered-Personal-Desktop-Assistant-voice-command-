@@ -1,140 +1,128 @@
-# Building Sara AI as a standalone Windows `.exe`
+# Build SARA AI for Windows
 
-This guide covers packaging Sara AI with [PyInstaller](https://pyinstaller.org/)
-into a distributable Windows executable. It assumes you can already run
-the project from source (see the main [README](./README.md) "Getting
-Started" section first).
+This guide builds the project as a PyInstaller **one-folder** distribution.
+The checked-in [`sara_ai.spec`](./sara_ai.spec) is the source of truth for the
+entry point, GUI assets, local model files, hidden imports, and native runtime
+libraries. It fails early if a required model or GUI resource is missing.
 
----
+## Prerequisites
 
-## 1. Prerequisites
+- Windows x64 and Python 3.11.
+- A virtual environment with the runtime and build dependencies installed.
+- The three model files below already present in the checkout. The build does
+  not download them:
 
-- Everything in `requirements.txt` installed, and the app running
-  successfully via `python main.py`
-- The Kokoro TTS model files present under `models/`
-  (`kokoro-v1.0.onnx`, `voices-v1.0.bin`)
-- A working `.env` (secrets aren't bundled into the exe — see step 4)
+  ```text
+  models/kokoro-v1.0.onnx
+  models/voices-v1.0.bin
+  models/wakewords/hey_sara.onnx
+  ```
 
-## 2. Install build-only dependencies
+- Microsoft Edge WebView2 Runtime installed on the target computer. Pywebview
+  and its x64 WebView2 loader are packaged; the browser runtime is a Windows
+  prerequisite.
 
-```bash
-pip install -r requirements-build.txt
+## Install dependencies
+
+Choose exactly one ONNX Runtime profile. The CPU profile is the portable
+default. A GPU build packages the CUDA provider DLLs from its selected ONNX
+Runtime wheel, but the CUDA and cuDNN runtime libraries must also be installed
+on the target computer and available on `PATH`.
+
+```powershell
+# CPU build
+python -m pip install -r requirements.txt -r requirements-cpu.txt -r requirements-build.txt
 ```
 
-This adds `pyinstaller` and `pywin32` on top of your existing runtime
-environment. It does **not** replace `requirements.txt` — both must be
-installed.
-
-## 3. Run PyInstaller
-
-```bash
-pyinstaller sara_ai.spec
+```powershell
+# GPU build instead of the CPU build
+python -m pip install -r requirements.txt -r requirements-gpu.txt -r requirements-build.txt
 ```
 
-This produces `dist/SaraAI/SaraAI.exe` (a one-folder build — faster
-startup and easier debugging than a one-file build, at the cost of a
-larger distributable folder). `sara_ai.spec` already bundles the GUI's
-HTML/JS/CSS assets and the hidden imports PyInstaller's static analysis
-tends to miss (`pywin32`, `pycaw`/`comtypes`, `onnxruntime`'s execution
-provider plugins, `ctranslate2`, `google-genai`, `kokoro_onnx`).
+The GPU requirements file describes a known transitive ONNX Runtime conflict;
+check the installed environment before packaging:
 
-## 4. Copy runtime files next to the built exe
-
-The following are **not** bundled inside the exe by design, so they can
-be updated without a full rebuild:
-
-```
-dist/SaraAI/
-├── SaraAI.exe
-├── .env                  ← copy your real .env here (never commit it)
-└── models/
-    ├── kokoro-v1.0.onnx
-    └── voices-v1.0.bin
+```powershell
+python -c "import onnxruntime; print(onnxruntime.__version__, onnxruntime.get_available_providers())"
 ```
 
-`.env.example` is bundled as a reference, but a real `.env` with your
-actual `GEMINI_API_KEY` / `WEATHER_API_KEY` (if used) needs to sit next
-to the exe.
+For a CPU build, the provider list should include `CPUExecutionProvider`. For
+a GPU build, confirm `CUDAExecutionProvider` is present before creating the
+distribution.
 
-## 5. Verify the build
+## Build
 
-Before distributing, run `dist/SaraAI/SaraAI.exe` directly (not through
-`pyinstaller`'s own terminal) and check:
+From the repository root, using the same virtual environment that has the
+chosen runtime profile installed:
 
-- The window opens and the boot sequence completes (no "index.html not
-  found" error — if you see this, double-check `sara_ai.spec`'s `datas`
-  list matched your actual `sara/gui/` folder layout)
-- The wake word triggers and a basic voice round-trip works
-- `health_check.py`'s pre-flight diagnostics don't report a missing
-  model/backend (check the log file under `logs/`)
+```powershell
+python -m PyInstaller --noconfirm sara_ai.spec
+```
 
----
+The output is `dist/SaraAI/`, with `SaraAI.exe` as the GUI entry point. The
+spec packages only the GUI bundle and its source inputs (so the app's startup
+asset check can run), the local Kokoro and wake-word models, locally bundled
+fonts, and runtime libraries collected from the selected environment. It does
+not package `.env`, `credentials.json`, OAuth tokens, databases, logs, backups,
+tests, benchmarks, or the repository's development caches. PyInstaller's
+standard hooks collect the Windows GUI, Python.NET, audio, and numerical
+dependencies; the spec explicitly collects ONNX Runtime, CTranslate2, and
+PortAudio DLLs and includes dynamically discovered SARA skills.
 
-## Known rough edges
+The model files add roughly 354 MB to the distribution. Keep the generated
+`build/` and `dist/` directories out of source control.
 
-### CUDA execution providers
+## Configure and launch
 
-`onnxruntime-gpu` looks for CUDA/cuDNN DLLs at runtime via Windows'
-standard DLL search path. PyInstaller does **not** automatically bundle
-CUDA toolkit DLLs (they're not Python packages). Two options:
+Secrets and per-user data stay outside the frozen application. Create a local
+`.env` from `.env.example` and place it beside `SaraAI.exe`; do not put real
+keys in the project or the distribution archive. Since `python-dotenv` looks
+for `.env` from the process working directory when the app is frozen, launch
+from the distribution directory:
 
-1. **Simplest**: require end users to have the NVIDIA CUDA Toolkit
-   installed separately (matching the CUDA version `onnxruntime-gpu`
-   was built against). This is what the current spec assumes.
-2. **Fully self-contained**: manually copy `cudart64_*.dll`,
-   `cudnn64_*.dll`, etc. from your CUDA installation into the `binaries`
-   list in `sara_ai.spec`, then re-test on a machine *without* CUDA
-   installed to confirm it's truly self-contained. This significantly
-   increases the distributable's size.
+```powershell
+Set-Location .\dist\SaraAI
+.\SaraAI.exe
+```
 
-If GPU execution isn't available at runtime, the app should fall back
-to `CPUExecutionProvider` automatically (`onnxruntime.get_available_providers()`
-degrades gracefully) — verify this fallback actually happens rather than
-crashing, since it's easy for a frozen build to hit a DLL-not-found error
-instead of a clean provider-unavailable fallback.
+For a Windows shortcut, set **Start in** to the `dist\SaraAI` directory. The
+app stores writable state under `%LOCALAPPDATA%\SARA-AI`. Calendar OAuth
+credentials and tokens are user-provided runtime files and must be configured
+separately; never copy the repository's ignored `credentials.json` into a
+release.
 
-### `comtypes` caching in a frozen build
+## Verify the distribution
 
-`comtypes` (used by `pycaw` for Windows audio-endpoint control) generates
-and caches Python wrapper modules for COM interfaces on first use,
-normally under a writable `gen/` cache directory next to the `comtypes`
-package. Inside a frozen PyInstaller build, that directory may be
-read-only or not exist, which can cause the first volume-control call to
-fail silently or raise on some machines. If you hit this:
+Run these checks from the repository root before distributing:
 
-- Confirm `comtypes.gen` is included in `hiddenimports` (already is, in
-  `sara_ai.spec`)
-- If the error persists, set `comtypes.client.gen_dir` to a writable
-  path (e.g. inside `%LOCALAPPDATA%`) early in `main.py`, before any
-  `pycaw` call — this isn't currently wired in, so add it if you hit
-  this specific failure mode.
+```powershell
+python -m PyInstaller --noconfirm sara_ai.spec
+python -m pytest tests/test_gui_assets.py tests/test_env_example.py tests/test_secrets_hygiene.py -q
+```
 
-### Antivirus false positives
+Then launch `dist\SaraAI\SaraAI.exe` from its directory and confirm that the
+GUI opens, backend boot completes, and the log at
+`%LOCALAPPDATA%\SARA-AI\logs\sara.log` has no startup traceback. The build
+machine's test result does not replace a target-machine test with the
+WebView2 Runtime, audio devices, and model execution providers installed.
 
-PyInstaller-built executables (especially with UPX compression enabled,
-as this spec does) are commonly flagged by antivirus heuristics as
-suspicious, purely because that packing signature is also used by some
-malware. This is a known PyInstaller ecosystem issue, not a Sara AI bug.
-If it's a problem for your distribution, set `upx=False` in
-`sara_ai.spec` and/or code-sign the executable.
+## GPU and Windows runtime notes
 
----
-
-## One-file vs one-folder builds
-
-`sara_ai.spec` currently produces a one-folder build. Switching to a
-single-file exe is possible by moving to `COLLECT`-less packaging (i.e.
-passing `a.binaries`, `a.zipfiles`, `a.datas` directly into `EXE(...)`
-with no separate `COLLECT` step), but startup becomes noticeably slower
-(everything is unpacked to a temp directory on every launch) and the
-`models/` folder / `.env` file placement described in step 4 becomes
-less obvious to end users, since there's no visible folder to drop them
-into. The current one-folder approach is the recommended default for
-this project.
-
-## Keep dev and test files out of the build
-
-`sara/gui/js/dev/` (the mock bridge) and `sara/gui/js/tests/` (JS unit tests) are development-only; the GUI is served
-from the generated `sara/gui/bundle/` and `index.html`, which do not reference them. Exclude both folders (and the
-`tests/` package) from `sara_ai.spec`'s data files. Note: `sara_ai.spec` itself is not in the repository at the moment;
-add it (or regenerate it) before building.
+- The spec does not sweep every DLL from the `nvidia` Python namespace into
+  the output; this project environment can contain multiple gigabytes of
+  CUDA libraries. A GPU distribution therefore depends on compatible CUDA
+  12.x and cuDNN 9.x libraries installed on the target and available through
+  `PATH`. Validate GPU execution on the target rather than assuming that a
+  successful packaging run proves CUDA is available.
+- If the GPU provider is unavailable, SARA's ONNX paths should use their
+  configured CPU fallback where supported. Faster-Whisper/CTranslate2 GPU
+  operation also requires compatible CUDA/cuDNN libraries.
+- Pycaw uses COM through `comtypes`. COM wrapper-cache behavior can differ in
+  a frozen, read-only install. If the first endpoint-volume operation fails,
+  verify that its COM cache can be written under the user's profile before
+  changing the application startup code.
+- The target must have a compatible Microsoft Edge WebView2 Runtime. The
+  spec includes pywebview's bridge assemblies and loader DLL, not the full
+  browser runtime.
+- UPX is disabled for the one-folder build to avoid compressing native audio,
+  ONNX, and WebView binaries and to keep packaging behavior predictable.

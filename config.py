@@ -516,7 +516,7 @@ class Config:
     _validated: bool = False
 
     # ── LLM backend ───────────────────────────────────────────────────────
-    LLM_BACKEND: str = os.getenv("LLM_BACKEND", "gemini").lower()
+    LLM_BACKEND: str = os.getenv("LLM_BACKEND", "ollama").lower()
 
     # ── Ollama ────────────────────────────────────────────────────────────
     OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M")
@@ -1649,9 +1649,9 @@ class Config:
         # by the time the API-key check runs.
         if cls.LLM_BACKEND not in ("ollama", "gemini"):
             print(
-                f"[Warning] Unknown LLM_BACKEND '{cls.LLM_BACKEND}', defaulting to 'gemini'."
+                f"[Warning] Unknown LLM_BACKEND '{cls.LLM_BACKEND}', defaulting to 'ollama'."
             )
-            cls.LLM_BACKEND = "gemini"
+            cls.LLM_BACKEND = "ollama"
 
         if cls.LLM_BACKEND == "gemini":
             if not cls.GEMINI_API_KEY or cls.GEMINI_API_KEY in (

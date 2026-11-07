@@ -110,7 +110,7 @@ except ImportError:
 
 import queue
 
-from config import Config
+from config import Config, resource_root
 
 logger = logging.getLogger(__name__)
 
@@ -1015,10 +1015,23 @@ class SpeechToText:
             )
             return None
 
+        feature_models = resource_root() / "packaging_resources" / "openwakeword"
+        melspec_model_path = feature_models / "melspectrogram.onnx"
+        embedding_model_path = feature_models / "embedding_model.onnx"
+        if not melspec_model_path.is_file() or not embedding_model_path.is_file():
+            logger.warning(
+                "[STT Warning] OpenWakeWord feature models are missing: "
+                f"{melspec_model_path}, {embedding_model_path}. "
+                "Passive wake detection is disabled."
+            )
+            return None
+
         try:
             model = _OWWModel(
                 wakeword_models=[model_path],
                 inference_framework="onnx",
+                melspec_model_path=str(melspec_model_path),
+                embedding_model_path=str(embedding_model_path),
             )
 
             logger.info(

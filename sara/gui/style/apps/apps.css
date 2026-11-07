@@ -39,3 +39,16 @@
 #page-apps .sys-chips{gap:var(--sp-2);}
 #page-apps .sys-chips .chip{display:inline-flex;align-items:center;height:34px;box-sizing:border-box;padding:0 15px;}
 html[data-quality="low"] #page-apps .app-tile:hover{transform:none;box-shadow:none;}
+
+/* App launcher hierarchy: grouped surfaces share one grid rhythm, with a stable touch target. */
+#page-apps .apps-grid{grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:var(--sp-3);}
+#page-apps .app-tile{background:linear-gradient(150deg,rgb(var(--core-rgb) / .045),transparent 58%),var(--panel);border-color:rgb(var(--fg-rgb) / .11);box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+#page-apps .app-tile:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+#page-apps .section-label{display:flex;align-items:center;gap:var(--sp-2);}
+#page-apps .section-label::before{content:"";width:4px;height:14px;border-radius:3px;background:linear-gradient(var(--core),var(--think));}
+@media(max-width:620px){
+  #page-apps .page-body{padding-inline:16px;}
+  #page-apps .apps-grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:var(--sp-2);}
+  #page-apps .app-tile{min-height:92px;}
+  #page-apps .apps-search .pill-btn{padding-inline:var(--sp-3);}
+}

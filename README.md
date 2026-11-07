@@ -1,654 +1,337 @@
-# SARA AI
-
 <p align="center">
-  <img src="./assets/screenshots/home.png" alt="SARA AI — Home Dashboard" width="900" />
+  <img src="./assets/readme/banner.svg" alt="SARA AI - voice-first desktop assistant for Windows" width="100%" />
 </p>
 
 <p align="center">
-  <strong>A voice-first AI desktop assistant for Windows, engineered for low-latency interaction, local inference, tool execution, semantic memory, automation, and a polished desktop UI.</strong>
+  <strong>Talk to your PC in English, Hindi or Hinglish. SARA opens apps, runs routines, remembers what matters and answers questions, and every core component is measured by a benchmark you can re-run.</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/manvendrasingh0712/SARA-AI-Automation-Powered-Personal-Desktop-Assistant-voice-command-">
-    <img src="https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows" />
-  </a>
-  <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.11" />
-  </a>
-  <a href="https://ollama.com/">
-    <img src="https://img.shields.io/badge/LLM-Ollama%20%7C%20Gemini-111111?style=for-the-badge" alt="Ollama and Gemini" />
-  </a>
-  <a href="https://github.com/SYSTRAN/faster-whisper">
-    <img src="https://img.shields.io/badge/STT-faster--whisper-5C6BC0?style=for-the-badge" alt="faster-whisper" />
-  </a>
-  <a href="https://github.com/thewh1teagle/kokoro-onnx">
-    <img src="https://img.shields.io/badge/TTS-Kokoro%20ONNX-FF6F61?style=for-the-badge" alt="Kokoro ONNX" />
-  </a>
-  <a href="./LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-2E7D32?style=for-the-badge" alt="MIT License" />
-  </a>
+  <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows 10 and 11" />
+  <img src="https://img.shields.io/badge/Python-3.11-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11" />
+  <img src="https://img.shields.io/badge/LLM-Gemini%20%2B%20Ollama%20fallback-24243a?style=flat-square" alt="Gemini with Ollama fallback" />
+  <img src="https://img.shields.io/badge/Speech-faster--whisper%20%2B%20Kokoro-24243a?style=flat-square" alt="faster-whisper and Kokoro" />
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-2E7D32?style=flat-square" alt="MIT License" /></a>
 </p>
 
 <p align="center">
-  <a href="#-why-sara">Why SARA</a> •
-  <a href="#-capabilities">Capabilities</a> •
-  <a href="#-architecture">Architecture</a> •
-  <a href="#-voice-pipeline">Voice</a> •
-  <a href="#-agent-tooling">Agent</a> •
-  <a href="#-memory-rag">Memory</a> •
-  <a href="#-ui">UI</a> •
-  <a href="#-setup">Setup</a> •
-  <a href="#-engineering-notes">Engineering</a>
+  <a href="#what-is-sara-ai">About</a> &nbsp;|&nbsp;
+  <a href="#what-can-sara-do">Features</a> &nbsp;|&nbsp;
+  <a href="#try-saying">Examples</a> &nbsp;|&nbsp;
+  <a href="#benchmark-results">Benchmarks</a> &nbsp;|&nbsp;
+  <a href="#how-sara-works">Architecture</a> &nbsp;|&nbsp;
+  <a href="#getting-started">Setup</a> &nbsp;|&nbsp;
+  <a href="#troubleshooting">Troubleshooting</a> &nbsp;|&nbsp;
+  <a href="#limitations-and-roadmap">Limitations</a>
+</p>
+
+<p align="center">
+  <img src="./assets/screenshots/home.png" alt="SARA AI home screen with the listening orb, weather, music, reminders and quick tools" width="900" />
+  <br />
+  <sub>Home screen. Screenshot from an earlier interface revision; the current UI has six pages and 18 colour themes.</sub>
 </p>
 
 ---
 
 ## What is SARA AI?
 
-**SARA AI** is a Windows desktop personal assistant built as a real application rather than a single LLM wrapper.
+SARA AI is a personal assistant that lives on your Windows PC. Say "hey sara", then speak or type: open an app, set a timer, check the weather, add a note, run a morning routine, or just ask a question. It understands **English, Hindi and Hinglish** (Hindi written in English letters, like "chrome khol do").
 
-It combines:
+Most assistant projects send everything you say to a large language model. SARA does something different:
 
-- real-time speech input and output
-- deterministic intent routing for fast commands
-- LLM-powered conversation and tool calling
-- bounded multi-step planning
-- persistent preferences and semantic long-term memory
-- Windows automation and system controls
-- reminders, notes, routines, web utilities, and calendar integration
-- proactive background services
-- a `pywebview` desktop UI backed by HTML/CSS/JavaScript
+- **Simple commands never wait for an AI.** A fast built-in router recognises "open notepad" or "set volume to 40" in about a millisecond and runs it straight away.
+- **The AI is used only when thinking is needed.** Open questions, ambiguous requests and multi-step tasks go to a language model (Google Gemini, with a local Ollama model as a backup).
+- **The AI proposes, the program decides.** The model can only ask for actions from a fixed list of tools. Python code checks and performs them, so the model never has free control of your computer.
+- **You can see how well it works.** The router, the memory and the prompt-injection defence each have a benchmark with published numbers and stated limits.
 
-The central design goal is simple:
+> **New to these terms?** Open the glossary at the bottom of this section.
 
-> **Keep common interactions fast and deterministic, use AI where reasoning is actually needed, and keep system actions behind explicit application-controlled tools.**
+<details>
+<summary><strong>Plain-English glossary</strong></summary>
 
-SARA is designed around a **local-first** deployment model. Ollama, faster-whisper, Kokoro ONNX, and SQLite can provide the core assistant experience locally; Gemini and several web integrations are available where the application explicitly requires or benefits from cloud services.
+| Term | Meaning |
+|---|---|
+| **STT** (speech-to-text) | Turning your voice into written words. SARA uses `faster-whisper`. |
+| **TTS** (text-to-speech) | Turning SARA's reply into spoken audio. SARA uses `Kokoro`, which runs on your PC. |
+| **Wake word** | The phrase ("hey sara") that tells the assistant to start listening. |
+| **VAD** | Voice activity detection: noticing when someone is actually speaking. |
+| **AEC** | Echo cancellation: stops SARA from hearing and reacting to its own voice. |
+| **Barge-in** | Interrupting SARA while it is speaking. |
+| **Intent routing** | Deciding what the user wants ("open an app", "set a timer", "just chatting") before doing anything. |
+| **LLM** | Large language model, the kind of AI behind chatbots. SARA uses Gemini or Ollama. |
+| **Ollama** | A free program that runs language models locally on your PC. |
+| **RAG** | Retrieval-augmented generation: looking up stored information so the AI can use it when answering. |
+| **Embeddings** | Numbers that capture the meaning of text so similar texts can be found by search. |
+| **ONNX Runtime** | A library that runs AI models efficiently, on the CPU or the NVIDIA GPU. |
+| **Prompt injection** | Text on a web page or in a file that tries to trick the AI into doing something harmful. |
 
----
-
-## Why SARA?
-
-Most personal-assistant projects stop at:
-
-```text
-microphone → speech-to-text → LLM → text-to-speech
-```
-
-SARA goes further by treating the assistant as a **stateful desktop system**:
-
-```text
-                    ┌──────────────────────────┐
-                    │       Voice / Text       │
-                    └────────────┬─────────────┘
-                                 ↓
-                    ┌──────────────────────────┐
-                    │ Intent + Context Layer   │
-                    └────────────┬─────────────┘
-                                 ↓
-             ┌───────────────────┼───────────────────┐
-             ↓                   ↓                   ↓
-        Fast Intent         LLM / Agent         Memory / RAG
-             ↓                   ↓                   ↓
-             └───────────────────┼───────────────────┘
-                                 ↓
-                    ┌──────────────────────────┐
-                    │  Policy + Tool Routing   │
-                    └────────────┬─────────────┘
-                                 ↓
-             ┌───────────────────┼───────────────────┐
-             ↓                   ↓                   ↓
-        Windows Tools       Web / Calendar      Background Jobs
-             └───────────────────┼───────────────────┘
-                                 ↓
-                    ┌──────────────────────────┐
-                    │  Event / UI / TTS Output │
-                    └──────────────────────────┘
-```
-
-This separation is what makes SARA interesting as an engineering project: the hard part is not calling a model, but coordinating **speech, state, tools, memory, safety, concurrency, and UI** in one long-running desktop process.
+</details>
 
 ---
 
-## ✨ Capabilities
+## What can SARA do?
+
+| | |
+|---|---|
+| **Talk naturally** | Wake word, speech recognition, spoken replies, and interrupting SARA mid-sentence. Replies follow the language you used. |
+| **Control your PC** | Open and close apps, move and resize windows, media keys, volume and brightness, Wi-Fi and Bluetooth, lock the PC, clipboard, files and folders, Windows settings pages, Windows services, and GPU and temperature readouts. |
+| **Hold a conversation** | Gemini by default, with automatic fallback to a local Ollama model if Gemini is unreachable. Answers stream sentence by sentence. |
+| **Do several things in one request** | A bounded planner turns "set a reminder for 6 PM and tell me the weather" into checked steps, with step limits, timeouts and retries. |
+| **Remember** | Preferences, conversation history and long-term memory that handles changed facts and "forget this". Notes can be searched by meaning. |
+| **Stay organised** | Reminders, timers, notes, routines you can run by voice or on a schedule, Google Calendar, a daily briefing, and proactive suggestions. |
+| **Stay safe** | A fixed tool list, confirmation for risky actions, a prompt-injection detector for web and file content, an action log, undo for settings changes, and a global emergency-stop hotkey. |
+| **Look good** | A desktop interface with a live listening orb, activity and plan-progress cards, a Hindi/English toggle and 18 colour themes. |
+
+**Needs setup:** Gemini needs a free API key. Google Calendar needs your own Google OAuth `credentials.json`. **Optional:** Ollama (local fallback or fully offline mode) and an NVIDIA GPU (faster speech).
+
+---
+
+## Try saying
+
+These utterances come from the router's benchmark set, so each one is something the router is tested on.
+
+| | English | Hindi | Hinglish |
+|---|---|---|---|
+| Open an app | "open notepad" | "क्रोम खोलो" | "chrome khol do" |
+| Volume | "set the volume to 40" | "आवाज़ 50 कर दो" | "volume 40 kar do" |
+| Timer | "set a timer for 10 minutes" | "पाँच मिनट का टाइमर लगाओ" | "10 minute ka timer laga do" |
+| Weather | "what's the weather in Jaipur" | "आज जयपुर का मौसम कैसा है" | "Jaipur ka weather kaisa hai" |
+| Music | "play lofi beats on youtube" | "यूट्यूब पर भजन चलाओ" | "youtube pe arijit singh ke gaane chalao" |
+| Search | "search for best budget laptops" | "गूगल पर पाइथन सीखने के तरीके खोजो" | "google pe python tutorial search karo" |
+| Calendar | "what's on my calendar today" | "आज का शेड्यूल बताओ" | "aaj ka schedule batao" |
+| Routine | "run my morning routine" | "मेरा सुबह का रूटीन शुरू करो" | "meri morning routine chalao" |
+| Lock the PC | "lock my laptop" | "कंप्यूटर लॉक कर दो" | "pc lock kar do" |
+| System status | "system status" | "कंप्यूटर की स्थिति बताओ" | "mere pc ka system status batao" |
+
+You can also say things like "undo my last change" or "switch to study mode". Anything that is not a known command goes to the language model.
+
+---
+
+## Product showcase
 
 <table>
 <tr>
-<td width="50%">
-
-### 🎙️ Voice & Speech
-
-- Wake-word based interaction
-- Faster-Whisper speech recognition
-- English, Hindi, and Hinglish workflows
-- VAD / silence gating
-- Acoustic echo cancellation
-- Streaming-oriented TTS flow
-- Barge-in / speech interruption handling
-- Global emergency-stop hotkey
-
-</td>
-<td width="50%">
-
-### 🧠 Intelligence
-
-- Ollama local LLM support
-- Gemini cloud backend support
-- Context-aware prompting
-- Streaming model responses
-- Tool calling
-- Heuristic tool-routing fallback
-- Bounded multi-step planning
-- Retry / correction paths
-
-</td>
+<td width="50%"><img src="./assets/screenshots/home.png" alt="Home screen" /></td>
+<td width="50%"><img src="./assets/screenshots/chat.png" alt="Chat page" /></td>
 </tr>
 <tr>
-<td width="50%">
-
-### 🛠️ Desktop Automation
-
-- Application launch / close
-- Window management
-- Media controls
-- Volume / mute / brightness
-- Wi-Fi / Bluetooth controls
-- Power/session actions
-- Clipboard operations
-- File and folder utilities
-- Windows settings shortcuts
-- System diagnostics
-
-</td>
-<td width="50%">
-
-### 🧠 Memory & Productivity
-
-- Persistent preferences
-- Conversation history
-- Semantic long-term memory
-- Memory consolidation
-- Notes and semantic notes Q&A
-- Reminders and alarms
-- Routines / automation
-- Recent-action history
-- Proactive notifications
-
-</td>
+<td><sub><strong>Home.</strong> The orb shows when SARA is listening, thinking or speaking. Side cards show weather, music controls and reminders; tiles give one-tap access to common actions.</sub></td>
+<td><sub><strong>Chat.</strong> Type or tap the mic. Commands and conversation share one thread, for example "play lofi songs" opens the matching YouTube results.</sub></td>
 </tr>
 </table>
 
+<sub>These two screenshots show an earlier interface revision. The current UI has six pages (home, chat, notes, apps, automation, settings) and 18 colour themes.</sub>
+
 ---
 
-## 🏗️ Architecture
+## Benchmark results
 
-SARA is organized as a layered Python application with an independent web-based desktop presentation layer.
+<p align="center">
+  <img src="./assets/readme/scorecards.svg" alt="Benchmark highlights: 99.4 percent routing accuracy, 98.1 percent memory recall at 3, 63 of 72 injection attacks covered, 1.51 ms router latency" width="100%" />
+</p>
+
+Every number comes from a benchmark in [`bench/`](./bench) that runs offline, measured at commit `5d1f65b`. **These are self-authored test sets run by the project's author, not independent validation.** Each section says what was tested and what it does not prove. Metric definitions are in [`bench/README.md`](./bench/README.md).
+
+### 1. Command routing: does SARA understand what you asked?
+
+620 labelled utterances in English, Hindi and Hinglish, including noisy, adversarial and held-out question rows. "Routing" means choosing the right action, or deciding the sentence is just conversation.
+
+| Metric | Result | What it means |
+|---|---:|---|
+| Top-1 accuracy | **99.4%** | The first guess was right |
+| Macro-F1 | **99.6%** | Accuracy holds across rare commands as well as common ones |
+| False-trigger rate | **0.0%** | Sentences that are not commands were never turned into actions |
+| English / Hindi / Hinglish accuracy | 99.1% / 98.9% / 100.0% | |
+| Latency p50 / p95 | 0.23 ms / 1.51 ms | Time for the routing decision only |
+| Slot extraction accuracy | 93.2% (74 rows) | Picking out details such as the app name or the number |
+| Gate false-open rate | 9.3% | Chat sentences that pass the first filter for tool use (weakest result) |
+
+*Limits:* the test set was written by the project author. Latency was measured on a Linux machine and covers the router only, not the full voice pipeline. A regression gate in CI fails the build if accuracy drops, false triggers rise or latency worsens against a committed baseline.
+
+### 2. Memory: does SARA remember correctly and forget on request?
+
+40 scenarios, 130 questions in English, Hinglish and Hindi. Compared with a simulation of the earlier plain vector-search design.
+
+| Metric | Plain vector RAG | SARA memory |
+|---|---:|---:|
+| Recall@3 (right fact in top 3) | 54.3% | **98.1%** |
+| Handles a fact that changed later | 8.0% | **100.0%** |
+| Time-based questions | 21.1% | **89.5%** |
+| Says "I don't know" when nothing is stored | 79.0% | **100.0%** |
+| False-memory rate (invents a match) | 21.1% | **0.0%** |
+| Facts still returned after "forget this" | 16.7% | **0.0%** |
+| Retrieval latency p95 | 0.01 ms | 0.84 ms |
+
+*Limits:* this run uses an offline hash embedder and gold-labelled facts (`--extract gold`), so it measures retrieval and memory logic, **not** how well an LLM extracts facts from real conversation. The baseline is a simulation of the earlier design, not a third-party system. SARA's memory is slower than the baseline but still under 1 ms.
+
+### 3. Prompt-injection defence: can hostile text hijack SARA?
+
+72 attacks and 102 harmless inputs. Attacks include tool hijacking, data exfiltration, fake system messages, hidden web text, Unicode tricks, roleplay, split-chunk attacks and Hinglish/Hindi payloads.
+
+| Metric | Result | Target |
+|---|---:|---:|
+| Attacks covered by the detector | 63 of 72 | |
+| **Documented gaps** | **9 of 72** | |
+| Recall on covered attacks | **100.0%** | at least 90% |
+| Attack success rate (covered) | 0.0% | 0% |
+| False positives on harmless input | 0.0% | at most 2% |
+| Policy invariant on tainted turns | ok (328 checks) | ok |
+| Detector latency p95 | 0.13 ms | |
+
+*Limits:* 9 attacks are known gaps and are excluded from the "covered" figures, so 100% recall applies only to the 63 covered attacks. The attack set is self-authored. Treat this as regression protection, **not a security guarantee**.
+
+### Reproduce
+
+```powershell
+python -m bench.run_bench --mode router
+python -m bench.run_bench --mode memory --embedder hash
+python -m bench.run_bench --mode redteam
+```
+
+The committed `bench/results/RESULTS.md` may be from an earlier run than the numbers above.
+
+### Project size
+
+219 Python modules and about 59,000 lines under `sara/`, 213 test files with about 1,830 test functions (3,800+ cases once parametrised), and a CI workflow that runs the tests and the three benchmark gates.
+
+---
+
+## How SARA works
+
+**In one picture:**
+
+```mermaid
+flowchart LR
+    A["You speak or type"] --> B["Understand<br/>what you want"]
+    B --> C{"Simple<br/>command?"}
+    C -->|Yes| D["Run it instantly"]
+    C -->|No| E["Ask the AI model"]
+    E --> F["Pick a tool<br/>or make a plan"]
+    F --> D
+    D --> G["Reply in text<br/>and voice"]
+```
+
+1. **Listen.** The microphone audio is cleaned (echo removed, speech detected) and turned into text.
+2. **Understand.** The router decides what you want, in about a millisecond.
+3. **Act.** Known commands run immediately. Everything else goes to the language model, which can only choose from an approved list of tools.
+4. **Remember.** Preferences, reminders and long-term facts are stored in a local database on your PC.
+5. **Reply.** The answer streams back as text and as speech, and you can interrupt it.
+
+<details>
+<summary><strong>Technical architecture</strong></summary>
 
 ```mermaid
 graph TD
-    U[User] --> V[Voice / Text Input]
+    U[User] --> V[Voice or text input]
     V --> STT[STT + VAD + AEC]
     STT --> ORCH[Orchestrator]
     U --> GUI[pywebview GUI]
     GUI --> ORCH
 
-    ORCH --> INTENT[Intent Engine]
+    ORCH --> INTENT[Intent router]
     INTENT --> FAST[Fast-path handlers]
-    INTENT --> ROUTER[Tool Router]
-    INTENT --> LLM[LLM Engine]
+    INTENT --> ROUTER[Tool router]
+    INTENT --> LLM[LLM engine]
 
-    LLM --> OLLAMA[Ollama]
-    LLM --> GEMINI[Gemini]
-    ROUTER --> TOOLS[Tool Registry]
-    LLM --> PLAN[Planning Engine]
+    LLM --> GEMINI[Gemini - primary]
+    LLM -.->|fallback| OLLAMA[Ollama - local]
+    ROUTER --> TOOLS[Tool registry + policy]
+    LLM --> PLAN[Bounded planner]
     PLAN --> TOOLS
 
-    ORCH --> MEMORY[SQLite + RAG]
-    ORCH --> BG[Background Services]
-    TOOLS --> WIN[Windows APIs / OS]
-    TOOLS --> WEB[Web / Calendar / External APIs]
+    ORCH --> MEMORY[SQLite + semantic memory]
+    ORCH --> BG[Background services]
+    TOOLS --> WIN[Windows APIs]
+    TOOLS --> WEB[Web and calendar]
 
-    TOOLS --> EVENTS[Event Bridge]
+    TOOLS --> EVENTS[Event bridge]
     LLM --> EVENTS
-    MEMORY --> EVENTS
-    BG --> EVENTS
     EVENTS --> GUI
-    LLM --> TTS[Kokoro ONNX]
-    TTS --> OUT[Audio Output]
+    LLM --> TTS[Kokoro TTS]
+    TTS --> OUT[Audio output]
 ```
 
-### Core responsibilities
-
-| Layer | Responsibility |
+| Package | Responsibility |
 |---|---|
-| `sara/audio/` | Audio capture, STT, TTS, VAD/AEC and playback pipeline |
-| `sara/core/` | Intent matching, LLMs, planning, memory, RAG and tool routing |
-| `sara/orchestrator/` | Main conversation loop, lifecycle, background services, state and event flow |
-| `sara/tools/` | External capabilities and Windows/system automation |
-| `sara/skills/` | Auto-discovered, modular assistant skills |
-| `sara/gui/` | pywebview application shell, JS bridge and UI implementation |
-| `tests/` | API-surface, smoke, planner, RAG, routing and voice-flow tests |
+| `sara/audio/` | Capture, VAD, echo cancellation, faster-whisper STT, Kokoro TTS, barge-in |
+| `sara/core/` | Intent matching, LLM engine, planning, memory, RAG, security |
+| `sara/orchestrator/` | Conversation loop, intent handlers, background services, event flow |
+| `sara/tools/` | Windows automation, web and calendar tools |
+| `sara/skills/` | Auto-discovered modular skills |
+| `sara/gui/` | pywebview shell, Python-to-JavaScript bridge, HTML/CSS/JS interface |
+| `bench/` | Router, memory, red-team, voice-latency and STT benchmarks |
+| `tests/` | Unit, API-surface, planner, routing, RAG and voice-flow tests |
+
+</details>
+
+### Design decisions
+
+1. **Route before reasoning.** Known commands skip the LLM round trip entirely.
+2. **The model chooses, Python executes.** The LLM emits structured tool requests; a tool registry with an allow-list performs the action. Risky actions, such as closing system apps, ask for confirmation first.
+3. **Bounded planner.** Plans are schema-validated with a step cap, per-step and total timeouts, retries and partial-result handling. Independent steps can run in parallel.
+4. **Gemini first, Ollama as a safety net.** Gemini is the default for quality and latency on modest hardware, and it leaves GPU memory free for speech. If it is unreachable, a per-tool circuit breaker trips and SARA falls back to a local Ollama model.
+5. **Memory that can be corrected.** Facts are stored with time information, replaced when they change, retracted when you say "forget", and SARA abstains when nothing relevant is stored.
+6. **Multilingual from the start.** Hindi and Hinglish appear in the router patterns, benchmarks, STT model options, reply-language matching and red-team set.
+7. **External text is untrusted.** Web pages, notes and tool output pass through an injection detector, and a policy check stops a tainted turn from triggering sensitive tools.
 
 ---
 
-## 🎙️ Voice Pipeline
+## Technology
 
-SARA treats voice as a pipeline rather than a single API call.
-
-```text
-Microphone
-   ↓
-Audio capture
-   ↓
-Noise / silence gating
-   ↓
-VAD + AEC
-   ↓
-Wake-word / activation logic
-   ↓
-Faster-Whisper
-   ↓
-Intent + context processing
-   ↓
-LLM / tool / planner path
-   ↓
-Response streaming
-   ↓
-Sentence / clause preparation
-   ↓
-Kokoro ONNX
-   ↓
-Audio playback
-```
-
-### Latency-oriented design
-
-The architecture deliberately tries to avoid unnecessary round trips:
-
-1. deterministic commands are handled before expensive model inference
-2. LLM responses can stream
-3. TTS work is separated from the main command loop
-4. frequent UI/audio updates are treated as events rather than blocking calls
-5. long-running background tasks are separated from the interactive path
-
-### Speech features
-
-- `faster-whisper` for local STT
-- `Kokoro ONNX` for local TTS
-- configurable wake-word phrases
-- configurable AEC sample rate and stream delay
-- configurable English / Hindi voices and speech speed
-- interruption handling for barge-in scenarios
+| Responsibility | Technology |
+|---|---|
+| Language and app shell | Python 3.11, pywebview with HTML, CSS and JavaScript |
+| Language model | Google Gemini (default), Ollama (local fallback or offline mode) |
+| Hearing | faster-whisper, voice activity detection, echo cancellation, optional openWakeWord model |
+| Speaking | Kokoro ONNX, running locally |
+| Memory | SQLite (WAL mode), embeddings with cosine similarity |
+| Windows control | Python Windows APIs (`pywin32`) |
+| Packaging | PyInstaller (see [`BUILD.md`](./BUILD.md)) |
+| Quality | pytest, pyflakes, a secret scanner, benchmark regression gates in CI |
 
 ---
 
-## 🤖 Agent & Tooling
+## Getting started
 
-SARA uses multiple levels of command handling instead of sending every request directly to an LLM.
+**You need:** Windows 10 or 11, Python 3.11, a microphone and speakers, and a free [Gemini API key](https://aistudio.google.com/apikey). An NVIDIA GPU is recommended for real-time speech but not required. Ollama is optional.
 
-### Request routing
-
-```text
-User request
-     ↓
-Normalize / context
-     ↓
-Fast intent match
-     ├── matched → direct handler
-     │
-     └── no match
-           ↓
-      Tool router / LLM
-           ├── direct tool call
-           └── compound request → planner
-                                      ↓
-                               validated steps
-                                      ↓
-                               bounded execution
-                                      ↓
-                               final response
-```
-
-### Tool design
-
-System operations are grouped by capability rather than embedded in the model layer:
-
-```text
-sara/tools/system/
-├── apps.py
-├── audio_display.py
-├── connectivity.py
-├── files_notes.py
-├── folders.py
-├── media_keys.py
-├── power.py
-├── services.py
-├── settings_pages.py
-├── shortcuts.py
-├── system_info.py
-├── timers.py
-├── window_control.py
-└── window_mgmt.py
-```
-
-This keeps the LLM responsible for **choosing an action**, while Python remains responsible for **actually executing the action**.
-
-### Bounded planning
-
-The planning subsystem lives in `sara/core/planning/` and is intentionally constrained:
-
-- maximum number of steps
-- per-step timeout
-- total plan timeout
-- schema validation
-- step retry / correction controls
-- partial-result handling
-
-Example:
-
-```text
-"Set a reminder for 6 PM and then tell me today's weather."
-
-        ↓
-
-1. create reminder
-2. fetch weather
-3. combine results
-```
-
-The planner is not intended to become an unrestricted autonomous agent; it is a **bounded execution layer** on top of SARA's explicit tool registry.
-
----
-
-## 🧠 Memory & RAG
-
-SARA separates conversational context from persistent memory.
-
-### Memory layers
-
-```text
-┌─────────────────────────────────────────┐
-│ Current conversation                    │
-│ bounded short-term context              │
-└────────────────────┬────────────────────┘
-                     ↓
-┌─────────────────────────────────────────┐
-│ SQLite                                   │
-│ preferences / history / reminders / log │
-└────────────────────┬────────────────────┘
-                     ↓
-┌─────────────────────────────────────────┐
-│ Long-term semantic memory               │
-│ embeddings + cosine similarity           │
-└────────────────────┬────────────────────┘
-                     ↓
-┌─────────────────────────────────────────┐
-│ Consolidation                            │
-│ recent conversations → durable facts     │
-└─────────────────────────────────────────┘
-```
-
-### Current implementation
-
-- SQLite with WAL mode for persistent state
-- semantic retrieval with cosine similarity
-- bounded conversation context
-- background memory consolidation
-- forget-memory controls
-- notes indexing and semantic notes Q&A
-
-The current RAG implementation is designed for a **single-user desktop workload**, not for large multi-tenant vector search.
-
-> **Privacy note:** the architecture is local-first, but some capabilities intentionally use external services. See [Privacy & Data Flow](#-privacy--data-flow).
-
----
-
-## 🖥️ Desktop UI
-
-The desktop client uses **pywebview** to package an HTML/CSS/JavaScript interface around the Python backend.
-
-### UI sections
-
-```text
-Home
-Chat
-Notes & Reminders
-Apps
-Automation
-Settings
-```
-
-The UI is backed by a Python → JavaScript event bridge so assistant state can be reflected in the interface without moving the core application logic into the browser layer.
-
-### Screenshots
-
-<table>
-<tr>
-<td><img src="./assets/screenshots/home.png" alt="Home" /></td>
-<td><img src="./assets/screenshots/chat.png" alt="Chat" /></td>
-</tr>
-<tr>
-<td><img src="./assets/screenshots/ai%20brain.png" alt="AI Brain" /></td>
-<td><img src="./assets/screenshots/apps%20%26%20tools.png" alt="Apps and Tools" /></td>
-</tr>
-<tr>
-<td><img src="./assets/screenshots/automation.png" alt="Automation" /></td>
-<td><img src="./assets/screenshots/memory.png" alt="Memory" /></td>
-</tr>
-<tr>
-<td><img src="./assets/screenshots/notes.png" alt="Notes" /></td>
-<td><img src="./assets/screenshots/reminders.png" alt="Reminders" /></td>
-</tr>
-<tr>
-<td><img src="./assets/screenshots/settings.png" alt="Settings" /></td>
-<td><img src="./assets/screenshots/system%20control.png" alt="System Control" /></td>
-</tr>
-</table>
-
----
-
-## ⚙️ Technology Stack
-
-| Layer | Technology | Role |
-|---|---|---|
-| Language | Python 3.11 | Core application and orchestration |
-| Desktop shell | pywebview | Native desktop window + JS bridge |
-| Frontend | HTML / CSS / JavaScript | Interactive assistant UI |
-| STT | faster-whisper | Speech recognition |
-| Wake / audio | VAD + AEC + wake-word logic | Voice activation and audio cleanup |
-| TTS | Kokoro ONNX | Local speech synthesis |
-| LLM | Ollama | Local model serving |
-| LLM | Google Gemini | Optional cloud reasoning / vision path |
-| Memory | SQLite | Persistent application state |
-| Semantic memory | Embeddings + cosine similarity | Long-term retrieval |
-| Windows automation | Python Windows APIs / system integrations | Desktop control |
-| Packaging | PyInstaller | Windows executable builds |
-| Testing | pytest | Automated test suite |
-| Quality | pyflakes / mypy | Static checks and type validation |
-
----
-
-## 📁 Project Structure
-
-```text
-SARA-AI/
-│
-├── main.py                         # Application entry point
-├── config.py                       # Central configuration + validation
-├── health_check.py                 # Environment / dependency diagnostics
-├── logging_config.py               # Logging configuration
-│
-├── sara/
-│   ├── audio/
-│   │   ├── stt/                    # Speech recognition pipeline
-│   │   ├── tts/                    # TTS synthesis, caching, playback
-│   │   └── aec.py                  # Audio echo cancellation
-│   │
-│   ├── core/
-│   │   ├── intent/                 # Fast intent matching
-│   │   ├── llm/                    # Providers, prompting, streaming
-│   │   ├── planning/               # Planner, executor, schemas, trigger
-│   │   ├── memory.py               # Structured persistent memory
-│   │   ├── rag.py                  # Semantic long-term memory
-│   │   ├── memory_consolidation.py # Durable-memory extraction
-│   │   └── tool_router.py          # Tool-call routing + fallback
-│   │
-│   ├── orchestrator/               # Runtime coordination
-│   │   ├── core_wiring.py
-│   │   ├── intent_handlers.py
-│   │   ├── proactive.py
-│   │   ├── notifications.py
-│   │   ├── tts_worker.py
-│   │   ├── db_writer.py
-│   │   ├── emergency_stop.py
-│   │   └── ...
-│   │
-│   ├── tools/
-│   │   ├── calendar.py
-│   │   ├── clipboard.py
-│   │   ├── reminders.py
-│   │   ├── vision.py
-│   │   ├── web.py
-│   │   └── system/                 # Windows automation capabilities
-│   │
-│   ├── skills/                     # Auto-discovered skills
-│   └── gui/
-│       ├── index.html              # markup only; loads bundle/app.{css,js}
-│       ├── assets.json             # load order of every JS/CSS source
-│       ├── build.py                # python -m sara.gui.build -> bundle/
-│       ├── bundle/                 # generated (committed, checked by tests)
-│       ├── js/<group>/             # core, fx, shared, home, chat, notes, apps, automation, settings, dev
-│       ├── style/<group>/          # same groups
-│       └── app/                    # Python ↔ JS bridge + API mixins
-│
-├── tests/
-│   ├── test_sara_smoke.py
-│   ├── test_api_surface.py
-│   ├── test_tool_router.py
-│   ├── test_planning.py
-│   ├── test_barge_in_handoff.py
-│   ├── test_fallback_and_misfire_retry.py
-│   ├── test_rag_supersede_and_consolidation_gate.py
-│   ├── test_sara_context_history.py
-│   └── test_new_features.py
-│
-├── assets/screenshots/
-├── requirements.txt
-├── requirements-cpu.txt
-├── requirements-gpu.txt
-├── requirements-build.txt
-├── BUILD.md
-├── CHANGELOG.md
-├── CONTRIBUTING.md
-├── docs/NEXT_STEPS.md
-├── docs/PROJECT_MEMORY.md
-└── LICENSE
-```
-
----
-
-## 🔧 Setup
-
-### Prerequisites
-
-- Windows 10/11
-- Python 3.11
-- Working microphone and audio output
-- Ollama for local LLM mode
-- NVIDIA GPU recommended for practical real-time STT/TTS performance
-- Kokoro model files
-
-### 1. Clone
+### 1. Clone and create a virtual environment
 
 ```powershell
 git clone https://github.com/manvendrasingh0712/SARA-AI-Automation-Powered-Personal-Desktop-Assistant-voice-command-.git
 cd SARA-AI-Automation-Powered-Personal-Desktop-Assistant-voice-command-
-```
-
-### 2. Create the virtual environment
-
-```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 ```
 
-### 3. Install dependencies
+### 2. Install dependencies
 
-Install the shared dependencies plus **exactly one** ONNX Runtime build.
-
-**CPU only:**
+Install the shared packages plus **exactly one** ONNX Runtime build.
 
 ```powershell
+# NVIDIA GPU
+pip install -r requirements.txt -r requirements-gpu.txt
+
+# or CPU only
 pip install -r requirements.txt -r requirements-cpu.txt
 ```
 
-**NVIDIA GPU (recommended):**
+### 3. Configure
 
-```powershell
-pip install -r requirements.txt -r requirements-gpu.txt
-```
-
-> Note: `kokoro-onnx`, `faster-whisper` and `openwakeword` each depend on the CPU `onnxruntime` package, so pip can still install it next to `onnxruntime-gpu` (both use the same folder). If CUDA isn't used or you get DLL-load errors, run:
->
-> ```powershell
-> pip uninstall -y onnxruntime onnxruntime-gpu
-> pip install onnxruntime-gpu==1.21.0
-> ```
-
-### 4. Install / start Ollama
-
-Install [Ollama](https://ollama.com/), start the local service, then pull a model that matches your hardware.
-
-Example:
-
-```powershell
-ollama pull qwen3:4b-instruct-2507-q4_K_M
-```
-
-Verify:
-
-```powershell
-ollama list
-```
-
-### 5. Configure environment variables
-
-Create a local `.env` file in the repository root.
-
-Recommended local-first starting point:
+Create a file named `.env` in the repository root. [`.env.example`](./.env.example) lists every option.
 
 ```dotenv
-LLM_BACKEND=ollama
-OLLAMA_HOST=http://localhost:11434
-OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M
-
-WAKE_WORDS=sara,sarah,hey sara,hey sarah
-
+GEMINI_API_KEY=your_api_key_here
 WHISPER_MODEL_SIZE=medium
 KOKORO_USE_GPU=true
-AEC_ENABLED=true
-
-PLANNING_ENABLED=true
-TOOL_CALLING_ENABLED=true
-MEMORY_CONSOLIDATION_ENABLED=true
-NOTIFICATIONS_ENABLED=true
-EMERGENCY_STOP_ENABLED=true
-EMERGENCY_STOP_HOTKEY=ctrl+alt+s
 ```
 
-For Gemini mode:
+Gemini is the default backend. SARA refuses to start without a key rather than silently changing backend. Never commit `.env`.
 
-```dotenv
-LLM_BACKEND=gemini
-GEMINI_API_KEY=your_api_key_here
-```
+### 4. Add the Kokoro voice files
 
-Keep credentials out of source control.
-
-### 6. Install Kokoro model files
-
-Place the required model files under `models/` (or configure alternate paths in `.env`):
+Download the Kokoro ONNX model and voices files from the [kokoro-onnx project](https://github.com/thewh1teagle/kokoro-onnx/releases) and place them here (or point `KOKORO_MODEL_PATH` and `KOKORO_VOICES_PATH` at them):
 
 ```text
 models/
@@ -656,236 +339,123 @@ models/
 └── voices-v1.0.bin
 ```
 
-### 7. Start SARA
+### 5. Run
 
 ```powershell
 python main.py
 ```
 
----
+Say "sara" or "hey sara", or tap the mic button in the chat page.
 
-## 🧪 Testing & Verification
+### Optional: local fallback or fully offline
 
-Run the full suite:
-
-```powershell
-python -m pytest tests/ -v
-```
-
-Run a focused subsystem suite:
+Install [Ollama](https://ollama.com/) and pull a model:
 
 ```powershell
-python -m pytest tests/test_planning.py -v
-python -m pytest tests/test_tool_router.py -v
-python -m pytest tests/test_api_surface.py -v
+ollama pull qwen3:4b-instruct-2507-q4_K_M
 ```
 
-Compile-check the project:
+That model is the default for `OLLAMA_MODEL`. With Gemini as the primary backend, falling back to Ollama is on by default (`LLM_FALLBACK_ENABLED`). For a fully offline setup, set `LLM_BACKEND=ollama` in `.env`.
+
+### Verify
 
 ```powershell
-python -m compileall -q .
+python -m pytest tests/ -q
+python scripts/check_no_secrets.py
 ```
 
-Recommended static checks during development:
+The test suite is developed for Windows. It needs the Windows-only packages from `requirements.txt` to be installed.
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><strong>"LLM_BACKEND is 'gemini' but GEMINI_API_KEY is missing"</strong></summary>
+
+Add `GEMINI_API_KEY` to `.env`, or set `LLM_BACKEND=ollama` to run fully locally. SARA stops at startup on purpose instead of silently switching backend.
+</details>
+
+<details>
+<summary><strong>SARA does not speak, or the log says "kokoro-onnx not found"</strong></summary>
+
+Check that dependencies installed inside the active virtual environment, and that `models/kokoro-v1.0.onnx` and `models/voices-v1.0.bin` exist. If you keep them elsewhere, set `KOKORO_MODEL_PATH` and `KOKORO_VOICES_PATH` in `.env`.
+</details>
+
+<details>
+<summary><strong>GPU is not used, or ONNX Runtime conflicts</strong></summary>
+
+Several packages pull in the CPU `onnxruntime`, which can sit next to `onnxruntime-gpu`. Reset to the GPU build:
 
 ```powershell
-pyflakes sara tests
-mypy sara
+pip uninstall -y onnxruntime onnxruntime-gpu
+pip install onnxruntime-gpu==1.21.0
 ```
+</details>
 
-### Testing philosophy
+<details>
+<summary><strong>Speech recognition is slow or inaccurate</strong></summary>
 
-SARA separates deterministic unit behavior from hardware/cloud integration:
+`WHISPER_MODEL_SIZE` defaults to `medium`. On a small GPU, try a smaller size such as `small`. Recognition quality also depends on the microphone and background noise; the speech benchmarks are in [`bench/`](./bench).
+</details>
 
-- API-surface tests protect the Python ↔ JavaScript contract.
-- Planning tests use stubs rather than requiring a live LLM service.
-- Routing tests cover tool selection and fallback behavior.
-- Voice-flow tests cover barge-in / handoff behavior.
-- RAG tests cover superseding and consolidation gates.
-- Smoke tests protect core startup utilities and configuration paths.
+<details>
+<summary><strong>SARA does not react to the wake word</strong></summary>
 
-For full confidence, live hardware validation is still required for microphone, audio loopback/AEC, GPU inference, Ollama, and Windows-specific integrations.
+Tap the mic button in the chat page, and make sure the **Listening** switch on the home screen is on. The default wake phrases are "sara", "sarah", "hey sara" and "hey sarah", configurable with `WAKE_WORDS`. A custom-trained wake-word model is optional (`WAKE_WORD_MODEL_PATH`) and is not shipped yet.
+</details>
 
----
+<details>
+<summary><strong>"Calendar isn't connected yet"</strong></summary>
 
-## 🔐 Privacy & Data Flow
+Create an OAuth client in the Google Cloud Console, save it as `credentials.json` where SARA expects it (see the notes at the top of `sara/tools/calendar.py`), and try again.
+</details>
 
-SARA is designed to keep the primary assistant loop local, but **not every feature is offline**.
+<details>
+<summary><strong>SARA keeps talking or acting and you need to stop it</strong></summary>
 
-### Primarily local
-
-- speech recognition via faster-whisper
-- speech synthesis via Kokoro ONNX
-- local LLM via Ollama
-- persistent state via SQLite
-- semantic retrieval executed from the local memory store
-- Windows automation
-
-### Networked by design
-
-Depending on configuration and feature usage, SARA can communicate with:
-
-- Google Gemini for cloud LLM / vision functionality
-- web search / news / weather providers
-- Google Calendar
-- other explicitly configured third-party services
-
-API credentials are intended to be supplied through environment variables rather than hard-coded in source files.
+Press the emergency-stop hotkey, `Ctrl+Alt+S` by default (`EMERGENCY_STOP_HOTKEY`, enabled by `EMERGENCY_STOP_ENABLED`).
+</details>
 
 ---
 
-## 🧩 Extending SARA with Skills
+## Privacy and security
 
-The `sara/skills/` package provides a lightweight extension mechanism.
-
-A skill can define its intent metadata and handler, then be discovered during application startup.
-
-Conceptual example:
-
-```python
-INTENT_NAME = "example_skill"
-PATTERNS = [r"do example (?P<value>.+)"]
-DESCRIPTION = "Example SARA skill"
-
-
-def handle(match, ctx):
-    value = match.group("value")
-    return f"Handled: {value}"
-```
-
-The goal is to add capabilities **without turning the central intent-pattern file into another monolithic registry**.
+- **Local:** speech recognition, speech synthesis, memory, notes, reminders and routines run on your PC and are stored in SQLite on your machine.
+- **Sent over the network:** prompts and any retrieved context for a Gemini turn, embeddings when the Gemini embedder is used, web search and Google Calendar. With `LLM_BACKEND=ollama` the language model also runs locally.
+- **Guardrails:** a fixed tool list, confirmation for risky actions, an action log, and a detector for prompt injection. The detector has documented gaps (see [Benchmark results](#benchmark-results)) and is not a guarantee.
+- **Secrets:** keep `.env` and `credentials.json` out of version control. `python scripts/check_no_secrets.py` scans the repository.
 
 ---
 
-## 🛡️ Engineering & Safety Principles
+## Limitations and roadmap
 
-SARA controls a real operating system, so the architecture treats tool execution differently from ordinary chatbot text generation.
+**Current limitations**
 
-### Principle 1 — The model does not directly control the OS
+- Windows only. Cross-platform support is not a goal right now.
+- The benchmarks are self-authored and mostly offline. They do not replace testing audio, GPU and OS-specific behaviour on real hardware, and the injection defence has 9 documented gaps.
+- Weakest measured results: router gate false-open rate (9.3%) and slot extraction (93.2%).
+- Memory fact extraction by a live LLM is not yet benchmarked.
+- Wake-word detection does not yet use a custom-trained "Hey Sara" model.
+- Memory is designed for one user on one desktop, not multi-user search.
+- The screenshots in this README predate the current interface redesign.
 
-LLMs produce structured intent/tool requests. Python code performs the actual operation.
+**Planned, not built yet**
 
-### Principle 2 — Prefer deterministic routing when possible
-
-A known command should not pay the latency cost of a full reasoning round trip.
-
-### Principle 3 — Bound autonomous behavior
-
-Planning is constrained by step count, timeout, validation and retry policies.
-
-### Principle 4 — Keep external services explicit
-
-Cloud/network calls should remain identifiable in the architecture and configuration.
-
-### Principle 5 — Long-running failures should be isolated
-
-Background services should degrade independently instead of taking down the main conversation loop.
-
-### Principle 6 — Observability matters
-
-Subsystem boundaries, runtime state, errors, and background events should be diagnosable through structured logging and health checks.
+- A custom wake-word model.
+- Tighter router gating and slot extraction.
+- A benchmark for memory extraction with a live LLM.
+- Streaming speech recognition with speculative routing.
+- A simpler installer.
 
 ---
 
-## 📊 Engineering Snapshot
+## Documentation, contributing and licence
 
-The current repository snapshot contains approximately:
+- [`bench/README.md`](./bench/README.md): benchmark definitions, metrics and the regression gate
+- [`BUILD.md`](./BUILD.md): building a standalone Windows executable
+- [`CONTRIBUTING.md`](./CONTRIBUTING.md): how to report bugs and contribute
+- [`.env.example`](./.env.example): every configuration option
+- [`LICENSE`](./LICENSE): MIT
 
-| Metric | Current snapshot |
-|---|---:|
-| Python modules under `sara/` | 99 |
-| Automated test modules | 9 |
-| Python LOC under `sara/` | ~30.6K |
-| UI screenshots | 12 |
-| Main UI sections | 6 |
-
-These numbers are descriptive rather than performance claims; they will naturally change as the project evolves.
-
----
-
-## ⚠️ Current Limitations
-
-SARA is an actively developed portfolio project. Important current constraints include:
-
-- Windows-first implementation; cross-platform support is not currently a production target.
-- CPU-only inference is supported but can be substantially slower than GPU-backed execution.
-- Wake-word handling is not yet based on a custom-trained production wake-word model.
-- Some capabilities require third-party network services.
-- Full hardware validation is distinct from unit-test validation, especially for audio, GPU, and OS-specific integrations.
-- Semantic memory is optimized for a single-user desktop workload, not large-scale multi-user retrieval.
-
-For the active engineering backlog, see [`NEXT_STEPS.md`](./docs/NEXT_STEPS.md).
-
----
-
-## 🗺️ Roadmap
-
-### Near term
-
-- [ ] Harden command cancellation and interruption across all long-running operations
-- [ ] Further reduce end-to-end voice latency
-- [ ] Strengthen unified tool authorization / confirmation policy
-- [ ] Improve local-provider parity across planning and memory features
-
-### Longer term
-
-- [ ] Custom wake-word model
-- [ ] Broader cross-platform support
-- [ ] More granular observability and performance telemetry
-- [ ] More robust packaging / installer experience
-
-The roadmap is intentionally focused on reliability, latency, and system integration rather than adding features indiscriminately.
-
----
-
-## 📚 Documentation
-
-- [`BUILD.md`](./BUILD.md) — Windows executable / packaging workflow
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md) — development and contribution guidance
-- [`CHANGELOG.md`](./CHANGELOG.md) — implementation history
-- [`NEXT_STEPS.md`](./docs/NEXT_STEPS.md) — active engineering backlog
-- [`PROJECT_MEMORY.md`](./docs/PROJECT_MEMORY.md) — project architecture and state reference
-
----
-
-## 🤝 Contributing
-
-Contributions, issue reports, and architecture discussions are welcome.
-
-Before opening a pull request:
-
-1. keep changes scoped to one subsystem where possible
-2. add or update tests for behavior changes
-3. run the smoke / targeted tests relevant to the change
-4. run compilation and static checks
-5. update documentation when public behavior or configuration changes
-
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the repository process.
-
----
-
-## 📄 License
-
-This project is released under the **MIT License**. See [`LICENSE`](./LICENSE).
-
----
-
-## 🙏 Acknowledgements
-
-SARA builds on several strong open-source projects:
-
-- [Ollama](https://ollama.com/) — local LLM serving
-- [Google Gemini](https://ai.google.dev/) — optional cloud LLM / vision
-- [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — speech recognition
-- [Kokoro ONNX](https://github.com/thewh1teagle/kokoro-onnx) — local speech synthesis
-- [openWakeWord](https://github.com/dscripka/openWakeWord) — wake-word tooling
-- [ONNX Runtime](https://onnxruntime.ai/) — inference runtime
-- [pywebview](https://pywebview.flowrl.com/) — desktop webview shell
-- [PyInstaller](https://pyinstaller.org/) — Windows application packaging
-
----
-
-<p align="center">
-  <strong>SARA AI</strong><br/>
-  <sub>Voice • Reasoning • Memory • Automation</sub>
-</p>
+Built by [Manvendra Singh](https://github.com/manvendrasingh0712).
