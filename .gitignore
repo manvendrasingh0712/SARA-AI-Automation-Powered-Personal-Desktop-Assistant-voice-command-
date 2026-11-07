@@ -150,3 +150,4 @@ bench/results/*
 # Local packaging directories
 /packaging_hooks/
 /packaging_resources/
+/CLAUDE_CODE_PLAN.md
