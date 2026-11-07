@@ -253,6 +253,31 @@
 @media (prefers-reduced-motion:reduce){#page-settings .set-group.on{animation:none;}}
 html[data-quality="low"] #page-settings .set-group.on{animation:none;}
 
+/* Settings information architecture: clear group switching and predictable narrow layouts. */
+#page-settings #setRail button.on{background:linear-gradient(100deg,rgb(var(--core-rgb) / .14),rgb(var(--core-rgb) / .045));}
+#page-settings #setRail button:focus-visible{outline-offset:-2px;}
+#page-settings .set-group-head{padding:0 0 var(--sp-2);}
+#page-settings .set-group-title{letter-spacing:-.015em;}
+#page-settings .set-group-grid{align-items:start;}
+#page-settings .set-card{background:linear-gradient(155deg,rgb(var(--core-rgb) / .035),transparent 44%),var(--panel);}
+@media(max-width:980px){
+  #page-settings .page-body{padding-inline:24px;}
+  #page-settings #setRail{scroll-snap-type:x proximity;padding-bottom:2px;}
+  #page-settings #setRail button{scroll-snap-align:start;}
+}
+@media(max-width:620px){
+  #page-settings .page-body{padding:var(--sp-3) 16px var(--sp-4);}
+  #page-settings #setRail{gap:5px;margin-inline:-4px;padding-inline:4px;}
+  #page-settings #setRail button{height:40px;padding-inline:10px;font-size:12px;}
+  #page-settings #setRail button .ic{width:17px;height:17px;}
+  #page-settings .set-group-title{font-size:20px;}
+  #page-settings .set-card{padding:var(--sp-4) var(--sp-3) var(--sp-2);border-radius:var(--r-sm);}
+  #page-settings .set-card-head{align-items:flex-start;}
+  #page-settings .set-card-sub{max-width:45%;}
+  #page-settings .sys-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}
+  #page-settings .theme-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
 /* ---- search (phase 4c): results from all groups in the pane, hit counts in the group list ---- */
 #page-settings .set-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:var(--sp-1);color:var(--muted);}
 #page-settings .set-search-wrap .ic{position:absolute;left:var(--sp-3);pointer-events:none;}
@@ -372,4 +397,14 @@ html[data-quality="low"] #page-settings .set-group.on{animation:none;}
   #page-settings .an-layout{grid-template-columns:minmax(0,1fr);}
   #page-settings .sys-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}
   #page-settings .theme-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:620px){
+  #page-settings .page-body{padding:var(--sp-3) 16px var(--sp-4);}
+  #page-settings .set-card{padding:var(--sp-4) var(--sp-3) var(--sp-2);border-radius:var(--r-sm);background:linear-gradient(155deg,rgb(var(--core-rgb) / .035),transparent 44%),var(--panel);}
+  #page-settings .set-card-head{align-items:flex-start;}
+  #page-settings .set-card-sub{max-width:45%;}
+  #page-settings .set-row{gap:var(--sp-2);}
+  #page-settings .set-info{flex:1 1 150px;}
+  #page-settings .set-row input[type=text]{width:100%;}
+  #page-settings .slider-wrap{width:100%;}
 }

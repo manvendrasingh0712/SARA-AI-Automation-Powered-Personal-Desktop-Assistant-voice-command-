@@ -82,3 +82,11 @@
   padding:6px 12px;background:rgb(var(--danger-rgb) / .14);border-bottom:1px solid rgb(var(--danger-rgb) / .35);color:var(--danger);
 }
 .offline-strip[hidden]{display:none;}
+
+/* Page headers can wrap their existing search/status controls on narrow windows. */
+@media(max-width:620px){
+  .app .page-header{height:auto;min-height:var(--header-h);flex-wrap:wrap;padding:10px 16px 6px;row-gap:6px;}
+  .app .page-tools{gap:6px;margin-left:auto;}
+  .app .page-status{max-width:148px;padding-inline:8px;overflow:hidden;}
+  .app .page-status [data-status-text]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+}

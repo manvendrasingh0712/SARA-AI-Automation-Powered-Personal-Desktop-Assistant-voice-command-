@@ -474,6 +474,14 @@ html[data-quality="low"] body::before{animation-play-state:paused;}
 }
 .offline-strip[hidden]{display:none;}
 
+/* Page headers can wrap their existing search/status controls on narrow windows. */
+@media(max-width:620px){
+  .app .page-header{height:auto;min-height:var(--header-h);flex-wrap:wrap;padding:10px 16px 6px;row-gap:6px;}
+  .app .page-tools{gap:6px;margin-left:auto;}
+  .app .page-status{max-width:148px;padding-inline:8px;overflow:hidden;}
+  .app .page-status [data-status-text]{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+}
+
 /* ==== style/core/shell.css ==== */
 /* App-shell geometry and horizontal navigation. */
 :root{
@@ -810,6 +818,16 @@ body.focus-mode #stage{animation:focusBreathe 7s ease-in-out infinite;}
 
 /* banner: a short message inside a card */
 .banner{display:block;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-ctl);font-size:12.5px;line-height:1.45;color:var(--text-soft);background:rgb(var(--info-rgb) / .12);overflow-wrap:anywhere;}
+
+/* Shared surface polish: controls stay quiet at rest and gain a clear edge on hover/focus. */
+.pill-btn:not(.primary){background:linear-gradient(180deg,rgb(var(--fg-rgb) / .025),transparent 70%),var(--panel-2);}
+.pill-btn:not(:disabled):hover{border-color:rgb(var(--core-rgb) / .48);box-shadow:0 5px 16px -12px rgb(var(--core-rgb) / .55);}
+.pill-btn:focus-visible,.field:focus-visible,.add-row input:focus-visible,.modal input:focus-visible,.modal select:focus-visible{
+  outline:2px solid var(--focus-ring);outline-offset:2px;
+}
+.empty{border:1px dashed rgb(var(--fg-rgb) / .15);border-radius:var(--r-card);background:linear-gradient(145deg,rgb(var(--core-rgb) / .035),transparent 58%),rgb(var(--fg-rgb) / .018);}
+.seg{box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+@media(prefers-reduced-motion:reduce){.pill-btn,.seg>button{transition:none;}}
 
 /* ==== style/home/home.css ==== */
 /* ==========================================================================
@@ -1198,6 +1216,31 @@ html[data-quality="high"] .home-sky[data-tod="night"]::after{opacity:1;}
   #page-home .home-grid > .next-card{align-self:end;}
 }
 @media (prefers-reduced-motion:reduce){.quick-dock .qc-tile,.quick-dock .qc-sw{transition:none;}}
+
+/* Dashboard surface hierarchy and small-window layout. */
+#page-home .home-grid > :is(.clock-card,.today-card,.usage-card,.next-card){
+  background:linear-gradient(150deg,rgb(var(--core-rgb) / .055),transparent 48%),var(--panel);
+  border-color:rgb(var(--fg-rgb) / .11);
+}
+#page-home .home-grid > .clock-card{box-shadow:var(--shadow-rest),inset 0 1px 0 rgb(var(--fg-rgb) / .045);}
+#page-home .home-grid > .today-card,#page-home .home-grid > .next-card{box-shadow:var(--shadow-rest),inset 0 1px 0 rgb(var(--fg-rgb) / .04);}
+#page-home .quick-dock{background:linear-gradient(145deg,rgb(var(--core-rgb) / .055),transparent 66%),var(--glass-bg);border-color:rgb(var(--core-rgb) / .14);backdrop-filter:blur(14px);}
+#page-home .quick-dock .qc-tile:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+@media(max-width:760px){
+  #page-home .home-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"clock today" "center center" "next next";gap:var(--sp-2);padding:12px 16px 16px;}
+  #page-home .home-center{--orb:clamp(128px,42vw,200px);min-height:0;}
+  #page-home .home-grid > .clock-card{height:auto;min-height:112px;padding:var(--sp-3);}
+  #page-home .home-grid > .today-card{min-height:112px;padding:var(--sp-3);}
+  #page-home .clock-card .cc-time{font-size:clamp(27px,8vw,38px);}
+  #page-home .clock-card .cc-ampm,#page-home .clock-card .cc-sec{font-size:11px;}
+  #page-home .today-card .tc-temp{font-size:26px;}
+  #page-home .today-card .tc-next{font-size:11px;}
+  #page-home .quick-dock{width:min(100%,380px);box-sizing:border-box;gap:3px;margin-top:var(--sp-3);padding:6px;}
+  #page-home .quick-dock .qc-tile{width:auto;min-width:0;flex:1;height:48px;gap:2px;}
+  #page-home .quick-dock .qc-tile .ic{width:17px;height:17px;}
+  #page-home .quick-dock .qc-name{font-size:9.5px;}
+}
+@media(max-height:620px){#page-home .home-grid{overflow-y:auto;align-content:start;}#page-home .home-center{padding:8px 0;}}
 
 /* ==== style/home/clock-card.css ==== */
 /* ==========================================================================
@@ -1665,6 +1708,22 @@ html[data-quality="low"] .msg.thinking::before{display:none;}
 /* send looks switched off until there is something to send */
 #page-chat .chat-dock:has(#chatInputField:placeholder-shown) .dock-btn.send{background:var(--panel-2);color:var(--muted);box-shadow:none;}
 
+/* Conversation rhythm and an adaptive composer that stays inside the page's reserved content area. */
+#chatLog{gap:18px;}
+#chatLog .msg.user{background:linear-gradient(145deg,rgb(var(--core-rgb) / .075),transparent 76%),var(--panel);border-color:rgb(var(--fg-rgb) / .13);box-shadow:0 5px 16px -14px rgb(0 0 0 / .65);}
+#chatLog .msg.sara{max-width:88%;line-height:1.62;border-left-color:rgb(var(--core-rgb) / .65);}
+#page-chat .chat-dock{background:linear-gradient(145deg,rgb(var(--core-rgb) / .045),transparent 54%),var(--glass-bg);border-color:rgb(var(--fg-rgb) / .13);backdrop-filter:blur(18px) saturate(1.15);}
+#page-chat .chat-dock:focus-within{border-color:rgb(var(--core-rgb) / .58);}
+@media(max-width:620px){
+  #page-chat .page-body{--pad-x:16px;padding-inline:16px;}
+  #page-chat .chat-log{padding-bottom:108px;}
+  #chatLog .msg{max-width:92%;font-size:14px;}
+  #chatLog .msg.sara{max-width:96%;}
+  #page-chat .chat-dock{left:10px;right:10px;bottom:12px;height:58px;padding:7px;gap:8px;border-radius:18px;}
+  #page-chat .chat-dock input{height:42px;font-size:14px;}
+  #page-chat .dock-btn{width:42px;height:42px;}
+}
+
 /* ==== style/notes/notes-reminders.css ==== */
 /* ==========================================================================
    notes-reminders.css  --  the combined Notes + Reminders page (two tabs).
@@ -1853,6 +1912,22 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 /* the accent on its own 10 % tint was 2.9:1 in light themes: the tag text mixes the accent with the text colour (light: darker, dark: lighter) */
 #page-notes .n-tag{color:color-mix(in srgb,var(--core) 45%,var(--text));}
 
+/* Narrow-width composition keeps note controls and reminder fields within the scrolling pane. */
+@media(max-width:620px){
+  #page-notes .page-body{padding:var(--sp-3) 16px var(--sp-4);}
+  #page-notes .notes-top{align-items:stretch;flex-direction:column;gap:var(--sp-2);margin-bottom:var(--sp-3);}
+  #page-notes .tabs.seg{width:100%;}
+  #pane-notes .add-row{flex-wrap:wrap;padding:7px;}
+  #pane-notes .add-row input[type=text]{flex:1 0 100%;}
+  #pane-notes .add-row .pill-btn{height:36px;}
+  #page-notes .note-row2{padding:var(--sp-3);}
+  #page-notes .n-act,#page-notes .n-grip{width:34px;height:34px;}
+  #page-notes .rem-add{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2);padding:9px;}
+  #page-notes #newReminderText,#page-notes .rem-add .pill-btn{grid-column:1/-1;}
+  #page-notes .rem-add input{width:100%;min-width:0;padding-inline:8px;font-size:12px;}
+  #page-notes .rem-add .pill-btn{justify-self:end;min-width:104px;}
+}
+
 /* ==== style/apps/apps.css ==== */
 /* ==========================================================================
    apps.css  --  Apps page: web-search bar, app tiles, quick system chips.
@@ -1895,6 +1970,19 @@ html[data-quality="low"] .rm-smart,html[data-quality="low"] .undo-bar{transition
 #page-apps .sys-chips{gap:var(--sp-2);}
 #page-apps .sys-chips .chip{display:inline-flex;align-items:center;height:34px;box-sizing:border-box;padding:0 15px;}
 html[data-quality="low"] #page-apps .app-tile:hover{transform:none;box-shadow:none;}
+
+/* App launcher hierarchy: grouped surfaces share one grid rhythm, with a stable touch target. */
+#page-apps .apps-grid{grid-template-columns:repeat(auto-fill,minmax(124px,1fr));gap:var(--sp-3);}
+#page-apps .app-tile{background:linear-gradient(150deg,rgb(var(--core-rgb) / .045),transparent 58%),var(--panel);border-color:rgb(var(--fg-rgb) / .11);box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+#page-apps .app-tile:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+#page-apps .section-label{display:flex;align-items:center;gap:var(--sp-2);}
+#page-apps .section-label::before{content:"";width:4px;height:14px;border-radius:3px;background:linear-gradient(var(--core),var(--think));}
+@media(max-width:620px){
+  #page-apps .page-body{padding-inline:16px;}
+  #page-apps .apps-grid{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:var(--sp-2);}
+  #page-apps .app-tile{min-height:92px;}
+  #page-apps .apps-search .pill-btn{padding-inline:var(--sp-3);}
+}
 
 /* ==== style/apps/music.css ==== */
 /* ==========================================================================
@@ -2698,6 +2786,25 @@ html[data-quality="low"] .rt-link::after,html[data-quality="low"] .rt-detail{tra
 html:is([data-quality="low"],[data-motion="reduce"]) #page-automation #modeChips .mode-tile:hover:not(:active){transform:none;}   /* same weight as the hover rule above, so it really wins */
 @media (prefers-reduced-motion:reduce){#page-automation .mode-check,#page-automation #modeChips .mode-tile{transition:none;}}
 
+/* Routine workspace surfaces and small-screen controls. */
+#page-automation #modeChips .mode-tile{background:linear-gradient(145deg,rgb(var(--core-rgb) / .045),transparent 58%),var(--panel);box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+#page-automation #modeChips .mode-tile:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;}
+#page-automation .auto-card{background:linear-gradient(115deg,rgb(var(--core-rgb) / .035),transparent 44%),var(--panel);border-color:rgb(var(--fg-rgb) / .11);box-shadow:inset 0 1px 0 rgb(var(--fg-rgb) / .035);}
+#page-automation .auto-card:hover{border-color:rgb(var(--core-rgb) / .32);box-shadow:var(--shadow-rest);}
+#page-automation .rt-tpl{background:linear-gradient(145deg,rgb(var(--think-rgb) / .035),transparent 62%),var(--panel);}
+#page-automation .section-label{display:flex;align-items:center;gap:var(--sp-2);}
+#page-automation .section-label::before{content:"";width:4px;height:14px;border-radius:3px;background:linear-gradient(var(--core),var(--think));}
+@media(max-width:620px){
+  #page-automation .page-body{padding-inline:16px;}
+  #page-automation #modeChips{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-2);}
+  #page-automation #modeChips .mode-tile{min-height:90px;padding:var(--sp-3);}
+  #page-automation .auto-head{align-items:center;}
+  #page-automation #newRoutineBtn{padding-inline:var(--sp-3);font-size:12px;}
+  #page-automation .auto-card{padding:var(--sp-2);gap:var(--sp-2);}
+  #page-automation .auto-plate{width:34px;height:34px;}
+  #page-automation .auto-info .a-name{font-size:13px;}
+}
+
 /* ==== style/settings/settings.css ==== */
 /* ==========================================================================
    settings.css  --  Settings page: setting rows, language chips, accordions,
@@ -2954,6 +3061,31 @@ html:is([data-quality="low"],[data-motion="reduce"]) #page-automation #modeChips
 @media (prefers-reduced-motion:reduce){#page-settings .set-group.on{animation:none;}}
 html[data-quality="low"] #page-settings .set-group.on{animation:none;}
 
+/* Settings information architecture: clear group switching and predictable narrow layouts. */
+#page-settings #setRail button.on{background:linear-gradient(100deg,rgb(var(--core-rgb) / .14),rgb(var(--core-rgb) / .045));}
+#page-settings #setRail button:focus-visible{outline-offset:-2px;}
+#page-settings .set-group-head{padding:0 0 var(--sp-2);}
+#page-settings .set-group-title{letter-spacing:-.015em;}
+#page-settings .set-group-grid{align-items:start;}
+#page-settings .set-card{background:linear-gradient(155deg,rgb(var(--core-rgb) / .035),transparent 44%),var(--panel);}
+@media(max-width:980px){
+  #page-settings .page-body{padding-inline:24px;}
+  #page-settings #setRail{scroll-snap-type:x proximity;padding-bottom:2px;}
+  #page-settings #setRail button{scroll-snap-align:start;}
+}
+@media(max-width:620px){
+  #page-settings .page-body{padding:var(--sp-3) 16px var(--sp-4);}
+  #page-settings #setRail{gap:5px;margin-inline:-4px;padding-inline:4px;}
+  #page-settings #setRail button{height:40px;padding-inline:10px;font-size:12px;}
+  #page-settings #setRail button .ic{width:17px;height:17px;}
+  #page-settings .set-group-title{font-size:20px;}
+  #page-settings .set-card{padding:var(--sp-4) var(--sp-3) var(--sp-2);border-radius:var(--r-sm);}
+  #page-settings .set-card-head{align-items:flex-start;}
+  #page-settings .set-card-sub{max-width:45%;}
+  #page-settings .sys-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}
+  #page-settings .theme-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+
 /* ---- search (phase 4c): results from all groups in the pane, hit counts in the group list ---- */
 #page-settings .set-search-wrap{position:relative;display:flex;align-items:center;margin-bottom:var(--sp-1);color:var(--muted);}
 #page-settings .set-search-wrap .ic{position:absolute;left:var(--sp-3);pointer-events:none;}
@@ -3073,6 +3205,16 @@ html[data-quality="low"] #page-settings .set-group.on{animation:none;}
   #page-settings .an-layout{grid-template-columns:minmax(0,1fr);}
   #page-settings .sys-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}
   #page-settings .theme-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:620px){
+  #page-settings .page-body{padding:var(--sp-3) 16px var(--sp-4);}
+  #page-settings .set-card{padding:var(--sp-4) var(--sp-3) var(--sp-2);border-radius:var(--r-sm);background:linear-gradient(155deg,rgb(var(--core-rgb) / .035),transparent 44%),var(--panel);}
+  #page-settings .set-card-head{align-items:flex-start;}
+  #page-settings .set-card-sub{max-width:45%;}
+  #page-settings .set-row{gap:var(--sp-2);}
+  #page-settings .set-info{flex:1 1 150px;}
+  #page-settings .set-row input[type=text]{width:100%;}
+  #page-settings .slider-wrap{width:100%;}
 }
 
 /* ==== style/settings/perf.css ==== */
