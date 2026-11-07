@@ -146,3 +146,7 @@ sara/gui/CHANGELOG_GUI.md
 tests/PROVIDER_FEATURE_MATRIX.md
 bench/results/*
 !bench/results/RESULTS.md
+
+# Local packaging directories
+/packaging_hooks/
+/packaging_resources/
