@@ -122,6 +122,7 @@
   function refreshChrome() {
     const m = MODES[modeName], paused = isPausedIdle();
     const rgb = paused ? MUTED_RGB : m.rgb;
+    const stage = $('stage'); if (stage) stage.dataset.state = paused ? 'idle' : modeName;
     document.body.classList.toggle('sara-active', modeName !== 'idle' && !paused);   // ambient.css glow intensify
     document.body.classList.toggle('sara-speaking', (modeName === 'speaking' || modeName === 'working') && !paused);
     document.querySelectorAll('[data-mini]').forEach(function (el) {

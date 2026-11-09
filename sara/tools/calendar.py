@@ -67,11 +67,15 @@ def _token_path() -> str:
     return getattr(Config, "GOOGLE_CALENDAR_TOKEN_PATH", "") or ""
 
 
-def get_calendar_service():
+def get_calendar_service(*, allow_interactive_auth: bool = False):
     """
     Returns an authorized Google Calendar API service object, or None if
     calendar isn't configured / auth fails for any reason. Never raises —
     calendar features simply go into a "not connected" state instead.
+
+    Browser consent is only allowed for an explicit user-requested calendar
+    action. Status checks, the Home page and proactive polling must stay
+    non-interactive so startup cannot open an OAuth browser window.
     """
     if not _GOOGLE_LIBS_AVAILABLE:
         if Config.DEBUG_MODE:
@@ -105,6 +109,8 @@ def get_calendar_service():
                     creds = None
 
             if not creds or not creds.valid:
+                if not allow_interactive_auth:
+                    return None
                 flow = InstalledAppFlow.from_client_secrets_file(creds_path, _SCOPES)
                 # Opens the user's default browser for one-time consent.
                 creds = flow.run_local_server(port=0)
@@ -133,10 +139,15 @@ def _event_to_dict(event: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _list_events(time_min: datetime, time_max: datetime) -> List[Dict[str, Any]]:
+def _list_events(
+    time_min: datetime,
+    time_max: datetime,
+    *,
+    allow_interactive_auth: bool = False,
+) -> List[Dict[str, Any]]:
     """Shared list-events helper behind get_today_events()/get_upcoming_events()."""
     try:
-        service = get_calendar_service()
+        service = get_calendar_service(allow_interactive_auth=allow_interactive_auth)
         if service is None:
             return []
         events_result = (
@@ -156,7 +167,7 @@ def _list_events(time_min: datetime, time_max: datetime) -> List[Dict[str, Any]]
         return []
 
 
-def get_today_events() -> List[Dict[str, Any]]:
+def get_today_events(*, allow_interactive_auth: bool = False) -> List[Dict[str, Any]]:
     """
     Returns today's events:
     [{"summary": str, "start": ISO-str, "end": ISO-str, "location": str}, ...]
@@ -165,7 +176,11 @@ def get_today_events() -> List[Dict[str, Any]]:
     now = datetime.now()
     start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + timedelta(days=1)
-    return _list_events(start_of_day, end_of_day)
+    return _list_events(
+        start_of_day,
+        end_of_day,
+        allow_interactive_auth=allow_interactive_auth,
+    )
 
 
 def get_upcoming_events(days: int = 7) -> List[Dict[str, Any]]:
@@ -202,7 +217,7 @@ def create_event(
         end_dt = start_dt + timedelta(hours=1)
 
     try:
-        service = get_calendar_service()
+        service = get_calendar_service(allow_interactive_auth=True)
         if service is None:
             return {
                 "ok": False,

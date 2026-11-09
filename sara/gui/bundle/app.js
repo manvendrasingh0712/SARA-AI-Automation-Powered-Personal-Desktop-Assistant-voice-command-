@@ -338,36 +338,38 @@
   ['tap', 'wake', 'listenStart', 'listenEnd', 'thinking', 'speakStart', 'sent', 'received', 'added', 'done', 'notify', 'run', 'saved',
    'success', 'error', 'bootDone', 'themeSwitch', 'pageSwitch', 'sliderTick'].forEach(function (n) { S[n] = function () { play(n); }; });
 
-  /* ---- boot overlay (driven by 'boot_progress' + 'backend_ready' events) ----
-     The percentage the backend sends is only the TARGET; the bar eases toward it every frame so it never jumps. */
-  let boot = null, bootDone = false, bootTarget = 0, bootShown = 0;
+  /* ---- boot overlay (real backend boot_progress + backend_ready events) ---- */
+  let boot = null, bootDone = false, bootTarget = 0;
   function ensureBoot() {
     if (boot || bootDone) return boot;
-    const root = document.createElement('div'); root.className = 'boot-overlay';
-    root.innerHTML = '<div class="boot-orb"></div><div class="boot-msg">Starting up…</div><div class="boot-track"><div class="boot-fill"></div></div>';
-    document.body.appendChild(root);
-    boot = { root, msg: root.querySelector('.boot-msg'), fill: root.querySelector('.boot-fill') };
-    requestAnimationFrame(bootTick);
+    const root = document.getElementById('bootOverlay');
+    if (!root) return null;
+    boot = {
+      root,
+      msg: root.querySelector('.boot-msg'),
+      fill: root.querySelector('.boot-fill'),
+      track: root.querySelector('.boot-track'),
+      error: root.querySelector('.boot-error'),
+      action: root.querySelector('.boot-continue')
+    };
+    if (boot.action) boot.action.addEventListener('click', function () { finishBoot(false); }, { once: true });
     return boot;
   }
-  function bootTick() {
-    if (!boot) return;
-    const diff = bootTarget - bootShown;
-    bootShown = (SARA.reduceMotion || Math.abs(diff) < 0.1) ? bootTarget : bootShown + diff * 0.08;
-    boot.fill.style.width = bootShown.toFixed(2) + '%';
-    if (bootTarget >= 100 && bootShown >= 99.5) { finishBoot(); return; }
-    requestAnimationFrame(bootTick);
-  }
-  function finishBoot() {
+  function finishBoot(playReadySound) {
     if (bootDone) return; bootDone = true;
-    const o = boot; boot = null; if (!o) return;
-    try { SARA.sound.bootDone(); } catch (e) { /* audio may be blocked before the first gesture */ }
+    const o = boot || ensureBoot(); boot = null; if (!o) return;
+    if (playReadySound !== false) {
+      try { SARA.sound.bootDone(); } catch (e) { /* audio may be blocked before the first gesture */ }
+    }
     try {
       const st = document.getElementById('stage');
       if (st && !SARA.reduceMotion && SARA.quality && SARA.quality.allows('p6')) { st.classList.add('orb-enter'); setTimeout(function () { st.classList.remove('orb-enter'); }, 800); }
     } catch (e) { /* cosmetic only */ }
-    o.root.style.pointerEvents = 'none'; o.root.style.opacity = '0';
-    setTimeout(() => o.root.remove(), 420);
+    o.root.dataset.state = 'ready';
+    o.root.classList.add('boot-leaving');
+    o.root.setAttribute('aria-hidden', 'true');
+    o.root.style.pointerEvents = 'none';
+    setTimeout(() => o.root.remove(), SARA.reduceMotion ? 0 : 560);
   }
   SARA.bootOverlay = {
     update(message, percent) {
@@ -376,12 +378,28 @@
       if (message) o.msg.textContent = message;
       const pct = Math.max(0, Math.min(100, Number(percent) || 0));
       if (pct > bootTarget) bootTarget = pct;                // never slide backwards
+      o.fill.style.transform = 'scaleX(' + (bootTarget / 100) + ')';
+      o.track.setAttribute('aria-valuenow', String(Math.round(bootTarget)));
     },
     hide() {
       if (bootDone) return;
-      if (!boot) { bootDone = true; return; }
-      bootTarget = 100;                                       // let the bar finish its run, then fade out
-      setTimeout(finishBoot, 1200);                           // safety net if animation frames are paused
+      finishBoot();                                           // backend_ready is authoritative; progress alone never dismisses the splash
+    },
+    fail(message) {
+      if (bootDone) return;
+      const o = ensureBoot(); if (!o) return;
+      o.root.dataset.state = 'error';
+      o.msg.textContent = 'Startup could not finish';
+      o.error.textContent = message || 'SARA could not connect to its desktop backend. Check the startup log and restart the app.';
+      o.error.hidden = false;
+      o.action.hidden = false;
+      o.track.hidden = true;
+    },
+    preview() {
+      if (bootDone) return;
+      bootDone = true;
+      const root = document.getElementById('bootOverlay');
+      if (root) root.remove();                         // browser preview has no backend startup to display
     }
   };
 })();
@@ -556,6 +574,21 @@
   SARA.on('ev:proactive_notification', function (icon, color, msg, trigger, reason) { SARA.toast(icon, color, msg, { tone: 'notify', sub: reason }); SARA.proactiveHint(); });
   SARA.on('ev:boot_progress', function (m, p) { SARA.bootOverlay.update(m, p); });
   SARA.on('ev:backend_ready', function () { SARA.refreshConnection(); SARA.bootOverlay.hide(); SARA.emit('backend_ready'); });
+  SARA.on('ev:backend_error', function (message) { SARA.bootOverlay.fail(message); });
+
+  if (!window.pywebview) {
+    // pywebview injects its API asynchronously before pywebviewready. Give
+    // that bridge its normal startup grace before treating this as a browser preview.
+    setTimeout(function () {
+      if (!window.pywebview && !SARA.isConnected()) SARA.bootOverlay.preview();
+    }, GRACE_MS + 250);
+  } else {
+    // A bound API proves the bridge is alive even while backend initialization continues.
+    // If that binding never arrives, leave the splash in a useful, dismissible error state.
+    setTimeout(function () {
+      if (!SARA.isConnected()) SARA.bootOverlay.fail();
+    }, 20000);
+  }
 
   /* ---- navigation ---- */
   SARA.gotoPage = function (name) {
@@ -1071,12 +1104,7 @@
   /* ---- 1) nav indicator ---- */
   function moveInd() {
     const b = nav.querySelector('button.active'); if (!b || !ind) return;
-    if (window.matchMedia && window.matchMedia('(min-width:1000px)').matches) {      // sidebar: the pill follows the button vertically, width comes from CSS
-      ind.style.width = ''; ind.style.height = b.offsetHeight + 'px';
-      ind.style.transform = 'translateY(' + b.offsetTop + 'px)';
-      return;
-    }
-    ind.style.height = '';                                                          // narrow window: the old bottom pill
+    ind.style.height = '';
     ind.style.width = b.offsetWidth + 'px';
     ind.style.transform = 'translateX(' + b.offsetLeft + 'px)';
   }
@@ -1302,15 +1330,15 @@
   const SARA = window.SARA, $ = SARA.$;
   const nav = $('navBar'); if (!nav) return;
   const mm = function (q) { return window.matchMedia ? window.matchMedia(q) : { matches: false, addEventListener: function () {} }; };
-  const rail = mm('(min-width:1000px)'), wide = mm('(min-width:1180px)');
+  const wide = mm('(min-width:1180px)');
   const store = {
     get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   };
 
   /* ---- layout mode, for anything that wants to know ---- */
-  function mode() { document.body.dataset.nav = rail.matches ? 'rail' : 'bar'; }
-  mode(); rail.addEventListener && rail.addEventListener('change', mode);
+  function mode() { document.body.dataset.nav = 'bar'; }
+  mode();
 
   /* ---- expand on hover (after 250 ms) or keyboard focus; collapse shortly after the pointer leaves ---- */
   let openT = 0, closeT = 0;
@@ -1672,8 +1700,7 @@
       }
     }
     const queue = function () { if (!frame) frame = raf(paint); };
-    const railNow = function () { return window.matchMedia && window.matchMedia('(min-width:1000px)').matches; };   // the vertical sidebar has no x-proximity effect
-    nav.addEventListener('pointerenter', function (e) { if (e.pointerType === 'touch' || railNow()) return; inside = true; measure(); mx = e.clientX; queue(); });
+    nav.addEventListener('pointerenter', function (e) { if (e.pointerType === 'touch') return; inside = true; measure(); mx = e.clientX; queue(); });
     nav.addEventListener('pointermove', function (e) { if (e.pointerType === 'touch' || !inside) return; mx = e.clientX; queue(); }, { passive: true });
     nav.addEventListener('pointerleave', function () { inside = false; queue(); });
     nav.addEventListener('scroll', function () { if (inside) { measure(); queue(); } }, { passive: true });
@@ -1694,11 +1721,8 @@
       tip.textContent = text;
       const sc = btn.dataset.shortcut;
       if (sc) { const k = document.createElement('kbd'); k.textContent = sc; tip.appendChild(k); btn.setAttribute('aria-keyshortcuts', sc); }
-      const r = btn.getBoundingClientRect(), rail = window.matchMedia && window.matchMedia('(min-width:1000px)').matches;
-      if (rail && nav.classList.contains('open')) return;                      // labels are visible, no tooltip needed
-      tip.classList.toggle('side', !!rail);
-      if (rail) { tip.style.left = Math.round(r.right + 10) + 'px'; tip.style.top = Math.round(r.top + r.height / 2) + 'px'; }
-      else { tip.style.left = Math.round(r.left + r.width / 2) + 'px'; tip.style.top = Math.round(r.top) + 'px'; }
+      const r = btn.getBoundingClientRect();
+      tip.style.left = Math.round(r.left + r.width / 2) + 'px'; tip.style.top = Math.round(r.top) + 'px';
       tip.classList.add('show');
     }
     function arm(btn, delay) { if (btn === current) return; hide(); current = btn; timer = setTimeout(function () { show(btn); }, delay); }
@@ -1872,6 +1896,7 @@
   function refreshChrome() {
     const m = MODES[modeName], paused = isPausedIdle();
     const rgb = paused ? MUTED_RGB : m.rgb;
+    const stage = $('stage'); if (stage) stage.dataset.state = paused ? 'idle' : modeName;
     document.body.classList.toggle('sara-active', modeName !== 'idle' && !paused);   // ambient.css glow intensify
     document.body.classList.toggle('sara-speaking', (modeName === 'speaking' || modeName === 'working') && !paused);
     document.querySelectorAll('[data-mini]').forEach(function (el) {

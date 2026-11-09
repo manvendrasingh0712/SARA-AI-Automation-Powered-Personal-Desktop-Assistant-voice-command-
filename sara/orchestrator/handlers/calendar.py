@@ -25,7 +25,9 @@ def _h_calendar_today(match, ctx):
     """
     _ack(ctx)
     ctx["ui_update"]("status", "thinking")
-    events = calendar_tools.get_today_events()
+    # This call only runs after the user explicitly asks about their
+    # calendar, so it is an appropriate point to offer first-time consent.
+    events = calendar_tools.get_today_events(allow_interactive_auth=True)
     if not events:
         status = calendar_tools.get_calendar_status()
         if not status.get("connected"):

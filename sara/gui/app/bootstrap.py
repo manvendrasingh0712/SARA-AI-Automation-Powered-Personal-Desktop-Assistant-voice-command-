@@ -164,6 +164,10 @@ def main():
         except Exception as e:
             print(f"[boot heavy error] {e}")
             _boot["error"] = e
+            _push(
+                "backend_error",
+                "SARA could not finish initializing. Check the startup log and restart the app.",
+            )
         finally:
             # Proxy calls ko hamesha unblock karo -- boot fail ho jaye
             # tab bhi, warna woh sab _WAIT_TIMEOUT tak latke rahenge.

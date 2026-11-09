@@ -1480,7 +1480,9 @@ class Config:
     # Local tool routing with a JSON-schema constrained answer (only existing tool names can be produced).
     TOOL_CALLING_STRUCTURED: bool = _bool(os.getenv("TOOL_CALLING_STRUCTURED", "False"), default=False)
     # Longest wait for the long-term memory search before a chat reply goes out without it (0 = no limit).
-    RAG_DEADLINE_S: float = _float(os.getenv("RAG_DEADLINE_S"), default=0.8)
+    # Keep the default aligned with Memory 2.0's 400 ms retrieval budget so a slow vector search cannot add
+    # another full wait before every local-model reply.
+    RAG_DEADLINE_S: float = _float(os.getenv("RAG_DEADLINE_S"), default=0.4)
     # Opt-in: tell the model the active window title (privacy-filtered) and battery each turn. See sara/core/context_line.py.
     CONTEXT_AWARE_ENABLED: bool = _bool(os.getenv("CONTEXT_AWARE_ENABLED", "False"), default=False)
     CONTEXT_DENY_PATTERN: str = os.getenv("CONTEXT_DENY_PATTERN", "")

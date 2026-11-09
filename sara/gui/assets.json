@@ -32,7 +32,8 @@
     "style/settings/settings-presets.css",
     "style/shared/a11y.css",
     "style/shared/empty-states.css",
-    "style/shared/guide.css"
+    "style/shared/guide.css",
+    "style/fx/motion-premium.css"
   ],
   "js": [
     "js/core/ui.js",

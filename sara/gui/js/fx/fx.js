@@ -16,12 +16,7 @@
   /* ---- 1) nav indicator ---- */
   function moveInd() {
     const b = nav.querySelector('button.active'); if (!b || !ind) return;
-    if (window.matchMedia && window.matchMedia('(min-width:1000px)').matches) {      // sidebar: the pill follows the button vertically, width comes from CSS
-      ind.style.width = ''; ind.style.height = b.offsetHeight + 'px';
-      ind.style.transform = 'translateY(' + b.offsetTop + 'px)';
-      return;
-    }
-    ind.style.height = '';                                                          // narrow window: the old bottom pill
+    ind.style.height = '';
     ind.style.width = b.offsetWidth + 'px';
     ind.style.transform = 'translateX(' + b.offsetLeft + 'px)';
   }

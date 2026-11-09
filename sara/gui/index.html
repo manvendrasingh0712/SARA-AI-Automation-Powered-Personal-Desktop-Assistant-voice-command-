@@ -11,7 +11,7 @@
 <title>SARA AI</title>
 <!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="bundle/app.css?v=0abf09622a">
+<link rel="stylesheet" href="bundle/app.css?v=ba4b51bad2">
 </head>
 <body data-page="home">
 <!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
@@ -46,6 +46,38 @@
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
 </svg>
+<section class="boot-overlay" id="bootOverlay" data-state="awakening" role="status" aria-live="polite" aria-label="SARA AI starting">
+  <div class="boot-atmosphere" aria-hidden="true"></div>
+  <div class="boot-content">
+    <div class="boot-brand" aria-hidden="true">
+      <span class="boot-mark"><svg viewBox="0 0 32 32"><path d="M23.7 8.8c-1.7-1.9-4.2-2.9-7.7-2.9-4.4 0-7.4 2-7.4 5.4 0 3.1 2.3 4.3 7.2 5.2 4.5.8 6.2 1.5 6.2 3.6 0 2.2-2.1 3.5-5.6 3.5-3.1 0-5.6-.9-7.8-3.2"/><path d="M23.7 8.8l1.7-2.2"/></svg></span>
+      <span class="boot-wordmark">SARA<span> AI</span></span>
+    </div>
+    <div class="boot-emblem" aria-hidden="true">
+      <span class="boot-orbit boot-orbit--outer"><i></i></span>
+      <span class="boot-orbit boot-orbit--tilt"><i></i></span>
+      <span class="boot-orbit boot-orbit--inner"><i></i></span>
+      <span class="boot-particle boot-particle--a"></span><span class="boot-particle boot-particle--b"></span>
+      <span class="boot-particle boot-particle--c"></span><span class="boot-particle boot-particle--d"></span>
+      <span class="boot-particle boot-particle--e"></span><span class="boot-particle boot-particle--f"></span>
+      <div class="boot-core"><span class="boot-core-light"></span>
+        <svg class="boot-sigil" viewBox="0 0 72 72"><path d="M52 20.5C48.3 15.9 42.7 13.5 35 13.5c-10.5 0-17.5 5.1-17.5 13.2 0 7.5 5.5 10.8 17.1 13 10.7 2 15 4.1 15 9.2 0 6-5.7 9.8-14.3 9.8-7.7 0-14.1-2.7-18.9-7.9"/><path class="boot-sigil-star" d="M54.5 41.5v8m-4-4h8"/></svg>
+      </div>
+      <span class="boot-wave" aria-hidden="true"></span>
+    </div>
+    <div class="boot-copy">
+      <div class="boot-eyebrow">PERSONAL INTELLIGENCE</div>
+      <h1>Coming online</h1>
+      <p class="boot-msg" id="bootMessage">Starting SARA AI…</p>
+    </div>
+    <div class="boot-progress">
+      <div class="boot-track" id="bootTrack" role="progressbar" aria-label="Application startup" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="boot-fill" id="bootFill"></div></div>
+      <div class="boot-error" id="bootError" role="alert" hidden></div>
+      <button type="button" class="boot-continue" id="bootContinue" hidden>Continue to the interface</button>
+    </div>
+    <div class="boot-footnote"><span class="boot-footnote-dot"></span><span>REAL-TIME SYSTEM INITIALIZATION</span></div>
+  </div>
+</section>
 <div class="offline-strip" id="offlineStrip" hidden>Preview mode — backend not connected (sample data)</div>
 
 <div class="app">
@@ -762,6 +794,6 @@
      only when there is no Python bridge at all, so it can never answer a
      call in the packaged app. -->
 <!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
-<script src="bundle/app.js?v=b2900af8b4"></script>
+<script src="bundle/app.js?v=3dd606dfaa"></script>
 </body>
 </html>

@@ -166,6 +166,21 @@
   SARA.on('ev:proactive_notification', function (icon, color, msg, trigger, reason) { SARA.toast(icon, color, msg, { tone: 'notify', sub: reason }); SARA.proactiveHint(); });
   SARA.on('ev:boot_progress', function (m, p) { SARA.bootOverlay.update(m, p); });
   SARA.on('ev:backend_ready', function () { SARA.refreshConnection(); SARA.bootOverlay.hide(); SARA.emit('backend_ready'); });
+  SARA.on('ev:backend_error', function (message) { SARA.bootOverlay.fail(message); });
+
+  if (!window.pywebview) {
+    // pywebview injects its API asynchronously before pywebviewready. Give
+    // that bridge its normal startup grace before treating this as a browser preview.
+    setTimeout(function () {
+      if (!window.pywebview && !SARA.isConnected()) SARA.bootOverlay.preview();
+    }, GRACE_MS + 250);
+  } else {
+    // A bound API proves the bridge is alive even while backend initialization continues.
+    // If that binding never arrives, leave the splash in a useful, dismissible error state.
+    setTimeout(function () {
+      if (!SARA.isConnected()) SARA.bootOverlay.fail();
+    }, 20000);
+  }
 
   /* ---- navigation ---- */
   SARA.gotoPage = function (name) {

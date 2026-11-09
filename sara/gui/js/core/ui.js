@@ -334,36 +334,38 @@
   ['tap', 'wake', 'listenStart', 'listenEnd', 'thinking', 'speakStart', 'sent', 'received', 'added', 'done', 'notify', 'run', 'saved',
    'success', 'error', 'bootDone', 'themeSwitch', 'pageSwitch', 'sliderTick'].forEach(function (n) { S[n] = function () { play(n); }; });
 
-  /* ---- boot overlay (driven by 'boot_progress' + 'backend_ready' events) ----
-     The percentage the backend sends is only the TARGET; the bar eases toward it every frame so it never jumps. */
-  let boot = null, bootDone = false, bootTarget = 0, bootShown = 0;
+  /* ---- boot overlay (real backend boot_progress + backend_ready events) ---- */
+  let boot = null, bootDone = false, bootTarget = 0;
   function ensureBoot() {
     if (boot || bootDone) return boot;
-    const root = document.createElement('div'); root.className = 'boot-overlay';
-    root.innerHTML = '<div class="boot-orb"></div><div class="boot-msg">Starting up…</div><div class="boot-track"><div class="boot-fill"></div></div>';
-    document.body.appendChild(root);
-    boot = { root, msg: root.querySelector('.boot-msg'), fill: root.querySelector('.boot-fill') };
-    requestAnimationFrame(bootTick);
+    const root = document.getElementById('bootOverlay');
+    if (!root) return null;
+    boot = {
+      root,
+      msg: root.querySelector('.boot-msg'),
+      fill: root.querySelector('.boot-fill'),
+      track: root.querySelector('.boot-track'),
+      error: root.querySelector('.boot-error'),
+      action: root.querySelector('.boot-continue')
+    };
+    if (boot.action) boot.action.addEventListener('click', function () { finishBoot(false); }, { once: true });
     return boot;
   }
-  function bootTick() {
-    if (!boot) return;
-    const diff = bootTarget - bootShown;
-    bootShown = (SARA.reduceMotion || Math.abs(diff) < 0.1) ? bootTarget : bootShown + diff * 0.08;
-    boot.fill.style.width = bootShown.toFixed(2) + '%';
-    if (bootTarget >= 100 && bootShown >= 99.5) { finishBoot(); return; }
-    requestAnimationFrame(bootTick);
-  }
-  function finishBoot() {
+  function finishBoot(playReadySound) {
     if (bootDone) return; bootDone = true;
-    const o = boot; boot = null; if (!o) return;
-    try { SARA.sound.bootDone(); } catch (e) { /* audio may be blocked before the first gesture */ }
+    const o = boot || ensureBoot(); boot = null; if (!o) return;
+    if (playReadySound !== false) {
+      try { SARA.sound.bootDone(); } catch (e) { /* audio may be blocked before the first gesture */ }
+    }
     try {
       const st = document.getElementById('stage');
       if (st && !SARA.reduceMotion && SARA.quality && SARA.quality.allows('p6')) { st.classList.add('orb-enter'); setTimeout(function () { st.classList.remove('orb-enter'); }, 800); }
     } catch (e) { /* cosmetic only */ }
-    o.root.style.pointerEvents = 'none'; o.root.style.opacity = '0';
-    setTimeout(() => o.root.remove(), 420);
+    o.root.dataset.state = 'ready';
+    o.root.classList.add('boot-leaving');
+    o.root.setAttribute('aria-hidden', 'true');
+    o.root.style.pointerEvents = 'none';
+    setTimeout(() => o.root.remove(), SARA.reduceMotion ? 0 : 560);
   }
   SARA.bootOverlay = {
     update(message, percent) {
@@ -372,12 +374,28 @@
       if (message) o.msg.textContent = message;
       const pct = Math.max(0, Math.min(100, Number(percent) || 0));
       if (pct > bootTarget) bootTarget = pct;                // never slide backwards
+      o.fill.style.transform = 'scaleX(' + (bootTarget / 100) + ')';
+      o.track.setAttribute('aria-valuenow', String(Math.round(bootTarget)));
     },
     hide() {
       if (bootDone) return;
-      if (!boot) { bootDone = true; return; }
-      bootTarget = 100;                                       // let the bar finish its run, then fade out
-      setTimeout(finishBoot, 1200);                           // safety net if animation frames are paused
+      finishBoot();                                           // backend_ready is authoritative; progress alone never dismisses the splash
+    },
+    fail(message) {
+      if (bootDone) return;
+      const o = ensureBoot(); if (!o) return;
+      o.root.dataset.state = 'error';
+      o.msg.textContent = 'Startup could not finish';
+      o.error.textContent = message || 'SARA could not connect to its desktop backend. Check the startup log and restart the app.';
+      o.error.hidden = false;
+      o.action.hidden = false;
+      o.track.hidden = true;
+    },
+    preview() {
+      if (bootDone) return;
+      bootDone = true;
+      const root = document.getElementById('bootOverlay');
+      if (root) root.remove();                         // browser preview has no backend startup to display
     }
   };
 })();

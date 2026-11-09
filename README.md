@@ -412,36 +412,32 @@ The desktop client uses **pywebview** to package an HTML/CSS/JavaScript interfac
 ```text
 Home
 Chat
-Notes & Reminders
+Notes
 Apps
 Automation
 Settings
 ```
 
-The UI is backed by a Python → JavaScript event bridge so assistant state can be reflected in the interface without moving the core application logic into the browser layer.
+The six destinations are available from a floating, bottom-centered navigation pill. Notes and Reminders are tabs within the Notes destination. The UI is backed by a Python → JavaScript event bridge so assistant state can be reflected in the interface without moving the core application logic into the browser layer.
 
 ### Screenshots
 
 <table>
 <tr>
-<td><img src="./assets/screenshots/home.png" alt="Home" /></td>
-<td><img src="./assets/screenshots/chat.png" alt="Chat" /></td>
+<td><img src="./assets/screenshots/home.png" alt="SARA AI Home dashboard with assistant orb and bottom navigation" width="100%" /></td>
+<td><img src="./assets/screenshots/chat.png" alt="SARA AI Chat page with conversation composer and bottom navigation" width="100%" /></td>
 </tr>
 <tr>
-<td><img src="./assets/screenshots/ai%20brain.png" alt="AI Brain" /></td>
-<td><img src="./assets/screenshots/apps%20%26%20tools.png" alt="Apps and Tools" /></td>
+<td><img src="./assets/screenshots/notes.png" alt="SARA AI Notes page" width="100%" /></td>
+<td><img src="./assets/screenshots/apps.png" alt="SARA AI Apps and quick tools page" width="100%" /></td>
 </tr>
 <tr>
-<td><img src="./assets/screenshots/automation.png" alt="Automation" /></td>
-<td><img src="./assets/screenshots/memory.png" alt="Memory" /></td>
+<td><img src="./assets/screenshots/automation.png" alt="SARA AI Automation modes and routines" width="100%" /></td>
+<td><img src="./assets/screenshots/settings.png" alt="SARA AI Settings page" width="100%" /></td>
 </tr>
 <tr>
-<td><img src="./assets/screenshots/notes.png" alt="Notes" /></td>
-<td><img src="./assets/screenshots/reminders.png" alt="Reminders" /></td>
-</tr>
-<tr>
-<td><img src="./assets/screenshots/settings.png" alt="Settings" /></td>
-<td><img src="./assets/screenshots/system%20control.png" alt="System Control" /></td>
+<td><img src="./assets/screenshots/reminder.png" alt="SARA AI Reminders tab within Notes" width="100%" /></td>
+<td></td>
 </tr>
 </table>
 
@@ -796,7 +792,7 @@ The current repository snapshot contains approximately:
 | Python modules under `sara/` | 99 |
 | Automated test modules | 9 |
 | Python LOC under `sara/` | ~30.6K |
-| UI screenshots | 12 |
+| UI screenshots | 7 |
 | Main UI sections | 6 |
 
 These numbers are descriptive rather than performance claims; they will naturally change as the project evolves.

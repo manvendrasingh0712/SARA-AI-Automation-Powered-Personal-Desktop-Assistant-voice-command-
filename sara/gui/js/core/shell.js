@@ -10,15 +10,15 @@
   const SARA = window.SARA, $ = SARA.$;
   const nav = $('navBar'); if (!nav) return;
   const mm = function (q) { return window.matchMedia ? window.matchMedia(q) : { matches: false, addEventListener: function () {} }; };
-  const rail = mm('(min-width:1000px)'), wide = mm('(min-width:1180px)');
+  const wide = mm('(min-width:1180px)');
   const store = {
     get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
   };
 
   /* ---- layout mode, for anything that wants to know ---- */
-  function mode() { document.body.dataset.nav = rail.matches ? 'rail' : 'bar'; }
-  mode(); rail.addEventListener && rail.addEventListener('change', mode);
+  function mode() { document.body.dataset.nav = 'bar'; }
+  mode();
 
   /* ---- expand on hover (after 250 ms) or keyboard focus; collapse shortly after the pointer leaves ---- */
   let openT = 0, closeT = 0;
