@@ -150,4 +150,13 @@ bench/results/*
 # Local packaging directories
 /packaging_hooks/
 /packaging_resources/
+!/packaging_hooks/
+!/packaging_hooks/hook-webrtcvad.py
+!/packaging_hooks/hook-sklearn.py
+!/packaging_hooks/hook-googleapiclient.model.py
+!/packaging_resources/
+!/packaging_resources/openwakeword/
+!/packaging_resources/openwakeword/melspectrogram.onnx
+!/packaging_resources/openwakeword/embedding_model.onnx
+!/packaging_resources/openwakeword/LICENSE
 /CLAUDE_CODE_PLAN.md

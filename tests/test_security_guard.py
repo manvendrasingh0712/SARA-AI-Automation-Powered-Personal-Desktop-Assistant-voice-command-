@@ -74,7 +74,7 @@ def test_pending_shape(monkeypatch):
     assert out.action == "confirm"
     assert set(pending) == {
         "action", "target", "tool", "origin", "text", "tool_name", "arguments",
-        "sources", "expires_at",
+        "sources", "expires_at", "approval_id",
     }
     assert pending["action"] == "guarded_tool"
     assert pending["target"] == pending["tool"] == "set_volume"
@@ -113,10 +113,16 @@ def test_deny_message_english(monkeypatch, source, label):
 
 def test_confirm_messages(monkeypatch):
     clean = guard.check_tool_call("lock_pc", "llm_tool", text=RAW)
-    assert clean.message == "lock pc -- shall I go ahead? Say yes or cancel."
+    assert clean.message == (
+        "lock pc (impactful and may be hard to undo, tier 2) -- "
+        "shall I go ahead? Say yes or cancel."
+    )
     set_taint(monkeypatch, ("clipboard",))
     tainted = guard.check_tool_call("set_volume", "llm_tool", text=RAW)
-    assert tainted.message == "set volume -- that request came from the clipboard. Say yes or cancel."
+    assert tainted.message == (
+        "set volume (low-risk and reversible, tier 1) -- "
+        "that request came from the clipboard. Say yes or cancel."
+    )
     assert "IGNORE" not in tainted.message
 
 
@@ -144,6 +150,12 @@ def test_arg_rejection_logged():
     assert rows and rows[0]["tool"] == "open_url"
 
 
+@pytest.mark.parametrize("args", [[], "bad", 5, False])
+def test_guard_rejects_malformed_argument_container(args):
+    out = guard.check_tool_call("weather", "llm_tool", args=args)
+    assert out.action == "deny" and out.reason == "arg_rejected"
+
+
 def test_blocked_and_confirm_events(monkeypatch):
     set_taint(monkeypatch, ("web_page",))
     guard.check_tool_call("lock_pc", "llm_tool")
@@ -165,10 +177,30 @@ def test_failsafe_when_import_missing(monkeypatch, missing):
 def test_mode_off_always_runs(monkeypatch):
     monkeypatch.setattr(Config, "SECURITY_MODE", "off", raising=False)
     set_taint(monkeypatch, ("web_page",))
-    out = guard.check_tool_call("shutdown_system", "llm_tool", args={"url": "javascript:1"})
+    out = guard.check_tool_call("shutdown_system", "llm_tool", args={})
     assert out.action == "run"
     events.flush()
     assert events.get_events() == []
+
+
+def test_mode_off_still_rejects_malformed_arguments(monkeypatch):
+    monkeypatch.setattr(Config, "SECURITY_MODE", "off", raising=False)
+    outcome = guard.check_tool_call("weather", "user_direct", args=[])
+    assert outcome.action == "deny" and outcome.reason == "arg_rejected"
+
+
+def test_unknown_tool_is_denied_even_in_off_mode(monkeypatch):
+    monkeypatch.setattr(Config, "SECURITY_MODE", "off", raising=False)
+    assert guard.check_tool_call("unregistered_tool", "user_direct").action == "deny"
+
+
+def test_confirmation_identifies_target_and_risk():
+    outcome = guard.check_tool_call(
+        "delete_todo", "llm_tool", args={"title": "milk"},
+    )
+    assert "delete todo" in outcome.message
+    assert "title='milk'" in outcome.message
+    assert "tier 2" in outcome.message and "hard to undo" in outcome.message
 
 
 def test_never_raises(monkeypatch):

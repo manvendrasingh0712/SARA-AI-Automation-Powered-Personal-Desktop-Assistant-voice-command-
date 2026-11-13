@@ -1,0 +1,30 @@
+/* Styles used only by the isolated static browser preview. */
+html.web-preview .page-header { padding-top: 42px; }
+.web-preview .web-preview-note,
+.web-preview .web-preview-detail {
+  flex: none;
+  margin: 4px 40px 0;
+  padding: 8px 12px;
+  border: 1px solid rgb(var(--core-rgb) / .18);
+  border-radius: 12px;
+  background: rgb(var(--panel-rgb, 255 255 255) / .52);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.web-preview [data-preview-disabled="true"] {
+  opacity: .48 !important;
+  cursor: not-allowed !important;
+  filter: saturate(.55);
+}
+.web-preview .page-status .mini-orb {
+  animation: none;
+  background: var(--muted);
+  box-shadow: none;
+}
+.web-preview .set-group-grid[hidden] { display: none !important; }
+@media (max-width: 700px) {
+  html.web-preview .page-header { padding-top: 48px; }
+  .web-preview .web-preview-note,
+  .web-preview .web-preview-detail { margin-left: 16px; margin-right: 16px; }
+}

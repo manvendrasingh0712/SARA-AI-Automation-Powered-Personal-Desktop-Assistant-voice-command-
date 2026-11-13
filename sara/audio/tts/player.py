@@ -91,6 +91,7 @@ _FAR_END_IDLE_POLL_S = 0.5
 # both happen off-thread.
 _LEVEL_QUEUE_MAXSIZE = 8
 _LEVEL_IDLE_POLL_S = 0.5
+_WORKER_JOIN_TIMEOUT_S = 1.0
 _LEVEL_PUSH_INTERVAL_S = float(getattr(Config, "AUDIO_LEVEL_PUSH_INTERVAL_S", 0.08))
 _LEVEL_PEAK_RMS = float(getattr(Config, "AUDIO_LEVEL_TTS_PEAK_RMS", 6000.0))
 
@@ -551,6 +552,12 @@ class _PersistentPlayer:
         except Exception:
             pass
         self._stream = None
+        current = threading.current_thread()
+        for worker in (self._far_end_thread, self._level_thread):
+            if worker is not None and worker is not current:
+                worker.join(timeout=_WORKER_JOIN_TIMEOUT_S)
+                if worker.is_alive():
+                    logger.warning("[TTS] player worker %s did not exit during close", worker.name)
 
 
 def _drain(q: queue.Queue) -> None:

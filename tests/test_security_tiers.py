@@ -1,6 +1,8 @@
 """tests/test_security_tiers.py -- every registered intent has exactly one reviewed tier."""
 
-import sara.orchestrator.intent_handlers  # noqa: F401  (registers skill intents)
+import importlib
+
+importlib.import_module("sara.orchestrator.intent_handlers")
 from sara.core.intent import patterns
 from sara.core.security import tiers
 

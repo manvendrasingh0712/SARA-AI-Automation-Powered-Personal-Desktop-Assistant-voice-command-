@@ -1,5 +1,3 @@
-import types
-
 from sara.tools.system import files_notes as fn
 
 

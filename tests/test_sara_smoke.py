@@ -297,6 +297,9 @@ class SaraSmokeTests(unittest.TestCase):
             "test_broken_skill", [r"trigger the broken test skill"], gate=("broken",)
         )
         register_handler("test_broken_skill", _broken_handler)
+        from sara.core.security import tiers as _tiers
+
+        _tiers.TIERS["test_broken_skill"] = 1
 
         class _FakeTTS:
             def speak(self, text, fast=False):
@@ -305,18 +308,21 @@ class SaraSmokeTests(unittest.TestCase):
         class _FakeBrain:
             model_name = "test-model"
 
-        result = _handle_command(
-            "trigger the broken test skill",
-            _FakeBrain(),
-            _FakeTTS(),
-            None,
-            None,
-            None,
-            None,
-            lambda *a: None,
-            {},
-            notes_memory=None,
-        )
+        try:
+            result = _handle_command(
+                "trigger the broken test skill",
+                _FakeBrain(),
+                _FakeTTS(),
+                None,
+                None,
+                None,
+                None,
+                lambda *a: None,
+                {},
+                notes_memory=None,
+            )
+        finally:
+            _tiers.TIERS.pop("test_broken_skill", None)
         self.assertIsInstance(result, str)
         self.assertIn("problem", result.lower())
 

@@ -71,10 +71,11 @@ class SystemAudioReference:
 
     def start(self) -> bool:
         try:
-            import soundcard  # noqa: F401
+            import soundcard
         except Exception as e:
             logger.info("system audio reference unavailable (soundcard missing: %s)", e)
             return False
+        logger.debug("system audio reference available via %s", soundcard.__name__)
         self._thread = threading.Thread(target=self._run, name="aec-system-reference", daemon=True)
         self._thread.start()
         return True

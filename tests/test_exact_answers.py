@@ -3,7 +3,9 @@ from datetime import date
 
 import pytest
 
-import sara.skills  # noqa: F401
+import importlib
+
+importlib.import_module("sara.skills")
 from sara.core import exact
 from sara.core.intent.engine import detect_intent
 from sara.orchestrator.calc_utils import _safe_calc

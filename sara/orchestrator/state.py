@@ -138,6 +138,11 @@ class TurnState:
 
 TURN_STATE = TurnState()
 
+# Stop button cancellation also covers an in-flight microphone capture, which
+# begins before a TurnState turn exists. The GUI sets this event; the voice
+# loop clears it only when a new wake session begins.
+VOICE_SESSION_CANCEL = threading.Event()
+
 
 # Typed commands are activity too. The voice loop's "going back to sleep" timer only knew about spoken turns, so a
 # user working through the chat box had the voice session put to sleep under them, and the reply of the command

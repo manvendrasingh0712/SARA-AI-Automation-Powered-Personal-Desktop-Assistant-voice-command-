@@ -303,10 +303,12 @@ def _tool_rule(tool: str, pairs: list[tuple[str, str]], args: Mapping[str, Any])
 
 
 def _validate(tool: str, args: Optional[Mapping[str, Any]]) -> ArgCheck:
-    if not args:
+    if args is None:
         return _OK
     if not isinstance(args, Mapping):
         return ArgCheck(False, "args_not_mapping")
+    if not args:
+        return _OK
     if len(args) > _MAX_ARGS:
         return ArgCheck(False, "too_many_args")
     try:

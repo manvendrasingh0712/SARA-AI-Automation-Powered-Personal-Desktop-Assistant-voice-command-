@@ -312,6 +312,8 @@ from sara.orchestrator import build_core_objects, run_sara_logic  # noqa: F401 -
 # to the frontend.
 from sara.orchestrator.intent_handlers import _handle_command  # noqa: F401 -- re-export; removing it reintroduces the bug above
 
+__all__ = ["build_core_objects", "run_sara_logic", "_handle_command", "main"]
+
 
 def main() -> None:
     # Must be the very first thing — before logging setup, before any

@@ -1,6 +1,5 @@
 """Live-test finding: the Calendar-page reminder add stored any string as its date."""
 import os
-import sqlite3
 import tempfile
 
 import pytest

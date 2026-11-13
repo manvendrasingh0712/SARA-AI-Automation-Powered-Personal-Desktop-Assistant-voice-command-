@@ -203,6 +203,11 @@ def test_validate_internal_error_fail_safe(monkeypatch):
     assert policy.validate_args("find_file", {"g1": "abc"}).ok
 
 
+@pytest.mark.parametrize("args", [[], (), "", 0, False])
+def test_validate_rejects_non_mapping_arguments(args):
+    assert not policy.validate_args("weather", args).ok
+
+
 def test_policy_calls_are_fast():
     start = time.perf_counter()
     for _ in range(1000):

@@ -1,140 +1,108 @@
-# Building Sara AI as a standalone Windows `.exe`
+# Building SARA AI for Windows
 
-This guide covers packaging Sara AI with [PyInstaller](https://pyinstaller.org/)
-into a distributable Windows executable. It assumes you can already run
-the project from source (see the main [README](./README.md) "Getting
-Started" section first).
+This guide builds the Windows one-folder application with PyInstaller. The
+specification and its hooks/resources are tracked source inputs; do not build
+from a checkout that omits `sara_ai.spec`, `packaging_hooks/`, or
+`packaging_resources/`.
 
----
+## Requirements
 
-## 1. Prerequisites
+- Windows x64 and Python 3.11.
+- Install the locked CPU runtime and build dependencies in a clean environment:
 
-- Everything in `requirements.txt` installed, and the app running
-  successfully via `python main.py`
-- The Kokoro TTS model files present under `models/`
-  (`kokoro-v1.0.onnx`, `voices-v1.0.bin`)
-- A working `.env` (secrets aren't bundled into the exe — see step 4)
-
-## 2. Install build-only dependencies
-
-```bash
-pip install -r requirements-build.txt
+```powershell
+py -3.11 -m venv .venv-build
+.\.venv-build\Scripts\Activate.ps1
+python -m pip install -r requirements-build.lock.txt
+python -m pip check
 ```
 
-This adds `pyinstaller` and `pywin32` on top of your existing runtime
-environment. It does **not** replace `requirements.txt` — both must be
-installed.
+`requirements-build.lock.txt` is the complete Python 3.11 Windows CPU runtime
+plus PyInstaller build profile. `requirements-cpu.lock.txt` is the runtime-only
+profile. The GPU profile is currently unsupported: Kokoro, faster-whisper and
+OpenWakeWord require the `onnxruntime` distribution, while the GPU wheel is
+published as `onnxruntime-gpu`. pip installs both into the same package path;
+installing only the GPU wheel leaves declared dependencies unsatisfied. Do not
+combine `requirements-gpu.txt` with the runtime requirements.
 
-## 3. Run PyInstaller
+The locks pin the complete resolved package versions. To update them, review
+the direct requirement changes, then in a disposable Python 3.11 Windows
+environment install the pinned lock generator and run:
 
-```bash
-pyinstaller sara_ai.spec
+```powershell
+python -m pip install -r requirements-lock-tools.txt
+pip-compile --resolver=backtracking --allow-unsafe --output-file=requirements-cpu.lock.txt requirements.txt requirements-cpu.txt
+pip-compile --resolver=backtracking --allow-unsafe --output-file=requirements-build.lock.txt requirements.txt requirements-cpu.txt requirements-build.txt
+pip-compile --resolver=backtracking --allow-unsafe --output-file=requirements-dev.lock.txt requirements.txt requirements-cpu.txt requirements-dev.txt
 ```
 
-This produces `dist/SaraAI/SaraAI.exe` (a one-folder build — faster
-startup and easier debugging than a one-file build, at the cost of a
-larger distributable folder). `sara_ai.spec` already bundles the GUI's
-HTML/JS/CSS assets and the hidden imports PyInstaller's static analysis
-tends to miss (`pywin32`, `pycaw`/`comtypes`, `onnxruntime`'s execution
-provider plugins, `ctranslate2`, `google-genai`, `kokoro_onnx`).
+Review lock diffs and validate each profile with `python -m pip check` before
+releasing. Never install both CPU and GPU ONNX Runtime distributions in one
+environment.
 
-## 4. Copy runtime files next to the built exe
+## Check and build
 
-The following are **not** bundled inside the exe by design, so they can
-be updated without a full rebuild:
+The generated GUI bundle is committed. Verify it matches its source before
+packaging:
 
-```
-dist/SaraAI/
-├── SaraAI.exe
-├── .env                  ← copy your real .env here (never commit it)
-└── models/
-    ├── kokoro-v1.0.onnx
-    └── voices-v1.0.bin
+```powershell
+py -3.11 -m sara.gui.build --check
 ```
 
-`.env.example` is bundled as a reference, but a real `.env` with your
-actual `GEMINI_API_KEY` / `WEATHER_API_KEY` (if used) needs to sit next
-to the exe.
+Use a unique temporary output directory so existing `build/` and `dist/`
+artifacts are left untouched:
 
-## 5. Verify the build
+```powershell
+$out = Join-Path $env:TEMP ("SaraAI-build-" + [guid]::NewGuid().ToString("N"))
+py -3.11 -m PyInstaller --clean --noconfirm --distpath (Join-Path $out "dist") --workpath (Join-Path $out "work") sara_ai.spec
+```
 
-Before distributing, run `dist/SaraAI/SaraAI.exe` directly (not through
-`pyinstaller`'s own terminal) and check:
+The executable is `$out\dist\SaraAI\SaraAI.exe`. This is an onedir build;
+the Python application, GUI, fonts and required small openwakeword preprocessing
+models are placed beside the executable in the generated directory.
 
-- The window opens and the boot sequence completes (no "index.html not
-  found" error — if you see this, double-check `sara_ai.spec`'s `datas`
-  list matched your actual `sara/gui/` folder layout)
-- The wake word triggers and a basic voice round-trip works
-- `health_check.py`'s pre-flight diagnostics don't report a missing
-  model/backend (check the log file under `logs/`)
+## Runtime profiles and external configuration
 
----
+The tested CPU profile uses `onnxruntime==1.21.0`. GPU inference is not a
+supported install profile until the upstream audio packages can depend on the
+GPU distribution without also pulling the CPU distribution. The intended ORT
+1.21 GPU provider requires compatible NVIDIA drivers, CUDA 12 and cuDNN 9; a
+successful package resolution alone would not verify hardware inference.
 
-## Known rough edges
+Secrets and user data are never included in the executable. Create a private
+`.env` beside the executable (or set the environment variables before launch)
+for the selected LLM provider and other local settings. Do not copy
+`credentials.json`, OAuth tokens, databases, logs, or a development `.env`
+into a release.
 
-### CUDA execution providers
+Kokoro voice models are large runtime assets and are intentionally external:
+place `kokoro-v1.0.onnx` and `voices-v1.0.bin` in a `models` directory beside
+the executable, or set `KOKORO_MODEL_PATH` and `KOKORO_VOICES_PATH` to their
+locations. Relative model paths resolve from the repository root in source
+mode and from the executable directory in a frozen build, not from the
+current working directory. Absolute paths are also supported, including
+paths containing spaces.
 
-`onnxruntime-gpu` looks for CUDA/cuDNN DLLs at runtime via Windows'
-standard DLL search path. PyInstaller does **not** automatically bundle
-CUDA toolkit DLLs (they're not Python packages). Two options:
+The small OpenWakeWord ONNX preprocessing assets (`melspectrogram.onnx` and
+`embedding_model.onnx`) are bundled at the package resource path expected by
+OpenWakeWord. The custom wake-word model (`hey_sara.onnx`) is a separate,
+optional model and is not supplied by OpenWakeWord or this project. Place a
+compatible custom ONNX model at `models/wakewords/hey_sara.onnx` beside the
+executable, or set `WAKE_WORD_MODEL_PATH` to its absolute path. If it is
+missing, passive wake detection remains disabled; SARA reports the missing
+path and setup status exposes that the model is absent. Installing a custom
+model is not required to build or launch SARA AI. None of these model files
+are copied from the developer's ignored `models/` directory.
 
-1. **Simplest**: require end users to have the NVIDIA CUDA Toolkit
-   installed separately (matching the CUDA version `onnxruntime-gpu`
-   was built against). This is what the current spec assumes.
-2. **Fully self-contained**: manually copy `cudart64_*.dll`,
-   `cudnn64_*.dll`, etc. from your CUDA installation into the `binaries`
-   list in `sara_ai.spec`, then re-test on a machine *without* CUDA
-   installed to confirm it's truly self-contained. This significantly
-   increases the distributable's size.
+The target machine needs the Microsoft Edge WebView2 Runtime for the GUI.
+The documented CPU build does not require NVIDIA drivers or CUDA/cuDNN. A
+compatible, supported GPU dependency profile is not currently available; the
+requirements file records the upstream package-name conflict.
 
-If GPU execution isn't available at runtime, the app should fall back
-to `CPUExecutionProvider` automatically (`onnxruntime.get_available_providers()`
-degrades gracefully) — verify this fallback actually happens rather than
-crashing, since it's easy for a frozen build to hit a DLL-not-found error
-instead of a clean provider-unavailable fallback.
+## Runtime check
 
-### `comtypes` caching in a frozen build
-
-`comtypes` (used by `pycaw` for Windows audio-endpoint control) generates
-and caches Python wrapper modules for COM interfaces on first use,
-normally under a writable `gen/` cache directory next to the `comtypes`
-package. Inside a frozen PyInstaller build, that directory may be
-read-only or not exist, which can cause the first volume-control call to
-fail silently or raise on some machines. If you hit this:
-
-- Confirm `comtypes.gen` is included in `hiddenimports` (already is, in
-  `sara_ai.spec`)
-- If the error persists, set `comtypes.client.gen_dir` to a writable
-  path (e.g. inside `%LOCALAPPDATA%`) early in `main.py`, before any
-  `pycaw` call — this isn't currently wired in, so add it if you hit
-  this specific failure mode.
-
-### Antivirus false positives
-
-PyInstaller-built executables (especially with UPX compression enabled,
-as this spec does) are commonly flagged by antivirus heuristics as
-suspicious, purely because that packing signature is also used by some
-malware. This is a known PyInstaller ecosystem issue, not a Sara AI bug.
-If it's a problem for your distribution, set `upx=False` in
-`sara_ai.spec` and/or code-sign the executable.
-
----
-
-## One-file vs one-folder builds
-
-`sara_ai.spec` currently produces a one-folder build. Switching to a
-single-file exe is possible by moving to `COLLECT`-less packaging (i.e.
-passing `a.binaries`, `a.zipfiles`, `a.datas` directly into `EXE(...)`
-with no separate `COLLECT` step), but startup becomes noticeably slower
-(everything is unpacked to a temp directory on every launch) and the
-`models/` folder / `.env` file placement described in step 4 becomes
-less obvious to end users, since there's no visible folder to drop them
-into. The current one-folder approach is the recommended default for
-this project.
-
-## Keep dev and test files out of the build
-
-`sara/gui/js/dev/` (the mock bridge) and `sara/gui/js/tests/` (JS unit tests) are development-only; the GUI is served
-from the generated `sara/gui/bundle/` and `index.html`, which do not reference them. Exclude both folders (and the
-`tests/` package) from `sara_ai.spec`'s data files. Note: `sara_ai.spec` itself is not in the repository at the moment;
-add it (or regenerate it) before building.
+Launch `SaraAI.exe` from the generated folder and inspect the console output
+for startup errors. Confirm `sara/gui/index.html` loads, the setup status is
+available, and the expected model files are detected. A completed PyInstaller
+build alone does not verify audio devices, model inference, OAuth services, or
+optional GPU execution on the target machine.

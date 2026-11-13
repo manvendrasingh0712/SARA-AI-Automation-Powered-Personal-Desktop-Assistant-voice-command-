@@ -10,7 +10,6 @@ onto the RTX 3050 measured 55 tok/s vs 28 with Ollama's own split.
 from __future__ import annotations
 
 import inspect
-import os
 from types import SimpleNamespace
 from unittest import mock
 

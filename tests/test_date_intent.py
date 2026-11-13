@@ -1,7 +1,9 @@
 """'what is the date today' used to fall through to the language model; questions about other dates must still go there."""
 import pytest
 
-import sara.skills  # noqa: F401
+import importlib
+
+importlib.import_module("sara.skills")
 from sara.core.intent.engine import detect_intent
 
 

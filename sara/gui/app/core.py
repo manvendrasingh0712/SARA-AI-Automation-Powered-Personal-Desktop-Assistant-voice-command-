@@ -47,7 +47,12 @@ from sara.orchestrator.intent_handlers import _handle_command
 #
 # RLock, not Lock: _handle_command() may re-enter Api methods on the same
 # thread (e.g. the session_control "sleep" path calling stop_sara()).
-from sara.orchestrator.state import STATE_LOCK, TURN_STATE, note_typed_activity
+from sara.orchestrator.state import (
+    STATE_LOCK,
+    TURN_STATE,
+    VOICE_SESSION_CANCEL,
+    note_typed_activity,
+)
 
 try:
     from sara.core.telemetry import begin_turn as _t_begin, end_turn as _t_end
@@ -446,6 +451,15 @@ class ApiCoreMixin:
         #   3. clears whatever's already queued on the audio device.
         try:
             TURN_STATE.cancel()
+            VOICE_SESSION_CANCEL.set()
+            pending = self.confirm_state.pop("pending", None)
+            if pending is not None:
+                try:
+                    from sara.core.security.guard import cancel_pending
+
+                    cancel_pending(pending)
+                except Exception as guard_error:
+                    print(f"[stop_sara approval cancellation error] {type(guard_error).__name__}")
             _t_end("cancelled")
         except Exception as e:
             print(f"[stop_sara cancel error] {e}")

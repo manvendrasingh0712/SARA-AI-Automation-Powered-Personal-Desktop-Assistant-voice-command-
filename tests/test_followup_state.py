@@ -1,5 +1,7 @@
 """Audit part 2, O5: the shared context remembers the last intent, user input and reply for follow-ups."""
-import sara.skills  # noqa: F401
+import importlib
+
+importlib.import_module("sara.skills")
 from sara.orchestrator import dispatcher
 from sara.orchestrator.command_helpers import _quick
 

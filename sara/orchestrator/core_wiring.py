@@ -4,7 +4,7 @@ build_core_objects() constructs every subsystem (LLM, TTS, STT, DB,
 reminders, vision) at startup; _WakeWatcher + run_sara_logic() are the
 main always-on conversation loop.
 """
-from sara.orchestrator.state import STATE_LOCK, TURN_STATE
+from sara.orchestrator.state import STATE_LOCK, TURN_STATE, VOICE_SESSION_CANCEL
 from .lazy import _debug_log, _Lazy
 from .state import LanguageState, AssistantState
 from .ui_bridge import _UICoalescer
@@ -488,6 +488,7 @@ class _WakeWatcher:
         "_ears",
         "_manual",
         "_stop",
+        "_shutdown",
         "_assistant_state",
         "wake_event",
         "_session_active",
@@ -505,6 +506,7 @@ class _WakeWatcher:
         self._ears = ears
         self._manual = manual_wake_event
         self._stop = stop_event
+        self._shutdown = threading.Event()
         # v8 NEW UI WIRING: optional shared AssistantState — when
         # inactive ("paused" from the GUI), wake-WORD detection is
         # skipped every poll cycle below, but an explicit manual wake
@@ -518,7 +520,7 @@ class _WakeWatcher:
         self._thread.start()
 
     def _run(self) -> None:
-        while not self._stop.is_set():
+        while not self._stop.is_set() and not self._shutdown.is_set():
             try:
                 if self._session_active.is_set():
                     time.sleep(_WAKE_POLL_INTERVAL_S)
@@ -562,11 +564,20 @@ class _WakeWatcher:
                 time.sleep(_THREAD_ERROR_BACKOFF_S)
 
     def wait_for_wake(self) -> bool:
-        while not self._stop.is_set():
+        while not self._stop.is_set() and not self._shutdown.is_set():
             if self.wake_event.wait(timeout=_WAKE_WAIT_TIMEOUT_S):
                 self.wake_event.clear()
+                if self._stop.is_set() or self._shutdown.is_set():
+                    return False
                 return True
         return False
+
+    def stop(self) -> None:
+        """Stop this watcher without changing the app-wide stop event."""
+        self._shutdown.set()
+        self.wake_event.set()
+        if self._thread is not threading.current_thread():
+            self._thread.join(timeout=2.0)
 
     def begin_session(self) -> None:
         self._session_active.set()
@@ -962,6 +973,7 @@ def run_sara_logic(
 
             _t_pending("wake")
             wake_watcher.begin_session()
+            VOICE_SESSION_CANCEL.clear()
             activity_tracker.touch()
             try:
                 db.record_interaction_day()
@@ -1011,6 +1023,8 @@ def run_sara_logic(
             session_recovery_disclosed = False
 
             while not stop_event.is_set():
+                if VOICE_SESSION_CANCEL.is_set():
+                    break
                 ui_update("status", "listening")
                 ui_update("footer", "Listening...")
                 ears.wait_settle(min_gap=post_tts_settle_s)
@@ -1031,6 +1045,7 @@ def run_sara_logic(
                 user_input = ears.listen(
                     mode="command",
                     on_partial_transcript=_on_partial_transcript,
+                    cancel_event=VOICE_SESSION_CANCEL,
                 )
                 # NEW: confidence signal riding along on the
                 # TranscriptionResult (str subclass) returned by
@@ -1049,7 +1064,7 @@ def run_sara_logic(
                     "speech_rate": getattr(user_input, "speech_rate", None),
                 }
 
-                if stop_event.is_set():
+                if stop_event.is_set() or VOICE_SESSION_CANCEL.is_set():
                     break
 
                 # Wake acknowledgement echo (E2E log 2026-10-30): with AEC the
@@ -1317,14 +1332,17 @@ def run_sara_logic(
 
             wake_watcher.end_session()
 
+    except Exception as e:
+        logger.critical(f"[Fatal Error \u2014 Sara logic thread] {e}", exc_info=True)
+    finally:
+        try:
+            wake_watcher.stop()
+        except Exception as e:
+            print(f"[Shutdown] wake watcher stop failed: {e}")
         try:
             ears.close()
         except Exception as e:
             print(f"[Warning] ears.close() failed: {e}")
-
-    except Exception as e:
-        logger.critical(f"[Fatal Error \u2014 Sara logic thread] {e}", exc_info=True)
-    finally:
         shutdown_logic_components(
             thread_supervisor=thread_supervisor,
             reminders=reminders,

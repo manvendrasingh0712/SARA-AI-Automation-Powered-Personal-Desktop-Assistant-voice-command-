@@ -36,9 +36,6 @@ def test_custom_deny_pattern_and_cache():
 
 
 def test_the_note_is_added_after_the_history_not_before(monkeypatch):
-    import threading
-    from collections import deque
-
     from sara.core.llm import engine as E
 
     monkeypatch.setattr(C, "build", lambda cfg: "What is on the PC right now: battery 50% (charging).")

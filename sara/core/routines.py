@@ -93,9 +93,14 @@ def _speak(ctx: dict, text: str) -> None:
         logger.warning("routines: tts.speak failed: %s", e)
 
 
-def _fail_outcome(ctx: dict, message: str = _FAIL_MESSAGE) -> dict:
+def _fail_outcome(
+    ctx: dict, message: str = _FAIL_MESSAGE, *, authorization_blocked: bool = False
+) -> dict:
     _speak(ctx, message)
-    return {"text": message, "spoken": True, "ok": False}
+    return {
+        "text": message, "spoken": True, "ok": False,
+        "authorization_blocked": authorization_blocked,
+    }
 
 
 def _build_step_match(name: str, args: dict):
@@ -149,6 +154,10 @@ def _run_simple_action_step(step: dict, ctx: dict) -> dict:
         logger.warning("routines: unknown SIMPLE_ACTIONS key '%s'", key)
         return _fail_outcome(ctx)
 
+    denied = _authorize_step(ctx, key, {})
+    if denied:
+        return _fail_outcome(ctx, denied, authorization_blocked=True)
+
     text = action()
     if not text:
         return _fail_outcome(ctx)
@@ -179,7 +188,15 @@ def _run_intent_or_skill_step(step: dict, ctx: dict) -> dict:
         logger.warning("routines: no handler registered for '%s'", name)
         return _fail_outcome(ctx)
 
-    match = _build_step_match(name, step.get("args") or {})
+    args = step.get("args")
+    if args is None:
+        args = {}
+    if not isinstance(args, dict):
+        return _fail_outcome(ctx, "This routine step has invalid arguments.")
+    match = _build_step_match(name, args)
+    denied = _authorize_step(ctx, name, args)
+    if denied:
+        return _fail_outcome(ctx, denied, authorization_blocked=True)
     result = handler(match, ctx)
     if not result:
         # Handler declined (e.g. missing a required arg) or returned
@@ -191,6 +208,31 @@ def _run_intent_or_skill_step(step: dict, ctx: dict) -> dict:
     # built-in handler and every skill's handle() does this -- see the
     # module docstring). Do NOT speak it again here.
     return {"text": result, "spoken": True, "ok": True}
+
+
+def _authorize_step(ctx: dict, tool: str, args: dict) -> Optional[str]:
+    """Apply the same tier and argument policy to manually and proactively run steps."""
+    try:
+        from sara.core.security.guard import ACTION_RUN, check_tool_call
+
+        origin = ctx.get("security_origin", "user_direct") if ctx else "user_direct"
+        outcome = check_tool_call(
+            tool, origin, args=args, make_pending=False,
+            text=str((ctx or {}).get("user_input", "")),
+        )
+        if outcome.action == ACTION_RUN:
+            return None
+        if outcome.action == "confirm":
+            return outcome.message or "This routine step requires your approval and was skipped."
+        if origin == "proactive":
+            return (
+                f"{tool.replace('_', ' ')} (risk tier {outcome.tier}) is not allowed "
+                "in an unattended routine; the routine stopped."
+            )
+        return outcome.message or "This routine step was blocked by the security policy."
+    except Exception as exc:
+        logger.warning("routine authorization failed (%s); denying step", type(exc).__name__)
+        return "Security checks are unavailable; this routine step was skipped."
 
 
 _STEP_RUNNERS = {
@@ -247,6 +289,8 @@ def run_routine(name: str, ctx: dict) -> list[dict]:
             outcome = _fail_outcome(ctx)
 
         results.append(outcome)
+        if outcome.get("authorization_blocked"):
+            break
         if i < len(steps) - 1:
             _pause()
 

@@ -2,7 +2,9 @@
 import re
 import time
 
-import sara.skills  # noqa: F401
+import importlib
+
+importlib.import_module("sara.skills")
 from sara.core.intent import engine as E
 from sara.core.intent.engine import detect_intent
 

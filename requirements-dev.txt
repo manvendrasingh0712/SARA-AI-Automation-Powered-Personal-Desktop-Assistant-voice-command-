@@ -1,0 +1,6 @@
+# Test, lint and type-check tools. Runtime dependencies are in requirements.txt.
+pytest==9.2.0
+pytest-cov==7.1.0
+pyflakes==4.1.0
+mypy==2.4.1
+pip-audit==2.10.1

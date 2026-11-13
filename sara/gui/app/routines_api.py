@@ -136,6 +136,7 @@ class ApiRoutinesMixin:
                 "playback_state": self.playback_state,
                 "confirm_state": self.confirm_state,
                 "user_input": f"[test-run routine: {name}]",
+                "security_origin": "user_direct",
                 "notes_memory": None,
             }
             try:

@@ -1,11 +1,16 @@
-# pip install -r requirements.txt -r requirements-gpu.txt
-onnxruntime-gpu==1.21.0
-# The cuDNN / cuBLAS DLL packages this build needs stay in requirements.txt.
-# NOTE: kokoro-onnx, faster-whisper and openwakeword also depend on the CPU
-# `onnxruntime` package, so pip may install it next to this one. If CUDA isn't
-# used or you get DLL-load errors:
-#   pip uninstall -y onnxruntime onnxruntime-gpu
-#   pip install onnxruntime-gpu==1.21.0
+# GPU profile status: UNSUPPORTED with the current upstream package metadata.
+# Do not install this file with requirements.txt. The application currently
+# depends on kokoro-onnx, faster-whisper and openwakeword; each requires the
+# distribution named `onnxruntime`, while this provider is distributed as
+# `onnxruntime-gpu`. pip installs both distributions, which write into the
+# same `onnxruntime` package directory. Installing only onnxruntime-gpu with
+# --no-deps leaves all three dependencies unsatisfied (`pip check` fails).
+#
+# The intended provider pin for a future compatible profile is:
+# onnxruntime-gpu[cuda,cudnn]==1.21.0
+# The 1.21 GPU wheel targets CUDA 12 and cuDNN 9. A supported lock cannot be
+# generated until upstream dependencies support the GPU distribution name,
+# or the project adopts a separately reviewed compatibility solution.
 
 
 

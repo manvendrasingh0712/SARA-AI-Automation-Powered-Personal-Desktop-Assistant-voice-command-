@@ -110,6 +110,10 @@ def _make_stt(chunks=None, **ring_kw):
     stt._preview_busy = threading.Event()
     stt._preview_generation = 0
     stt._tts_state_lock = threading.Lock()
+    # SpeechToText.energy_threshold is a locked property on the real engine;
+    # __new__ bypasses __init__, so initialize its backing lock for this harness.
+    stt._threshold_lock = threading.Lock()
+    stt._energy_threshold = ENERGY_THRESHOLD
     stt._barge_in_handoff = []
     stt._vad, stt._pre_buf, stt._silence_gate = _FakeVAD(), _FakePre(), _FakeGate()
     stt._ring = _FakeRing(stt, [VOICE] * N_SPEECH if chunks is None else chunks, **ring_kw)
@@ -119,7 +123,7 @@ def _make_stt(chunks=None, **ring_kw):
 def _previews(stt, text):
     calls = []
 
-    def spawn(snapshot, cb, generation):
+    def spawn(snapshot, cb, generation, **_kwargs):
         calls.append(len(snapshot))
         if text is not None:
             cb(text)

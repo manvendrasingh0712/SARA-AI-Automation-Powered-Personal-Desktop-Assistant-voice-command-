@@ -15,7 +15,6 @@ and still have a persistent log file for later debugging.
 import os
 import sys
 import logging
-from logging.handlers import RotatingFileHandler
 
 _LOG_DIR = os.path.join(os.getcwd(), "logs")
 _LOG_FILE = os.path.join(_LOG_DIR, "sara.log")

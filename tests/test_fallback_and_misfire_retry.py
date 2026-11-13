@@ -203,6 +203,7 @@ class LikelyMisfireRetryTests(unittest.TestCase):
         intent_handlers.TOOL_NAME_TO_INTENT["test_open_thing_tool"] = "test_misfire_secondary"
         from sara.core.security import tiers as _tiers
 
+        _tiers.TIERS["test_misfire_primary"] = 1
         _tiers.TIERS["test_misfire_secondary"] = 1  # reversible: LLM-origin tools may run it
 
         from sara.orchestrator import route_chat
@@ -228,6 +229,7 @@ class LikelyMisfireRetryTests(unittest.TestCase):
             route_chat.resolve_tool_call = original_resolve
             route_chat.build_fake_match = original_build_match
             del intent_handlers.TOOL_NAME_TO_INTENT["test_open_thing_tool"]
+            _tiers.TIERS.pop("test_misfire_primary", None)
             _tiers.TIERS.pop("test_misfire_secondary", None)
 
         self.assertEqual(result, "Opened the correct thing via the tool router!")
@@ -260,6 +262,9 @@ class LikelyMisfireRetryTests(unittest.TestCase):
 
         register_intent("test_genuine_failure", [r"close my locked thing"], gate=("locked",))
         register_handler("test_genuine_failure", _permission_denied_handler)
+        from sara.core.security import tiers as _tiers
+
+        _tiers.TIERS["test_genuine_failure"] = 1
 
         original_resolve = intent_handlers.resolve_tool_call
         intent_handlers.resolve_tool_call = _fake_resolve_tool_call
@@ -278,6 +283,7 @@ class LikelyMisfireRetryTests(unittest.TestCase):
             )
         finally:
             intent_handlers.resolve_tool_call = original_resolve
+            _tiers.TIERS.pop("test_genuine_failure", None)
 
         self.assertEqual(
             result, "The app is running but I couldn't close it due to a permissions error."

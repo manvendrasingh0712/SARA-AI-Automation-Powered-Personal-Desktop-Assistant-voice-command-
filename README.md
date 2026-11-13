@@ -533,6 +533,10 @@ SARA-AI/
 ├── requirements-cpu.txt
 ├── requirements-gpu.txt
 ├── requirements-build.txt
+├── requirements-dev.txt
+├── requirements-cpu.lock.txt
+├── requirements-build.lock.txt
+├── requirements-dev.lock.txt
 ├── BUILD.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -551,7 +555,8 @@ SARA-AI/
 - Python 3.11
 - Working microphone and audio output
 - Ollama for local LLM mode
-- NVIDIA GPU recommended for practical real-time STT/TTS performance
+- CPU runtime is supported; GPU package installation is currently blocked by
+  upstream ONNX Runtime dependency metadata (see dependency notes below)
 - Kokoro model files
 
 ### 1. Clone
@@ -566,31 +571,45 @@ cd SARA-AI-Automation-Powered-Personal-Desktop-Assistant-voice-command-
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
 ```
 
 ### 3. Install dependencies
 
-Install the shared dependencies plus **exactly one** ONNX Runtime build.
-
-**CPU only:**
-
-```powershell
-pip install -r requirements.txt -r requirements-cpu.txt
-```
-
-**NVIDIA GPU (recommended):**
+The reproducible supported profile is CPU-only. It includes exact resolved
+versions for Python 3.11 on Windows x64:
 
 ```powershell
-pip install -r requirements.txt -r requirements-gpu.txt
+python -m pip install -r requirements-cpu.lock.txt
+python -m pip check
+python -c "import onnxruntime as ort; print(ort.__version__, ort.get_available_providers())"
 ```
 
-> Note: `kokoro-onnx`, `faster-whisper` and `openwakeword` each depend on the CPU `onnxruntime` package, so pip can still install it next to `onnxruntime-gpu` (both use the same folder). If CUDA isn't used or you get DLL-load errors, run:
->
-> ```powershell
-> pip uninstall -y onnxruntime onnxruntime-gpu
-> pip install onnxruntime-gpu==1.21.0
-> ```
+For a reproducible Windows build environment, use the combined CPU runtime and
+PyInstaller lock in a separate virtual environment:
+
+```powershell
+python -m venv .venv-build
+.\.venv-build\Scripts\Activate.ps1
+python -m pip install -r requirements-build.lock.txt
+```
+
+For tests, lint and type checks, install the development profile:
+
+```powershell
+python -m pip install -r requirements-dev.lock.txt
+```
+
+GPU installation is currently blocked by upstream dependency metadata:
+`kokoro-onnx`, `faster-whisper` and `openwakeword` require the package named
+`onnxruntime`; ONNX Runtime's GPU build is a separate distribution named
+`onnxruntime-gpu`, and both distributions write to the same Python package
+directory. pip therefore installs conflicting CPU and GPU distributions
+together, or `pip check` fails if the CPU distribution is omitted. Do not
+install `requirements-gpu.txt` alongside runtime requirements. A compatible
+GPU lock will be added only when this dependency conflict has a supported
+resolution. ONNX Runtime 1.21 GPU additionally requires compatible NVIDIA
+drivers, CUDA 12 and cuDNN 9; this project has not verified GPU inference in a
+clean profile.
 
 ### 4. Install / start Ollama
 
@@ -622,7 +641,7 @@ OLLAMA_MODEL=qwen3:4b-instruct-2507-q4_K_M
 WAKE_WORDS=sara,sarah,hey sara,hey sarah
 
 WHISPER_MODEL_SIZE=medium
-KOKORO_USE_GPU=true
+KOKORO_USE_GPU=false
 AEC_ENABLED=true
 
 PLANNING_ENABLED=true
@@ -657,6 +676,44 @@ models/
 ```powershell
 python main.py
 ```
+
+### Browser preview deployment
+
+The static browser preview reuses the generated GUI bundle and its existing GUI
+sources. It includes only the HTML, GUI bundles, preview-only browser guardrails,
+and local font assets. Python/pywebview integrations and local user data are not
+deployed; actions that require the Windows backend are disabled in the preview.
+Appearance controls remain browser-local. No API credentials belong in the
+preview.
+
+From a clean checkout with Python 3.11, build the GUI bundle and preview into a
+new directory, then deploy that directory to the existing Cloudflare Pages
+project (`sara-ai-preview`, Free plan):
+
+```powershell
+python -m sara.gui.build
+if ($LASTEXITCODE -ne 0) { throw "GUI bundle build failed" }
+python -m sara.gui.build --check
+if ($LASTEXITCODE -ne 0) { throw "GUI bundle check failed" }
+$preview = Join-Path $env:TEMP ("sara-ai-preview-" + [guid]::NewGuid().ToString("N"))
+if (Test-Path -LiteralPath $preview) { throw "Preview output already exists: $preview" }
+try {
+    python -m sara.gui.build_web_preview --output $preview
+    if ($LASTEXITCODE -ne 0) { throw "Preview build failed" }
+    wrangler pages deploy $preview --project-name sara-ai-preview
+    if ($LASTEXITCODE -ne 0) { throw "Cloudflare Pages deployment failed" }
+} finally {
+    if (Test-Path -LiteralPath $preview) {
+        Remove-Item -LiteralPath $preview -Recurse -Force
+    }
+}
+```
+
+The generated static site is the `--output` directory (the default is
+`deploy/sara-ai-preview`). The builder refuses to replace an existing directory
+whose contents differ; use a fresh output directory for each changed build. It
+can safely verify an identical existing build. Wrangler must already be
+installed and authenticated, and the named Pages project must already exist.
 
 ---
 

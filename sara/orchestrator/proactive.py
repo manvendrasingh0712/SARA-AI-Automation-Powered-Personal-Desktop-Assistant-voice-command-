@@ -539,6 +539,7 @@ class ProactiveEngine:
             "playback_state": {},
             "confirm_state": {},
             "user_input": f"[scheduled routine: {name}]",
+            "security_origin": "proactive",
             "notes_memory": None,
         }
 
@@ -561,9 +562,19 @@ class ProactiveEngine:
                 print(f"[Proactive] ui_update failed for routine step: {e}")
 
         try:
+            blocked = any(outcome.get("authorization_blocked") for outcome in outcomes)
+            completed = any(outcome.get("ok") for outcome in outcomes)
+            if blocked:
+                notice = (
+                    f"'{label}' routine stopped at a step that requires your approval."
+                    if completed else
+                    f"'{label}' routine was skipped because a step requires your approval."
+                )
+            else:
+                notice = f"Ran your '{label}' routine."
             self._ui_update(
                 "proactive_notification", "ti-player-play", "#34d399",
-                f"Ran your '{label}' routine.", "routine",
+                notice, "routine",
             )
         except Exception as e:
             print(f"[Proactive] ui_update (notification) failed: {e}")

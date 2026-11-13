@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<!-- ==========================================================================
+  index.html -- SARA AI GUI markup only (structure, no logic, no styling).
+  Styles: style/<group>/*.css  Logic: js/<group>/*.js  -- order in assets.json, bundled to bundle/app.{css,js}. Each file's top comment says what it owns.
+  Pages:  home (orb + Today card) | chat | notes (Notes + Reminders tabs) | apps (Music card + tools) | automation | settings
+  ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SARA AI</title>
+<!-- All stylesheets are bundled from sources listed in assets.json (python -m sara.gui.build). -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="bundle/app.css?v=ba4b51bad2">
+<link rel="stylesheet" href="web_preview.css">
+<script>window.__SARA_WEB_PREVIEW__ = true;</script>
+</head>
+<body data-page="home">
+<!-- icon sprite (redesign spec 4.6): <svg class="ic"><use href="#i-home"/></svg>; stroke style comes from .ic in style/core/shell.css -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></symbol>
+  <symbol id="i-notes" viewBox="0 0 24 24"><path d="M7 3h8l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+  <symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></symbol>
+  <symbol id="i-automation" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M4 4l16 16"/></symbol>
+  <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></symbol>
+  <symbol id="i-volume-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 16l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.8-.5-1.2-.3-.3-.5-.7-.5-1.1 0-.9.7-1.6 1.6-1.6H16a5 5 0 0 0 5-5c0-4.4-4-7.4-9-7.4z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="14.5" cy="7.5" r="1"/></symbol>
+  <symbol id="i-accessibility" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.8"/><path d="M5 8.5l7 1.5 7-1.5M12 10v4M9 20l3-6 3 6"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 4.5a3 3 0 0 0-5.7 1.2A3.3 3.3 0 0 0 4.5 9.5 3.3 3.3 0 0 0 5 14a3.3 3.3 0 0 0 2 3.2A3 3 0 0 0 12 19.5z"/><path d="M12 4.5a3 3 0 0 1 5.7 1.2 3.3 3.3 0 0 1 1.8 3.8 3.3 3.3 0 0 1-.5 4.5 3.3 3.3 0 0 1-2 3.2A3 3 0 0 1 12 19.5z"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="4" r="2"/><path d="M8 18h6a3.5 3.5 0 0 0 0-7h-4a3.5 3.5 0 0 1 0-7h6"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 4.5-3 8.2-7 10-4-1.8-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="M12 16l4-5"/><circle cx="12" cy="16" r="1"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16M8 16v-4M12 16V8M16 16v-6"/></symbol>
+  <symbol id="i-backup" viewBox="0 0 24 24"><path d="M4 8h16v4H4z"/><path d="M6 12v7a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-7M10 16h4"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></symbol>
+  <symbol id="i-warning" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<section class="boot-overlay" id="bootOverlay" data-state="awakening" role="status" aria-live="polite" aria-label="SARA AI starting">
+  <div class="boot-atmosphere" aria-hidden="true"></div>
+  <div class="boot-content">
+    <div class="boot-brand" aria-hidden="true">
+      <span class="boot-mark"><svg viewBox="0 0 32 32"><path d="M23.7 8.8c-1.7-1.9-4.2-2.9-7.7-2.9-4.4 0-7.4 2-7.4 5.4 0 3.1 2.3 4.3 7.2 5.2 4.5.8 6.2 1.5 6.2 3.6 0 2.2-2.1 3.5-5.6 3.5-3.1 0-5.6-.9-7.8-3.2"/><path d="M23.7 8.8l1.7-2.2"/></svg></span>
+      <span class="boot-wordmark">SARA<span> AI</span></span>
+    </div>
+    <div class="boot-emblem" aria-hidden="true">
+      <span class="boot-orbit boot-orbit--outer"><i></i></span>
+      <span class="boot-orbit boot-orbit--tilt"><i></i></span>
+      <span class="boot-orbit boot-orbit--inner"><i></i></span>
+      <span class="boot-particle boot-particle--a"></span><span class="boot-particle boot-particle--b"></span>
+      <span class="boot-particle boot-particle--c"></span><span class="boot-particle boot-particle--d"></span>
+      <span class="boot-particle boot-particle--e"></span><span class="boot-particle boot-particle--f"></span>
+      <div class="boot-core"><span class="boot-core-light"></span>
+        <svg class="boot-sigil" viewBox="0 0 72 72"><path d="M52 20.5C48.3 15.9 42.7 13.5 35 13.5c-10.5 0-17.5 5.1-17.5 13.2 0 7.5 5.5 10.8 17.1 13 10.7 2 15 4.1 15 9.2 0 6-5.7 9.8-14.3 9.8-7.7 0-14.1-2.7-18.9-7.9"/><path class="boot-sigil-star" d="M54.5 41.5v8m-4-4h8"/></svg>
+      </div>
+      <span class="boot-wave" aria-hidden="true"></span>
+    </div>
+    <div class="boot-copy">
+      <div class="boot-eyebrow">PERSONAL INTELLIGENCE</div>
+      <h1>Coming online</h1>
+      <p class="boot-msg" id="bootMessage">Starting SARA AI…</p>
+    </div>
+    <div class="boot-progress">
+      <div class="boot-track" id="bootTrack" role="progressbar" aria-label="Application startup" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="boot-fill" id="bootFill"></div></div>
+      <div class="boot-error" id="bootError" role="alert" hidden></div>
+      <button type="button" class="boot-continue" id="bootContinue" hidden>Continue to the interface</button>
+    </div>
+    <div class="boot-footnote"><span class="boot-footnote-dot"></span><span>REAL-TIME SYSTEM INITIALIZATION</span></div>
+  </div>
+</section>
+<div class="offline-strip" id="offlineStrip" hidden>Web preview — desktop backend unavailable.</div>
+
+<div class="app">
+
+  <a class="skip-link" href="#" id="skipLink">Skip to content</a>
+  <nav class="nav" id="navBar">
+    <span class="nav-ind" id="navInd"></span>
+    <button type="button" class="nav-logo" id="navLogo" data-goto="home" aria-label="SARA home"><span class="nav-mark" aria-hidden="true"></span><span class="nav-brand nav-label">SARA</span></button>
+    <button type="button" class="nav-pin" id="navPin" aria-pressed="false" aria-label="Keep the sidebar open" title="Keep the sidebar open"><svg class="ic sm" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    <button class="active" data-page="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg><span class="nav-label">home</span></button>
+    <button data-page="chat"><svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg><span class="nav-label">chat</span></button>
+    <button data-page="notes"><svg class="ic" aria-hidden="true"><use href="#i-notes"/></svg><span class="nav-label">notes</span></button>
+    <button data-page="apps"><svg class="ic" aria-hidden="true"><use href="#i-apps"/></svg><span class="nav-label">apps</span></button>
+    <button data-page="automation"><svg class="ic" aria-hidden="true"><use href="#i-automation"/></svg><span class="nav-label">automation</span></button>
+    <div class="nav-bottom">
+      <button type="button" class="nav-foot" id="navTheme" aria-label="Switch light / dark theme" title="Switch light / dark theme"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg><span class="nav-label">theme</span></button>
+      <button data-page="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span class="nav-label">settings</span></button>
+    </div>
+  </nav>
+
+
+  <!-- ================= HOME ================= -->
+  <section class="page active" id="page-home">
+    <div class="page-header home-header">
+      <div class="page-heading"><div class="page-title" data-name="Home"><span id="homeGreetWord">Hello</span><span id="homeGreetComma">, </span><span class="home-greet" id="greetName"></span></div><div class="page-sub">Your day at a glance</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
+    </div>
+    <div class="home-grid">
+      <div class="clock-card" id="clockCard" role="button" tabindex="0" title="Open clock" data-clock-theme="sara" data-mode="clock">
+        <div class="cc-greet" id="ccGreet">Good day</div>
+        <div class="cc-modelabel" id="ccModeLabel" hidden></div>
+        <div class="cc-timewrap"><span class="cc-time" id="ccTime">--:--</span><span class="cc-ampm" id="ccAmpm"></span><span class="cc-sec" id="ccSec"></span></div>
+        <div class="cc-date" id="ccDate"></div>
+        <div class="cc-status" id="ccStatus" hidden></div>
+        <div class="cc-bar"><div class="cc-bar-fill" id="ccBarFill"></div></div>
+      </div>
+      <div class="today-card" id="todayCard" role="button" tabindex="0" title="Open Today">
+        <div class="tc-top">
+          <div class="tc-temp" id="tcTemp">--°</div>
+          <div><div class="tc-cond" id="tcCond">Weather</div><div class="tc-sub" id="tcSub"></div></div>
+        </div>
+        <div class="tc-next" id="tcNext"></div>
+      </div>
+
+      <div class="usage-card" id="usageCard" role="button" tabindex="0" title="Open analytics" hidden>
+        <div class="uc-top"><span class="uc-label">Last 7 days</span><b class="uc-total" id="ucTotal">0</b></div>
+        <div class="uc-bars" id="ucBars" aria-hidden="true"></div>
+        <div class="uc-days" id="ucDays" aria-hidden="true"></div>
+      </div>
+
+      <div class="next-card" id="nextCard" role="button" tabindex="0" title="Open Today" hidden>
+        <div class="nx-label">Next</div>
+        <div class="nx-title" id="nxTitle"></div>
+        <div class="nx-rel" id="nxRel"></div>
+      </div>
+      <div class="home-center">
+        <div class="stage" id="stage" title="Tap Sara to wake"><canvas id="org" width="400" height="400"></canvas><div class="home-activity" id="homeActivity" role="status" aria-live="polite" hidden><span class="act-glyph" id="actGlyph">&#9673;</span><span class="act-text" id="actText"></span></div></div>
+        <div class="plan-card" id="planCard" hidden><div class="plan-card-title" id="planTitle">Running plan…</div><ol class="plan-steps" id="planSteps"></ol></div>
+        <div class="home-caption core-idle" id="homeCaption">idle</div>
+        <div class="home-hint" id="homeHint">Say “Sara”, or tap the orb.</div>
+        <div class="home-actions"><button class="link-btn" id="stopBtn" hidden>stop Sara</button><button class="link-btn" id="pauseBtn">pause listening</button></div>
+        <div class="quick-dock" id="quickDock" role="group" aria-label="Quick controls">
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setActive" title="Wake-word listening: turn off to pause Sara"><svg class="ic" aria-hidden="true"><use href="#i-mic"/></svg><span class="qc-name">Listening</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setFocus" title="Focus mode: fewer interruptions"><svg class="ic" aria-hidden="true"><use href="#i-focus"/></svg><span class="qc-name">Focus</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:show_notifications" title="Notifications: on-screen alerts"><svg class="ic" aria-hidden="true"><use href="#i-bell"/></svg><span class="qc-name">Alerts</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setting:voice_replies" title="Voice replies: Sara speaks"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><span class="qc-name">Voice</span><i class="qc-sw" aria-hidden="true"></i></button>
+        <button type="button" class="qc-tile" role="switch" aria-checked="false" data-proxy="setMute" title="Mute: silence Sara now"><svg class="ic" aria-hidden="true"><use href="#i-volume-off"/></svg><span class="qc-name">Mute</span><i class="qc-sw" aria-hidden="true"></i></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CHAT ================= -->
+  <section class="page" id="page-chat">
+    <div class="page-header">
+      <div class="page-heading"><div class="page-title">Chat</div><div class="page-sub">Talk or type to Sara</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
+    </div>
+    <div class="page-body">
+      <div class="chat-log" id="chatLog"></div>
+      <div class="chat-dock">
+        <div class="mic-group">
+          <button class="dock-btn mic" id="chatMic" title="Wake Sara">
+            <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4"/></svg>
+          </button>
+          <span class="mic-wave" id="micWave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <input type="text" id="chatInputField" placeholder="Message Sara…" autocomplete="off">
+        <button class="dock-btn send" id="chatSend" title="Send">
+          <svg viewBox="0 0 24 24"><path d="M4 12l16-7-6 16-3-7-7-2z"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= NOTES + REMINDERS ================= -->
+  <section class="page" id="page-notes">
+    <div class="page-header">
+      <div class="page-heading"><div class="page-title">Notes &amp; Reminders</div><div class="page-sub">Your notes, tasks and reminders</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
+    </div>
+    <div class="page-body">
+      <div class="notes-top">
+        <div class="tabs seg" role="tablist" aria-label="Notes and reminders">
+          <button class="tab active" data-tab="notes" role="tab" aria-selected="true">Notes</button>
+          <button class="tab" data-tab="reminders" role="tab" aria-selected="false">Reminders</button>
+        </div>
+        <div class="notes-sub" id="notesIndexStatus" data-skel><span class="skel skel-line" style="width:190px"></span></div>
+      </div>
+
+      <div class="pane active" id="pane-notes">
+        <div class="add-row">
+          <input type="text" id="newNoteText" placeholder="Write a note…" autocomplete="off">
+          <button class="pill-btn primary" id="saveNoteBtn">Save</button>
+          <button class="pill-btn" id="syncNotesBtn" title="Re-index class notes">Sync</button>
+        </div>
+        <div id="notesList" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="pane" id="pane-reminders">
+        <div id="reminderGroups"></div>
+        <div class="rem-dock">
+          <div class="rem-add">
+            <input type="text" id="newReminderText" placeholder="Add a reminder…" autocomplete="off">
+            <input type="date" id="newReminderDate" aria-label="Reminder date">
+            <input type="time" id="newReminderTime" aria-label="Reminder time">
+            <button class="pill-btn primary" id="addReminderBtn">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= APPS (Music card + tools) ================= -->
+  <section class="page" id="page-apps">
+    <div class="page-header">
+      <div class="page-heading"><div class="page-title">Apps</div><div class="page-sub">Music, apps and quick tools</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
+    </div>
+    <div class="page-body">
+      <div class="music-card" id="musicCard">
+        <div class="mc-head" id="mcHead">
+          <div class="art-block" id="artBlock"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></div>
+          <div class="track-meta">
+            <div class="t-title" id="trackTitle">Nothing playing</div>
+            <div class="t-sub">
+              <div class="t-artist" id="trackArtist">Play something in Spotify or Chrome</div>
+              <span class="src-badge" id="trackSource" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/></svg><span class="src-name" id="trackSourceName"></span></span>
+            </div>
+          </div>
+          <button class="mc-play" id="mcPlay" type="button" title="Play / Pause" aria-label="Play / Pause"><svg id="mcPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+          <button class="mc-chev" id="mcChev" type="button" aria-label="Expand player" aria-expanded="false" aria-controls="mcBody"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button>
+        </div>
+        <div class="mc-body" id="mcBody"><div class="mc-body-inner">
+          <div id="mcSessions" class="session-switcher"></div>
+          <div class="seek-wrap" id="seekWrap">
+            <div class="seek-box">
+              <input type="range" class="seek" id="seek" min="0" max="1" step="1" value="0" disabled aria-label="Seek">
+              <div class="seek-rail" aria-hidden="true"><div class="seek-fill"></div><div class="seek-thumb"></div></div>
+            </div>
+            <div class="seek-tip" id="seekTip" aria-hidden="true">0:00</div>
+            <div class="seek-times"><span id="curTime">0:00</span><span id="durTime">0:00</span></div>
+          </div>
+          <div class="transport">
+            <button id="ppShuffle" type="button" title="Shuffle" aria-label="Shuffle" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 6h4l9 12h3M4 18h4l3-4M17 6h3M17 6l-2-2M17 6l-2 2"/></svg></button>
+            <button id="ppPrev" type="button" title="Previous" aria-label="Previous"><svg viewBox="0 0 24 24"><path d="M19 5v14L8 12z"/><path d="M6 5v14"/></svg></button>
+            <button class="t-play" id="ppPlay" type="button" title="Play / Pause" aria-label="Play / Pause"><svg id="ppPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+            <button id="ppNext" type="button" title="Next" aria-label="Next"><svg viewBox="0 0 24 24"><path d="M5 5v14l11-7z"/><path d="M18 5v14"/></svg></button>
+            <button id="ppRepeat" type="button" title="Repeat" aria-label="Repeat" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M4 7h13l-2-2M20 17H7l2 2"/></svg></button>
+            <button id="ppStop" type="button" title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg></button>
+          </div>
+          <div class="sleep-row">
+            <button type="button" id="sleepBtn" class="sleep-btn" aria-label="Sleep timer off. Set a timer"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>Sleep timer<span id="sleepState" class="sleep-state">Off</span></button>
+            <span id="sleepBadge" class="sleep-badge"></span>
+            <button type="button" id="sleepCancel" class="sleep-cancel" title="Cancel timer" aria-label="Cancel sleep timer" hidden><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button type="button" class="audio-btn" id="audioBtn" title="Volume" aria-haspopup="dialog" aria-expanded="false" aria-controls="audioModal"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>Audio</button>
+            <div id="sleepMenu" class="sleep-menu" role="group" aria-label="Sleep timer">
+              <div class="sleep-menu-head"><span class="sleep-menu-title">Sleep timer</span><span class="sleep-menu-hint">Fades out, then pauses</span></div>
+              <div class="sleep-options"><button type="button" data-min="15">15m</button><button type="button" data-min="30">30m</button><button type="button" data-min="45">45m</button><button type="button" data-min="60">60m</button></div>
+              <button type="button" id="sleepOff" class="sleep-off" data-min="0" hidden>Cancel timer</button>
+            </div>
+          </div>
+          <div class="spectrum" id="spectrum"></div>
+        </div></div>
+      </div>
+
+      <div class="add-row apps-search">
+        <input type="text" id="searchInput" placeholder="Search the web with Sara…" autocomplete="off">
+        <button class="pill-btn primary" id="searchBtn">Search</button>
+      </div>
+
+      <div class="section-label">Open</div>
+      <div class="apps-grid" id="appsGrid"></div>
+      <div class="section-label">Quick tools</div>
+      <div class="apps-grid" id="toolsGrid"></div>
+      <div class="section-label">System</div>
+      <div class="chip-row sys-chips" id="sysChips"></div>
+    </div>
+  </section>
+
+  <!-- ================= AUTOMATION ================= -->
+  <section class="page" id="page-automation">
+    <div class="page-header">
+      <div class="page-heading"><div class="page-title">Automation</div><div class="page-sub">Modes and routines</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
+    </div>
+    <div class="page-body">
+      <div class="section-label">Modes</div>
+      <div class="mode-note">One tap applies a bundle of settings — same as saying “switch to study mode”.</div>
+      <div class="chip-row" id="modeChips" role="radiogroup" aria-label="Modes"></div>
+      <div class="auto-head">
+        <div class="section-label">Routines</div>
+        <button class="pill-btn primary" id="newRoutineBtn">+ New automation</button>
+      </div>
+      <div id="routinesList"></div>
+    </div>
+  </section>
+
+  <!-- ================= SETTINGS ================= -->
+  <section class="page" id="page-settings">
+    <div class="page-header">
+      <div class="page-heading"><div class="page-title">Settings</div><div class="page-sub">Tune Sara to your liking</div></div>
+      <div class="page-tools"><button type="button" class="hdr-search" data-open-palette aria-label="Search (Ctrl K)"><svg class="ic sm" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span><kbd>Ctrl K</kbd></button><div class="page-status"><span class="mini-orb" data-mini></span><span data-status-text>listening quietly</span></div></div>
+    </div>
+    <div class="page-body">
+      <div class="set-layout">
+      <nav class="set-rail" id="setRail" aria-label="Settings groups">
+        <button type="button" class="on" aria-current="true" data-group="general" data-target="grp-assistant"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span>General</span></button>
+        <button type="button" data-group="voice" data-target="grp-voice"><svg class="ic" aria-hidden="true"><use href="#i-volume"/></svg><span>Voice &amp; Sound</span></button>
+        <button type="button" data-group="appearance" data-target="grp-appearance"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg><span>Appearance</span></button>
+        <button type="button" data-group="intelligence" data-target="grp-skills"><svg class="ic" aria-hidden="true"><use href="#i-brain"/></svg><span>Intelligence</span></button>
+        <button type="button" data-group="security" data-target="grp-security"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span>Security</span></button>
+        <button type="button" data-group="system" data-target="grp-system"><svg class="ic" aria-hidden="true"><use href="#i-gauge"/></svg><span>System</span></button>
+      </nav>
+      <div class="set-cards">
+        <!-- Settings groups (redesign spec 9.2). Each group wraps its existing cards; card ids, data-target values and every control id are unchanged. -->
+        <div class="set-group on" id="sg-general" data-group="general" role="region" aria-labelledby="sg-general-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-general-title">General</h2><p class="set-group-desc">Your name, listening, notifications and reminders</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-quick">
+            <div class="set-card-head"><div class="set-card-title">Quick controls</div><div class="set-card-sub">the switches you reach for most</div></div>
+          </section>
+          <section class="set-card" id="grp-assistant">
+            <div class="set-card-head"><div class="set-card-title">Profile &amp; listening</div><div class="set-card-sub">who Sara is to you</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Display name</div><div class="s-sub">what Sara calls you</div></div><input type="text" id="setName" placeholder="Your name" autocomplete="off"></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Wake-word listening</div><div class="s-sub">turn off to pause Sara completely</div></div><div class="toggle on" id="setActive" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Focus mode</div><div class="s-sub">fewer interruptions</div></div><div class="toggle" id="setFocus" role="switch" tabindex="0" aria-checked="false"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Notifications</div><div class="s-sub">on-screen alerts</div></div><div class="toggle on" data-setting="show_notifications" role="switch" tabindex="0" aria-checked="true"></div></div>
+          </section>
+          <section class="set-card" id="grp-proactive">
+            <div class="set-card-head"><div class="set-card-title">Proactive suggestions</div><div class="set-card-sub">nudges Sara gives on her own</div></div>
+            <div class="set-card-body">
+              <div class="info-row tog"><span>All proactive suggestions</span><div class="toggle on" data-setting="proactive_mode" role="switch" tabindex="0" aria-checked="true"></div></div>
+              <div class="tog-grid" data-dim-with="[data-setting=&quot;proactive_mode&quot;]">
+                <div class="info-row tog"><span>Battery</span><div class="toggle on" data-setting="proactive_battery" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Reminders</span><div class="toggle on" data-setting="proactive_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Breaks</span><div class="toggle on" data-setting="proactive_idle" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Streaks</span><div class="toggle on" data-setting="proactive_streak" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Meetings</span><div class="toggle on" data-setting="proactive_meetings" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Routines</span><div class="toggle on" data-setting="proactive_routines" role="switch" tabindex="0" aria-checked="true"></div></div>
+              </div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-reminders">
+            <div class="set-card-head"><div class="set-card-title">Smart reminders</div><div class="set-card-sub">context-aware wording and gentle nudges</div></div>
+            <div class="set-card-body">
+              <div class="tog-grid">
+                <div class="info-row tog"><span>Contextual wording</span><div class="toggle on" data-setting="contextual_reminders" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Use my notes</span><div class="toggle on" data-setting="contextual_notes" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Awake awareness</span><div class="toggle on" data-setting="awake_awareness" role="switch" tabindex="0" aria-checked="true"></div></div>
+                <div class="info-row tog"><span>Late-night nudges</span><div class="toggle on" data-setting="late_night_nudges" role="switch" tabindex="0" aria-checked="true"></div></div>
+              </div>
+              <div class="pv-stats">
+                <div class="stat"><b id="pvTotal">0</b><span>Nudges so far</span></div>
+                <div class="pv-notes">
+              <div class="acc-note" id="pvBreakdown"></div>
+              <div class="acc-note pv-recent" id="pvRecent" data-skel><span class="skel skel-line"></span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-voice" data-group="voice" role="region" aria-labelledby="sg-voice-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-voice-title">Voice &amp; Sound</h2><p class="set-group-desc">How Sara sounds, listens and signals</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-voice">
+            <div class="set-card-head"><div class="set-card-title">Voice</div><div class="set-card-sub">hearing &amp; speaking</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Mute Sara</div><div class="s-sub">stop voice replies right now</div></div><div class="toggle" id="setMute" role="switch" tabindex="0" aria-checked="false"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Voice replies</div><div class="s-sub">Sara speaks her answers</div></div><div class="toggle on" data-setting="voice_replies" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Language</div><div class="s-sub">what Sara listens for</div></div>
+              <div class="chip-row" id="langChips"><span class="chip on" data-lang="auto">Auto</span><span class="chip" data-lang="en">English</span><span class="chip" data-lang="hi">हिन्दी</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Mic sensitivity</div><div class="s-sub">how easily Sara picks up your voice</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="micSlider"><span class="slider-val" id="micSliderVal">50</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Speech speed</div><div class="s-sub">how fast Sara talks back</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="50" id="speedSlider"><span class="slider-val" id="speedSliderVal">50</span></div></div>
+          </section>
+          <section class="set-card" id="grp-sounds">
+            <div class="set-card-head"><div class="set-card-title">Sound effects</div><div class="set-card-sub">the little sounds Sara makes</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Sound effects</div><div class="s-sub">soft UI blips</div></div><div class="toggle on" id="setSounds" role="switch" tabindex="0" aria-checked="true"></div></div>
+            <div class="dim-group" data-dim-with="#setSounds">
+            <div class="set-row"><div class="set-info"><div class="s-name">Sound volume</div><div class="s-sub">this device only</div></div><div class="slider-wrap"><input type="range" min="0" max="100" value="80" id="soundVolume" aria-label="Sound volume"><span class="slider-val" id="soundVolumeVal">80</span></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Sound pack</div><div class="s-sub">tap one to hear it</div></div><div class="chip-row" id="soundPacks"></div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Startup sound</div><div class="s-sub">a chime when Sara boots</div></div><div class="toggle" data-setting="startup_sound" role="switch" tabindex="0" aria-checked="false"></div></div>
+            </div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-appearance" data-group="appearance" role="region" aria-labelledby="sg-appearance-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-appearance-title">Appearance</h2><p class="set-group-desc">Themes, accent colour and accessibility</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-appearance">
+            <div class="set-card-head"><div class="set-card-title">Theme</div><div class="set-card-sub">pick a look</div></div>
+            <div class="set-card-body">
+              <div class="theme-filters" id="themeFilters" role="group" aria-label="Theme categories"></div>
+              <div class="theme-grid" id="themeGrid" role="radiogroup" aria-label="Theme"></div>
+              <div class="set-row"><div class="set-info"><div class="s-name">Auto day / night</div><div class="s-sub">Paper from 06:00 to 18:00, your dark theme at night. This device only.</div></div><div class="toggle" id="autoTheme" role="switch" tabindex="0" aria-checked="false"></div></div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-display">
+            <div class="set-card-head"><div class="set-card-title">Display &amp; accent</div><div class="set-card-sub">quality and accent colour</div></div>
+            <div class="set-card-body">
+              <div class="section-label" id="qualityLabel">Visual quality</div>
+              <div class="chip-row seg" id="qualityRow" role="radiogroup" aria-label="Visual quality">
+                <button type="button" class="chip" role="radio" aria-checked="false" data-q="low">Low</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-q="balanced">Balanced</button>
+                <button type="button" class="chip" role="radio" aria-checked="false" data-q="high">High</button>
+              </div>
+              <div class="acc-note" id="qualityNote"></div>
+              <div id="devBlock" hidden></div>
+              <div class="section-label">Accent hue</div>
+              <div class="hue-block">
+                <div class="hue-row"><input type="range" id="hueSlider" min="0" max="359" value="170" aria-label="Accent hue"><b id="hueVal">theme default</b><button type="button" class="pill-btn" id="hueReset">Reset to Theme Default</button></div>
+                <div class="accent-pv" id="accentPv" aria-hidden="true">
+                  <span class="ap-chip"></span><span class="ap-btn">Accent</span><span class="ap-link">Link</span>
+                  <span class="ap-status"><span class="ok"><i></i>OK</span><span class="wn"><i></i>Warn</span><span class="er"><i></i>Error</span><span class="in"><i></i>Info</span></span>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-access">
+            <div class="set-card-head"><div class="set-card-title">Accessibility</div><div class="set-card-sub">size, contrast, motion, keyboard</div></div>
+            <div class="set-card-body" id="accessBody"></div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-intelligence" data-group="intelligence" role="region" aria-labelledby="sg-intelligence-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-intelligence-title">Intelligence</h2><p class="set-group-desc">Skills, smart routing, memory and calendar</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-skills">
+            <div class="set-card-head"><div class="set-card-title">Skills</div><div class="set-card-sub">what Sara can currently do</div></div>
+            <div class="set-card-body">
+              <input type="text" class="field skills-filter" id="skillsFilter" placeholder="Filter skills…" aria-label="Filter skills" autocomplete="off">
+              <div class="skills-scroll"><div id="skillsList" class="acc-note" data-skel><div class="skel skel-row"></div><div class="skel skel-row"></div><div class="skel skel-row"></div></div></div>
+              <div class="acc-note" id="skillRestartNote" hidden>Skill changes apply after you restart SARA.</div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-router">
+            <div class="set-card-head"><div class="set-card-title">Smart routing</div><div class="set-card-sub">cheapest model that still answers well</div></div>
+            <div class="set-card-body">
+              <div class="rt-block">
+                <div class="rt-seg seg" role="group" aria-label="Smart routing mode">
+                  <button type="button" class="rt-mode" data-mode="off" aria-pressed="false">Off</button>
+                  <button type="button" class="rt-mode" data-mode="shadow" aria-pressed="false">Shadow</button>
+                  <button type="button" class="rt-mode" data-mode="on" aria-pressed="false">On</button>
+                </div>
+                <div class="rt-gate" id="rtGate" hidden></div>
+                <div class="rt-note" id="rtNote" hidden></div>
+                <div class="rt-empty" id="rtEmpty" hidden>Only one model is configured - add GEMINI_FAST_MODEL in .env to let Sara choose</div>
+                <div class="rt-usage" id="rtUsage"></div>
+                <div class="rt-legend" id="rtLegend"></div>
+                <div class="rt-nums" id="rtNums" hidden>
+                  <div class="rt-stat"><b id="rtLatency">-</b><span>average response time</span></div>
+                  <div class="rt-stat"><b id="rtSaved">-</b><span>calls saved vs always-main</span></div>
+                </div>
+                <div class="rt-progress" id="rtCollecting" hidden></div>
+                <div class="rt-reset">
+                  <button type="button" class="rt-btn" id="rtReset">Reset learning</button>
+                  <div class="rt-confirm" id="rtConfirm" hidden>
+                    <span>Forget everything Sara has learned about routing?</span>
+                    <button type="button" class="rt-btn rt-danger" id="rtResetYes">Yes, reset</button>
+                    <button type="button" class="rt-btn" id="rtResetNo">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-memory">
+            <div class="set-card-head"><div class="set-card-title">Memory</div><div class="set-card-sub">how much Sara remembers</div></div>
+            <div class="set-card-body">
+              <div class="mem-ring" id="memRing" style="--p:0" aria-hidden="true"><svg viewBox="0 0 36 36"><circle class="mr-bg" cx="18" cy="18" r="15.9"/><circle class="mr-fg" cx="18" cy="18" r="15.9" pathLength="100"/></svg><b id="memRingTxt">–</b></div>
+              <div class="stat-grid">
+                <div class="stat"><b id="memExchanges"><span class="skel skel-inline"></span></b><span>Exchanges stored</span></div>
+                <div class="stat"><b id="memSize"><span class="skel skel-inline"></span></b><span>Memory size</span></div>
+                <div class="stat"><b id="memPct"><span class="skel skel-inline"></span></b><span>Memory used</span></div>
+                <div class="stat"><b id="shStreak"><span class="skel skel-inline"></span></b><span>Current streak</span></div>
+                <div class="stat"><b id="shMessages"><span class="skel skel-inline"></span></b><span>Messages total</span></div>
+                <div class="stat"><b id="shDays"><span class="skel skel-inline"></span></b><span>Days used</span></div>
+                <div class="stat"><b id="shNudges"><span class="skel skel-inline"></span></b><span>Proactive nudges</span></div>
+              </div>
+              <div class="btn-row"><button class="pill-btn" id="exportMemoryBtn">Export memory</button><button class="pill-btn" id="clearCacheBtn" title="Forget the cached answers to general-knowledge questions (your memory is not touched)">Forget cached answers</button><button class="pill-btn" id="openMemoryViewerBtn" aria-haspopup="dialog" aria-controls="memViewer">Open memory viewer</button></div>
+              <div class="acc-note">Export saves your recent conversation to memory_export.json next to the app.</div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-calendar">
+            <div class="set-card-head"><div class="set-card-title">Calendar</div><div class="set-card-sub">Google integration</div></div>
+            <div class="set-card-body">
+              <div class="info-row"><span>Google Calendar</span><b id="calStatus"><span class="skel skel-inline"></span></b></div>
+              <div id="calEvents" class="acc-note" data-skel><span class="skel skel-line"></span></div>
+            </div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-security" data-group="security" role="region" aria-labelledby="sg-security-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-security-title">Security</h2><p class="set-group-desc">What Sara is allowed to do, and what she blocked</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-security">
+            <div class="set-card-head"><div class="set-card-title">Security</div><div class="set-card-sub">guards against instructions hidden in web pages, files and notes</div></div>
+            <div class="set-card-body">
+              <div class="section-label">Protection mode</div>
+              <div class="sec-block" id="secBlock">
+                <div class="sec-seg seg" id="secModes" role="group" aria-label="Protection mode">
+                  <button type="button" class="sec-mode" data-mode="standard" aria-pressed="false">Standard</button>
+                  <button type="button" class="sec-mode" data-mode="strict" aria-pressed="false">Strict</button>
+                  <button type="button" class="sec-mode sec-off" data-mode="off" aria-pressed="false">Off</button>
+                </div>
+                <div class="acc-note sec-warn" id="secWarn" role="status" hidden>Protection off lets text from web pages, files or notes trigger actions. Press Off again to confirm.</div>
+                <div class="acc-note" id="secNote" hidden></div>
+                <div class="section-label sub">Last 7 days</div>
+                <div class="sec-nums">
+                  <div class="sec-num"><b id="secBlocked">-</b><span>Blocked</span></div>
+                  <div class="sec-num"><b id="secInjections">-</b><span>Injections detected</span></div>
+                  <div class="sec-num"><b id="secConfirms">-</b><span>Confirmations asked</span></div>
+                </div>
+                <div class="section-label sub">Recent security events</div>
+                <div class="sec-recent" id="secRecent"></div>
+              </div>
+            </div>
+          </section>
+          </div>
+        </div>
+        <div class="set-group" id="sg-system" data-group="system" role="region" aria-labelledby="sg-system-title">
+          <div class="set-group-head"><h2 class="set-group-title" id="sg-system-title">System</h2><p class="set-group-desc">Performance, insights, presets and backup, window controls</p></div>
+          <div class="set-group-grid">
+          <section class="set-card" id="grp-system">
+            <div class="set-card-head"><div class="set-card-title">Performance</div><div class="set-card-sub">live system &amp; response speed</div></div>
+            <div class="set-card-body">
+              <div class="sys-tiles">
+                <div class="stat sys-tile"><b id="sysBackend">—</b><span>Backend</span></div>
+                <div class="stat sys-tile"><b id="sysCpuRam"><span class="skel skel-inline"></span></b><span>CPU · RAM</span></div>
+                <div class="stat sys-tile"><b id="sysDisk"><span class="skel skel-inline"></span></b><span>Disk</span></div>
+                <div class="stat sys-tile"><b id="sysNet"><span class="skel skel-inline"></span></b><span>Network</span></div>
+              </div>
+
+              <div class="section-label">Response speed</div>
+              <div class="perf-block" id="perfBlock">
+                <div class="perf-nums">
+                  <div class="perf-num"><b id="perfP50">-</b><span>TTFA p50 (s)</span></div>
+                  <div class="perf-num"><b id="perfP95">-</b><span>TTFA p95 (s)</span></div>
+                </div>
+                <div class="acc-note" id="perfNote" hidden></div>
+                <div class="acc-note" id="perfQuota" hidden></div>
+                <div class="perf-bar" id="perfBar" role="img" aria-label="Average stage split: no data"></div>
+                <div class="perf-legend" id="perfLegend"></div>
+                <div class="section-label sub">Last 10 turns</div>
+                <div class="perf-recent" id="perfRecent"></div>
+                <div class="info-row tog"><span>Collect timing data</span><div class="toggle on" id="perfToggle" role="switch" tabindex="0" aria-checked="true"></div></div>
+              </div>
+
+            </div>
+          </section>
+          <section class="set-card" id="grp-analytics">
+            <div class="set-card-head"><div class="set-card-title">Insights</div><div class="set-card-sub">how you use Sara</div></div>
+            <div class="set-card-body">
+              <div id="anLoading" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
+              <div class="an-empty" id="anEmpty" hidden>
+                <div class="an-empty-title">No activity yet</div>
+                <div class="an-empty-sub">Once SARA is used, your activity will appear here.</div>
+              </div>
+              <div class="an-layout">
+              <div class="an-body" id="anBody" hidden>
+                <div class="stat-grid an-kpis">
+                  <div class="stat an-kpi" id="anKpiMessages" hidden><b id="anMessages">0</b><span>Messages</span></div>
+                  <div class="stat an-kpi" id="anKpiCommands" hidden><b id="anTotal">0</b><span>Commands</span></div>
+                  <div class="stat an-kpi" id="anKpiNudges" hidden><b id="anNudges">0</b><span>Proactive nudges</span></div>
+                  <div class="stat an-kpi" id="anKpiSuccess" hidden><b id="anSuccess">0</b><span id="anSuccessLbl">Action success</span></div>
+                </div>
+                <div class="an-left">
+                <div class="section-label sub">Peak usage</div>
+                <div class="an-peak"><span>Busiest day</span><b id="anBusiest">—</b></div>
+                <div class="section-label sub">Most used</div>
+                <div id="anTop" class="an-top"></div>
+                <div class="section-label sub">Last 14 days</div>
+                <div class="an-chart" id="anChart">
+                  <div class="an-tip" id="anTip" role="tooltip" aria-hidden="true"></div>
+                  <div class="trend" id="anTrend" role="group" aria-label="Commands per day, last 14 days"></div>
+                </div>
+                <div class="trend-cap"><span id="anTrendFrom"></span><span id="anTrendTo"></span></div>
+                </div>
+              </div>
+              <div class="an-right">
+              <div class="section-label sub">Recent activity</div>
+              <div class="btn-row">
+                <button class="pill-btn small active" data-filter="all">All</button>
+                <button class="pill-btn small" data-filter="success">Success</button>
+                <button class="pill-btn small" data-filter="fail">Failed</button>
+              </div>
+              <div id="actionTimeline" class="acc-note" data-skel><span class="skel skel-line"></span><span class="skel skel-line" style="width:50%"></span></div>
+
+              <div class="section-label sub">Frequently missed commands</div>
+              <div id="missedCommands" class="acc-note" data-skel></div>
+              </div>
+              </div>
+            </div>
+          </section>
+          <section class="set-card" id="grp-presets">
+            <div class="set-card-head"><div class="set-card-title">Presets &amp; backup</div><div class="set-card-sub">one-tap setups, export &amp; import</div></div>
+            <div class="set-card-body" id="presetsBody"></div>
+          </section>
+          <section class="set-card" id="grp-advanced">
+            <div class="set-card-head"><div class="set-card-title">Advanced</div><div class="set-card-sub">data, window &amp; setup</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Data folder</div><div class="s-sub">Where Sara keeps your settings and memory</div></div><button class="pill-btn small" id="btnOpenDataFolder">Open data folder</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Setup check</div><div class="s-sub">Checks that everything Sara needs is in place</div></div><button class="pill-btn small" id="btnWizard">Re-run setup check</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Quick tour</div><div class="s-sub">Show the guided tour again</div></div><button class="pill-btn small" id="btnTour">Replay tour</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Minimize</div><div class="s-sub">Hide the window, Sara keeps listening</div></div><button class="pill-btn small" id="btnMin">Minimize</button></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Maximize</div><div class="s-sub">Fill the screen, or go back</div></div><button class="pill-btn small" id="btnMax">Maximize</button></div>
+          </section>
+          <section class="set-card" id="grp-danger">
+            <div class="set-card-head"><div class="set-card-title">Danger zone</div><div class="set-card-sub">closes Sara completely</div></div>
+            <div class="set-row"><div class="set-info"><div class="s-name">Close SARA</div><div class="s-sub">Stops listening and closes the app</div></div><button class="pill-btn danger" id="btnClose">Close SARA</button></div>
+            <div class="close-confirm" id="closeConfirm" role="alert" hidden><span>Close SARA completely?</span><button class="pill-btn small danger" id="btnCloseYes">Close</button><button class="pill-btn small" id="btnCloseNo">Cancel</button></div>
+          </section>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= floating bits ================= -->
+  <div class="mini-player" id="miniPlayer">
+    <span class="mp-grip" aria-hidden="true"></span>
+    <div class="mp-art" id="mpArt"></div>
+    <div class="mp-meta"><div class="mp-title" id="mpTitle">Nothing playing</div><div class="mp-artist" id="mpArtist"></div></div>
+    <span class="mp-eq" aria-hidden="true"><i></i><i></i><i></i></span>
+    <button class="mp-btn" id="mpPlay" title="Play / Pause"><svg id="mpPlayIcon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+  </div>
+
+  <div class="audio-modal" id="audioModal" aria-hidden="true">
+    <div class="audio-backdrop" data-close></div>
+    <div class="audio-card" role="dialog" aria-modal="true" aria-labelledby="audioModalTitle" tabindex="-1">
+      <div class="audio-card-head">
+        <span class="audio-card-title" id="audioModalTitle">Audio</span>
+        <button type="button" class="audio-close" id="audioClose" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="volume-row app" title="Media volume">
+        <button type="button" class="vol-btn" id="mcVolumeBtn" title="Mute app audio" aria-label="Mute app audio" aria-pressed="false" disabled>
+          <svg id="mcVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path class="vol-wave" d="M16.5 8.5a5 5 0 0 1 0 7"/><path class="vol-wave" d="M19 6a8 8 0 0 1 0 12"/><path class="vol-x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+        </button>
+        <span class="vol-label">Media</span>
+        <input type="range" id="mcVolume" class="volume" min="0" max="100" value="60" disabled aria-label="Media volume">
+        <span class="vol-val" id="mcVolumeVal">—</span>
+      </div>
+      <div class="volume-row system" title="System volume">
+        <button type="button" class="vol-btn" id="mcSysVolumeBtn" title="Mute system audio" aria-label="Mute system audio" aria-pressed="false">
+          <svg id="mcSysVolumeIcon" viewBox="0 0 24 24"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path class="vol-wave" d="M16.5 8.5a5 5 0 0 1 0 7"/><path class="vol-x" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
+        </button>
+        <span class="vol-label">System</span>
+        <input type="range" id="mcSysVolume" class="volume" min="0" max="100" value="50" aria-label="System volume">
+        <span class="vol-val" id="mcSysVolumeVal">50%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- Today sheet (expanded Today card) -->
+<div class="overlay" id="todaySheet">
+  <div class="sheet">
+    <div class="sheet-head"><div class="page-title">Today</div><button class="link-btn" id="todayClose">close</button></div>
+    <div class="weather-hero"><span class="weather-temp" id="shTemp">--°</span><span class="weather-cond" id="shCond">Weather</span></div>
+    <div class="weather-meta" id="shMeta"></div>
+    <div class="qa-row">
+      <button class="qa-btn" id="qaWifi"><svg viewBox="0 0 24 24"><path d="M5 13a11 11 0 0 1 14 0"/><path d="M8.5 16.5a6 6 0 0 1 7 0"/><circle cx="12" cy="19" r="1"/></svg>Wi-Fi</button>
+      <button class="qa-btn" id="qaFocus"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg>Focus</button>
+    </div>
+    <div class="section-label">Notices</div><div id="noticeList"></div>
+    <div class="section-label">Schedule</div><div id="scheduleList"></div>
+  </div>
+</div>
+
+<!-- Clock sheet (expanded Clock card: clock / timer / stopwatch + themes) -->
+<div class="overlay" id="clockSheet">
+  <div class="sheet clock-sheet" id="clockSheetInner" data-clock-theme="sara">
+    <div class="sheet-head"><div class="page-title">Clock</div><button class="link-btn" id="clockSheetClose">close</button></div>
+
+    <div class="cs-modes">
+      <button class="chip cs-mode-btn on" data-mode="clock">Clock</button>
+      <button class="chip cs-mode-btn" data-mode="timer">Timer</button>
+      <button class="chip cs-mode-btn" data-mode="stopwatch">Stopwatch</button>
+    </div>
+
+    <div class="cs-ring-wrap">
+      <svg class="cs-ring" viewBox="0 0 220 220" aria-hidden="true">
+        <circle class="cs-ring-bg" cx="110" cy="110" r="96"></circle>
+        <circle class="cs-ring-fg" id="csRingFg" cx="110" cy="110" r="96"></circle>
+      </svg>
+      <div class="cs-ring-center">
+        <div class="cs-greet" id="csGreet">Good day</div>
+        <div class="cs-modelabel" id="csModeLabel" hidden></div>
+        <div class="cs-time" id="csTime">--:--</div>
+        <div class="cs-sub" id="csSub"></div>
+        <div class="cs-status" id="csStatus" hidden></div>
+      </div>
+    </div>
+
+    <div class="cs-panel" id="csTimerPanel" hidden>
+      <div class="cs-row"><input type="number" id="csTimerMins" min="1" max="720" value="10" placeholder="minutes"><button class="pill-btn primary" id="csTimerStart">Start</button></div>
+      <div class="cs-row cs-controls" id="csTimerControls" hidden>
+        <button class="pill-btn small" id="csTimerPause">Pause</button>
+        <button class="pill-btn small" id="csTimerResume" hidden>Resume</button>
+        <button class="pill-btn small danger" id="csTimerCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="cs-panel" id="csStopwatchPanel" hidden>
+      <div class="cs-row cs-controls">
+        <button class="pill-btn small" id="swStart">Start</button>
+        <button class="pill-btn small" id="swPause" hidden>Pause</button>
+        <button class="pill-btn small" id="swResume" hidden>Resume</button>
+        <button class="pill-btn small danger" id="swReset">Reset</button>
+      </div>
+    </div>
+
+    <div class="section-label">Themes</div>
+    <div class="chip-row cs-themes" id="csThemes">
+      <button class="chip on" data-theme="sara">SARA</button>
+      <button class="chip" data-theme="aurora">Aurora</button>
+      <button class="chip" data-theme="midnight">Midnight</button>
+      <button class="chip" data-theme="glass">Glass</button>
+      <button class="chip" data-theme="pulse">Pulse</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick input modal (Apps > Quick tools) -->
+<div class="overlay" id="quickInputModal">
+  <div class="modal">
+    <h3 id="qiTitle">Quick action</h3><div class="m-sub" id="qiLabel"></div>
+    <input type="text" id="qiField" autocomplete="off">
+    <div class="m-actions"><button class="pill-btn" id="qiCancel">Cancel</button><button class="pill-btn primary" id="qiSubmit">Send</button></div>
+  </div>
+</div>
+
+<!-- Routine builder modal (Automation) -->
+<div class="overlay" id="routineModal">
+  <div class="modal">
+    <h3 id="rtTitle">New automation</h3><div class="m-sub">Chain several actions together, then run them in one go.</div>
+    <label for="rtName">Name</label><input type="text" id="rtName" placeholder="e.g. morning" autocomplete="off">
+    <label for="rtLabel">Display label (optional)</label><input type="text" id="rtLabel" placeholder="e.g. Morning routine" autocomplete="off">
+    <label for="rtTime">Runs at (optional)</label><input type="time" id="rtTime">
+    <label>Steps</label><div class="rt-steps" id="rtSteps"></div>
+    <button class="pill-btn small" id="rtAddStep" style="margin-top:10px;">+ Add step</button>
+    <div class="m-error" id="rtError"></div>
+    <div class="m-actions"><button class="pill-btn" id="rtCancel">Cancel</button><button class="pill-btn primary" id="rtSave">Save</button></div>
+  </div>
+</div>
+
+<!-- Memory viewer (Settings > Memory) -->
+<div class="mv-overlay" id="memViewer" hidden>
+  <div class="mv-card" role="dialog" aria-modal="true" aria-labelledby="mvTitle" tabindex="-1">
+    <div class="mv-head">
+      <div class="mv-titles">
+        <h3 id="mvTitle">Memory viewer</h3>
+        <div class="mv-sub" id="mvCounts" role="status"></div>
+        <div class="mv-sub" id="mvHint"></div>
+      </div>
+      <button type="button" class="pill-btn small" id="mvClose" aria-label="Close memory viewer">Close</button>
+    </div>
+    <div class="mv-tabs" id="mvTabs" role="tablist" aria-label="Memory type">
+      <button type="button" class="mv-tab" role="tab" id="mvTab-facts" data-tab="facts" aria-selected="true" aria-controls="mvList" tabindex="0">Facts</button>
+      <button type="button" class="mv-tab" role="tab" id="mvTab-events" data-tab="events" aria-selected="false" aria-controls="mvList" tabindex="-1">Events</button>
+      <button type="button" class="mv-tab" role="tab" id="mvTab-entities" data-tab="entities" aria-selected="false" aria-controls="mvList" tabindex="-1">Entities</button>
+      <button type="button" class="mv-tab" role="tab" id="mvTab-archived" data-tab="archived" aria-selected="false" aria-controls="mvList" tabindex="-1">Archived</button>
+    </div>
+    <input type="search" class="mv-search" id="mvSearch" maxlength="80" placeholder="Search memories" aria-label="Search memories" autocomplete="off">
+    <div class="mv-note" id="mvNote" role="status" hidden></div>
+    <div class="mv-list" id="mvList" role="tabpanel" aria-labelledby="mvTab-facts"></div>
+    <button type="button" class="pill-btn mv-more" id="mvMore" hidden>Load more</button>
+  </div>
+</div>
+
+<!-- First-run Setup Wizard -->
+<div class="overlay" id="setupWizardOverlay">
+  <div class="modal setup-modal" id="setupModal" data-state="checking" role="dialog" aria-modal="true" aria-labelledby="swTitle">
+    <div class="sw-hero">
+      <div class="sw-orb" aria-hidden="true"></div>
+      <h3 id="swTitle">Initializing SARA</h3>
+      <div class="m-sub" id="swSub" role="status" aria-live="polite">A quick check that everything Sara needs is in place.</div>
+    </div>
+    <div id="setupChecklist"></div>
+    <div class="sw-summary"><span id="swSummary"></span><span class="sw-pct" id="swPct"></span></div>
+    <div class="setup-bar" id="setupBar"><div class="setup-bar-fill" id="setupBarFill"></div></div>
+    <div class="setup-log" id="setupLog"></div>
+    <div class="m-actions">
+      <button class="pill-btn" id="setupSkip">Skip for now</button>
+      <button class="pill-btn" id="setupRecheck">Re-check</button>
+      <button class="pill-btn primary" id="setupContinue" disabled>Fix the items above to continue</button>
+    </div>
+  </div>
+</div>
+
+<!-- Development mock APIs are excluded from this static preview. -->
+<!-- All scripts are bundled from sources listed in assets.json (python -m sara.gui.build). main.js is last. -->
+<script src="bundle/app.js?v=436568bbb4"></script>
+<script src="web_preview.js"></script>
+</body>
+</html>

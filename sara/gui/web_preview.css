@@ -1,0 +1,179 @@
+/* Styles used only by the isolated static browser preview. */
+.web-preview .offline-strip {
+  display: none !important;
+  color: var(--muted);
+  background-color: rgb(var(--core-rgb) / .08) !important;
+  background-image: none !important;
+  border-bottom-color: rgb(var(--core-rgb) / .2);
+  animation: none !important;
+}
+html.web-preview .offline-strip:not([hidden]) ~ .app { padding-top: 0; }
+.web-preview .web-preview-detail {
+  flex: none;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid rgb(var(--core-rgb) / .18);
+  border-radius: 12px;
+  background: rgb(var(--panel-rgb, 255 255 255) / .52);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.web-preview [data-preview-disabled="true"] {
+  cursor: not-allowed !important;
+}
+.web-preview [data-preview-disabled="true"]:is(button, input, select, textarea, [role="switch"]) {
+  opacity: .78 !important;
+}
+.web-preview .pal-item[data-preview-disabled="true"] {
+  opacity: .5 !important;
+  cursor: not-allowed !important;
+}
+.web-preview .page-status .mini-orb {
+  animation: none !important;
+  background: var(--muted) !important;
+  box-shadow: none !important;
+}
+.web-preview #setupWizardOverlay { display: none !important; }
+.web-preview #setupWizardOverlay .modal { pointer-events: none !important; }
+.web-preview :is(.apps-grid, .sys-chips, #modeChips) > .web-preview-empty {
+  grid-column: 1 / -1;
+  flex: 1 1 100%;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed rgb(var(--core-rgb) / .22);
+  border-radius: 12px;
+  background: rgb(var(--panel-rgb, 255 255 255) / .28);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.web-preview .set-group-grid[hidden] { display: none !important; }
+@media (max-width: 760px) {
+  html.web-preview .page-body { padding-inline: 16px !important; }
+  .web-preview .web-preview-detail { padding: 7px 10px; font-size: 11.5px; }
+  html.web-preview #page-home .home-grid {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 12px;
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 8px 16px 20px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  html.web-preview #page-home .home-grid::-webkit-scrollbar { display: none; }
+  html.web-preview #page-home .home-grid > .clock-card {
+    order: 0;
+    flex: none;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    height: 92px;
+    padding: 12px 16px;
+    border-radius: 16px;
+  }
+  html.web-preview #page-home .home-grid > .home-center {
+    order: 1;
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    min-height: 208px;
+    box-sizing: border-box;
+    padding: 4px 0 8px;
+  }
+  html.web-preview #page-home .home-grid > .today-card {
+    order: 2;
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    min-height: 176px;
+    box-sizing: border-box;
+  }
+  html.web-preview #page-home .home-grid > .next-card { order: 3; flex: none; width: 100%; }
+  html.web-preview #page-notes .notes-top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  html.web-preview #page-notes .tabs.seg { width: 100%; box-sizing: border-box; }
+  html.web-preview #page-notes .notes-sub {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+}
+@media (max-width: 520px) {
+  .web-preview .nav { max-width: calc(100vw - 20px); }
+  .web-preview .nav button[data-page] {
+    gap: 2px;
+    min-height: 30px;
+    padding: 6px 3px;
+    font-size: 10px;
+    letter-spacing: 0;
+  }
+  .web-preview .nav .ic { width: 12px; height: 12px; }
+  html.web-preview #page-settings #setRail {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+  }
+  html.web-preview #page-settings #setRail button {
+    justify-content: center;
+    width: 100%;
+    height: 36px;
+    min-width: 0;
+    gap: 4px;
+    padding-inline: 4px;
+    font-size: 10px;
+  }
+  html.web-preview #page-settings #setRail .ic { width: 14px; height: 14px; }
+}
+@media (max-width: 360px) {
+  .web-preview .nav { gap: 0; padding: 4px; max-width: calc(100vw - 16px); }
+  .web-preview .nav button[data-page] {
+    gap: 1px;
+    min-height: 30px;
+    padding: 5px 2px;
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+  .web-preview .nav .ic { width: 10px; height: 10px; }
+}
+@media (max-width: 360px) and (max-height: 760px) {
+  html.web-preview #page-home .home-grid { gap: 8px; padding-block: 8px; }
+  html.web-preview #page-home .home-grid > .clock-card {
+    height: 64px;
+    padding: 8px 12px;
+  }
+  html.web-preview #page-home .clock-card .cc-time { font-size: 32px; }
+  html.web-preview #page-home .home-grid > .home-center {
+    --orb: 88px;
+    min-height: 0;
+    padding: 0;
+  }
+  html.web-preview #page-home .stage { margin-bottom: 4px; }
+  html.web-preview #page-home .home-caption { margin-top: 4px; font-size: 12px; }
+  html.web-preview #page-home .home-actions { margin-top: 6px; gap: 4px; }
+  html.web-preview #page-home .home-actions .link-btn { height: 26px; padding-inline: 8px; font-size: 10px; }
+  html.web-preview #page-home .home-grid > .today-card { min-height: 120px; padding: 12px 14px; }
+}
+@media (max-width: 980px) {
+  html.web-preview #page-settings #setRail { position: static; }
+}

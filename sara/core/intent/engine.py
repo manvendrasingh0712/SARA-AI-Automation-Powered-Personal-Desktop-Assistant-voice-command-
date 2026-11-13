@@ -19,6 +19,8 @@ from typing import Optional, Tuple
 from .patterns import _INTENT_PATTERNS, _INTENT_GATES, _NON_APP_TOKENS
 from sara.core.text.spoken_numbers import words_to_digits
 
+_BUILTIN_INTENT_NAMES = frozenset(name for name, _ in _INTENT_PATTERNS)
+
 logger = logging.getLogger("sara.intent")
 
 
@@ -458,6 +460,10 @@ def register_intent(name: str, patterns, gate=None) -> None:
     module-level structures.
     """
     with _registry_lock:
+        if not isinstance(name, str) or not name:
+            raise ValueError("intent registration requires a non-empty name")
+        if name in _BUILTIN_INTENT_NAMES:
+            raise ValueError(f"cannot replace built-in intent patterns: {name}")
         patterns = list(patterns)
         # O3: validate every pattern compiles BEFORE removing the old
         # entry or inserting the new one. If any pattern is malformed,

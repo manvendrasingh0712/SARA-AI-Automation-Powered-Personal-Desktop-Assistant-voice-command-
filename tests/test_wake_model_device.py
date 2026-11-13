@@ -194,7 +194,6 @@ def test_warm_recognisers_honours_the_wake_flag() -> None:
 
 def test_warm_recognisers_still_warms_an_unflagged_wake_model() -> None:
     """Behavioural: no flag set means the wake model must be warmed."""
-    import numpy as np  # noqa: F401
     from sara.audio.stt.engine import SpeechToText
 
     class _Model:

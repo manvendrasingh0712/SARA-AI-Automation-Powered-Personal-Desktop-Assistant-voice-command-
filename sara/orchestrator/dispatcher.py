@@ -18,6 +18,7 @@ import difflib
 import re
 import logging
 import time
+from types import SimpleNamespace
 from typing import Optional as _Optional
 
 from config import Config
@@ -354,6 +355,15 @@ _INTENT_HANDLERS = {
     "notify_on_file": _h_notify_on_file,
 }
 
+# Skills may add handlers, but must never replace application-owned routes:
+# the tier table classifies these names, so replacing one would let plugin
+# metadata inherit a built-in route's reviewed authorization level.
+from sara.core.intent import patterns as _intent_patterns
+
+_BUILTIN_INTENT_NAMES = frozenset(_INTENT_HANDLERS) | frozenset(
+    name for name, _ in _intent_patterns._INTENT_PATTERNS
+)
+
 
 def register_handler(name: str, fn) -> None:
     """
@@ -365,24 +375,59 @@ def register_handler(name: str, fn) -> None:
     return a string (or None to fall through, same contract as every
     handler above).
     """
+    if not isinstance(name, str) or not name or not callable(fn):
+        raise ValueError("handler registration requires a name and callable")
+    if name in _BUILTIN_INTENT_NAMES:
+        raise ValueError(f"cannot replace built-in intent handler: {name}")
     _INTENT_HANDLERS[name] = fn
 
 
 def _guard_check(tool: str, origin: str, **kwargs):
-    """Security verdict for a tool call, or None when it may run (also when the guard is absent)."""
+    """Security verdict for a tool call; unavailable checks deny execution."""
     if _guard is None:
-        return None
+        return SimpleNamespace(
+            action="deny", pending=None, tier=2,
+            message="Security checks are unavailable; I did not run that action.",
+        )
     try:
         outcome = _guard.check_tool_call(tool, origin, **kwargs)
-    except Exception:
+    except Exception as exc:
+        logger.error("tool authorization failed (%s); denying execution", type(exc).__name__)
+        return SimpleNamespace(
+            action="deny", pending=None, tier=2,
+            message="Security checks are unavailable; I did not run that action.",
+        )
+    action = getattr(outcome, "action", None)
+    if action == "run":
         return None
-    return None if outcome.action == "run" else outcome
+    if action in ("confirm", "deny"):
+        return outcome
+    logger.error("tool authorization returned an invalid verdict; denying execution")
+    return SimpleNamespace(
+        action="deny", pending=None, tier=2,
+        message="Security checks are unavailable; I did not run that action.",
+    )
+
+
+def _arm_pending(ctx: dict, pending: dict) -> None:
+    previous = ctx["confirm_state"].get("pending")
+    if previous is not None and _guard is not None:
+        _guard.cancel_pending(previous)
+    ctx["confirm_state"]["pending"] = pending
+
+
+def _cancel_pending(pending: object) -> None:
+    if _guard is not None:
+        try:
+            _guard.cancel_pending(pending)
+        except Exception:
+            logger.warning("could not invalidate a pending tool approval")
 
 
 def _guard_reply(ctx: dict, outcome) -> str:
     """Arm the guarded confirmation (if any) and return the sentence to speak."""
     if outcome.action == "confirm" and outcome.pending:
-        ctx["confirm_state"]["pending"] = outcome.pending
+        _arm_pending(ctx, outcome.pending)
     return _quick(ctx, outcome.message)
 
 
@@ -398,6 +443,7 @@ def _replay_guarded(pending: dict, ctx: dict) -> _Optional[str]:
             simple_actions=system_tools.SIMPLE_ACTIONS,
             detect_intent=detect_intent,
             build_fake_match=build_fake_match,
+            cancel_event=TURN_STATE.current_event(),
         )
     except Exception:
         return None
@@ -412,6 +458,7 @@ def _log_guarded_denial(pending: dict) -> None:
                 tool=str(pending.get("tool") or ""),
                 origin=str(pending.get("origin") or ""),
             )
+        _cancel_pending(pending)
     except Exception:
         return None
 
@@ -800,6 +847,7 @@ def _handle_command(
     pending = confirm_state.get("pending")
     if pending:
         if time.time() > pending.get("expires_at", 0):
+            _cancel_pending(pending)
             confirm_state.pop("pending", None)
         elif pending.get("action") == "clarify_app_target":
             # SMART APP CLARIFICATION (NEW): Sara offered real candidate
@@ -865,6 +913,10 @@ def _handle_command(
         else:
             reply = (user_input or "").strip().lower()
             if reply in _CONFIRM_YES_WORDS:
+                if cancel_event.is_set():
+                    confirm_state.pop("pending", None)
+                    _cancel_pending(pending)
+                    return ""
                 confirm_state.pop("pending", None)
                 action, target = pending["action"], pending["target"]
                 _t_annotate(route="confirm", intent=action)
@@ -952,7 +1004,7 @@ def _handle_command(
             # Anything else: fall through to normal intent detection below
             # (user changed their mind / asked something unrelated) but
             # drop the stale pending confirmation so it can't fire later.
-            confirm_state.pop("pending", None)
+            _cancel_pending(confirm_state.pop("pending", None))
 
     intent, match = detect_intent(user_input)
     # Conversation state for follow-ups ("uska", "wahi dobara", "pehle wala"): what was asked and which route took it.
@@ -1212,11 +1264,11 @@ def _handle_command(
                             and isinstance(armed, dict)
                             and armed.get("action") == "guarded_tool"
                         ):
-                            ctx["confirm_state"]["pending"] = {
+                            _arm_pending(ctx, {
                                 "action": confirm_action,
                                 "target": confirm_target or None,
                                 "expires_at": time.time() + _CONFIRM_PENDING_TTL_S,
-                            }
+                            })
                         plan_result = _quick(ctx, confirm_prompt)
                         brain.record_exchange(user_input, plan_result)
                         return plan_result

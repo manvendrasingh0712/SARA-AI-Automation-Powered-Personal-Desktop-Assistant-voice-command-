@@ -168,7 +168,7 @@ _DAYS_FROM = re.compile(rf"^\W*(?:what(?:'s| is)\s+(?:the\s+)?date\s+)?{_NUM}\s+
 _DAYS_HI = re.compile(rf"^\W*aaj\s+se\s+{_NUM}\s+din\s+(?:baad|pehle)\s+(?:kya\s+(?:date|tarikh)\s+(?:hogi|thi)|kaun\s+sa\s+din\s+(?:hoga|tha))?\W*$", re.I)
 _TOMORROW_DATE = re.compile(r"^\W*(kal|parso|aaj)\s+(?:kitni|kya)\s+(?:tarikh|date)\s+(?:hogi|hai|thi)?\W*$", re.I)
 _TOMORROW_DAY = re.compile(r"^\W*(kal|parso|aaj)\s+kaun\s+sa\s+din\s+(?:hoga|hai|tha)?\W*$", re.I)
-_WHAT_DAY = re.compile(rf"^\W*what\s+day\s+(?:of\s+the\s+week\s+)?is\s+(?:it\s+on\s+)?(\d{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?([A-Za-z]+)\s*(\d{{4}})?\W*$", re.I)
+_WHAT_DAY = re.compile(r"^\W*what\s+day\s+(?:of\s+the\s+week\s+)?is\s+(?:it\s+on\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([A-Za-z]+)\s*(\d{4})?\W*$", re.I)
 _DAYS_IN_MONTH = re.compile(r"^\W*how\s+many\s+days\s+(?:are\s+)?in\s+([A-Za-z]+)(?:\s+(\d{4}))?\W*$", re.I)
 _DAYS_IN_MONTH_HI = re.compile(r"^\W*([A-Za-z]+)\s+(?:mein|me)\s+kitne\s+din(?:\s+(?:hote\s+hain|hain))?\W*$", re.I)
 

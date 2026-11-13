@@ -10,6 +10,8 @@ def test_every_row_is_a_sane_range_and_a_real_setting():
 
 
 def test_validate_clamps_out_of_range_values(monkeypatch):
+    # Keep unrelated Gemini API-key validation from short-circuiting the clamps.
+    monkeypatch.setattr(config.Config, "LLM_BACKEND", "ollama")
     for name, lo, hi in config._CLAMPS[:40]:
         cur = getattr(config.Config, name)
         integer = isinstance(cur, int) and not isinstance(cur, bool)

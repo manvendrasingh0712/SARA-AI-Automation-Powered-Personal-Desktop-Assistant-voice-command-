@@ -84,7 +84,8 @@ def test_clean_turn_llm_t2_confirm_then_yes_runs_once(spy, monkeypatch):
     route_to_tool(monkeypatch)
     state: dict = {}
     assert run("drop the milk item", state) == (
-        "delete todo -- shall I go ahead? Say yes or cancel."
+        "delete todo (impactful and may be hard to undo, tier 2; title='milk') -- "
+        "shall I go ahead? Say yes or cancel."
     )
     assert state["pending"]["action"] == "guarded_tool" and spy.calls == 0
     assert run("yes", state) == "done"

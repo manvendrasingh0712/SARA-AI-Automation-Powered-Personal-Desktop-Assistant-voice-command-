@@ -45,8 +45,6 @@ def test_claim_detector_unit():
 
 
 def test_devanagari_reply_to_a_roman_user_is_regenerated_once():
-    import sys
-
     called = []
 
     def regen():

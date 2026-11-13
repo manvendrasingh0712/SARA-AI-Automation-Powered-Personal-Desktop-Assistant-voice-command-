@@ -19,7 +19,6 @@ def test_action_rules_and_voice_constraints_in_every_language(lang):
 def test_every_language_has_the_length_tiers(lang, marker):
     text = P._build_base_prompt("Sara", "x", lang, None)
     assert marker in text
-    low = text.lower()
     assert "exactly 4 short spoken sentences" in text and "up to 8 sentences" in text
 
 

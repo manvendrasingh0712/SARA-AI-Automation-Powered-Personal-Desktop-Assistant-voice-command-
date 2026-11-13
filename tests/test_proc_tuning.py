@@ -1,6 +1,4 @@
 """Part 3 / P16: process tuning helpers are safe everywhere and keep-warm obeys idle / battery."""
-import sys
-
 from sara.core import proc_tuning as P
 
 

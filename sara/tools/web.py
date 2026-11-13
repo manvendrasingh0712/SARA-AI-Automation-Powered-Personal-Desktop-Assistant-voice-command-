@@ -1041,13 +1041,18 @@ def read_webpage(url: str, max_chars: int = 4000) -> str:
     if not url or not url.strip():
         return "Error: No URL was provided."
 
-    if not isinstance(max_chars, int) or max_chars < 1:
+    if isinstance(max_chars, bool) or not isinstance(max_chars, int) or max_chars < 1:
         return "Error: max_chars must be a positive integer."
 
     url = _normalize_url(_clamp_text_length(url.strip(), _MAX_URL_LENGTH, "URL"))
-    # Preserve URL path case; only lowercase scheme+host for the cache key.
-    parsed = urllib.parse.urlparse(url)
-    cache_key = f"page:{parsed.scheme}://{parsed.netloc.lower()}{parsed.path}:{max_chars}"
+    # Query parameters affect the response; fragments are client-side only.
+    # Keep the query string verbatim so repeated parameters and their order
+    # remain part of the cache identity.
+    parsed = urllib.parse.urlsplit(url)
+    cache_url = parsed._replace(
+        scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower(), fragment=""
+    ).geturl()
+    cache_key = f"page:{cache_url}:{max_chars}"
     cached = _cache_get(cache_key)
     if cached:
         logger.debug("Page cache hit for '%s'.", url)

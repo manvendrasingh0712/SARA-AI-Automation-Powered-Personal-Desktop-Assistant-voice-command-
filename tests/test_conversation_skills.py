@@ -4,7 +4,6 @@ import time
 
 import pytest
 
-import sara.skills  # noqa: F401  (registers the skill intents)
 from sara.core.intent.engine import detect_intent
 from sara.skills import conversation as C
 from sara.skills._framework import SkillContext

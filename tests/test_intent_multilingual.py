@@ -7,7 +7,9 @@ patterns only memorising the benchmark rows.
 
 import pytest
 
-import sara.orchestrator.intent_handlers  # noqa: F401  (registers skill intents)
+import importlib
+
+importlib.import_module("sara.orchestrator.intent_handlers")
 from sara.core.intent import detect_intent, is_negated_action_request, normalize_intent_text
 from sara.core.intent import patterns as P
 

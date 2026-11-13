@@ -73,6 +73,8 @@ class TTSWorker:
         "_db",
         "_epoch",
         "_epoch_lock",
+        "_shutdown_lock",
+        "_shutdown_done",
         "_semantic",
         "_last_info",
     )
@@ -91,6 +93,8 @@ class TTSWorker:
         
         self._epoch = 0
         self._epoch_lock = threading.Lock()
+        self._shutdown_lock = threading.Lock()
+        self._shutdown_done = False
         self._semantic = None
         self._last_info = None
 
@@ -341,12 +345,15 @@ class TTSWorker:
         # below closes it once the job actually finishes.
         from sara.audio.echo_guard import get_default_guard
 
-        get_default_guard().record_start(text)
+        guard = get_default_guard()
         done_event = threading.Event() if block else None
         with self._epoch_lock:
+            if self._stop.is_set():
+                return
+            guard.record_start(text)
             current_epoch = self._epoch
-        job = (text, fast, None, None, None, done_event, None, current_epoch)
-        self._q.put((priority, next(self._seq), job))
+            job = (text, fast, None, None, None, done_event, None, current_epoch)
+            self._q.put((priority, next(self._seq), job))
         if block and done_event is not None:
             done_event.wait()
 
@@ -354,9 +361,11 @@ class TTSWorker:
         done_event = threading.Event()
         sentences_out: list = []
         with self._epoch_lock:
+            if self._stop.is_set():
+                return []
             current_epoch = self._epoch
-        job = (None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out, current_epoch)
-        self._q.put((1, next(self._seq), job))
+            job = (None, False, gen, on_first_chunk, on_chunk, done_event, sentences_out, current_epoch)
+            self._q.put((1, next(self._seq), job))
         if block:
             done_event.wait()
             return sentences_out
@@ -401,7 +410,12 @@ class TTSWorker:
                 break
             if job is None:
                 continue
-            *_rest, done_event, _sentences_out = job
+            text = job[0]
+            done_event = job[5]
+            if text:
+                from sara.audio.echo_guard import get_default_guard
+
+                get_default_guard().record_end(text)
             if done_event is not None:
                 done_event.set()
 
@@ -421,12 +435,20 @@ class TTSWorker:
         setting its done_event so a caller blocked in speak()/
         speak_stream() can't hang forever past shutdown.
         """
-        self._stop.set()
-        self._speaking.clear()
-        self._release_duck()
-        self._barge_stop.set()
-        if hasattr(self._voice, "shutdown"):
-            self._voice.shutdown()
-        self._drain_pending_jobs()
-        self._thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_S)
-        self._watch_thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_S)
+        with self._shutdown_lock:
+            if self._shutdown_done:
+                return
+            with self._epoch_lock:
+                self._epoch += 1
+                self._stop.set()
+            self._speaking.clear()
+            self._barge_stop.set()
+            try:
+                self._release_duck()
+                if hasattr(self._voice, "shutdown"):
+                    self._voice.shutdown()
+            finally:
+                self._drain_pending_jobs()
+                self._thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_S)
+                self._watch_thread.join(timeout=_SHUTDOWN_JOIN_TIMEOUT_S)
+                self._shutdown_done = True

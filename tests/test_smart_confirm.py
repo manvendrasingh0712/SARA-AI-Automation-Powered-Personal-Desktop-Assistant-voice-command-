@@ -1,5 +1,7 @@
 """Audit part 2, O9: confirmation by risk tier."""
-import sara.skills  # noqa: F401
+import importlib
+
+importlib.import_module("sara.skills")
 from sara.orchestrator import dispatcher
 
 

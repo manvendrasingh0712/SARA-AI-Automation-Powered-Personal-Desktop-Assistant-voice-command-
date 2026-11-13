@@ -418,6 +418,8 @@
 (function () {
   'use strict';
   const SARA = window.SARA;
+  const WEB_PREVIEW = window.__SARA_WEB_PREVIEW__ === true;
+  SARA.webPreview = WEB_PREVIEW;
 
   /* ---- tiny event bus (used for both backend pushes and page-to-page messages) ---- */
   const L = {};
@@ -454,6 +456,7 @@
      time we conclude there is no bridge at all. With a live backend it is
      never requested, never parsed, and cannot answer a call. */
   SARA._ensureMock = function () {
+    if (WEB_PREVIEW) return Promise.resolve();
     if (SARA.mockApi) return Promise.resolve();
     if (!SARA._mockLoad) {
       SARA._mockLoad = new Promise(function (resolve) {
@@ -469,6 +472,10 @@
 
   const rawCall = async function (name) {
     const args = Array.prototype.slice.call(arguments, 1);
+    if (WEB_PREVIEW) {
+      SARA.emit('api:unavailable', name);
+      return { ok: false, error: 'desktop_backend_unavailable', method: name, preview: true };
+    }
     for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
       const api = window.pywebview && window.pywebview.api;
       if (api && typeof api[name] === 'function') {

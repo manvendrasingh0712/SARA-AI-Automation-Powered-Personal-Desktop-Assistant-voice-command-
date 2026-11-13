@@ -22,6 +22,7 @@ import subprocess
 import threading
 import urllib.request
 import webbrowser
+from pathlib import Path
 
 from config import Config
 
@@ -168,6 +169,16 @@ class ApiSetupWizardMixin:
                 ),
                 "kokoro_voices_present": os.path.exists(
                     getattr(Config, "KOKORO_VOICES_PATH", "")
+                ),
+                "wake_word_model_present": Path(
+                    getattr(Config, "WAKE_WORD_MODEL_PATH", "")
+                ).is_file(),
+                "wake_word_model_path": getattr(Config, "WAKE_WORD_MODEL_PATH", ""),
+                "wake_word_setup_message": (
+                    "Passive wake detection is disabled until a compatible custom "
+                    "ONNX model is installed at WAKE_WORD_MODEL_PATH."
+                    if not Path(getattr(Config, "WAKE_WORD_MODEL_PATH", "")).is_file()
+                    else ""
                 ),
             }
             llm_ok = (

@@ -324,7 +324,7 @@ __all__ = [
     "_TOOL_SIGNAL_MAX_WORDS", "_TOOL_SIGNAL_RE", "_CHAT_SIGNAL_RE",
     "_tool_router_available", "_route_chat_message", "_retry_via_tool_router",
     "_INTENT_HANDLERS", "register_handler", "_plan_step_confirmation_needed",
-    "_build_plan_dispatch_fn", "_handle_command",
+    "_build_plan_dispatch_fn", "_handle_command", "system_tools",
 ]
 
 

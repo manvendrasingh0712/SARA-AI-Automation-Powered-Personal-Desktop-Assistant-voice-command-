@@ -15,7 +15,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import sara.skills  # noqa: F401,E402
+import importlib  # noqa: E402
+
+importlib.import_module("sara.skills")
 from config import Config  # noqa: E402
 from sara.core.intent.semantic import SemanticIntentIndex  # noqa: E402
 from sara.core.llm.clients import _get_embedding_vector  # noqa: E402

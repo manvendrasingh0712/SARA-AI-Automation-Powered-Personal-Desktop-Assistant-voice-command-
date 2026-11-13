@@ -1,6 +1,4 @@
 """Audit part 2, O17: installed-app index."""
-from pathlib import Path
-
 from sara.tools.system import app_index as A
 from sara.tools.system import apps
 

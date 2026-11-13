@@ -1066,27 +1066,6 @@ class PreferencesDB:
 
         return self._submit_write(_do, wait=wait)
 
-    def set_routine_enabled(self, name: str, enabled: bool, wait: bool = True) -> bool:
-        """Flips a routine's `enabled` flag (read by proactive.py's scheduled auto-trigger,
-        which skips a routine whose trigger_time comes due while enabled=False). Does not
-        touch `definition` or delete the routine -- it can still be run manually either way."""
-        self._validate_key(name)
-
-        def _do(conn: sqlite3.Connection) -> bool:
-            try:
-                cursor = conn.execute(
-                    "UPDATE routines SET enabled = ? WHERE name = ?", (1 if enabled else 0, name)
-                )
-                conn.commit()
-                return cursor.rowcount > 0
-            except sqlite3.Error as e:
-                conn.rollback()
-                logger.error("set_routine_enabled('%s'): %s", name, e)
-                print(f"[Error] set_routine_enabled('{name}'): {e}")
-                return False
-
-        return self._submit_write(_do, wait=wait)
-
     def list_routines(self) -> list[dict]:
         """Returns every saved routine's definition dict (see get_routine)."""
         if self._closed:

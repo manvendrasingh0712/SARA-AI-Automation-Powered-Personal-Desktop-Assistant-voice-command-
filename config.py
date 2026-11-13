@@ -70,6 +70,7 @@ PRODUCTION-AUDIT CHANGES (this revision)
 import os
 import re
 import logging
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -79,6 +80,26 @@ load_dotenv()
 # paths below. Do NOT use os.getcwd() for anything that must be stable
 # regardless of where the process happens to be launched from. ──────────
 _PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+def _runtime_model_root() -> Path:
+    """Return the stable base for external model paths in source and frozen runs."""
+    if getattr(sys, "frozen", False):
+        # Models are intentionally external to the onedir bundle. Keep their
+        # documented `models/` sidecar next to SaraAI.exe, independent of CWD.
+        return Path(sys.executable).resolve().parent
+    return _PROJECT_ROOT
+
+
+def _resolve_model_path(value: str | os.PathLike[str]) -> str:
+    """Resolve configured model paths without depending on the launch CWD."""
+    raw = os.fspath(value)
+    if not raw:
+        return raw
+    path = Path(os.path.expandvars(os.path.expanduser(raw)))
+    if not path.is_absolute():
+        path = _runtime_model_root() / path
+    return str(path.resolve())
 
 # ── Per-user app-data directory ───────────────────────────────────────────
 # Runtime/user data must not default to the Git checkout. Resolves to
@@ -587,8 +608,12 @@ class Config:
     )
 
     # ── Kokoro ONNX TTS — model / runtime ───────────────────────────────────
-    KOKORO_MODEL_PATH: str = os.getenv("KOKORO_MODEL_PATH", "models/kokoro-v1.0.onnx")
-    KOKORO_VOICES_PATH: str = os.getenv("KOKORO_VOICES_PATH", "models/voices-v1.0.bin")
+    KOKORO_MODEL_PATH: str = _resolve_model_path(
+        os.getenv("KOKORO_MODEL_PATH", "models/kokoro-v1.0.onnx")
+    )
+    KOKORO_VOICES_PATH: str = _resolve_model_path(
+        os.getenv("KOKORO_VOICES_PATH", "models/voices-v1.0.bin")
+    )
     KOKORO_USE_GPU: bool = _bool(os.getenv("KOKORO_USE_GPU", "True"), default=True)
 
     CUDA_GPU_MEM_LIMIT_BYTES: int = _int(
@@ -829,9 +854,8 @@ class Config:
     # Default custom OpenWakeWord model.
     # Expected location:
     # <project-root>/models/wakewords/hey_sara.onnx
-    WAKE_WORD_MODEL_PATH: str = (
-        os.getenv("WAKE_WORD_MODEL_PATH")
-        or str(_PROJECT_ROOT / "models" / "wakewords" / "hey_sara.onnx")
+    WAKE_WORD_MODEL_PATH: str = _resolve_model_path(
+        os.getenv("WAKE_WORD_MODEL_PATH") or "models/wakewords/hey_sara.onnx"
     )
 
     # Legacy Whisper wake settings kept for compatibility with old .env files.
@@ -1720,16 +1744,16 @@ class Config:
         wake_model_path = Path(cls.WAKE_WORD_MODEL_PATH)
 
         if not wake_model_path.is_absolute():
-            wake_model_path = _PROJECT_ROOT / wake_model_path
+            wake_model_path = _runtime_model_root() / wake_model_path
 
         cls.WAKE_WORD_MODEL_PATH = str(wake_model_path.resolve())
 
         if not wake_model_path.exists():
             print(
                 f"[Warning] OpenWakeWord model not found at "
-                f"'{wake_model_path}'. "
-                f"Passive wake detection will remain disabled until "
-                f"the model is installed."
+                f"'{wake_model_path}'. Passive wake detection is disabled. "
+                "Install a compatible custom ONNX model at this path or set "
+                "WAKE_WORD_MODEL_PATH to its location."
             )
 
 

@@ -98,7 +98,9 @@ def main(argv=None) -> int:
     if args.min > 1:
         counts = Counter({k: v for k, v in counts.items() if v >= args.min})
     # drop what the router handles by now
-    import sara.skills  # noqa: F401
+    import importlib
+
+    importlib.import_module("sara.skills")
     from sara.core.intent.engine import detect_intent
 
     counts = Counter({k: v for k, v in counts.items() if detect_intent(k)[0] == "chat"})

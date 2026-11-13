@@ -1,5 +1,4 @@
 """Part 3, P1: SARA_PROFILE prod|dev decides DEBUG_MODE."""
-import importlib
 import os
 import subprocess
 import sys

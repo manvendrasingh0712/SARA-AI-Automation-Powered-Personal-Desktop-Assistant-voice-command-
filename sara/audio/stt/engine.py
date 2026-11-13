@@ -523,6 +523,7 @@ class SpeechToText:
         self._stream = None
         self._pa = None
         self._stream_lock = threading.Lock()
+        self._worker_threads: list[threading.Thread] = []
         self._open_mic_stream()
 
         self._start_threads()
@@ -1009,8 +1010,10 @@ class SpeechToText:
 
         if not os.path.exists(model_path):
             print(
-                f"[STT Warning] OpenWakeWord model not found: "
-                f"{model_path}. Passive wake detection is disabled."
+                f"[STT Warning] Custom OpenWakeWord model not found: {model_path}. "
+                "Passive wake detection is disabled. Install a compatible custom "
+                "ONNX wake-word model at this path or set WAKE_WORD_MODEL_PATH "
+                "to its location."
             )
             return None
 
@@ -1567,21 +1570,18 @@ class SpeechToText:
                 swallowed(logger, "engine._level_worker:1558", _exc)
 
     def _start_threads(self) -> None:
-        threading.Thread(
-            target=self._recalib_loop, daemon=True, name="stt-recalib"
-        ).start()
+        self._worker_threads = []
+        workers = [(self._recalib_loop, "stt-recalib")]
         if self._aec is not None:
-            threading.Thread(
-                target=self._aec_worker_loop, daemon=True, name="stt-aec-worker"
-            ).start()
+            workers.append((self._aec_worker_loop, "stt-aec-worker"))
         if self._on_audio_level is not None:
-            threading.Thread(
-                target=self._level_worker, daemon=True, name="stt-audio-level"
-            ).start()
+            workers.append((self._level_worker, "stt-audio-level"))
         # v8.1: mic-disconnect watchdog (see v8.1 CHANGES note at top of file).
-        threading.Thread(
-            target=self._watchdog_loop, daemon=True, name="stt-mic-watchdog"
-        ).start()
+        workers.append((self._watchdog_loop, "stt-mic-watchdog"))
+        for target, name in workers:
+            worker = threading.Thread(target=target, daemon=True, name=name)
+            self._worker_threads.append(worker)
+            worker.start()
 
     def _recalib_loop(self) -> None:
         # v8: first cycle uses a short interval so the energy threshold
@@ -1904,6 +1904,7 @@ class SpeechToText:
         preview_chunks: "collections.deque[bytes]",
         generation: int,
         user_cb: Optional[Callable[[str], None]],
+        cancel_event: Optional[threading.Event] = None,
     ) -> Optional[dict]:
         """Per-utterance adaptive-endpoint state, or None (flag off / failure -> legacy rule)."""
         if not getattr(Config, "VOICE_ENDPOINT_ADAPTIVE", False):
@@ -1921,6 +1922,7 @@ class SpeechToText:
                 "partial": None,
                 "sent": False,
                 "lang": self._endpoint_lang(),
+                "cancel_event": cancel_event,
             }
         except Exception:
             print("[STT] adaptive endpoint unavailable; using legacy rule")
@@ -1957,7 +1959,10 @@ class SpeechToText:
             return
         ep["sent"] = True
         self._spawn_preview_transcribe(
-            b"".join(ep["preview"]), self._endpoint_cb(ep, ep["user_cb"]), ep["gen"]
+            b"".join(ep["preview"]),
+            self._endpoint_cb(ep, ep["user_cb"]),
+            ep["gen"],
+            cancel_event=ep.get("cancel_event"),
         )
 
     def _endpoint_reached(self, ep: dict, silence_count: int, utt_chunks: int) -> bool:
@@ -2004,6 +2009,7 @@ class SpeechToText:
         max_duration: float,
         silence_limit: float,
         on_partial_transcript: Optional[Callable[[str], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> bytes:
         thr = self.energy_threshold
         silence_limit_n = max(
@@ -2051,7 +2057,12 @@ class SpeechToText:
         self._preview_generation += 1
         my_generation = self._preview_generation
         ep = self._endpoint_open(
-            silence_limit, silence_limit_n, preview_chunks, my_generation, on_partial_transcript
+            silence_limit,
+            silence_limit_n,
+            preview_chunks,
+            my_generation,
+            on_partial_transcript,
+            cancel_event=cancel_event,
         )
         if ep is not None and on_partial_transcript is None:
             on_partial_transcript = self._endpoint_noop
@@ -2076,7 +2087,7 @@ class SpeechToText:
 
         try:
             pending_chunks = list(backlog)
-            while not self._closed:
+            while not self._closed and not (cancel_event and cancel_event.is_set()):
                 now = time.monotonic()
                 if state is _CollectState.WAITING:
                     if now - start_time > timeout:
@@ -2204,6 +2215,7 @@ class SpeechToText:
                             if ep is None
                             else self._endpoint_cb(ep, ep["user_cb"]),
                             my_generation,
+                            cancel_event=cancel_event,
                         )
 
                     if state is _CollectState.SPEAKING:
@@ -2340,6 +2352,7 @@ class SpeechToText:
         snapshot: bytes,
         on_partial_transcript: Callable[[str], None],
         generation: int,
+        cancel_event: Optional[threading.Event] = None,
     ) -> None:
         """
         Best-effort, fire-and-forget "live caption" preview: transcribes
@@ -2471,7 +2484,12 @@ class SpeechToText:
                         f"~{_fires:.0f}ms (ideal {_ideal:.0f}ms, "
                         f"+{_fires - _ideal:.0f}ms); {_verdict}"
                     )
-                if result and generation == self._preview_generation:
+                if (
+                    result
+                    and not getattr(self, "_closed", False)
+                    and generation == self._preview_generation
+                    and not (cancel_event and cancel_event.is_set())
+                ):
                     try:
                         on_partial_transcript(str(result))
                     except Exception as _exc:
@@ -2914,6 +2932,7 @@ class SpeechToText:
         mode: str = "command",
         model_override: Optional[object] = None,
         on_partial_transcript: Optional[Callable[[str], None]] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> "TranscriptionResult":
         if self._closed:
             return TranscriptionResult("", 0.0)
@@ -2960,11 +2979,15 @@ class SpeechToText:
                     # mechanism above is naturally inert during wake-word
                     # detection without needing an explicit mode check here.
                     on_partial_transcript=on_partial_transcript,
+                    cancel_event=cancel_event,
                 )
             finally:
                 if ducker is not None:
                     ducker.restore()
             if not audio:
+                return TranscriptionResult("", 0.0)
+
+            if cancel_event is not None and cancel_event.is_set():
                 return TranscriptionResult("", 0.0)
 
             if mode == "command":
@@ -2981,6 +3004,9 @@ class SpeechToText:
                 beam_size_override=beam_override,
                 model_override=model_override,
             )
+
+            if cancel_event is not None and cancel_event.is_set():
+                return TranscriptionResult("", 0.0)
 
             if mode == "command":
                 _t_pending("stt_done")
@@ -3281,9 +3307,16 @@ class SpeechToText:
         if self._closed:
             return
         self._closed = True
+        self._preview_generation = getattr(self, "_preview_generation", 0) + 1
         self._recalib_event.set()
         self._watchdog_event.set()  # v8.1: wake watchdog thread so it exits promptly
         self._close_stream()
+        current = threading.current_thread()
+        for worker in getattr(self, "_worker_threads", ()):
+            if worker is not current:
+                worker.join(timeout=1.0)
+                if worker.is_alive():
+                    logger.warning("[STT] worker %s did not exit during close", worker.name)
         print("[STT] Closed.")
 
     def __enter__(self) -> "SpeechToText":

@@ -47,4 +47,6 @@ _os.environ["DB_PATH"] = _os.path.join(_DATA, "sara_data.db")
 _os.environ["NOTES_FILE_PATH"] = _os.path.join(_DATA, "sara_notes.txt")
 _os.environ["TODO_FILE_PATH"] = _os.path.join(_DATA, "sara_todos.txt")
 
-import sara.orchestrator.intent_handlers  # noqa: F401  -- warm-up, see above
+import importlib as _importlib
+
+_importlib.import_module("sara.orchestrator.intent_handlers")

@@ -1,0 +1,2 @@
+# Used only to regenerate requirements-*.lock.txt files.
+pip-tools==7.6.2
